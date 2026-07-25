@@ -12,6 +12,7 @@ Imports:
     jsonlite
 Suggests:
     aisdk.console,
+    R6,
     testthat (>= 3.0.0)
 Remotes:
     YuLab-SMU/aisdk@1e2fa54358dda647a6d5cbf64c0625642c673e4c,

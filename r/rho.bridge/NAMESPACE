@@ -8,4 +8,8 @@ export(rho_inspect_object)
 export(rho_list_objects)
 export(rho_read_data_view)
 export(rho_workspace_snapshot)
+importFrom(utils,capture.output)
+importFrom(utils,head)
+importFrom(utils,object.size)
+importFrom(utils,str)
 

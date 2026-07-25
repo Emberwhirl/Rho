@@ -194,11 +194,11 @@ rho_workspace_snapshot_preview <- function(value) {
       sprintf(
         "Objects (%d): %s",
         length(objects),
-        if (length(object_names)) paste(head(object_names, 12L), collapse = ", ") else "none"
+        if (length(object_names)) paste(utils::head(object_names, 12L), collapse = ", ") else "none"
       ),
       sprintf(
         "Attached packages: %s",
-        if (length(packages)) paste(head(packages, 12L), collapse = ", ") else "base only"
+        if (length(packages)) paste(utils::head(packages, 12L), collapse = ", ") else "base only"
       ),
       sprintf("Environment: renv %s; Bioconductor %s", renv_status, bioc_version),
       sprintf("Render: %s", paste(render_status, collapse = "; "))
