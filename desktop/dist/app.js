@@ -18,6 +18,7 @@ const state = {
   agentBusy: false,
   activeAgentTurnId: null,
   agentRuntime: null,
+  projectSkills: { project_root: "", trust_status: "untrusted_project_content", skills: [], discovery_error: null },
   agentLlm: {
     settings: null,
     selectedModelId: null,
@@ -130,6 +131,34 @@ const mockProjects = {
     },
   },
 };
+
+function emptyProjectSkillsView(projectRoot = "") {
+  return {
+    project_root: projectRoot,
+    trust_status: "untrusted_project_content",
+    skills: [],
+    discovery_error: null,
+  };
+}
+
+function mockProjectSkillsView(projectRoot = mockLastProject) {
+  if (!projectRoot) return emptyProjectSkillsView("");
+  return {
+    project_root: projectRoot,
+    trust_status: "untrusted_project_content",
+    skills: [
+      {
+        id: "qc-notes",
+        title: "Project QC notes",
+        description: "Project-authored QC guidance for the current workspace.",
+        trust_status: "untrusted_project_content",
+        instructions_path: ".rho/skills/qc-notes.md",
+        references: [".rho/skills/thresholds.json"],
+      },
+    ],
+    discovery_error: null,
+  };
+}
 let mockLastProject = "D:/Rho";
 const mockProjectSessions = {};
 let mockRunSequence = 0;
@@ -1391,6 +1420,9 @@ async function mockInvoke(command, args) {
     };
     return structuredClone(rebuildMockAgentLlmSettings());
   }
+  if (command === "list_project_skills") {
+    return structuredClone(mockProjectSkillsView(mockLastProject));
+  }
   if (command === "run_agent") {
     const selectedModelId = args.modelId ?? args.model_id ?? mockAgentLlmSettings.selected_model_id;
     const modelProfile = mockAgentLlmSettings.models.find((item) => item.id === selectedModelId)
@@ -2241,6 +2273,7 @@ function setProjectStatus(status, unavailable = null) {
   $("#projectEmptyState").textContent = status === "unavailable"
     ? "Saved project is unavailable. Choose another directory."
     : "Select a project to get started.";
+  renderProjectSkills();
   updateEditorChrome();
 }
 
@@ -2581,6 +2614,7 @@ async function refreshProject() {
   }
   try {
     state.project = await invoke("project_state");
+    await loadProjectSkills();
     renderProjectFiles();
     const first = state.activeDocument && state.project.files.some((file) => file.path === state.activeDocument)
       ? state.activeDocument
@@ -2949,6 +2983,94 @@ function renderAgentContextBadge() {
   }[state.agentContextSource] || "";
   badge.textContent = `${state.agentContextPath}${suffix}`;
   badge.classList.remove("hidden");
+}
+
+function renderProjectSkills() {
+  const panel = $("#projectSkillsPanel");
+  const trust = $("#projectSkillsTrust");
+  const summary = $("#projectSkillsSummary");
+  const list = $("#projectSkillsList");
+  if (!panel || !trust || !summary || !list) return;
+  if (state.projectStatus !== "ready" || !state.project.root) {
+    panel.classList.add("hidden");
+    summary.textContent = "";
+    list.replaceChildren();
+    return;
+  }
+  const discovery = state.projectSkills || emptyProjectSkillsView(state.project.root);
+  const skills = Array.isArray(discovery.skills) ? discovery.skills : [];
+  const trustLabel = discovery.trust_status === "untrusted_project_content"
+    ? "untrusted"
+    : (discovery.trust_status || "unknown");
+  trust.textContent = trustLabel;
+  summary.textContent = discovery.discovery_error
+    ? `Could not load .rho/skills for ${activeProjectName()}. Agent turns will ignore project skills until the manifest is fixed.`
+    : skills.length
+      ? `Loaded ${skills.length} project skill${skills.length === 1 ? "" : "s"} from .rho/skills. This content is read-only and treated as untrusted project guidance.`
+      : "No project skills were discovered in .rho/skills for this project.";
+  list.replaceChildren();
+  if (discovery.discovery_error) {
+    const row = document.createElement("div");
+    row.className = "project-skill-row";
+    const meta = document.createElement("div");
+    meta.className = "project-skill-meta";
+    meta.textContent = `Discovery error: ${discovery.discovery_error}`;
+    row.append(meta);
+    list.append(row);
+  } else if (!skills.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-tree";
+    empty.textContent = "Add a bounded manifest at .rho/skills/manifest.json to make project guidance visible here.";
+    list.append(empty);
+  } else {
+    for (const skill of skills) {
+      const row = document.createElement("div");
+      row.className = "project-skill-row";
+      const title = document.createElement("div");
+      title.className = "project-skill-title";
+      const heading = document.createElement("strong");
+      heading.textContent = skill.title || skill.id || "Untitled skill";
+      const identifier = document.createElement("span");
+      identifier.className = "project-skill-id";
+      identifier.textContent = skill.id || "unknown";
+      title.append(heading, identifier);
+      const meta = document.createElement("div");
+      meta.className = "project-skill-meta";
+      meta.textContent = skill.description || "No description provided.";
+      const paths = document.createElement("div");
+      paths.className = "project-skill-paths";
+      const references = Array.isArray(skill.references) ? skill.references : [];
+      paths.textContent = [
+        `trust: ${skill.trust_status || trustLabel}`,
+        `instructions: ${skill.instructions_path || "(missing)"}`,
+        `references: ${references.length ? references.join(", ") : "none"}`,
+      ].join("\n");
+      row.append(title, meta, paths);
+      list.append(row);
+    }
+  }
+  panel.classList.remove("hidden");
+}
+
+async function loadProjectSkills(options = {}) {
+  const { quiet = true } = options;
+  if (state.projectStatus !== "ready" || !state.project.root) {
+    state.projectSkills = emptyProjectSkillsView(state.project.root || "");
+    renderProjectSkills();
+    return;
+  }
+  try {
+    state.projectSkills = await invoke("list_project_skills");
+  } catch (error) {
+    state.projectSkills = {
+      ...emptyProjectSkillsView(state.project.root),
+      discovery_error: String(error),
+    };
+    if (!quiet) {
+      toast(`Project skills are unavailable: ${error}`, true);
+    }
+  }
+  renderProjectSkills();
 }
 
 function setAgentContext(source, path = null) {
@@ -6433,6 +6555,7 @@ async function hydrateProject(response) {
   }
   applySessionPanels(session.panels || {});
   setProjectStatus("ready");
+  await loadProjectSkills();
   const sessionDocuments = session.open_documents || [];
   const activeDocumentPath = session.active_document;
   for (const entry of sessionDocuments) {

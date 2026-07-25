@@ -30,6 +30,7 @@ use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
 use rho_server::coordinator::{
     ApprovalResponseInput, CoordinatorRuntime, EnvironmentOperationArguments,
+    ProjectSkillDiscoverySummary, discover_project_skill_summaries,
     PendingApprovalRegistry, bootstrap_bridge, decide_environment_operation,
     dispatch_workspace_request, request_environment_operation, run_agent_turn,
 };
@@ -1466,6 +1467,16 @@ async fn get_artifact_record(
         output_absolute_path,
         run,
     }))
+}
+
+#[tauri::command]
+async fn list_project_skills(state: State<'_, AppState>) -> Result<ProjectSkillDiscoverySummary, String> {
+    let root = state.project_root.read().await.clone();
+    let normalized = root.to_string_lossy().replace('\\', "/");
+    if normalized.trim().is_empty() {
+        return Ok(ProjectSkillDiscoverySummary::default());
+    }
+    Ok(discover_project_skill_summaries(&normalized))
 }
 
 #[tauri::command]
@@ -3558,6 +3569,7 @@ fn main() {
             export_data_view_artifact,
             list_artifact_records,
             get_artifact_record,
+            list_project_skills,
             clear_artifact_records,
             clear_plot_artifacts,
             list_problems,
