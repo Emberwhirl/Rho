@@ -378,8 +378,13 @@ branch publishing from `gh-pages:/`. GitHub then serves that branch at `/Rho/`
 under the organization Pages custom domain. The workflow must not use
 `actions/deploy-pages`, because that deployment is attributed to the invoking
 branch and is rejected by the `github-pages` environment policy, which allows
-only `gh-pages`. Live endpoint verification remains an open acceptance gate
-until the corrected workflow has run successfully.
+only `gh-pages`.
+
+Site publication is a separate `ubuntu-latest` workflow. It runs automatically
+after a successful Windows release workflow and may also be dispatched by
+itself. It reads already-published GitHub Releases and must not rebuild the
+Windows installer merely to refresh Pages. Live endpoint verification remains
+an open acceptance gate until the corrected workflow has run successfully.
 
 ### WP5: Release integration and documentation
 

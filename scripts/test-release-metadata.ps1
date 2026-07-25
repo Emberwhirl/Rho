@@ -62,6 +62,7 @@ $requiredFiles = @(
     "desktop\dist\index.html",
     "desktop\dist\app.js",
     "desktop\dist\styles.css",
+    ".github\workflows\update-site-publish.yml",
     "scripts\generate-update-site.mjs",
     "docs\design\active-2026-07-25-about-and-update-check-design.md"
 )
@@ -75,16 +76,21 @@ if ($missingFiles.Count -gt 0) {
 $updateSource = Get-Content -LiteralPath (Join-Path $repo "desktop\src-tauri\src\update.rs") -Raw
 $desktopHtml = Get-Content -LiteralPath (Join-Path $repo "desktop\dist\index.html") -Raw
 $publishWorkflow = Get-Content -LiteralPath (Join-Path $repo ".github\workflows\windows-manual-publish.yml") -Raw
+$updateSiteWorkflowPath = Join-Path $repo ".github\workflows\update-site-publish.yml"
+$updateSiteWorkflow = Get-Content -LiteralPath $updateSiteWorkflowPath -Raw
 if (-not $updateSource.Contains('https://yulab-smu.top/Rho/')) {
     throw "Desktop update source does not contain the required Rho update endpoint."
 }
 if (-not $desktopHtml.Contains('data-menu-command="check-updates"') -or -not $desktopHtml.Contains('data-menu-command="about-rho"')) {
     throw "Desktop Help menu is missing About or Check for Updates."
 }
-if (-not $publishWorkflow.Contains('scripts/generate-update-site.mjs') -or -not $publishWorkflow.Contains('publish_branch: gh-pages')) {
-    throw "Windows publish workflow does not generate and publish the Rho update site to gh-pages."
+if ($publishWorkflow.Contains('publish_branch: gh-pages') -or $publishWorkflow.Contains('generate-update-site.mjs')) {
+    throw "Windows publish workflow must not publish the update site."
 }
-if ($publishWorkflow.Contains('actions/deploy-pages@')) {
+if (-not $updateSiteWorkflow.Contains('runs-on: ubuntu-latest') -or -not $updateSiteWorkflow.Contains('publish_branch: gh-pages')) {
+    throw "Update site workflow does not publish from a GitHub-hosted Ubuntu runner to gh-pages."
+}
+if ($updateSiteWorkflow.Contains('actions/deploy-pages@')) {
     throw "Rho Pages uses the legacy gh-pages branch source and must not use actions/deploy-pages."
 }
 

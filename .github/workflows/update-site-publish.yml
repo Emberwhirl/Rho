@@ -1,0 +1,102 @@
+name: Publish Update Site
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Windows Manual Publish"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rho-update-site
+  cancel-in-progress: true
+
+jobs:
+  publish-update-site:
+    name: Publish update site from GitHub Releases
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out site generator
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Collect validated release records
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("fs");
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const records = [];
+            for (const release of releases.filter((item) => !item.draft)) {
+              const evidenceAsset = release.assets.find((asset) => asset.name === "rho-0.2-release.json");
+              if (!evidenceAsset) continue;
+              const response = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: evidenceAsset.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              const evidence = JSON.parse(Buffer.from(response.data).toString("utf8"));
+              records.push({
+                tag_name: release.tag_name,
+                draft: release.draft,
+                prerelease: release.prerelease,
+                published_at: release.published_at,
+                html_url: release.html_url,
+                summary: String(release.body || "").split("\n").find((line) => line.trim()) || `Rho ${release.tag_name.replace(/^v/, "")} is available.`,
+                assets: release.assets.map((asset) => ({
+                  name: asset.name,
+                  size: asset.size,
+                  browser_download_url: asset.browser_download_url,
+                })),
+                evidence,
+              });
+            }
+            fs.mkdirSync("target", { recursive: true });
+            fs.writeFileSync("target/releases-for-pages.json", JSON.stringify(records, null, 2));
+
+      - name: Generate and test update site
+        id: update_site
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/generate-update-site.mjs --test true
+          result="$(node scripts/generate-update-site.mjs --input target/releases-for-pages.json --output target/pages)"
+          development_version="$(node -e 'const value=JSON.parse(process.argv[1]); if(!value.development) process.exit(1); process.stdout.write(value.development)' "$result")"
+          echo "development_version=$development_version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: target/pages
+          force_orphan: true
+
+      - name: Verify deployed development manifest
+        shell: bash
+        env:
+          EXPECTED_DEVELOPMENT_VERSION: ${{ steps.update_site.outputs.development_version }}
+        run: |
+          set -euo pipefail
+          development_url="https://yulab-smu.top/Rho/updates/development.json"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error "$development_url?attempt=$attempt" -o development.json; then
+              if node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("development.json","utf8")); if(value.schema_version!==1 || value.channel!=="development" || value.version!==process.env.EXPECTED_DEVELOPMENT_VERSION || !/^[0-9a-f]{64}$/.test(value.artifacts.windows_x86_64.sha256)) process.exit(1)'; then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "The deployed development manifest did not reach $EXPECTED_DEVELOPMENT_VERSION." >&2
+          exit 1
