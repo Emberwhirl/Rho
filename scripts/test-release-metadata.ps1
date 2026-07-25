@@ -81,8 +81,11 @@ if (-not $updateSource.Contains('https://yulab-smu.top/Rho/')) {
 if (-not $desktopHtml.Contains('data-menu-command="check-updates"') -or -not $desktopHtml.Contains('data-menu-command="about-rho"')) {
     throw "Desktop Help menu is missing About or Check for Updates."
 }
-if (-not $publishWorkflow.Contains('scripts/generate-update-site.mjs') -or -not $publishWorkflow.Contains('actions/deploy-pages@')) {
-    throw "Windows publish workflow does not generate and deploy the Rho update site."
+if (-not $publishWorkflow.Contains('scripts/generate-update-site.mjs') -or -not $publishWorkflow.Contains('publish_branch: gh-pages')) {
+    throw "Windows publish workflow does not generate and publish the Rho update site to gh-pages."
+}
+if ($publishWorkflow.Contains('actions/deploy-pages@')) {
+    throw "Rho Pages uses the legacy gh-pages branch source and must not use actions/deploy-pages."
 }
 
 Push-Location $repo

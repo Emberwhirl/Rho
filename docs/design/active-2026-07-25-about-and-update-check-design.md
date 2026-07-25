@@ -372,10 +372,14 @@ must not describe an unsigned installer as cryptographically authenticated.
 - add post-deployment verification for both channel endpoints;
 - keep installer binaries out of the Pages artifact and Git history.
 
-The Rho repository deploys its project Pages artifact at `/Rho/` under the
-organization Pages custom domain. This project deployment is separate from the
-repository that owns the root `yulab-smu.top` site. Live endpoint verification
-remains an open acceptance gate until the workflow has run successfully.
+The Rho repository deploys its project Pages artifact to the orphan
+`gh-pages` branch because the repository Pages source is configured as legacy
+branch publishing from `gh-pages:/`. GitHub then serves that branch at `/Rho/`
+under the organization Pages custom domain. The workflow must not use
+`actions/deploy-pages`, because that deployment is attributed to the invoking
+branch and is rejected by the `github-pages` environment policy, which allows
+only `gh-pages`. Live endpoint verification remains an open acceptance gate
+until the corrected workflow has run successfully.
 
 ### WP5: Release integration and documentation
 
