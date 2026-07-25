@@ -1143,6 +1143,14 @@ fn ensure_path_without_symlinks(base: &Path, relative: &Path) -> Result<()> {
     Ok(())
 }
 
+fn ensure_project_skill_root_without_symlinks(project_root: &Path, skills_dir: &Path) -> Result<()> {
+    let relative = Path::new(".rho").join("skills");
+    if !skills_dir.exists() {
+        return Ok(());
+    }
+    ensure_path_without_symlinks(project_root, &relative)
+}
+
 fn resolve_project_skill_text_file(
     skills_dir: &Path,
     relative: &str,
@@ -1207,7 +1215,9 @@ fn discover_project_skills(project_root: &str) -> ProjectSkillDiscovery {
         discovery_error: None,
     };
     let result = (|| -> Result<Vec<ResolvedProjectSkill>> {
-        let skills_dir = Path::new(project_root).join(".rho").join("skills");
+        let project_root = Path::new(project_root);
+        let skills_dir = project_root.join(".rho").join("skills");
+        ensure_project_skill_root_without_symlinks(project_root, &skills_dir)?;
         let manifest_path = skills_dir.join("manifest.json");
         if !manifest_path.exists() {
             return Ok(Vec::new());
@@ -3784,6 +3794,58 @@ mod tests {
         let error = ensure_not_project_skill_symlink(Path::new("D:/Rho/.rho/skills/link.md"), true)
             .unwrap_err();
         assert!(error.to_string().contains("uses a symlink"));
+    }
+
+    #[test]
+    fn rejects_invalid_project_skill_manifest_json() {
+        let project_root = std::env::temp_dir()
+            .join("rho")
+            .join("project-skills")
+            .join(Uuid::new_v4().to_string());
+        let skills_dir = project_root.join(".rho").join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("manifest.json"), "{ not valid json ").unwrap();
+
+        let discovery = discover_project_skills(&normalized_path(&project_root));
+
+        assert!(discovery.skills.is_empty());
+        assert!(
+            discovery
+                .discovery_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("not valid JSON")
+        );
+
+        fs::remove_dir_all(project_root).ok();
+    }
+
+    #[test]
+    fn rejects_oversized_project_skill_manifest() {
+        let project_root = std::env::temp_dir()
+            .join("rho")
+            .join("project-skills")
+            .join(Uuid::new_v4().to_string());
+        let skills_dir = project_root.join(".rho").join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(
+            skills_dir.join("manifest.json"),
+            "x".repeat(MAX_PROJECT_SKILL_MANIFEST_BYTES as usize + 1),
+        )
+        .unwrap();
+
+        let discovery = discover_project_skills(&normalized_path(&project_root));
+
+        assert!(discovery.skills.is_empty());
+        assert!(
+            discovery
+                .discovery_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("manifest is too large")
+        );
+
+        fs::remove_dir_all(project_root).ok();
     }
 
     #[test]

@@ -24,3 +24,6 @@
 
 - Do not trust `msedge --dump-dom` blindly for local preview evidence on Windows.
   In this repo it can return empty output even when the page rendered and screenshots succeeded. Keep a deterministic preview hook in the page, and treat screenshot readiness checks as the primary fallback when DOM capture goes mute.
+
+- For project skill discovery, validate the `.rho/skills` root itself, not just manifest and referenced files.
+  Checking only `manifest.json` and relative entries still leaves a hole if `.rho` or `.rho/skills` is a symlink into content outside the project root.

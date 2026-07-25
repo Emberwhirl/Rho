@@ -35,7 +35,9 @@ Explicitly deferred:
   - symlink rejection;
   - untrusted prompt labeling.
 - `cargo +stable-x86_64-pc-windows-gnu test -p rho-server project_skill`
-  passed with `4` focused WP4 project-skill tests.
+  passed with `6` focused WP4 project-skill tests, including:
+  - invalid JSON manifest rejection;
+  - oversized manifest rejection.
 - `cargo +stable-x86_64-pc-windows-gnu check -p rho-desktop` passed after
   adding the desktop `list_project_skills` command and Agent panel wiring.
 - `node --check desktop/dist/app.js` passed after wiring:
