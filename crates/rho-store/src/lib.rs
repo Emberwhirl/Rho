@@ -1783,9 +1783,11 @@ impl Store {
                  FROM runs
                  WHERE workspace_id = ?1
                    AND state_revision_after = ?2
-                   AND project_revision_after = ?3
+                   AND project_revision_after <= ?3
+                   AND status = 'completed'
+                   AND request_type = 'workspace.execute'
                    AND finished_at IS NOT NULL
-                 ORDER BY finished_at DESC
+                 ORDER BY project_revision_after DESC, finished_at DESC
                  LIMIT 1",
                 params![workspace_id, state_revision_after, project_revision_after],
                 decode_run_detail,
@@ -2173,20 +2175,20 @@ mod tests {
     }
 
     #[test]
-    fn persists_artifact_records_and_resolves_run_by_workspace_state() {
+    fn persists_artifacts_and_resolves_scientific_run_past_non_state_runs() {
         let directory = TempDir::new().unwrap();
         let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
         store
             .create_run(&RunDraft {
-                run_id: "run_render_1".to_string(),
+                run_id: "run_science_1".to_string(),
                 parent_run_id: None,
                 origin: "user".to_string(),
-                request_type: "workspace.render_document".to_string(),
+                request_type: "workspace.execute".to_string(),
                 operation_class: "state_capable".to_string(),
-                code: "render qc.Rmd".to_string(),
-                arguments_json: "{\"path\":\"reports/qc.Rmd\"}".to_string(),
-                source_path: Some("reports/qc.Rmd".to_string()),
-                execution_mode: Some("render".to_string()),
+                code: "qc <- transform(qc, pass = reads > 1000)".to_string(),
+                arguments_json: "{\"source_path\":\"analysis.R\"}".to_string(),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
                 document_version: Some(4),
                 workspace_id: "ws_test".to_string(),
                 state_revision_before: 10,
@@ -2196,7 +2198,7 @@ mod tests {
             .unwrap();
         store
             .finish_run(&RunFinish {
-                run_id: "run_render_1".to_string(),
+                run_id: "run_science_1".to_string(),
                 status: "completed".to_string(),
                 terminal_reason: None,
                 workspace_id: Some("ws_test".to_string()),
@@ -2210,6 +2212,78 @@ mod tests {
                 error_call: None,
                 traceback: Vec::new(),
                 environment_snapshot_id_after: Some("env_after".to_string()),
+            })
+            .unwrap();
+        store
+            .create_run(&RunDraft {
+                run_id: "run_render_1".to_string(),
+                parent_run_id: None,
+                origin: "user".to_string(),
+                request_type: "workspace.render_document".to_string(),
+                operation_class: "project_mutation".to_string(),
+                code: "render report.Rmd".to_string(),
+                arguments_json: "{\"path\":\"report.Rmd\"}".to_string(),
+                source_path: Some("report.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(2),
+                workspace_id: "ws_test".to_string(),
+                state_revision_before: 11,
+                project_revision_before: 4,
+                environment_snapshot_id: Some("env_after".to_string()),
+            })
+            .unwrap();
+        store
+            .finish_run(&RunFinish {
+                run_id: "run_render_1".to_string(),
+                status: "completed".to_string(),
+                terminal_reason: None,
+                workspace_id: Some("ws_test".to_string()),
+                state_revision_after: Some(11),
+                project_revision_after: Some(5),
+                stdout: Some(String::new()),
+                value_text: None,
+                messages: Vec::new(),
+                warnings: Vec::new(),
+                error_message: None,
+                error_call: None,
+                traceback: Vec::new(),
+                environment_snapshot_id_after: Some("env_after".to_string()),
+            })
+            .unwrap();
+        store
+            .create_run(&RunDraft {
+                run_id: "run_viewer_probe_1".to_string(),
+                parent_run_id: None,
+                origin: "system".to_string(),
+                request_type: "workspace.read_data_view".to_string(),
+                operation_class: "probe".to_string(),
+                code: "read qc page".to_string(),
+                arguments_json: "{\"object_name\":\"qc\"}".to_string(),
+                source_path: None,
+                execution_mode: None,
+                document_version: None,
+                workspace_id: "ws_test".to_string(),
+                state_revision_before: 11,
+                project_revision_before: 5,
+                environment_snapshot_id: None,
+            })
+            .unwrap();
+        store
+            .finish_run(&RunFinish {
+                run_id: "run_viewer_probe_1".to_string(),
+                status: "completed".to_string(),
+                terminal_reason: None,
+                workspace_id: Some("ws_test".to_string()),
+                state_revision_after: Some(11),
+                project_revision_after: Some(5),
+                stdout: Some(String::new()),
+                value_text: None,
+                messages: Vec::new(),
+                warnings: Vec::new(),
+                error_message: None,
+                error_call: None,
+                traceback: Vec::new(),
+                environment_snapshot_id_after: None,
             })
             .unwrap();
         store
@@ -2240,11 +2314,11 @@ mod tests {
         let detail = store.get_artifact_record("artifact_1").unwrap().unwrap();
         assert_eq!(detail.output_path, "reports/qc.html");
         let run = store
-            .find_run_detail_for_workspace_state("ws_test", 11, 4)
+            .find_run_detail_for_workspace_state("ws_test", 11, 5)
             .unwrap()
             .unwrap();
-        assert_eq!(run.run_id, "run_render_1");
-        assert_eq!(run.source_path.as_deref(), Some("reports/qc.Rmd"));
+        assert_eq!(run.run_id, "run_science_1");
+        assert_eq!(run.source_path.as_deref(), Some("analysis.R"));
     }
 
     #[test]

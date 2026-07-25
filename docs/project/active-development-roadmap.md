@@ -13,6 +13,12 @@ distribution decision. Automated release metadata, source checks, evidence
 generation, and Unicode/space/large-project regressions are now part of the
 release path.
 
+The four scoped `0.3.x` implementation packages have also landed: reviewed
+environment operations, bounded data viewers, artifact export/provenance, and
+bounded project skills. The `0.3.x` milestone remains active because its
+representative-project reproducibility workflow, final cross-package suite,
+manual review, and release integration have not yet been accepted.
+
 ## Direction
 
 The next objective is not another architecture spike. It is a reliable
@@ -108,6 +114,10 @@ diagnostics, bounded object previews, project-scoped plot history and basic
 `.qmd`/`.Rmd` rendering. The `0.3.x` work extends those foundations; it must not
 reimplement them as parallel subsystems.
 
+Implementation status: WP1-WP4 are present in the current source baseline.
+Focused package evidence exists, but the M2 acceptance gate below is still
+open. Do not treat implementation presence as milestone or release acceptance.
+
 Deliverables:
 
 - reviewed `renv` status, initialize, restore and snapshot workflows with
@@ -119,8 +129,8 @@ Deliverables:
   current plot history and render results;
 - reproducibility evidence for existing Quarto `.qmd` and `.Rmd` rendering and
   structured Problems output;
-- Project-scoped skills and the first `aisdk.bioc` semantic adapters through
-  Workspace R probes.
+- bounded project-scoped skills treated as untrusted Agent context, without an
+  `aisdk.bioc` or default Bioconductor dependency.
 
 Acceptance gate:
 
@@ -170,10 +180,11 @@ Acceptance gate:
 1. Keep the stable M1 implementation baseline while completing its repeatable
    clean-install acceptance and distribution decision as a parallel release
    track.
-2. Add scientific environment operations beyond detection: `renv` initialize,
-   restore and snapshot, plus package/Bioconductor repair workflows.
-3. Strengthen data, plot and document viewers while preserving bounded broker
-   responses and provenance.
+2. Complete the `0.3.x` representative-project workflow, final cross-package
+   validation, manual UI review, and documentation/release integration; repair
+   only findings within the accepted WP1-WP4 boundaries.
+3. Review and explicitly schedule post-`0.3.x` capability and interface
+   proposals before beginning another implementation stream.
 4. Freeze the Workbench Protocol and run the cross-platform transport and UI
    matrix.
 5. Only then expand to remote compute, MCP-heavy workflows, debugger support
@@ -185,6 +196,7 @@ Acceptance gate:
 - Electron or a second production frontend shell.
 - A second authoritative Workspace R session.
 - Broad aisdk family refactors without a demonstrated Rho use case.
+- `aisdk.bioc` and semantic-adapter integration during `0.3.x`.
 - Remote/cloud multi-user collaboration before local provenance is reliable.
 - Installer signing and auto-update until the product surface and release
   identity are stable.
