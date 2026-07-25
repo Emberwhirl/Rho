@@ -28,12 +28,14 @@ use project::{
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
 use rho_server::coordinator::{
-    ApprovalResponseInput, CoordinatorRuntime, PendingApprovalRegistry, bootstrap_bridge,
-    dispatch_workspace_request, run_agent_turn,
+    ApprovalResponseInput, CoordinatorRuntime, EnvironmentOperationArguments,
+    PendingApprovalRegistry, bootstrap_bridge, decide_environment_operation,
+    dispatch_workspace_request, request_environment_operation, run_agent_turn,
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
-    ApprovalRequestSummary, PlotArtifactSummary, ProblemSummary, RunDetail, RunSummary, Store,
+    ApprovalRequestSummary, EnvironmentOperationRequestSummary, PlotArtifactSummary,
+    ProblemSummary, RunDetail, RunSummary, Store,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -165,6 +167,7 @@ struct AppState {
     session: RwLock<Option<Arc<ArkSession>>>,
     context: Mutex<Option<Arc<Mutex<CoordinatorRuntime>>>>,
     approvals: Arc<PendingApprovalRegistry>,
+    environment_approvals: Arc<PendingApprovalRegistry>,
     agent_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     agent_llm_test_control: AgentModelTestControl,
     shutdown_started: AtomicBool,
@@ -201,6 +204,20 @@ struct RenderRequest {
     path: String,
     format: Option<String>,
     document_version: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct EnvironmentOperationRequestInput {
+    operation: String,
+    repositories: Option<HashMap<String, String>>,
+    bioconductor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EnvironmentOperationDecisionRequest {
+    request_id: String,
+    decision: String,
+    reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -788,6 +805,126 @@ async fn render_document(
 }
 
 #[tauri::command]
+async fn request_environment_operation_preview(
+    request: EnvironmentOperationRequestInput,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentOperationRequestSummary, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    request_environment_operation(
+        EnvironmentOperationArguments {
+            operation: request.operation,
+            project_root: None,
+            repositories: request.repositories,
+            bioconductor: request.bioconductor,
+        },
+        None,
+        "user",
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
+async fn list_environment_operation_requests(
+    limit: Option<usize>,
+    status: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<EnvironmentOperationRequestSummary>, String> {
+    read_store(&state)
+        .map_err(display_error)?
+        .list_environment_operation_requests(limit, status.as_deref())
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn get_environment_operation_request(
+    request_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<EnvironmentOperationRequestSummary>, String> {
+    read_store(&state)
+        .map_err(display_error)?
+        .get_environment_operation_request(&request_id)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn respond_environment_operation(
+    request: EnvironmentOperationDecisionRequest,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    if !matches!(request.decision.as_str(), "approve" | "reject" | "cancel") {
+        return Err(format!(
+            "unsupported environment operation decision `{}`",
+            request.decision
+        ));
+    }
+    let pending = read_store(&state)
+        .map_err(display_error)?
+        .get_environment_operation_request(&request.request_id)
+        .map_err(display_error)?
+        .filter(|item| item.status == "requested")
+        .context(format!(
+            "Environment operation request not found or no longer pending: {}",
+            request.request_id
+        ))
+        .map_err(display_error)?;
+    if pending.source == "agent" {
+        let delivered = state
+            .environment_approvals
+            .respond(
+                &request.request_id,
+                ApprovalResponseInput {
+                    decision: request.decision.clone(),
+                    reason: request.reason.clone(),
+                },
+            )
+            .await;
+        if !delivered {
+            read_store(&state)
+                .map_err(display_error)?
+                .decide_environment_operation_request(
+                    &request.request_id,
+                    &rho_store::EnvironmentOperationDecisionRecord {
+                        decision: "cancel".to_string(),
+                        status: "interrupted".to_string(),
+                        reason: Some(
+                            "Environment operation channel is no longer active.".to_string(),
+                        ),
+                    },
+                )
+                .map_err(display_error)?;
+        }
+        return Ok(json!({
+            "status": if delivered { "delivered" } else { "not_delivered" },
+            "request_id": request.request_id,
+            "turn_id": pending.turn_id
+        }));
+    }
+
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    decide_environment_operation(
+        &request.request_id,
+        &request.decision,
+        request.reason,
+        ExecutionOrigin::User,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn list_runs(
     limit: Option<usize>,
     state: State<'_, AppState>,
@@ -979,6 +1116,7 @@ async fn run_agent(
     }
 
     let approvals = state.approvals.clone();
+    let environment_approvals = state.environment_approvals.clone();
     let rscript = config.rscript.clone();
     let agent_package = config.agent_package.clone();
     let task_turn_id = turn_id.clone();
@@ -999,6 +1137,7 @@ async fn run_agent(
             mode,
             task_turn_id.clone(),
             approvals,
+            environment_approvals,
             auto_approve,
             editor_context,
         )
@@ -1423,6 +1562,9 @@ async fn start_workspace(state: &AppState) -> Result<WorkspaceStatus> {
     store
         .recover_incomplete_approvals()
         .context("recovering incomplete approvals after desktop restart")?;
+    store
+        .recover_incomplete_environment_operations()
+        .context("recovering incomplete environment operations after desktop restart")?;
     let mut broker = BrokerState::new(format!("desktop_{}", Uuid::new_v4()));
     store.save_identity(broker.identity())?;
     bootstrap_bridge(
@@ -2636,6 +2778,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             "ask".to_string(),
             turn_id,
             Arc::new(PendingApprovalRegistry::default()),
+            Arc::new(PendingApprovalRegistry::default()),
             false,
             None,
         )
@@ -2716,6 +2859,7 @@ fn main() {
                 session: RwLock::new(None),
                 context: Mutex::new(None),
                 approvals: Arc::new(PendingApprovalRegistry::default()),
+                environment_approvals: Arc::new(PendingApprovalRegistry::default()),
                 agent_tasks: Arc::new(Mutex::new(HashMap::new())),
                 agent_llm_test_control: AgentModelTestControl::default(),
                 shutdown_started: AtomicBool::new(false),
@@ -2748,6 +2892,10 @@ fn main() {
             snapshot_workspace,
             inspect_object,
             render_document,
+            request_environment_operation_preview,
+            list_environment_operation_requests,
+            get_environment_operation_request,
+            respond_environment_operation,
             list_runs,
             list_plot_artifacts,
             clear_plot_artifacts,

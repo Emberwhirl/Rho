@@ -95,7 +95,10 @@ Acceptance gate:
 
 ### M2: Scientific workflow foundation (`0.3.x`)
 
-Priority: high after M1 is stable.
+Priority: high after the M1 implementation and automated regression baseline
+are stable. Remaining `0.2.0` installer/manual-publication acceptance may run
+in parallel with `0.3.x` development, but it remains an independent release
+gate and cannot be satisfied by `0.3.x` evidence.
 
 Implementation contract:
 [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](../plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md).
@@ -164,8 +167,9 @@ Acceptance gate:
 
 ## Work order for the next iterations
 
-1. Close M1 with a repeatable clean-install acceptance run and the distribution
-   decision.
+1. Keep the stable M1 implementation baseline while completing its repeatable
+   clean-install acceptance and distribution decision as a parallel release
+   track.
 2. Add scientific environment operations beyond detection: `renv` initialize,
    restore and snapshot, plus package/Bioconductor repair workflows.
 3. Strengthen data, plot and document viewers while preserving bounded broker

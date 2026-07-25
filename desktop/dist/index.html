@@ -309,6 +309,22 @@ plot(
             <div class="environment-card">
               <strong>Project Environment</strong>
               <div id="environmentContract" class="environment-contract">Environment snapshot unavailable.</div>
+              <div class="environment-action-group">
+                <button id="environmentInitButton" type="button" class="environment-action">Initialize renv</button>
+                <button id="environmentRestoreButton" type="button" class="environment-action">Restore lockfile</button>
+                <button id="environmentSnapshotButton" type="button" class="environment-action">Snapshot lockfile</button>
+              </div>
+              <div id="environmentOperationCard" class="environment-op-card hidden">
+                <div class="environment-op-header">
+                  <strong id="environmentOperationTitle">Environment Operation</strong>
+                  <span id="environmentOperationState" class="revision-badge">idle</span>
+                </div>
+                <p id="environmentOperationSummary" class="environment-contract">No environment operation has been requested yet.</p>
+                <div id="environmentOperationMeta" class="environment-hint"></div>
+                <div class="environment-op-actions">
+                  <button id="environmentOperationReviewButton" type="button">Review</button>
+                </div>
+              </div>
             </div>
             <div class="environment-card">
               <strong>Render</strong>
@@ -465,6 +481,37 @@ plot(
               <button id="agentLlmDeleteModel" type="button">Delete model</button>
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+    <div id="environmentOperationDialog" class="product-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="environmentOperationDialogTitle">
+      <div class="product-dialog-scrim" data-environment-operation-close="true"></div>
+      <div class="product-dialog-surface environment-operation-surface">
+        <div class="product-dialog-header">
+          <div>
+            <strong id="environmentOperationDialogTitle">Review environment operation</strong>
+            <span id="environmentOperationDialogState" class="revision-badge">requested</span>
+          </div>
+          <button id="environmentOperationClose" type="button" aria-label="Close environment operation review">✕</button>
+        </div>
+        <p id="environmentOperationDialogNote" class="product-dialog-note">
+          Review the exact renv action, project root, revisions, and bounded drift preview before the broker mutates the project environment.
+        </p>
+        <div class="environment-operation-grid">
+          <div class="environment-operation-section">
+            <strong>Request</strong>
+            <pre id="environmentOperationArguments" class="environment-operation-body">No request selected.</pre>
+          </div>
+          <div class="environment-operation-section">
+            <strong>Preview</strong>
+            <pre id="environmentOperationPreview" class="environment-operation-body">No preview available.</pre>
+          </div>
+        </div>
+        <div id="environmentOperationDialogError" class="agent-llm-banner hidden"></div>
+        <div class="product-dialog-actions">
+          <button id="environmentOperationReject" type="button">Reject</button>
+          <button id="environmentOperationCancel" type="button">Cancel</button>
+          <button id="environmentOperationApprove" type="button" class="primary">Approve and run</button>
         </div>
       </div>
     </div>

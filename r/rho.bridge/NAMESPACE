@@ -1,4 +1,7 @@
 export(rho_execute)
+export(rho_environment_evidence)
+export(rho_environment_operation)
+export(rho_environment_status_preview)
 export(rho_get_last_execution)
 export(rho_inspect_object)
 export(rho_list_objects)

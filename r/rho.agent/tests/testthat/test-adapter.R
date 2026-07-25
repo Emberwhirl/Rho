@@ -23,11 +23,22 @@ test_that("aisdk workspace tools target the broker boundary", {
 
   expect_identical(
     vapply(tools, function(tool) tool$name, character(1L)),
-    c("get_workspace_snapshot", "inspect_r_object", "run_r", "propose_file_edit")
+    c(
+      "get_workspace_snapshot",
+      "inspect_r_object",
+      "run_r",
+      "initialize_project_environment",
+      "restore_project_environment",
+      "snapshot_project_environment",
+      "propose_file_edit"
+    )
   )
   expect_identical(tools[[1L]]$meta$rho_approval, "automatic")
   expect_identical(tools[[3L]]$meta$rho_approval, "required")
-  expect_identical(tools[[4L]]$meta$rho_approval, "automatic")
+  expect_identical(tools[[4L]]$meta$rho_approval, "required")
+  expect_identical(tools[[5L]]$meta$rho_approval, "required")
+  expect_identical(tools[[6L]]$meta$rho_approval, "required")
+  expect_identical(tools[[7L]]$meta$rho_approval, "automatic")
 })
 
 test_that("workspace snapshot preview is concise and readable", {
@@ -181,6 +192,34 @@ test_that("approved mutation request id is consumed by the next run_r call", {
   rho.agent:::rho_broker_tool_request("workspace.execute", list(code = "x <- 1"))
 
   expect_identical(captured$approval_request_id, "req_approved")
+  expect_null(.rho_agent_state$pending_approval)
+})
+
+test_that("approved environment request injects canonical broker arguments", {
+  captured <- NULL
+  local_mocked_bindings(
+    rho_agent_request = function(type, payload, ...) {
+      captured <<- list(type = type, payload = payload)
+      list(ok = TRUE)
+    },
+    .package = "rho.agent"
+  )
+  .rho_agent_state$pending_approval <- list(
+    request_id = "env_req_1",
+    request_type = "environment.snapshot",
+    arguments = list(
+      operation = "snapshot",
+      project_root = "D:/Rho",
+      repositories = NULL,
+      bioconductor = NULL
+    )
+  )
+
+  rho.agent:::rho_broker_tool_request("environment.snapshot", list())
+
+  expect_identical(captured$type, "environment.snapshot")
+  expect_identical(captured$payload$approval_request_id, "env_req_1")
+  expect_identical(captured$payload$arguments$project_root, "D:/Rho")
   expect_null(.rho_agent_state$pending_approval)
 })
 

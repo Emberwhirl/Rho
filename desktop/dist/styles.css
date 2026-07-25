@@ -954,6 +954,7 @@ body.resizing-vertical { cursor: col-resize; }
 .environment-card strong { font-size: 11px; }
 .environment-contract { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .environment-hint { color: var(--subtle); font-size: 10.5px; line-height: 1.4; }
+.environment-action-group { display: flex; flex-wrap: wrap; gap: 6px; }
 .environment-action {
   min-height: 30px;
   border: 1px solid var(--border);
@@ -962,6 +963,28 @@ body.resizing-vertical { cursor: col-resize; }
   cursor: pointer;
 }
 .environment-action:disabled { opacity: 0.6; cursor: wait; }
+.environment-op-card {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fbfcfc;
+}
+.environment-op-card.success { border-color: #b9ddd7; background: #f2fbf9; }
+.environment-op-card.error { border-color: #e3c0bc; background: #fff5f3; }
+.environment-op-card.warning { border-color: #e2d2a9; background: #fffaf0; }
+.environment-op-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.environment-op-actions { display: flex; gap: 6px; }
+.environment-op-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.environment-op-actions button:disabled { opacity: 0.6; cursor: not-allowed; }
 .render-result-card {
   display: grid;
   gap: 6px;
@@ -1007,6 +1030,34 @@ body.resizing-vertical { cursor: col-resize; }
   font: 11px/1.45 "Cascadia Code", Consolas, monospace;
   white-space: pre-wrap;
 }
+.environment-operation-surface {
+  width: min(860px, calc(100vw - 40px));
+  display: grid;
+  gap: 10px;
+}
+.environment-operation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.environment-operation-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.environment-operation-body {
+  margin: 0;
+  min-height: 160px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fbfcfc;
+  color: #304045;
+  font: 11px/1.45 "Cascadia Code", Consolas, monospace;
+  white-space: pre-wrap;
+}
 
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; color: var(--muted); }
 .empty-state strong { font-size: 12px; font-weight: 500; }
@@ -1048,4 +1099,5 @@ body.resizing-vertical { cursor: col-resize; }
   .context-panel { grid-column: 2; }
   .project-switcher { display: none; }
   .agent-llm-layout { grid-template-columns: minmax(0, 1fr); }
+  .environment-operation-grid { grid-template-columns: minmax(0, 1fr); }
 }

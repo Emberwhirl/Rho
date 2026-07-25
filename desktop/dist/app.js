@@ -35,6 +35,8 @@ const state = {
   plots: [],
   plotScope: "session",
   environment: null,
+  environmentOperations: [],
+  environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
   objectInspection: null,
@@ -118,8 +120,10 @@ const mockRuns = [];
 const mockPlots = [];
 let mockAgentTurnSequence = 0;
 let mockApprovalSequence = 0;
+let mockEnvironmentOperationSequence = 0;
 const mockAgentTurns = [];
 const mockApprovalRequests = [];
+const mockEnvironmentOperationRequests = [];
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
 
 function slugifyAgentId(value, fallback = "item") {
@@ -276,6 +280,11 @@ function nextMockTurnId() {
 function nextMockApprovalId() {
   mockApprovalSequence += 1;
   return `approval_${mockApprovalSequence}`;
+}
+
+function nextMockEnvironmentOperationId() {
+  mockEnvironmentOperationSequence += 1;
+  return `envreq_${mockEnvironmentOperationSequence}`;
 }
 
 function mockTurnSummary(turn) {
@@ -569,6 +578,12 @@ function mockProjectState(root = mockLastProject) {
 }
 
 function mockEnvironmentSnapshot() {
+  const latestCompletedOperation = mockEnvironmentOperationRequests.find((item) => item.status === "completed");
+  const operationName = latestCompletedOperation?.request_name || "";
+  const hasLockfile = Boolean(latestCompletedOperation);
+  const renvActive = ["environment.initialize", "environment.restore"].includes(operationName);
+  const renvStatus = hasLockfile ? (renvActive ? "active" : "present") : "absent";
+  const renvSynchronization = operationName === "environment.snapshot" ? "synchronized" : (hasLockfile ? "synchronized" : "no_lockfile");
   return {
     execution: {
       ok: true,
@@ -581,12 +596,13 @@ function mockEnvironmentSnapshot() {
       environment: {
         project_dir: mockLastProject,
         renv: {
-          status: "present",
-          has_lockfile: false,
-          lockfile_path: null,
+          status: renvStatus,
+          has_lockfile: hasLockfile,
+          lockfile_path: hasLockfile ? `${mockLastProject}/renv.lock` : null,
           package_available: true,
           project_library: `${mockLastProject}/renv`,
-          active: false,
+          active: renvActive,
+          synchronization: renvSynchronization,
         },
         bioconductor: {
           status: "available",
@@ -611,6 +627,89 @@ function mockEnvironmentSnapshot() {
     },
     workspace: state.revision,
   };
+}
+
+function mockEnvironmentOperationTone(status) {
+  if (["completed", "approved"].includes(status)) return "success";
+  if (["requested", "running"].includes(status)) return "warning";
+  if (["failed", "rejected", "cancelled", "interrupted", "stale"].includes(status)) return "error";
+  return "";
+}
+
+function createMockEnvironmentOperationRequest(operation, request = {}) {
+  const requestedAt = new Date().toISOString();
+  const requestName = `environment.${operation}`;
+  const beforeSnapshotId = `env_before_${mockEnvironmentOperationSequence + 1}`;
+  const preview = {
+    request_name: requestName,
+    arguments: {
+      operation,
+      project_root: mockLastProject,
+      repositories: Object.entries(request.repositories || {}).map(([name, value]) => ({ name, value })),
+      bioconductor: request.bioconductor || null,
+    },
+    workspace: {
+      workspace_id: "desktop_mock",
+      state_revision: state.revision.state_revision,
+      project_revision: state.revision.project_revision,
+    },
+    before_snapshot_id: beforeSnapshotId,
+    preview: {
+      project_dir: mockLastProject,
+      renv: {
+        status: operation === "initialize" ? "absent" : "present",
+        synchronization: operation === "snapshot" ? "drifted" : "synchronized",
+      },
+      renv_status: {
+        ok: true,
+        synchronized: operation === "snapshot" ? false : true,
+        messages: [],
+        warnings: operation === "restore" ? ["Restore will reuse the project lockfile."] : [],
+        error: null,
+      },
+      bioconductor: {
+        status: "available",
+        version: request.bioconductor || "3.22",
+        package_available: true,
+      },
+      diff: {
+        values: operation === "snapshot"
+          ? [{ name: "ggplot2", lockfile_version: "3.4.4", library_version: "3.5.1", direction: "version_mismatch" }]
+          : [],
+        truncated: false,
+      },
+    },
+  };
+  const previewJson = JSON.stringify(preview);
+  const summary = {
+    request_id: nextMockEnvironmentOperationId(),
+    turn_id: null,
+    source: "user",
+    request_name: requestName,
+    status: "requested",
+    decision: null,
+    reason: null,
+    project_root: mockLastProject,
+    arguments_json: JSON.stringify({
+      operation,
+      project_root: mockLastProject,
+      repositories: request.repositories || null,
+      bioconductor: request.bioconductor || null,
+    }),
+    preview_json: previewJson,
+    preview_sha256: `preview_mock_${mockEnvironmentOperationSequence}`,
+    workspace_id: "desktop_mock",
+    state_revision: state.revision.state_revision,
+    project_revision: state.revision.project_revision,
+    before_snapshot_id: beforeSnapshotId,
+    run_id: null,
+    requested_at: requestedAt,
+    responded_at: null,
+    completed_at: null,
+    terminal_outcome: null,
+  };
+  mockEnvironmentOperationRequests.unshift(summary);
+  return summary;
 }
 
 function updateLastRender(result) {
@@ -1204,6 +1303,55 @@ async function mockInvoke(command, args) {
       },
     );
     return { status: "delivered", request_id: approval.request_id, turn_id: turn.turn_id };
+  }
+  if (command === "request_environment_operation_preview") {
+    return structuredClone(createMockEnvironmentOperationRequest(args.request?.operation, args.request || {}));
+  }
+  if (command === "list_environment_operation_requests") {
+    const filtered = mockEnvironmentOperationRequests.filter((item) => !args.status || item.status === args.status);
+    return structuredClone(filtered.slice(0, args.limit || 50));
+  }
+  if (command === "get_environment_operation_request") {
+    const requestId = args.requestId ?? args.request_id;
+    return structuredClone(mockEnvironmentOperationRequests.find((item) => item.request_id === requestId) || null);
+  }
+  if (command === "respond_environment_operation") {
+    const request = mockEnvironmentOperationRequests.find((item) => item.request_id === args.request.request_id);
+    if (!request) throw new Error(`Environment operation request not found: ${args.request.request_id}`);
+    const respondedAt = new Date().toISOString();
+    request.decision = args.request.decision;
+    request.reason = args.request.reason || null;
+    request.responded_at = respondedAt;
+    if (args.request.decision !== "approve") {
+      request.status = args.request.decision === "cancel" ? "cancelled" : "rejected";
+      request.completed_at = respondedAt;
+      request.terminal_outcome = args.request.decision === "cancel" ? "user_cancelled" : "user_rejected";
+      return { request_id: request.request_id, status: request.status, decision: request.decision };
+    }
+    request.status = "completed";
+    request.run_id = recordMockRun({
+      origin: "user",
+      status: "completed",
+      requestType: request.request_name,
+      operationClass: "project_mutation",
+      code: `${request.request_name}(${request.project_root})`,
+      sourcePath: null,
+      executionMode: null,
+    }).run_id;
+    state.revision.project_revision += 1;
+    request.completed_at = respondedAt;
+    request.terminal_outcome = "completed";
+    const run = mockRuns[0];
+    if (run) {
+      run.project_revision_after = state.revision.project_revision;
+      run.code_preview = request.request_name;
+      run.arguments_json = request.arguments_json;
+    }
+    return {
+      execution_id: request.run_id,
+      execution: { ok: true, value: `${request.request_name} completed.` },
+      workspace: state.revision,
+    };
   }
   if (command === "restart_workspace") return mockInvoke("workspace_start", {});
   return { status: "ok" };
@@ -3778,6 +3926,7 @@ async function refreshEnvironment() {
 
 function renderEnvironmentSummary() {
   const environment = state.environment;
+  renderEnvironmentOperationCard();
   if (!environment) {
     $("#environmentContract").textContent = "Environment snapshot unavailable.";
     $("#renderCapability").textContent = "Render tooling not checked yet.";
@@ -3841,6 +3990,232 @@ function renderLastRenderCard() {
   $("#renderOpenSourceButton").disabled = !render.sourcePath;
   $("#renderShowProblemsButton").disabled = !latestRenderProblem();
   $("#renderShowPlotsButton").disabled = !state.plots.some((plot) => plot.source_path === render.sourcePath);
+}
+
+function prettyEnvironmentOperationStatus(status) {
+  return {
+    requested: "Requested",
+    approved: "Approved",
+    running: "Running",
+    completed: "Completed",
+    failed: "Failed",
+    rejected: "Rejected",
+    cancelled: "Cancelled",
+    interrupted: "Interrupted",
+    stale: "Stale",
+  }[status] || status || "Unknown";
+}
+
+function environmentOperationTone(status) {
+  if (!isDesktop) return mockEnvironmentOperationTone(status);
+  if (["completed", "approved"].includes(status)) return "success";
+  if (["requested", "running"].includes(status)) return "warning";
+  if (["failed", "rejected", "cancelled", "interrupted", "stale"].includes(status)) return "error";
+  return "";
+}
+
+function environmentOperationLabel(requestName) {
+  return {
+    "environment.initialize": "Initialize renv",
+    "environment.restore": "Restore lockfile",
+    "environment.snapshot": "Snapshot lockfile",
+  }[requestName] || requestName || "Environment operation";
+}
+
+function parseEnvironmentOperationPayload(value, fallback = null) {
+  try {
+    return JSON.parse(value || "null") || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function latestEnvironmentOperation() {
+  return state.environmentOperations[0] || null;
+}
+
+function formatEnvironmentOperationSummary(request) {
+  if (!request) return "No environment operation has been requested yet.";
+  const reason = request.reason ? ` · ${request.reason}` : "";
+  if (request.status === "requested") return "Preview ready. Review the bounded drift report before allowing the broker to mutate the project environment.";
+  if (request.status === "completed") return `${environmentOperationLabel(request.request_name)} finished.${reason}`;
+  if (request.status === "running") return `${environmentOperationLabel(request.request_name)} is running.${reason}`;
+  return `${environmentOperationLabel(request.request_name)} ${prettyEnvironmentOperationStatus(request.status).toLowerCase()}.${reason}`;
+}
+
+function formatEnvironmentOperationMeta(request) {
+  if (!request) return "";
+  const parts = [
+    request.project_root,
+    request.preview_sha256 ? `preview ${request.preview_sha256}` : null,
+    request.before_snapshot_id ? `before ${request.before_snapshot_id}` : null,
+    request.run_id ? `run ${request.run_id}` : null,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
+function renderEnvironmentOperationCard() {
+  const request = latestEnvironmentOperation();
+  const card = $("#environmentOperationCard");
+  const buttons = [
+    $("#environmentInitButton"),
+    $("#environmentRestoreButton"),
+    $("#environmentSnapshotButton"),
+  ];
+  const dialogBusy = state.environmentOperationDialog.busy;
+  const enabled = !state.busy && !dialogBusy && state.projectStatus === "ready" && Boolean(state.project.root);
+  for (const button of buttons) button.disabled = !enabled;
+  card.className = "environment-op-card";
+  if (!request) {
+    card.classList.add("hidden");
+    $("#environmentOperationTitle").textContent = "Environment Operation";
+    $("#environmentOperationState").textContent = "idle";
+    $("#environmentOperationSummary").textContent = "No environment operation has been requested yet.";
+    $("#environmentOperationMeta").textContent = "";
+    $("#environmentOperationReviewButton").disabled = true;
+    return;
+  }
+  card.classList.remove("hidden");
+  const tone = environmentOperationTone(request.status);
+  if (tone) card.classList.add(tone);
+  $("#environmentOperationTitle").textContent = environmentOperationLabel(request.request_name);
+  $("#environmentOperationState").textContent = prettyEnvironmentOperationStatus(request.status);
+  $("#environmentOperationSummary").textContent = formatEnvironmentOperationSummary(request);
+  $("#environmentOperationMeta").textContent = formatEnvironmentOperationMeta(request);
+  $("#environmentOperationReviewButton").disabled = dialogBusy;
+}
+
+function formatEnvironmentOperationArguments(request) {
+  const args = parseEnvironmentOperationPayload(request?.arguments_json, {});
+  return [
+    `request: ${request?.request_name || "unknown"}`,
+    `project_root: ${request?.project_root || args.project_root || "unknown"}`,
+    `workspace_id: ${request?.workspace_id || "unknown"}`,
+    `state_revision: ${request?.state_revision ?? "unknown"}`,
+    `project_revision: ${request?.project_revision ?? "unknown"}`,
+    `before_snapshot_id: ${request?.before_snapshot_id || "none"}`,
+    `bioconductor: ${args.bioconductor || "null"}`,
+    `repositories: ${(args.repositories && Object.keys(args.repositories).length) ? JSON.stringify(args.repositories, null, 2) : "null"}`,
+  ].join("\n");
+}
+
+function formatEnvironmentOperationPreview(request) {
+  const payload = parseEnvironmentOperationPayload(request?.preview_json, {});
+  const preview = payload?.preview || {};
+  const renv = preview.renv || {};
+  const renvStatus = preview.renv_status || {};
+  const diff = preview.diff || {};
+  const diffLines = (diff.values || []).map((item) =>
+    `${item.direction}: ${item.name} (lockfile ${item.lockfile_version || "missing"} · library ${item.library_version || "missing"})`
+  );
+  return [
+    `project_dir: ${preview.project_dir || request?.project_root || "unknown"}`,
+    `renv.status: ${renv.status || "unknown"}`,
+    `renv.synchronization: ${renv.synchronization || "unknown"}`,
+    `renv_status.ok: ${String(renvStatus.ok)}`,
+    `renv_status.synchronized: ${String(renvStatus.synchronized)}`,
+    `warnings: ${(renvStatus.warnings || []).join(" | ") || "none"}`,
+    `messages: ${(renvStatus.messages || []).join(" | ") || "none"}`,
+    `diff: ${diffLines.length ? diffLines.join("\n") : "no bounded drift detected"}`,
+  ].join("\n");
+}
+
+function renderEnvironmentOperationDialog() {
+  const dialog = $("#environmentOperationDialog");
+  const request = state.environmentOperations.find((item) => item.request_id === state.environmentOperationDialog.requestId) || null;
+  if (!request) {
+    dialog.classList.add("hidden");
+    return;
+  }
+  dialog.classList.remove("hidden");
+  $("#environmentOperationDialogTitle").textContent = environmentOperationLabel(request.request_name);
+  $("#environmentOperationDialogState").textContent = prettyEnvironmentOperationStatus(request.status);
+  $("#environmentOperationArguments").textContent = formatEnvironmentOperationArguments(request);
+  $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
+  const error = $("#environmentOperationDialogError");
+  if (request.reason) {
+    error.textContent = request.reason;
+    error.classList.remove("hidden");
+  } else {
+    error.textContent = "";
+    error.classList.add("hidden");
+  }
+  const pending = request.status === "requested";
+  $("#environmentOperationApprove").disabled = !pending || state.environmentOperationDialog.busy;
+  $("#environmentOperationReject").disabled = !pending || state.environmentOperationDialog.busy;
+  $("#environmentOperationCancel").textContent = pending ? "Cancel" : "Close";
+  $("#environmentOperationCancel").disabled = state.environmentOperationDialog.busy;
+}
+
+function closeEnvironmentOperationDialog() {
+  $("#environmentOperationDialog").classList.add("hidden");
+  state.environmentOperationDialog.requestId = null;
+  const returnFocus = state.environmentOperationDialog.returnFocus;
+  state.environmentOperationDialog.returnFocus = null;
+  if (returnFocus?.focus) returnFocus.focus();
+}
+
+function openEnvironmentOperationDialog(requestId, trigger = null) {
+  state.environmentOperationDialog.requestId = requestId;
+  state.environmentOperationDialog.returnFocus = trigger || document.activeElement;
+  renderEnvironmentOperationDialog();
+}
+
+async function loadEnvironmentOperationData() {
+  try {
+    state.environmentOperations = await invoke("list_environment_operation_requests", { limit: 20 });
+    renderEnvironmentOperationCard();
+    renderEnvironmentOperationDialog();
+  } catch (error) {
+    toast(`Environment operations are unavailable: ${error}`, true);
+  }
+}
+
+async function beginEnvironmentOperation(operation, options = {}) {
+  if (state.busy || state.environmentOperationDialog.busy) return;
+  state.environmentOperationDialog.busy = true;
+  renderEnvironmentOperationCard();
+  renderEnvironmentOperationDialog();
+  try {
+    const request = await invoke("request_environment_operation_preview", {
+      request: {
+        operation,
+        repositories: options.repositories ?? null,
+        bioconductor: options.bioconductor ?? null,
+      },
+    });
+    await loadEnvironmentOperationData();
+    openEnvironmentOperationDialog(request.request_id, document.activeElement);
+  } catch (error) {
+    toast(String(error), true);
+  } finally {
+    state.environmentOperationDialog.busy = false;
+    renderEnvironmentOperationCard();
+    renderEnvironmentOperationDialog();
+  }
+}
+
+async function respondEnvironmentOperation(decision) {
+  const requestId = state.environmentOperationDialog.requestId;
+  if (!requestId) return;
+  state.environmentOperationDialog.busy = true;
+  renderEnvironmentOperationCard();
+  renderEnvironmentOperationDialog();
+  try {
+    const result = await invoke("respond_environment_operation", {
+      request: { request_id: requestId, decision, reason: null },
+    });
+    if (result?.workspace) updateIdentity(result.workspace);
+    await Promise.all([loadRunData(), loadEnvironmentOperationData(), refreshEnvironment()]);
+    renderEnvironmentOperationDialog();
+    if (decision !== "approve") closeEnvironmentOperationDialog();
+  } catch (error) {
+    toast(String(error), true);
+  } finally {
+    state.environmentOperationDialog.busy = false;
+    renderEnvironmentOperationCard();
+    renderEnvironmentOperationDialog();
+  }
 }
 
 function previewSummary(detail) {
@@ -5218,11 +5593,12 @@ async function finishWorkbenchStartup(startupView) {
       renderActiveDocument();
     }
     await loadRunData();
+    await loadEnvironmentOperationData();
     await loadAgentData();
     await refreshEnvironment();
     if (isDesktop && tauriEvent?.listen) {
       tauriEvent.listen("rho://agent-turn-updated", async () => {
-        await Promise.all([loadAgentData(), loadRunData(), refreshEnvironment()]);
+        await Promise.all([loadAgentData(), loadRunData(), loadEnvironmentOperationData(), refreshEnvironment()]);
       }).catch(() => {});
     }
   } catch (error) {
@@ -5414,6 +5790,10 @@ $("#agentLlmClose").addEventListener("click", closeAgentLlmDialog);
 $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
+$("#environmentOperationClose").addEventListener("click", closeEnvironmentOperationDialog);
+$("#environmentOperationDialog").addEventListener("click", (event) => {
+  if (event.target?.dataset?.environmentOperationClose === "true") closeEnvironmentOperationDialog();
+});
 $("#aboutClose").addEventListener("click", () => closeProductDialog("about"));
 $("#updateClose").addEventListener("click", () => closeProductDialog("update"));
 $("#updateDone").addEventListener("click", () => closeProductDialog("update"));
@@ -5577,6 +5957,21 @@ $("#agentContextNewFile").addEventListener("click", () => {
 });
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
+$("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
+$("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
+$("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));
+$("#environmentOperationReviewButton").addEventListener("click", async () => {
+  const request = latestEnvironmentOperation();
+  if (!request) return;
+  openEnvironmentOperationDialog(request.request_id, document.activeElement);
+});
+$("#environmentOperationApprove").addEventListener("click", () => respondEnvironmentOperation("approve"));
+$("#environmentOperationReject").addEventListener("click", () => respondEnvironmentOperation("reject"));
+$("#environmentOperationCancel").addEventListener("click", () => {
+  const request = state.environmentOperations.find((item) => item.request_id === state.environmentOperationDialog.requestId) || null;
+  if (request?.status === "requested") respondEnvironmentOperation("cancel");
+  else closeEnvironmentOperationDialog();
+});
 $("#renderDocumentButton").addEventListener("click", renderActiveDocumentFile);
 $("#renderOpenSourceButton").addEventListener("click", async () => {
   if (!state.lastRender?.sourcePath) return;
@@ -5629,6 +6024,9 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#agentInput") && !event.target.closest("#agentFileMentions")) {
     hideAgentFileMentions();
   }
+  if (!event.target.closest("#environmentOperationDialog") && $("#environmentOperationDialog").classList.contains("hidden")) {
+    state.environmentOperationDialog.returnFocus = null;
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Tab" && state.product.dialog) {
@@ -5651,6 +6049,7 @@ document.addEventListener("keydown", (event) => {
     hideAgentFileMentions();
     closeAgentModelSelector();
     closeAgentLlmDialog();
+    closeEnvironmentOperationDialog();
     closeProductDialog();
     clearAgentEditHighlight();
   }

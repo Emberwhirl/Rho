@@ -6,17 +6,29 @@ rho_agent_set_workspace_identity <- function(identity) {
   invisible(identity)
 }
 
+rho_agent_tool_request_type <- function(tool_name) {
+  switch(
+    tool_name,
+    run_r = "workspace.execute",
+    initialize_project_environment = "environment.initialize",
+    restore_project_environment = "environment.restore",
+    snapshot_project_environment = "environment.snapshot",
+    NULL
+  )
+}
+
 rho_broker_tool_request <- function(type, arguments = list()) {
   payload <- list(
-    arguments = arguments,
     expected_workspace = .rho_agent_state$workspace_identity
   )
-  if (identical(type, "workspace.execute")) {
-    approval <- .rho_agent_state$pending_approval
+  approval <- .rho_agent_state$pending_approval
+  approval_type <- approval$request_type %||% rho_agent_tool_request_type(approval$tool %||% "run_r")
+  if (!is.null(approval$request_id) && identical(approval_type %||% "", type)) {
     .rho_agent_state$pending_approval <- NULL
-    if (!is.null(approval$request_id)) {
-      payload$approval_request_id <- approval$request_id
-    }
+    payload$approval_request_id <- approval$request_id
+    payload$arguments <- approval$arguments %||% arguments
+  } else {
+    payload$arguments <- arguments
   }
   response <- rho_agent_request(
     type,
@@ -85,6 +97,36 @@ rho_create_workspace_tools <- function() {
         .required = "code"
       ),
       execute = function(args) rho_broker_tool_request("workspace.execute", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "initialize_project_environment",
+      description = paste(
+        "Initialize renv for the active project through the reviewed broker workflow.",
+        "This is a project mutation and always requires a fresh visible confirmation."
+      ),
+      parameters = aisdk::z_empty_object(),
+      execute = function(args) rho_broker_tool_request("environment.initialize", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "restore_project_environment",
+      description = paste(
+        "Restore the active project's environment from renv.lock through the reviewed broker workflow.",
+        "This is a project mutation and always requires a fresh visible confirmation."
+      ),
+      parameters = aisdk::z_empty_object(),
+      execute = function(args) rho_broker_tool_request("environment.restore", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "snapshot_project_environment",
+      description = paste(
+        "Write the active project's renv.lock through the reviewed broker workflow.",
+        "This is a project mutation and always requires a fresh visible confirmation."
+      ),
+      parameters = aisdk::z_empty_object(),
+      execute = function(args) rho_broker_tool_request("environment.snapshot", args),
       meta = list(validate_arguments = TRUE, rho_approval = "required")
     ),
     aisdk::tool(
@@ -217,7 +259,12 @@ rho_tool_result_preview <- function(tool, value) {
   if (identical(tool, "get_workspace_snapshot") && is.list(parsed)) {
     return(rho_workspace_snapshot_preview(parsed))
   }
-  if (identical(tool, "run_r")) {
+  if (tool %in% c(
+    "run_r",
+    "initialize_project_environment",
+    "restore_project_environment",
+    "snapshot_project_environment"
+  )) {
     return(rho_run_r_preview(parsed))
   }
   rho_compact_event_value(parsed)
@@ -491,7 +538,8 @@ rho_create_aisdk_hooks <- function(connection = .rho_agent_state$connection) {
         .rho_agent_state$pending_approval <- list(
           request_id = response$approval_request_id %||% response$request_id,
           tool = tool$name,
-          arguments = args
+          request_type = response$request_type %||% rho_agent_tool_request_type(tool$name),
+          arguments = response$arguments %||% args
         )
       } else {
         .rho_agent_state$pending_approval <- NULL

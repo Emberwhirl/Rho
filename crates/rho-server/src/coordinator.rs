@@ -14,11 +14,15 @@ use rho_kernel::{ArkLaunchConfig, ArkSession, CorrelatedKernelEvent, KernelEvent
 use rho_protocol::{Envelope, ExpectedWorkspace, MAX_FRAME_BYTES, MessageKind, OperationClass};
 use rho_store::{
     AgentConversationTurn, AgentTurnEventDraft, AgentTurnFinish, ApprovalDecisionRecord,
-    ApprovalRequestDraft, PlotArtifactDraft, RunDraft, RunFinish, Store,
+    ApprovalRequestDraft, EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
+    EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft,
+    PlotArtifactDraft, RunDraft, RunFinish, Store,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, oneshot};
+use uuid::Uuid;
 
 pub struct CoordinatorRuntime {
     pub broker: BrokerState,
@@ -41,6 +45,129 @@ pub struct AgentRuntimeModelProfile {
     pub tool_calling: String,
     pub provider_display_name: String,
     pub model_display_name: String,
+}
+
+const MAX_CANONICAL_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
+const MAX_ENVIRONMENT_DIFF_ENTRIES: usize = 50;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EnvironmentOperationArguments {
+    pub operation: String,
+    pub project_root: Option<String>,
+    pub repositories: Option<HashMap<String, String>>,
+    pub bioconductor: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawEnvironmentEvidence {
+    #[serde(default)]
+    project_dir: String,
+    #[serde(default)]
+    runtime: RawRuntimeState,
+    #[serde(default)]
+    library_paths: Vec<String>,
+    #[serde(default)]
+    installed_packages: RawInstalledPackages,
+    #[serde(default)]
+    renv: RawRenvState,
+    #[serde(default)]
+    bioconductor: RawBioconductorState,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawRuntimeState {
+    version: Option<String>,
+    platform: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawInstalledPackages {
+    #[serde(default)]
+    values: Vec<RawInstalledPackage>,
+    #[serde(default)]
+    truncated: bool,
+    incomplete_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawInstalledPackage {
+    name: String,
+    version: Option<String>,
+    library: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawRenvState {
+    status: Option<String>,
+    has_lockfile: Option<bool>,
+    lockfile_path: Option<String>,
+    package_available: Option<bool>,
+    project_library: Option<String>,
+    active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct RawBioconductorState {
+    status: Option<String>,
+    version: Option<String>,
+    package_available: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalEnvironmentSnapshot {
+    project_root: String,
+    runtime: CanonicalRuntimeState,
+    bioconductor: CanonicalBioconductorState,
+    library_paths: Vec<String>,
+    installed_packages: Vec<CanonicalInstalledPackage>,
+    renv: CanonicalRenvState,
+    incomplete_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalRuntimeState {
+    version: Option<String>,
+    platform: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalBioconductorState {
+    status: String,
+    version: Option<String>,
+    package_available: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalInstalledPackage {
+    name: String,
+    version: Option<String>,
+    library: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalRenvState {
+    status: String,
+    has_lockfile: bool,
+    package_available: bool,
+    project_library: Option<String>,
+    active: bool,
+    lockfile: CanonicalLockfileState,
+    synchronization: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalLockfileState {
+    exists: bool,
+    sha256: Option<String>,
+    valid: bool,
+    packages: Vec<CanonicalLockfilePackage>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+struct CanonicalLockfilePackage {
+    name: String,
+    version: Option<String>,
+    source: Option<String>,
 }
 
 fn hide_console_window(command: &mut tokio::process::Command) {
@@ -355,6 +482,7 @@ pub async fn bootstrap_bridge(
         workspace_id: before.workspace_id.clone(),
         state_revision_before: before.state_revision as i64,
         project_revision_before: before.project_revision as i64,
+        environment_snapshot_id: None,
     })?;
     store.update_run_status(&request.execution_id, "running", None)?;
     let result = session
@@ -390,6 +518,7 @@ pub async fn bootstrap_bridge(
                 error_message: None,
                 error_call: None,
                 traceback: Vec::new(),
+                environment_snapshot_id_after: None,
             })?;
             Ok(())
         }
@@ -408,6 +537,7 @@ pub async fn bootstrap_bridge(
                 error_message: Some(redact_sensitive_text(&error.to_string())),
                 error_call: None,
                 traceback: Vec::new(),
+                environment_snapshot_id_after: None,
             })?;
             Err(error).context("bootstrapping rho.bridge in Ark")
         }
@@ -576,11 +706,24 @@ pub async fn dispatch_workspace_request(
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    let environment_operation_request_id = if request_type_uses_environment_contract(request_type) {
+        payload
+            .get("approval_request_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    } else {
+        None
+    };
     let (operation_class, bridge_expression) = bridge_expression(request_type, &arguments)?;
     let mut request =
         ExecutionRequest::new(origin, operation_class, expected, bridge_expression.clone());
     broker.authorize(&request)?;
     let before = broker.identity().clone();
+    let environment_snapshot_id = if scientific_run_requires_environment_snapshot(request_type) {
+        Some(capture_environment_snapshot_id(session, store).await?)
+    } else {
+        None
+    };
     store.create_run(&RunDraft {
         run_id: request.execution_id.clone(),
         parent_run_id: arguments
@@ -604,46 +747,15 @@ pub async fn dispatch_workspace_request(
         workspace_id: before.workspace_id.clone(),
         state_revision_before: before.state_revision as i64,
         project_revision_before: before.project_revision as i64,
+        environment_snapshot_id,
     })?;
     store.update_run_status(&request.execution_id, "running", None)?;
+    if let Some(request_id) = environment_operation_request_id.as_deref() {
+        let _ = store.start_environment_operation_request(request_id, Some(&request.execution_id))?;
+    }
 
     let result_file = ResultFile::new(&request.execution_id)?;
-    let result_path = r_string(&normalized_path(&result_file.path))?;
-    let temporary_path = r_string(&normalized_path(&result_file.temporary_path))?;
-    let bridge_call = format!(
-        r#"local({{
-  result <- {bridge_expression}
-  payload <- charToRaw(jsonlite::toJSON(
-    result,
-    auto_unbox = TRUE,
-    null = "null",
-    digits = NA
-  ))
-  connection <- file({temporary_path}, open = "wb")
-  on.exit(close(connection), add = TRUE)
-  writeBin(payload, connection)
-  close(connection)
-  on.exit(NULL)
-  published <- isTRUE(file.rename({temporary_path}, {result_path}))
-  if (!published && file.exists({temporary_path})) {{
-    if (file.exists({result_path})) {{
-      unlink({result_path}, force = TRUE)
-    }}
-    published <- isTRUE(file.copy({temporary_path}, {result_path}, overwrite = TRUE, copy.mode = FALSE))
-    unlink({temporary_path}, force = TRUE)
-  }}
-  if (!published || !file.exists({result_path})) {{
-    stop(
-      sprintf(
-        "Failed to publish the structured rho.bridge result to %s.",
-        {result_path}
-      ),
-      call. = FALSE
-    )
-  }}
-  invisible(NULL)
-}})"#
-    );
+    let bridge_call = bridge_result_publisher(&bridge_expression, &result_file)?;
     request.code = bridge_call.clone();
     let mut kernel_events = Vec::new();
     let execution = session
@@ -668,6 +780,12 @@ pub async fn dispatch_workspace_request(
             let cancelled = store
                 .cancel_requested(&request.execution_id)
                 .unwrap_or(false);
+            let environment_snapshot_id_after =
+                if environment_operation_requires_after_snapshot(request_type) {
+                    capture_environment_snapshot_id(session, store).await.ok()
+                } else {
+                    None
+                };
             store.finish_run(&RunFinish {
                 run_id: request.execution_id.clone(),
                 status: if cancelled { "interrupted" } else { "failed" }.to_string(),
@@ -689,7 +807,28 @@ pub async fn dispatch_workspace_request(
                 error_message: Some(redact_sensitive_text(&error.to_string())),
                 error_call: None,
                 traceback: Vec::new(),
+                environment_snapshot_id_after,
             })?;
+            if let Some(request_id) = environment_operation_request_id.as_deref() {
+                let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
+                    request_id: request_id.to_string(),
+                    status: if cancelled {
+                        "interrupted".to_string()
+                    } else {
+                        "failed".to_string()
+                    },
+                    run_id: Some(request.execution_id.clone()),
+                    terminal_outcome: Some(
+                        if cancelled {
+                            "user_interrupt"
+                        } else {
+                            "execution_error"
+                        }
+                        .to_string(),
+                    ),
+                    reason: Some(redact_sensitive_text(&error.to_string())),
+                })?;
+            }
             return Err(error).context("executing Workspace R request");
         }
     }
@@ -699,6 +838,12 @@ pub async fn dispatch_workspace_request(
             let cancelled = store
                 .cancel_requested(&request.execution_id)
                 .unwrap_or(false);
+            let environment_snapshot_id_after =
+                if environment_operation_requires_after_snapshot(request_type) {
+                    capture_environment_snapshot_id(session, store).await.ok()
+                } else {
+                    None
+                };
             store.finish_run(&RunFinish {
                 run_id: request.execution_id.clone(),
                 status: if cancelled { "interrupted" } else { "failed" }.to_string(),
@@ -720,7 +865,28 @@ pub async fn dispatch_workspace_request(
                 error_message: Some(redact_sensitive_text(&error.to_string())),
                 error_call: None,
                 traceback: Vec::new(),
+                environment_snapshot_id_after,
             })?;
+            if let Some(request_id) = environment_operation_request_id.as_deref() {
+                let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
+                    request_id: request_id.to_string(),
+                    status: if cancelled {
+                        "interrupted".to_string()
+                    } else {
+                        "failed".to_string()
+                    },
+                    run_id: Some(request.execution_id.clone()),
+                    terminal_outcome: Some(
+                        if cancelled {
+                            "user_interrupt"
+                        } else {
+                            "result_unavailable"
+                        }
+                        .to_string(),
+                    ),
+                    reason: Some(redact_sensitive_text(&error.to_string())),
+                })?;
+            }
             return Err(error);
         }
     };
@@ -728,6 +894,12 @@ pub async fn dispatch_workspace_request(
     store.save_identity(broker.identity())?;
     let after = broker.identity().clone();
     let failed = !result["ok"].as_bool().unwrap_or(false);
+    let environment_snapshot_id_after =
+        if environment_operation_requires_after_snapshot(request_type) {
+            capture_environment_snapshot_id(session, store).await.ok()
+        } else {
+            None
+        };
     store.finish_run(&RunFinish {
         run_id: request.execution_id.clone(),
         status: if failed { "failed" } else { "completed" }.to_string(),
@@ -753,7 +925,25 @@ pub async fn dispatch_workspace_request(
             .into_iter()
             .chain(json_string_list(&result, "calls"))
             .collect(),
+        environment_snapshot_id_after,
     })?;
+    if let Some(request_id) = environment_operation_request_id.as_deref() {
+        let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
+            request_id: request_id.to_string(),
+            status: if failed {
+                "failed".to_string()
+            } else {
+                "completed".to_string()
+            },
+            run_id: Some(request.execution_id.clone()),
+            terminal_outcome: Some(if failed { "r_error" } else { "completed" }.to_string()),
+            reason: result
+                .get("error")
+                .and_then(|value| value.get("message"))
+                .and_then(Value::as_str)
+                .map(redact_sensitive_text),
+        })?;
+    }
     let plot_payloads = extract_plot_payloads(&kernel_events);
     for (index, (media_type, payload_json)) in plot_payloads.into_iter().enumerate() {
         let plot_id = format!("plot_{}_{}", request.execution_id, index + 1);
@@ -978,6 +1168,7 @@ pub async fn run_agent_turn(
     mode: String,
     turn_id: String,
     approvals: Arc<PendingApprovalRegistry>,
+    environment_approvals: Arc<PendingApprovalRegistry>,
     auto_approve: bool,
     editor_context: Option<Value>,
 ) -> Result<Value> {
@@ -1064,6 +1255,7 @@ pub async fn run_agent_turn(
             &turn_id,
             &mode,
             approvals.clone(),
+            environment_approvals.clone(),
             auto_approve,
         )
         .await;
@@ -1138,6 +1330,7 @@ async fn serve_desktop_agent(
     turn_id: &str,
     mode: &str,
     approvals: Arc<PendingApprovalRegistry>,
+    environment_approvals: Arc<PendingApprovalRegistry>,
     auto_approve: bool,
 ) -> Result<DesktopAgentCompletion> {
     let mut events = Vec::new();
@@ -1160,8 +1353,10 @@ async fn serve_desktop_agent(
                         &incoming,
                         turn_id,
                         mode,
+                        session,
                         context.clone(),
                         approvals.clone(),
+                        environment_approvals.clone(),
                         &mut approved_mutations,
                         auto_approve,
                     )
@@ -1255,7 +1450,10 @@ fn authorize_agent_workspace_request(
 ) -> Result<()> {
     match request_type {
         "workspace.snapshot" | "workspace.inspect_object" => Ok(()),
-        "workspace.execute" => {
+        "workspace.execute"
+        | "environment.initialize"
+        | "environment.restore"
+        | "environment.snapshot" => {
             ensure!(mode == "act", "{mode} mode cannot mutate Workspace R");
             let request_id = payload
                 .get("approval_request_id")
@@ -1292,12 +1490,59 @@ fn approved_arguments_match(approved: &Value, actual: &Value) -> bool {
     }
 }
 
+fn agent_tool_request_type(tool: &str) -> Option<&'static str> {
+    match tool {
+        "run_r" => Some("workspace.execute"),
+        "initialize_project_environment" => Some("environment.initialize"),
+        "restore_project_environment" => Some("environment.restore"),
+        "snapshot_project_environment" => Some("environment.snapshot"),
+        _ => None,
+    }
+}
+
+fn request_type_uses_environment_contract(request_type: &str) -> bool {
+    matches!(
+        request_type,
+        "environment.initialize" | "environment.restore" | "environment.snapshot"
+    )
+}
+
+fn tool_environment_operation_arguments(
+    tool: &str,
+    arguments: &Value,
+) -> Result<EnvironmentOperationArguments> {
+    let repositories = arguments
+        .get("repositories")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .context("decoding environment operation repositories")?;
+    let bioconductor = arguments
+        .get("bioconductor")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let operation = match tool {
+        "initialize_project_environment" => "initialize",
+        "restore_project_environment" => "restore",
+        "snapshot_project_environment" => "snapshot",
+        _ => bail!("unsupported environment tool `{tool}`"),
+    };
+    Ok(EnvironmentOperationArguments {
+        operation: operation.to_string(),
+        project_root: None,
+        repositories,
+        bioconductor,
+    })
+}
+
 async fn handle_tool_approval_required(
     incoming: &Envelope,
     turn_id: &str,
     mode: &str,
+    session: &ArkSession,
     context: Arc<Mutex<CoordinatorRuntime>>,
     approvals: Arc<PendingApprovalRegistry>,
+    environment_approvals: Arc<PendingApprovalRegistry>,
     approved_mutations: &mut HashMap<String, ApprovedMutation>,
     auto_approve: bool,
 ) -> Result<Value> {
@@ -1315,15 +1560,8 @@ async fn handle_tool_approval_required(
         .unwrap_or("required")
         .to_string();
     let request_id = incoming.id.clone();
-    let request_type = match tool.as_str() {
-        "run_r" => Some("workspace.execute"),
-        _ => None,
-    };
-    let receiver = if mode == "act" && request_type.is_some() && !auto_approve {
-        Some(approvals.register(request_id.clone()).await)
-    } else {
-        None
-    };
+    let request_type = agent_tool_request_type(&tool);
+    let uses_environment_contract = request_type.is_some_and(request_type_uses_environment_contract);
     let mut context_guard = context.lock().await;
     let CoordinatorRuntime { broker, store } = &mut *context_guard;
     let identity = broker.identity().clone();
@@ -1332,33 +1570,12 @@ async fn handle_tool_approval_required(
         .and_then(Value::as_str)
         .map(str::to_string);
 
-    store.create_approval_request(&ApprovalRequestDraft {
-        request_id: request_id.clone(),
-        turn_id: turn_id.to_string(),
-        tool: tool.clone(),
-        policy: policy.clone(),
-        arguments_json: serde_json::to_string(&arguments)?,
-        code: code.clone(),
-        workspace_id: identity.workspace_id.clone(),
-        state_revision: identity.state_revision as i64,
-        project_revision: identity.project_revision as i64,
-    })?;
-
     if mode != "act" || request_type.is_none() {
         let reason = if mode != "act" {
             format!("{mode} mode is read-only and cannot execute `{tool}`")
         } else {
             format!("Tool `{tool}` is not approved for Workspace mutation")
         };
-        store.resolve_approval_request(
-            &request_id,
-            &ApprovalDecisionRecord {
-                decision: "reject".to_string(),
-                status: "policy_denied".to_string(),
-                reason: Some(reason.clone()),
-                continuation_outcome: Some("mode_policy_denied".to_string()),
-            },
-        )?;
         store.append_agent_turn_event(&AgentTurnEventDraft {
             turn_id: turn_id.to_string(),
             event_type: "approval.policy_denied".to_string(),
@@ -1379,7 +1596,202 @@ async fn handle_tool_approval_required(
         }));
     }
 
-    if auto_approve && request_type.is_some() {
+    if uses_environment_contract {
+        let environment_arguments = tool_environment_operation_arguments(&tool, &arguments)?;
+        let request = request_environment_operation(
+            environment_arguments,
+            Some(turn_id),
+            "agent",
+            session,
+            broker,
+            store,
+        )
+        .await?;
+        let request_type = request.request_name.clone();
+        let approved_arguments: Value = serde_json::from_str(&request.arguments_json)
+            .context("decoding approved environment operation arguments")?;
+        let receiver = environment_approvals.register(request.request_id.clone()).await;
+        store.update_agent_turn_status(turn_id, "waiting")?;
+        store.append_agent_turn_event(&AgentTurnEventDraft {
+            turn_id: turn_id.to_string(),
+            event_type: "environment.requested".to_string(),
+            title: format!("Environment review required · {}", request.request_name),
+            body: Some(
+                "Project environment remains unchanged until you approve this reviewed operation."
+                    .to_string(),
+            ),
+            status: "running".to_string(),
+            tool: Some(tool.clone()),
+            request_id: Some(request.request_id.clone()),
+            code: None,
+            details_json: serde_json::to_string(&json!({
+                "tool": tool,
+                "policy": policy,
+                "preview_sha256": request.preview_sha256,
+                "before_snapshot_id": request.before_snapshot_id,
+                "project_root": request.project_root
+            }))?,
+        })?;
+        drop(context_guard);
+
+        let response = receiver.await.unwrap_or(ApprovalResponseInput {
+            decision: "cancel".to_string(),
+            reason: Some(
+                "Environment operation channel closed before a decision was delivered."
+                    .to_string(),
+            ),
+        });
+        environment_approvals.remove(&request.request_id).await;
+
+        let mut context_guard = context.lock().await;
+        let CoordinatorRuntime { broker, store } = &mut *context_guard;
+        let request = store
+            .get_environment_operation_request(&request.request_id)?
+            .context("Environment operation request disappeared before approval resolution")?;
+        if response.decision == "approve" {
+            let current_project_root = store
+                .active_project_root()?
+                .unwrap_or_default()
+                .replace('\\', "/");
+            let current_snapshot_id = capture_environment_snapshot_id(session, store).await.ok();
+            if let Some(reason) = environment_operation_stale_reason(
+                &request,
+                broker,
+                &current_project_root,
+                current_snapshot_id.as_deref(),
+            ) {
+                store.decide_environment_operation_request(
+                    &request.request_id,
+                    &EnvironmentOperationDecisionRecord {
+                        decision: "approve".to_string(),
+                        status: "stale".to_string(),
+                        reason: Some(reason.clone()),
+                    },
+                )?;
+                store.update_agent_turn_status(turn_id, "running")?;
+                store.append_agent_turn_event(&AgentTurnEventDraft {
+                    turn_id: turn_id.to_string(),
+                    event_type: "environment.stale".to_string(),
+                    title: format!("Environment approval stale · {}", request.request_name),
+                    body: Some(reason.clone()),
+                    status: "error".to_string(),
+                    tool: Some(tool),
+                    request_id: Some(request.request_id.clone()),
+                    code: None,
+                    details_json: serde_json::to_string(&json!({"reason": reason}))?,
+                })?;
+                return Ok(json!({
+                    "approved": false,
+                    "request_id": request.request_id,
+                    "decision": "stale",
+                    "reason": reason,
+                    "policy": "desktop_environment_review"
+                }));
+            }
+
+            store.decide_environment_operation_request(
+                &request.request_id,
+                &EnvironmentOperationDecisionRecord {
+                    decision: "approve".to_string(),
+                    status: "approved".to_string(),
+                    reason: response.reason.clone(),
+                },
+            )?;
+            store.update_agent_turn_status(turn_id, "running")?;
+            store.append_agent_turn_event(&AgentTurnEventDraft {
+                turn_id: turn_id.to_string(),
+                event_type: "environment.approved".to_string(),
+                title: format!("Environment approval granted · {}", request.request_name),
+                body: Some("Broker authorized the reviewed environment operation.".to_string()),
+                status: "completed".to_string(),
+                tool: Some(tool),
+                request_id: Some(request.request_id.clone()),
+                code: None,
+                details_json: serde_json::to_string(&json!({
+                    "request_type": request_type,
+                    "arguments": approved_arguments
+                }))?,
+            })?;
+            approved_mutations.insert(
+                request.request_id.clone(),
+                ApprovedMutation {
+                    request_type: request_type.clone(),
+                    arguments: approved_arguments.clone(),
+                },
+            );
+            return Ok(json!({
+                "approved": true,
+                "request_id": request.request_id,
+                "approval_request_id": request.request_id,
+                "decision": "approved",
+                "reason": "Environment operation approved.",
+                "policy": "desktop_environment_review",
+                "request_type": request_type,
+                "arguments": approved_arguments
+            }));
+        }
+
+        let (status, body) = match response.decision.as_str() {
+            "cancel" => (
+                "cancelled",
+                response
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "The environment operation was cancelled.".to_string()),
+            ),
+            _ => (
+                "rejected",
+                response
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "The environment operation was rejected.".to_string()),
+            ),
+        };
+        store.decide_environment_operation_request(
+            &request.request_id,
+            &EnvironmentOperationDecisionRecord {
+                decision: response.decision.clone(),
+                status: status.to_string(),
+                reason: response.reason.clone(),
+            },
+        )?;
+        store.update_agent_turn_status(turn_id, "running")?;
+        store.append_agent_turn_event(&AgentTurnEventDraft {
+            turn_id: turn_id.to_string(),
+            event_type: format!("environment.{status}"),
+            title: format!("Environment approval {status} · {}", request.request_name),
+            body: Some(body.clone()),
+            status: "error".to_string(),
+            tool: Some(tool),
+            request_id: Some(request.request_id.clone()),
+            code: None,
+            details_json: serde_json::to_string(&json!({
+                "decision": response.decision,
+                "reason": response.reason
+            }))?,
+        })?;
+        return Ok(json!({
+            "approved": false,
+            "request_id": request.request_id,
+            "decision": status,
+            "reason": body,
+            "policy": "desktop_environment_review"
+        }));
+    }
+
+    store.create_approval_request(&ApprovalRequestDraft {
+        request_id: request_id.clone(),
+        turn_id: turn_id.to_string(),
+        tool: tool.clone(),
+        policy: policy.clone(),
+        arguments_json: serde_json::to_string(&arguments)?,
+        code: code.clone(),
+        workspace_id: identity.workspace_id.clone(),
+        state_revision: identity.state_revision as i64,
+        project_revision: identity.project_revision as i64,
+    })?;
+
+    if auto_approve {
         store.resolve_approval_request(
             &request_id,
             &ApprovalDecisionRecord {
@@ -1419,49 +1831,7 @@ async fn handle_tool_approval_required(
             "policy": "act_session_authorized"
         }));
     }
-
-    if auto_approve && request_type.is_none() {
-        store.resolve_approval_request(
-            &request_id,
-            &ApprovalDecisionRecord {
-                decision: "approve".to_string(),
-                status: "approved".to_string(),
-                reason: Some("Act session authorization enabled by the user.".to_string()),
-                continuation_outcome: Some("execute".to_string()),
-            },
-        )?;
-        store.update_agent_turn_status(turn_id, "running")?;
-        store.append_agent_turn_event(&AgentTurnEventDraft {
-            turn_id: turn_id.to_string(),
-            event_type: "approval.auto_approved".to_string(),
-            title: format!("Act authorization granted · {tool}"),
-            body: Some(
-                "This Act session is authorized to execute R without repeated prompts.".to_string(),
-            ),
-            status: "completed".to_string(),
-            tool: Some(tool.clone()),
-            request_id: Some(request_id.clone()),
-            code: code.clone(),
-            details_json: serde_json::to_string(&json!({"policy": "act_session_authorized"}))?,
-        })?;
-        approved_mutations.insert(
-            request_id.clone(),
-            ApprovedMutation {
-                request_type: request_type.unwrap().to_string(),
-                arguments,
-            },
-        );
-        return Ok(json!({
-            "approved": true,
-            "request_id": request_id,
-            "approval_request_id": request_id,
-            "decision": "approved",
-            "reason": "Act session authorization enabled by the user.",
-            "policy": "act_session_authorized"
-        }));
-    }
-
-    let receiver = receiver.context("Approval waiter was not registered")?;
+    let receiver = approvals.register(request_id.clone()).await;
     store.update_agent_turn_status(turn_id, "waiting")?;
     store.append_agent_turn_event(&AgentTurnEventDraft {
         turn_id: turn_id.to_string(),
@@ -1742,6 +2112,647 @@ fn event_message_text(payload: &Value) -> Option<String> {
         })
 }
 
+fn environment_operation_request_name(operation: &str) -> Result<&'static str> {
+    match operation {
+        "initialize" => Ok("environment.initialize"),
+        "restore" => Ok("environment.restore"),
+        "snapshot" => Ok("environment.snapshot"),
+        _ => bail!("unsupported environment operation `{operation}`"),
+    }
+}
+
+fn environment_operation_bridge_expression(
+    arguments: &EnvironmentOperationArguments,
+) -> Result<String> {
+    let repositories = match &arguments.repositories {
+        Some(values) if !values.is_empty() => {
+            let mut entries = values.iter().collect::<Vec<_>>();
+            entries.sort_by(|left, right| left.0.cmp(right.0));
+            let names = entries
+                .iter()
+                .map(|(name, _)| r_string(name))
+                .collect::<Result<Vec<_>>>()?
+                .join(", ");
+            let repo_values = entries
+                .iter()
+                .map(|(_, value)| r_string(value))
+                .collect::<Result<Vec<_>>>()?
+                .join(", ");
+            format!("stats::setNames(c({repo_values}), c({names}))")
+        }
+        _ => "NULL".to_string(),
+    };
+    let bioconductor = arguments
+        .bioconductor
+        .as_deref()
+        .map(r_string)
+        .transpose()?
+        .unwrap_or_else(|| "NULL".to_string());
+    Ok(format!(
+        r#"getOption("rho.bridge.env")$rho_environment_operation(
+  operation = {operation},
+  project_dir = {project_dir},
+  repositories = {repositories},
+  bioconductor = {bioconductor}
+)"#,
+        operation = r_string(&arguments.operation)?,
+        project_dir = r_string(arguments.project_root.as_deref().unwrap_or_default())?,
+    ))
+}
+
+fn environment_operation_requires_after_snapshot(request_type: &str) -> bool {
+    matches!(
+        request_type,
+        "environment.initialize" | "environment.restore" | "environment.snapshot"
+    )
+}
+
+fn scientific_run_requires_environment_snapshot(request_type: &str) -> bool {
+    matches!(
+        request_type,
+        "workspace.execute"
+            | "workspace.render_document"
+            | "environment.initialize"
+            | "environment.restore"
+            | "environment.snapshot"
+    )
+}
+
+fn canonical_environment_operation_arguments(
+    project_root: &str,
+    arguments: &EnvironmentOperationArguments,
+) -> Value {
+    let mut repositories = arguments
+        .repositories
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<Vec<_>>();
+    repositories.sort_by(|left, right| left.0.cmp(&right.0));
+    json!({
+        "operation": arguments.operation,
+        "project_root": project_root,
+        "repositories": repositories.into_iter().map(|(name, value)| json!({"name": name, "value": value})).collect::<Vec<_>>(),
+        "bioconductor": arguments.bioconductor
+    })
+}
+
+async fn preview_environment_operation(
+    arguments: &EnvironmentOperationArguments,
+    turn_id: Option<&str>,
+    source: &str,
+    session: &ArkSession,
+    broker: &BrokerState,
+    store: &mut Store,
+) -> Result<EnvironmentOperationRequestSummary> {
+    let request_name = environment_operation_request_name(&arguments.operation)?;
+    let project_root = store
+        .active_project_root()?
+        .context("No active project root is configured")?
+        .replace('\\', "/");
+    let project_argument = r_string(&project_root)?;
+    let preview_value = execute_bridge_result_expression(
+        session,
+        &format!(
+            r#"getOption("rho.bridge.env")$rho_environment_status_preview(
+  project_dir = {project_argument},
+  diff_limit = {MAX_ENVIRONMENT_DIFF_ENTRIES}
+)"#
+        ),
+    )
+    .await
+    .unwrap_or_else(|error| {
+        json!({
+            "project_dir": project_root,
+            "renv": {"status": "degraded", "synchronization": "incomplete"},
+            "renv_status": {
+                "ok": false,
+                "messages": [],
+                "warnings": [],
+                "error": {"message": error.to_string(), "call": null}
+            },
+            "bioconductor": {"status": "unknown", "version": null, "package_available": false},
+            "diff": {"values": [], "truncated": false}
+        })
+    });
+    let before_snapshot_id = capture_environment_snapshot_id(session, store).await.ok();
+    let stored_arguments = EnvironmentOperationArguments {
+        operation: arguments.operation.clone(),
+        project_root: Some(project_root.clone()),
+        repositories: arguments.repositories.clone(),
+        bioconductor: arguments.bioconductor.clone(),
+    };
+    let canonical_arguments =
+        canonical_environment_operation_arguments(&project_root, &stored_arguments);
+    let preview_json = serde_json::to_string(&json!({
+        "request_name": request_name,
+        "arguments": canonical_arguments,
+        "workspace": broker.identity(),
+        "before_snapshot_id": before_snapshot_id,
+        "preview": preview_value
+    }))?;
+    let preview_sha256 = sha256_hex(preview_json.as_bytes());
+    let request_id = format!("envreq_{}", Uuid::new_v4());
+    let identity = broker.identity().clone();
+    store.create_environment_operation_request(&EnvironmentOperationRequestDraft {
+        request_id: request_id.clone(),
+        turn_id: turn_id.map(str::to_string),
+        source: source.to_string(),
+        request_name: request_name.to_string(),
+        project_root,
+        arguments_json: serde_json::to_string(&stored_arguments)?,
+        preview_json,
+        preview_sha256,
+        workspace_id: identity.workspace_id.clone(),
+        state_revision: identity.state_revision as i64,
+        project_revision: identity.project_revision as i64,
+        before_snapshot_id,
+    })?;
+    store
+        .get_environment_operation_request(&request_id)?
+        .context("Environment operation request was not persisted")
+}
+
+async fn execute_confirmed_environment_operation(
+    request: &EnvironmentOperationRequestSummary,
+    origin: ExecutionOrigin,
+    session: &ArkSession,
+    broker: &mut BrokerState,
+    store: &mut Store,
+) -> Result<Value> {
+    let stored_arguments: EnvironmentOperationArguments =
+        serde_json::from_str(&request.arguments_json)
+            .context("decoding stored environment operation arguments")?;
+    let payload = json!({
+        "arguments": {
+            "operation": stored_arguments.operation,
+            "repositories": stored_arguments.repositories,
+            "bioconductor": stored_arguments.bioconductor,
+            "project_root": request.project_root
+        },
+        "expected_workspace": broker.identity(),
+        "approval_request_id": request.request_id
+    });
+    dispatch_workspace_request(
+        &request.request_name,
+        &payload,
+        origin,
+        session,
+        broker,
+        store,
+    )
+    .await
+}
+
+fn environment_operation_stale_reason(
+    request: &EnvironmentOperationRequestSummary,
+    broker: &BrokerState,
+    current_project_root: &str,
+    current_snapshot_id: Option<&str>,
+) -> Option<String> {
+    let identity = broker.identity();
+    if request.workspace_id.as_deref() != Some(identity.workspace_id.as_str()) {
+        return Some("Workspace identity changed before confirmation.".to_string());
+    }
+    if request.state_revision != Some(identity.state_revision as i64)
+        || request.project_revision != Some(identity.project_revision as i64)
+    {
+        return Some("Workspace or project revision changed before confirmation.".to_string());
+    }
+    if !request
+        .project_root
+        .eq_ignore_ascii_case(current_project_root)
+    {
+        return Some("Project root changed before confirmation.".to_string());
+    }
+    if request.before_snapshot_id.as_deref() != current_snapshot_id {
+        return Some("Environment evidence changed before confirmation.".to_string());
+    }
+    None
+}
+
+pub async fn request_environment_operation(
+    arguments: EnvironmentOperationArguments,
+    turn_id: Option<&str>,
+    source: &str,
+    session: &ArkSession,
+    broker: &BrokerState,
+    store: &mut Store,
+) -> Result<EnvironmentOperationRequestSummary> {
+    preview_environment_operation(&arguments, turn_id, source, session, broker, store).await
+}
+
+pub async fn decide_environment_operation(
+    request_id: &str,
+    decision: &str,
+    reason: Option<String>,
+    origin: ExecutionOrigin,
+    session: &ArkSession,
+    broker: &mut BrokerState,
+    store: &mut Store,
+) -> Result<Value> {
+    let request = store
+        .get_environment_operation_request(request_id)?
+        .context(format!(
+            "Environment operation request not found: {request_id}"
+        ))?;
+    ensure!(
+        request.status == "requested",
+        "Environment operation request is no longer pending: {}",
+        request.status
+    );
+    if decision != "approve" {
+        let status = if decision == "cancel" {
+            "cancelled"
+        } else {
+            "rejected"
+        };
+        store.decide_environment_operation_request(
+            request_id,
+            &EnvironmentOperationDecisionRecord {
+                decision: decision.to_string(),
+                status: status.to_string(),
+                reason: reason.clone(),
+            },
+        )?;
+        return Ok(json!({
+            "request_id": request_id,
+            "status": status,
+            "decision": decision
+        }));
+    }
+
+    let current_project_root = store
+        .active_project_root()?
+        .unwrap_or_default()
+        .replace('\\', "/");
+    let current_snapshot_id = capture_environment_snapshot_id(session, store).await.ok();
+    if let Some(stale_reason) = environment_operation_stale_reason(
+        &request,
+        broker,
+        &current_project_root,
+        current_snapshot_id.as_deref(),
+    ) {
+        store.decide_environment_operation_request(
+            request_id,
+            &EnvironmentOperationDecisionRecord {
+                decision: "approve".to_string(),
+                status: "stale".to_string(),
+                reason: Some(stale_reason.clone()),
+            },
+        )?;
+        return Ok(json!({
+            "request_id": request_id,
+            "status": "stale",
+            "reason": stale_reason
+        }));
+    }
+
+    store.decide_environment_operation_request(
+        request_id,
+        &EnvironmentOperationDecisionRecord {
+            decision: "approve".to_string(),
+            status: "approved".to_string(),
+            reason,
+        },
+    )?;
+    execute_confirmed_environment_operation(&request, origin, session, broker, store).await
+}
+
+async fn capture_environment_snapshot_id(
+    session: &ArkSession,
+    store: &mut Store,
+) -> Result<String> {
+    let project_root = store
+        .active_project_root()?
+        .unwrap_or_default()
+        .replace('\\', "/");
+    let project_argument = if project_root.is_empty() {
+        "getwd()".to_string()
+    } else {
+        r_string(&project_root)?
+    };
+    let raw = match execute_bridge_result_expression(
+        session,
+        &format!(
+            r#"getOption("rho.bridge.env")$rho_environment_evidence(project_dir = {project_argument})"#
+        ),
+    )
+    .await
+    {
+        Ok(value) => serde_json::from_value::<RawEnvironmentEvidence>(value).unwrap_or_default(),
+        Err(_) => RawEnvironmentEvidence {
+            project_dir: project_root.clone(),
+            ..RawEnvironmentEvidence::default()
+        },
+    };
+    let mut snapshot = canonicalize_environment_snapshot(project_root, raw);
+    let canonical_json = finalize_environment_snapshot_json(&mut snapshot).unwrap_or_else(|error| {
+        serde_json::to_string(&degraded_environment_snapshot(
+            snapshot.project_root.clone(),
+            format!("snapshot_budget_error: {error}"),
+        ))
+        .unwrap_or_else(|_| {
+            "{\"project_root\":\"\",\"renv\":{\"status\":\"degraded\"},\"incomplete_reason\":\"snapshot_serialization_failed\"}".to_string()
+        })
+    });
+    let snapshot_id = sha256_hex(canonical_json.as_bytes());
+    store.record_environment_snapshot(&EnvironmentSnapshotDraft {
+        snapshot_id: snapshot_id.clone(),
+        project_root: snapshot.project_root.clone(),
+        canonical_json,
+    })?;
+    Ok(snapshot_id)
+}
+
+fn degraded_environment_snapshot(
+    project_root: String,
+    reason: String,
+) -> CanonicalEnvironmentSnapshot {
+    CanonicalEnvironmentSnapshot {
+        project_root,
+        runtime: CanonicalRuntimeState {
+            version: None,
+            platform: None,
+        },
+        bioconductor: CanonicalBioconductorState {
+            status: "unknown".to_string(),
+            version: None,
+            package_available: false,
+        },
+        library_paths: Vec::new(),
+        installed_packages: Vec::new(),
+        renv: CanonicalRenvState {
+            status: "degraded".to_string(),
+            has_lockfile: false,
+            package_available: false,
+            project_library: None,
+            active: false,
+            lockfile: CanonicalLockfileState {
+                exists: false,
+                sha256: None,
+                valid: false,
+                packages: Vec::new(),
+            },
+            synchronization: "incomplete".to_string(),
+        },
+        incomplete_reason: Some(reason),
+    }
+}
+
+fn canonicalize_environment_snapshot(
+    project_root: String,
+    raw: RawEnvironmentEvidence,
+) -> CanonicalEnvironmentSnapshot {
+    let resolved_project_root = if project_root.is_empty() {
+        raw.project_dir.replace('\\', "/")
+    } else {
+        project_root
+    };
+    if raw.runtime.version.is_none()
+        && raw.runtime.platform.is_none()
+        && raw.installed_packages.values.is_empty()
+        && raw.library_paths.is_empty()
+    {
+        return degraded_environment_snapshot(
+            resolved_project_root,
+            "capture_failed: environment evidence was unavailable".to_string(),
+        );
+    }
+
+    let mut incomplete_reasons = Vec::new();
+    if raw.installed_packages.truncated {
+        incomplete_reasons.push("installed_packages_truncated_at_source".to_string());
+    }
+    if let Some(reason) = raw.installed_packages.incomplete_reason.clone() {
+        incomplete_reasons.push(format!("installed_packages_incomplete: {reason}"));
+    }
+
+    let mut installed_packages = raw
+        .installed_packages
+        .values
+        .into_iter()
+        .map(|item| CanonicalInstalledPackage {
+            name: item.name,
+            version: item.version,
+            library: item.library.map(|value| value.replace('\\', "/")),
+        })
+        .collect::<Vec<_>>();
+    installed_packages.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.version.cmp(&right.version))
+            .then(left.library.cmp(&right.library))
+    });
+
+    let lockfile = canonicalize_lockfile(
+        raw.renv.has_lockfile.unwrap_or(false),
+        raw.renv.lockfile_path.as_deref(),
+        &mut incomplete_reasons,
+    );
+    let synchronization = compute_lockfile_sync_state(
+        &installed_packages,
+        raw.renv.package_available.unwrap_or(false),
+        &lockfile,
+    );
+
+    CanonicalEnvironmentSnapshot {
+        project_root: resolved_project_root,
+        runtime: CanonicalRuntimeState {
+            version: raw.runtime.version,
+            platform: raw.runtime.platform,
+        },
+        bioconductor: CanonicalBioconductorState {
+            status: raw
+                .bioconductor
+                .status
+                .unwrap_or_else(|| "unknown".to_string()),
+            version: raw.bioconductor.version,
+            package_available: raw.bioconductor.package_available.unwrap_or(false),
+        },
+        library_paths: raw
+            .library_paths
+            .into_iter()
+            .map(|value| value.replace('\\', "/"))
+            .collect(),
+        installed_packages,
+        renv: CanonicalRenvState {
+            status: raw.renv.status.unwrap_or_else(|| "unknown".to_string()),
+            has_lockfile: raw.renv.has_lockfile.unwrap_or(false),
+            package_available: raw.renv.package_available.unwrap_or(false),
+            project_library: raw
+                .renv
+                .project_library
+                .map(|value| value.replace('\\', "/")),
+            active: raw.renv.active.unwrap_or(false),
+            lockfile,
+            synchronization,
+        },
+        incomplete_reason: (!incomplete_reasons.is_empty()).then(|| incomplete_reasons.join(" | ")),
+    }
+}
+
+fn canonicalize_lockfile(
+    has_lockfile: bool,
+    lockfile_path: Option<&str>,
+    incomplete_reasons: &mut Vec<String>,
+) -> CanonicalLockfileState {
+    if !has_lockfile {
+        return CanonicalLockfileState {
+            exists: false,
+            sha256: None,
+            valid: false,
+            packages: Vec::new(),
+        };
+    }
+    let Some(lockfile_path) = lockfile_path.filter(|value| !value.trim().is_empty()) else {
+        incomplete_reasons.push("lockfile_path_missing".to_string());
+        return CanonicalLockfileState {
+            exists: true,
+            sha256: None,
+            valid: false,
+            packages: Vec::new(),
+        };
+    };
+    let bytes = match std::fs::read(lockfile_path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            incomplete_reasons.push(format!("lockfile_read_failed: {error}"));
+            return CanonicalLockfileState {
+                exists: false,
+                sha256: None,
+                valid: false,
+                packages: Vec::new(),
+            };
+        }
+    };
+    let parsed: Value = match serde_json::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            incomplete_reasons.push(format!("lockfile_parse_failed: {error}"));
+            return CanonicalLockfileState {
+                exists: true,
+                sha256: Some(sha256_hex(&bytes)),
+                valid: false,
+                packages: Vec::new(),
+            };
+        }
+    };
+    let mut packages = parsed
+        .get("Packages")
+        .and_then(Value::as_object)
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|(name, value)| CanonicalLockfilePackage {
+                    name: name.clone(),
+                    version: value
+                        .get("Version")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    source: value
+                        .get("Source")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    packages.sort_by(|left, right| left.name.cmp(&right.name));
+    CanonicalLockfileState {
+        exists: true,
+        sha256: Some(sha256_hex(&bytes)),
+        valid: parsed.get("Packages").and_then(Value::as_object).is_some(),
+        packages,
+    }
+}
+
+fn compute_lockfile_sync_state(
+    installed_packages: &[CanonicalInstalledPackage],
+    renv_available: bool,
+    lockfile: &CanonicalLockfileState,
+) -> String {
+    if !lockfile.exists {
+        return "no_lockfile".to_string();
+    }
+    if !renv_available {
+        return "renv_unavailable".to_string();
+    }
+    if !lockfile.valid {
+        return "invalid_lockfile".to_string();
+    }
+    let mut installed_versions = HashMap::new();
+    for package in installed_packages {
+        installed_versions
+            .entry(package.name.clone())
+            .or_insert_with(|| package.version.clone());
+    }
+    let drifted = lockfile.packages.iter().any(|package| {
+        installed_versions
+            .get(&package.name)
+            .and_then(|value| value.as_deref())
+            != package.version.as_deref()
+    });
+    if drifted {
+        "drifted".to_string()
+    } else {
+        "synchronized".to_string()
+    }
+}
+
+fn finalize_environment_snapshot_json(
+    snapshot: &mut CanonicalEnvironmentSnapshot,
+) -> Result<String> {
+    let mut budget_trimmed = false;
+    loop {
+        let encoded = serde_json::to_string(snapshot)?;
+        if encoded.len() <= MAX_CANONICAL_SNAPSHOT_BYTES {
+            if budget_trimmed {
+                append_incomplete_reason(
+                    &mut snapshot.incomplete_reason,
+                    "canonical_snapshot_trimmed_to_budget",
+                );
+                return Ok(serde_json::to_string(snapshot)?);
+            }
+            return Ok(encoded);
+        }
+        if !snapshot.installed_packages.is_empty() {
+            snapshot.installed_packages.pop();
+            budget_trimmed = true;
+            continue;
+        }
+        if !snapshot.renv.lockfile.packages.is_empty() {
+            snapshot.renv.lockfile.packages.pop();
+            budget_trimmed = true;
+            continue;
+        }
+        if !snapshot.library_paths.is_empty() {
+            snapshot.library_paths.pop();
+            budget_trimmed = true;
+            continue;
+        }
+        bail!("environment snapshot exceeds byte budget even after trimming");
+    }
+}
+
+fn append_incomplete_reason(target: &mut Option<String>, reason: &str) {
+    match target {
+        Some(existing) => {
+            if !existing.split(" | ").any(|item| item == reason) {
+                existing.push_str(" | ");
+                existing.push_str(reason);
+            }
+        }
+        None => *target = Some(reason.to_string()),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(bytes);
+    format!("{:x}", digest.finalize())
+}
+
 fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(OperationClass, String)> {
     let bridge = r#"getOption("rho.bridge.env")"#;
     match request_type {
@@ -1790,6 +2801,36 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                     r_string(path)?,
                     format_argument
                 ),
+            ))
+        }
+        "environment.initialize" | "environment.restore" | "environment.snapshot" => {
+            let operation = match request_type {
+                "environment.initialize" => "initialize",
+                "environment.restore" => "restore",
+                "environment.snapshot" => "snapshot",
+                _ => unreachable!(),
+            };
+            let repositories = arguments
+                .get("repositories")
+                .cloned()
+                .map(serde_json::from_value)
+                .transpose()
+                .context("decoding environment operation repositories")?;
+            let operation_arguments = EnvironmentOperationArguments {
+                operation: operation.to_string(),
+                project_root: arguments
+                    .get("project_root")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                repositories,
+                bioconductor: arguments
+                    .get("bioconductor")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            };
+            Ok((
+                OperationClass::ProjectMutation,
+                environment_operation_bridge_expression(&operation_arguments)?,
             ))
         }
         "workspace.set_project_root" => {
@@ -1841,6 +2882,11 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
             .and_then(Value::as_str)
             .map(|name| format!("inspect {name}"))
             .unwrap_or_else(|| bridge_expression.to_string()),
+        "environment.initialize" | "environment.restore" | "environment.snapshot" => arguments
+            .get("project_root")
+            .and_then(Value::as_str)
+            .map(|project_root| format!("{request_type} {project_root}"))
+            .unwrap_or_else(|| request_type.to_string()),
         "workspace.render_document" => arguments
             .get("path")
             .and_then(Value::as_str)
@@ -1942,6 +2988,62 @@ fn redact_after_marker(input: &str, marker: &str, terminators: &str) -> String {
     output
 }
 
+fn bridge_result_publisher(bridge_expression: &str, result_file: &ResultFile) -> Result<String> {
+    let result_path = r_string(&normalized_path(&result_file.path))?;
+    let temporary_path = r_string(&normalized_path(&result_file.temporary_path))?;
+    Ok(format!(
+        r#"local({{
+  result <- {bridge_expression}
+  payload <- charToRaw(jsonlite::toJSON(
+    result,
+    auto_unbox = TRUE,
+    null = "null",
+    digits = NA
+  ))
+  connection <- file({temporary_path}, open = "wb")
+  on.exit(close(connection), add = TRUE)
+  writeBin(payload, connection)
+  close(connection)
+  on.exit(NULL)
+  published <- isTRUE(file.rename({temporary_path}, {result_path}))
+  if (!published && file.exists({temporary_path})) {{
+    if (file.exists({result_path})) {{
+      unlink({result_path}, force = TRUE)
+    }}
+    published <- isTRUE(file.copy({temporary_path}, {result_path}, overwrite = TRUE, copy.mode = FALSE))
+    unlink({temporary_path}, force = TRUE)
+  }}
+  if (!published || !file.exists({result_path})) {{
+    stop(
+      sprintf(
+        "Failed to publish the structured rho.bridge result to %s.",
+        {result_path}
+      ),
+      call. = FALSE
+    )
+  }}
+  invisible(NULL)
+}})"#
+    ))
+}
+
+async fn execute_bridge_result_expression(
+    session: &ArkSession,
+    bridge_expression: &str,
+) -> Result<Value> {
+    let result_file = ResultFile::new(&format!("bridge_probe_{}", Uuid::new_v4()))?;
+    let bridge_call = bridge_result_publisher(bridge_expression, &result_file)?;
+    let mut kernel_events = Vec::new();
+    session
+        .execute(bridge_call, |event| {
+            kernel_events.push(event.clone());
+            Ok(())
+        })
+        .await
+        .and_then(|_| ensure_no_kernel_errors(&kernel_events))?;
+    result_file.read_json()
+}
+
 struct ResultFile {
     path: PathBuf,
     temporary_path: PathBuf,
@@ -2006,6 +3108,7 @@ impl Drop for ResultFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn reads_bounded_bridge_json() {
@@ -2222,5 +3325,113 @@ mod tests {
             &mut approvals,
         )
         .is_ok());
+    }
+
+    #[test]
+    fn canonical_snapshot_detects_lockfile_drift() {
+        let directory = std::env::temp_dir().join(format!("rho-lockfile-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let lockfile = directory.join("renv.lock");
+        fs::write(
+            &lockfile,
+            r#"{"Packages":{"testpkg":{"Version":"1.0.0","Source":"Repository"}}}"#,
+        )
+        .unwrap();
+
+        let snapshot = canonicalize_environment_snapshot(
+            "D:/Rho/project".to_string(),
+            RawEnvironmentEvidence {
+                project_dir: "D:/Rho/project".to_string(),
+                runtime: RawRuntimeState {
+                    version: Some("4.5.0".to_string()),
+                    platform: Some("x86_64-w64-mingw32".to_string()),
+                },
+                library_paths: vec!["D:/Rho/project/renv/library".to_string()],
+                installed_packages: RawInstalledPackages {
+                    values: vec![RawInstalledPackage {
+                        name: "testpkg".to_string(),
+                        version: Some("2.0.0".to_string()),
+                        library: Some("D:/Rho/project/renv/library".to_string()),
+                    }],
+                    truncated: false,
+                    incomplete_reason: None,
+                },
+                renv: RawRenvState {
+                    status: Some("active".to_string()),
+                    has_lockfile: Some(true),
+                    lockfile_path: Some(lockfile.to_string_lossy().replace('\\', "/")),
+                    package_available: Some(true),
+                    project_library: Some("D:/Rho/project/renv".to_string()),
+                    active: Some(true),
+                },
+                bioconductor: RawBioconductorState {
+                    status: Some("available".to_string()),
+                    version: Some("3.21".to_string()),
+                    package_available: Some(true),
+                },
+            },
+        );
+
+        assert_eq!(snapshot.renv.synchronization, "drifted");
+        assert!(snapshot.renv.lockfile.valid);
+        assert_eq!(snapshot.renv.lockfile.packages.len(), 1);
+
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn finalize_environment_snapshot_trims_to_byte_budget() {
+        let mut snapshot = CanonicalEnvironmentSnapshot {
+            project_root: "D:/Rho/project".to_string(),
+            runtime: CanonicalRuntimeState {
+                version: Some("4.5.0".to_string()),
+                platform: Some("x86_64-w64-mingw32".to_string()),
+            },
+            bioconductor: CanonicalBioconductorState {
+                status: "available".to_string(),
+                version: Some("3.21".to_string()),
+                package_available: true,
+            },
+            library_paths: vec!["D:/Rho/project/renv/library".repeat(4000)],
+            installed_packages: (0..320)
+                .map(|index| CanonicalInstalledPackage {
+                    name: format!("pkg_{index:04}"),
+                    version: Some("1.0.0".to_string()),
+                    library: Some("D:/Rho/project/renv/library/very/long/path".repeat(160)),
+                })
+                .collect(),
+            renv: CanonicalRenvState {
+                status: "active".to_string(),
+                has_lockfile: true,
+                package_available: true,
+                project_library: Some("D:/Rho/project/renv".to_string()),
+                active: true,
+                lockfile: CanonicalLockfileState {
+                    exists: true,
+                    sha256: Some("abc".to_string()),
+                    valid: true,
+                    packages: (0..160)
+                        .map(|index| CanonicalLockfilePackage {
+                            name: format!("lockpkg_{index:04}"),
+                            version: Some("1.0.0".to_string()),
+                            source: Some("Repository".repeat(40)),
+                        })
+                        .collect(),
+                },
+                synchronization: "drifted".to_string(),
+            },
+            incomplete_reason: None,
+        };
+
+        let encoded = finalize_environment_snapshot_json(&mut snapshot).unwrap();
+
+        assert!(encoded.len() <= MAX_CANONICAL_SNAPSHOT_BYTES);
+        assert!(
+            snapshot
+                .incomplete_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("canonical_snapshot_trimmed_to_budget")
+        );
     }
 }

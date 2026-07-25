@@ -67,6 +67,63 @@ test_that("workspace snapshot reports environment contract", {
   expect_true(any(vapply(result$objects, function(item) identical(item$name, "qc"), logical(1))))
 })
 
+test_that("environment evidence remains structured and bounded", {
+  result <- rho_environment_evidence(package_limit = 32L)
+  encoded <- jsonlite::toJSON(result, auto_unbox = TRUE, null = "null")
+
+  expect_true(is.character(result$project_dir))
+  expect_true(is.list(result$runtime))
+  expect_true(is.list(result$installed_packages))
+  expect_lte(length(result$installed_packages$values), 32L)
+  expect_true(is.logical(result$installed_packages$truncated))
+  expect_true(is.character(encoded))
+})
+
+test_that("environment status preview reports bounded diff", {
+  project <- file.path(tempdir(), paste0("rho-bridge-preview-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines(
+    c(
+      "{",
+      "  \"Packages\": {",
+      "    \"definitelyMissingForRhoPreview\": {",
+      "      \"Version\": \"1.0.0\",",
+      "      \"Source\": \"Repository\"",
+      "    }",
+      "  }",
+      "}"
+    ),
+    file.path(project, "renv.lock")
+  )
+
+  result <- rho_environment_status_preview(project_dir = project, diff_limit = 10L)
+
+  expect_true(is.list(result$renv))
+  expect_true(is.list(result$renv_status))
+  expect_true(is.list(result$diff))
+  expect_true(
+    any(vapply(
+      result$diff$values,
+      function(item) identical(item$name, "definitelyMissingForRhoPreview"),
+      logical(1)
+    ))
+  )
+})
+
+test_that("typed environment operation returns structured result", {
+  project <- file.path(tempdir(), paste0("rho-bridge-operation-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+
+  result <- rho_environment_operation("snapshot", project_dir = project)
+
+  expect_true(is.logical(result$ok))
+  expect_identical(result$operation, "snapshot")
+  expect_true(is.character(result$project_dir))
+  expect_true(is.list(result$error) || is.null(result$error))
+})
+
 test_that("vector previews stay bounded", {
   workspace <- new.env(parent = baseenv())
   workspace$x <- 1:100

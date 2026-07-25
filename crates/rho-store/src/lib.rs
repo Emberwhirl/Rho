@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 6;
 const DEFAULT_LIMIT: usize = 50;
 
 #[derive(Debug, Error)]
@@ -34,6 +34,7 @@ pub struct RunDraft {
     pub workspace_id: String,
     pub state_revision_before: i64,
     pub project_revision_before: i64,
+    pub environment_snapshot_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +52,7 @@ pub struct RunFinish {
     pub error_message: Option<String>,
     pub error_call: Option<String>,
     pub traceback: Vec<String>,
+    pub environment_snapshot_id_after: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +74,8 @@ pub struct RunSummary {
     pub project_revision_before: Option<i64>,
     pub state_revision_after: Option<i64>,
     pub project_revision_after: Option<i64>,
+    pub environment_snapshot_id: Option<String>,
+    pub environment_snapshot_id_after: Option<String>,
     pub code_preview: String,
     pub error_message: Option<String>,
 }
@@ -114,6 +118,8 @@ pub struct RunDetail {
     pub project_revision_before: Option<i64>,
     pub state_revision_after: Option<i64>,
     pub project_revision_after: Option<i64>,
+    pub environment_snapshot_id: Option<String>,
+    pub environment_snapshot_id_after: Option<String>,
     pub stdout: Option<String>,
     pub value_text: Option<String>,
     pub messages: Vec<String>,
@@ -121,6 +127,78 @@ pub struct RunDetail {
     pub error_message: Option<String>,
     pub error_call: Option<String>,
     pub traceback: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentSnapshotDraft {
+    pub snapshot_id: String,
+    pub project_root: String,
+    pub canonical_json: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentSnapshotRecord {
+    pub snapshot_id: String,
+    pub project_root: String,
+    pub canonical_json: String,
+    pub first_captured_at: String,
+    pub last_captured_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentOperationRequestDraft {
+    pub request_id: String,
+    pub turn_id: Option<String>,
+    pub source: String,
+    pub request_name: String,
+    pub project_root: String,
+    pub arguments_json: String,
+    pub preview_json: String,
+    pub preview_sha256: String,
+    pub workspace_id: String,
+    pub state_revision: i64,
+    pub project_revision: i64,
+    pub before_snapshot_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentOperationDecisionRecord {
+    pub decision: String,
+    pub status: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentOperationFinish {
+    pub request_id: String,
+    pub status: String,
+    pub run_id: Option<String>,
+    pub terminal_outcome: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentOperationRequestSummary {
+    pub request_id: String,
+    pub turn_id: Option<String>,
+    pub source: String,
+    pub request_name: String,
+    pub status: String,
+    pub decision: Option<String>,
+    pub reason: Option<String>,
+    pub project_root: String,
+    pub arguments_json: String,
+    pub preview_json: String,
+    pub preview_sha256: String,
+    pub workspace_id: Option<String>,
+    pub state_revision: Option<i64>,
+    pub project_revision: Option<i64>,
+    pub before_snapshot_id: Option<String>,
+    pub run_id: Option<String>,
+    pub requested_at: String,
+    pub responded_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub terminal_outcome: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -389,6 +467,36 @@ impl Store {
                 provenance_complete INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS environment_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                project_root TEXT NOT NULL,
+                canonical_json TEXT NOT NULL,
+                first_captured_at TEXT NOT NULL,
+                last_captured_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS environment_operation_requests (
+                request_id TEXT PRIMARY KEY,
+                turn_id TEXT,
+                source TEXT NOT NULL,
+                request_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                decision TEXT,
+                reason TEXT,
+                project_root TEXT NOT NULL,
+                arguments_json TEXT NOT NULL,
+                preview_json TEXT NOT NULL,
+                preview_sha256 TEXT NOT NULL,
+                workspace_id TEXT,
+                state_revision INTEGER,
+                project_revision INTEGER,
+                before_snapshot_id TEXT,
+                run_id TEXT,
+                requested_at TEXT NOT NULL,
+                responded_at TEXT,
+                completed_at TEXT,
+                terminal_outcome TEXT,
+                FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE SET NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_agent_turns_started_at
                 ON agent_turns(started_at DESC);
             CREATE INDEX IF NOT EXISTS idx_agent_turn_events_turn_id
@@ -401,6 +509,14 @@ impl Store {
                 ON plot_artifacts(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_plot_artifacts_run_id
                 ON plot_artifacts(run_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_environment_snapshots_project_root
+                ON environment_snapshots(project_root, last_captured_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_status
+                ON environment_operation_requests(status, requested_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_turn_id
+                ON environment_operation_requests(turn_id, requested_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_project
+                ON environment_operation_requests(project_root, requested_at DESC);
             ",
         )?;
 
@@ -415,7 +531,7 @@ impl Store {
             .and_then(|value| value.parse().ok());
 
         match current {
-            None | Some(1) | Some(2) | Some(3) | Some(SCHEMA_VERSION) => {}
+            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(SCHEMA_VERSION) => {}
             Some(other) => return Err(StoreError::SchemaVersion(other)),
         }
 
@@ -492,6 +608,13 @@ impl Store {
             "cancel_requested",
             "INTEGER NOT NULL DEFAULT 0",
         )?;
+        ensure_column(&self.connection, "runs", "environment_snapshot_id", "TEXT")?;
+        ensure_column(
+            &self.connection,
+            "runs",
+            "environment_snapshot_id_after",
+            "TEXT",
+        )?;
 
         self.connection.execute(
             "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
@@ -551,9 +674,9 @@ impl Store {
                 run_id, parent_run_id, origin, status, started_at, request_type,
                 operation_class, code, arguments_json, source_path, execution_mode,
                 document_version, workspace_id, state_revision_before,
-                project_revision_before, cancel_requested
+                project_revision_before, cancel_requested, environment_snapshot_id
              ) VALUES(
-                ?1, ?2, ?3, 'queued', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0
+                ?1, ?2, ?3, 'queued', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, ?15
              )",
             params![
                 draft.run_id,
@@ -570,6 +693,7 @@ impl Store {
                 draft.workspace_id,
                 draft.state_revision_before,
                 draft.project_revision_before,
+                draft.environment_snapshot_id,
             ],
         )?;
         Ok(())
@@ -607,6 +731,7 @@ impl Store {
                  error_message = ?12,
                  error_call = ?13,
                  traceback_json = ?14,
+                 environment_snapshot_id_after = COALESCE(?15, environment_snapshot_id_after),
                  cancel_requested = 0
              WHERE run_id = ?1",
             params![
@@ -624,6 +749,7 @@ impl Store {
                 result.error_message,
                 result.error_call,
                 serde_json::to_string(&result.traceback)?,
+                result.environment_snapshot_id_after,
             ],
         )?;
         Ok(())
@@ -670,7 +796,8 @@ impl Store {
                 terminal_reason, request_type, operation_class, code, source_path,
                 execution_mode, document_version, workspace_id,
                 state_revision_before, project_revision_before,
-                state_revision_after, project_revision_after, error_message
+                state_revision_after, project_revision_after,
+                environment_snapshot_id, environment_snapshot_id_after, error_message
              FROM runs
              ORDER BY started_at DESC
              LIMIT ?1",
@@ -695,8 +822,10 @@ impl Store {
                 project_revision_before: row.get(15)?,
                 state_revision_after: row.get(16)?,
                 project_revision_after: row.get(17)?,
+                environment_snapshot_id: row.get(18)?,
+                environment_snapshot_id_after: row.get(19)?,
                 code_preview: code_preview(&code),
-                error_message: row.get(18)?,
+                error_message: row.get(20)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -745,6 +874,7 @@ impl Store {
                     source_path, execution_mode, document_version, workspace_id,
                     state_revision_before, project_revision_before,
                     state_revision_after, project_revision_after,
+                    environment_snapshot_id, environment_snapshot_id_after,
                     stdout, value_text, messages_json, warnings_json,
                     error_message, error_call, traceback_json
                  FROM runs
@@ -1122,6 +1252,23 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn recover_incomplete_environment_operations(&mut self) -> Result<usize, StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE environment_operation_requests
+             SET status = CASE
+                    WHEN status = 'requested' THEN 'stale'
+                    ELSE 'interrupted'
+                 END,
+                 decision = COALESCE(decision, 'cancel'),
+                 reason = COALESCE(reason, 'Environment operation interrupted by desktop restart'),
+                 completed_at = COALESCE(completed_at, ?1),
+                 terminal_outcome = COALESCE(terminal_outcome, 'desktop_restart')
+             WHERE status IN ('requested', 'approved', 'running')",
+            [Utc::now().to_rfc3339()],
+        )?;
+        Ok(changed)
+    }
+
     pub fn create_plot_artifact(&mut self, draft: &PlotArtifactDraft) -> Result<(), StoreError> {
         self.connection.execute(
             "INSERT INTO plot_artifacts(
@@ -1148,6 +1295,193 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn record_environment_snapshot(
+        &mut self,
+        draft: &EnvironmentSnapshotDraft,
+    ) -> Result<(), StoreError> {
+        let now = Utc::now().to_rfc3339();
+        self.connection.execute(
+            "INSERT INTO environment_snapshots(
+                snapshot_id, project_root, canonical_json, first_captured_at, last_captured_at
+             ) VALUES(
+                ?1, ?2, ?3, ?4, ?4
+             )
+             ON CONFLICT(snapshot_id) DO UPDATE SET
+                last_captured_at = excluded.last_captured_at",
+            params![
+                draft.snapshot_id,
+                draft.project_root,
+                draft.canonical_json,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_environment_snapshot(
+        &self,
+        snapshot_id: &str,
+    ) -> Result<Option<EnvironmentSnapshotRecord>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    snapshot_id, project_root, canonical_json, first_captured_at, last_captured_at
+                 FROM environment_snapshots
+                 WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| {
+                    Ok(EnvironmentSnapshotRecord {
+                        snapshot_id: row.get(0)?,
+                        project_root: row.get(1)?,
+                        canonical_json: row.get(2)?,
+                        first_captured_at: row.get(3)?,
+                        last_captured_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
+    pub fn create_environment_operation_request(
+        &mut self,
+        draft: &EnvironmentOperationRequestDraft,
+    ) -> Result<(), StoreError> {
+        self.connection.execute(
+            "INSERT INTO environment_operation_requests(
+                request_id, turn_id, source, request_name, status, decision, reason,
+                project_root, arguments_json, preview_json, preview_sha256, workspace_id,
+                state_revision, project_revision, before_snapshot_id, run_id, requested_at,
+                responded_at, completed_at, terminal_outcome
+             ) VALUES(
+                ?1, ?2, ?3, ?4, 'requested', NULL, NULL, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                NULL, ?13, NULL, NULL, NULL
+             )",
+            params![
+                draft.request_id,
+                draft.turn_id,
+                draft.source,
+                draft.request_name,
+                draft.project_root,
+                draft.arguments_json,
+                draft.preview_json,
+                draft.preview_sha256,
+                draft.workspace_id,
+                draft.state_revision,
+                draft.project_revision,
+                draft.before_snapshot_id,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn decide_environment_operation_request(
+        &mut self,
+        request_id: &str,
+        record: &EnvironmentOperationDecisionRecord,
+    ) -> Result<usize, StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE environment_operation_requests
+             SET status = ?2,
+                 decision = ?3,
+                 reason = ?4,
+                 responded_at = ?5
+             WHERE request_id = ?1",
+            params![
+                request_id,
+                record.status,
+                record.decision,
+                record.reason,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(changed)
+    }
+
+    pub fn start_environment_operation_request(
+        &mut self,
+        request_id: &str,
+        run_id: Option<&str>,
+    ) -> Result<usize, StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE environment_operation_requests
+             SET status = 'running',
+                 run_id = ?2
+             WHERE request_id = ?1",
+            params![request_id, run_id],
+        )?;
+        Ok(changed)
+    }
+
+    pub fn finish_environment_operation_request(
+        &mut self,
+        finish: &EnvironmentOperationFinish,
+    ) -> Result<usize, StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE environment_operation_requests
+             SET status = ?2,
+                 run_id = COALESCE(?3, run_id),
+                 terminal_outcome = ?4,
+                 reason = COALESCE(?5, reason),
+                 completed_at = ?6
+             WHERE request_id = ?1",
+            params![
+                finish.request_id,
+                finish.status,
+                finish.run_id,
+                finish.terminal_outcome,
+                finish.reason,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(changed)
+    }
+
+    pub fn get_environment_operation_request(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<EnvironmentOperationRequestSummary>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    request_id, turn_id, source, request_name, status, decision, reason,
+                    project_root, arguments_json, preview_json, preview_sha256, workspace_id,
+                    state_revision, project_revision, before_snapshot_id, run_id, requested_at,
+                    responded_at, completed_at, terminal_outcome
+                 FROM environment_operation_requests
+                 WHERE request_id = ?1",
+                [request_id],
+                decode_environment_operation_request,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
+    pub fn list_environment_operation_requests(
+        &self,
+        limit: Option<usize>,
+        status: Option<&str>,
+    ) -> Result<Vec<EnvironmentOperationRequestSummary>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT
+                request_id, turn_id, source, request_name, status, decision, reason,
+                project_root, arguments_json, preview_json, preview_sha256, workspace_id,
+                state_revision, project_revision, before_snapshot_id, run_id, requested_at,
+                responded_at, completed_at, terminal_outcome
+             FROM environment_operation_requests
+             WHERE (?2 IS NULL OR status = ?2)
+             ORDER BY requested_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map(
+            params![limit.unwrap_or(DEFAULT_LIMIT) as i64, status],
+            decode_environment_operation_request,
+        )?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::from)
     }
 
     pub fn set_project_root(&mut self, root: Option<&str>) -> Result<(), StoreError> {
@@ -1274,9 +1608,9 @@ fn ensure_column(
 }
 
 fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
-    let messages: String = row.get(21)?;
-    let warnings: String = row.get(22)?;
-    let traceback: String = row.get(25)?;
+    let messages: String = row.get(23)?;
+    let warnings: String = row.get(24)?;
+    let traceback: String = row.get(27)?;
     Ok(RunDetail {
         run_id: row.get(0)?,
         parent_run_id: row.get(1)?,
@@ -1297,12 +1631,14 @@ fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
         project_revision_before: row.get(16)?,
         state_revision_after: row.get(17)?,
         project_revision_after: row.get(18)?,
-        stdout: row.get(19)?,
-        value_text: row.get(20)?,
+        environment_snapshot_id: row.get(19)?,
+        environment_snapshot_id_after: row.get(20)?,
+        stdout: row.get(21)?,
+        value_text: row.get(22)?,
         messages: decode_string_list(&messages).map_err(sqlite_function_error)?,
         warnings: decode_string_list(&warnings).map_err(sqlite_function_error)?,
-        error_message: row.get(23)?,
-        error_call: row.get(24)?,
+        error_message: row.get(25)?,
+        error_call: row.get(26)?,
         traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
     })
 }
@@ -1361,6 +1697,33 @@ fn decode_approval_request(row: &Row<'_>) -> rusqlite::Result<ApprovalRequestSum
         requested_at: row.get(12)?,
         responded_at: row.get(13)?,
         continuation_outcome: row.get(14)?,
+    })
+}
+
+fn decode_environment_operation_request(
+    row: &Row<'_>,
+) -> rusqlite::Result<EnvironmentOperationRequestSummary> {
+    Ok(EnvironmentOperationRequestSummary {
+        request_id: row.get(0)?,
+        turn_id: row.get(1)?,
+        source: row.get(2)?,
+        request_name: row.get(3)?,
+        status: row.get(4)?,
+        decision: row.get(5)?,
+        reason: row.get(6)?,
+        project_root: row.get(7)?,
+        arguments_json: row.get(8)?,
+        preview_json: row.get(9)?,
+        preview_sha256: row.get(10)?,
+        workspace_id: row.get(11)?,
+        state_revision: row.get(12)?,
+        project_revision: row.get(13)?,
+        before_snapshot_id: row.get(14)?,
+        run_id: row.get(15)?,
+        requested_at: row.get(16)?,
+        responded_at: row.get(17)?,
+        completed_at: row.get(18)?,
+        terminal_outcome: row.get(19)?,
     })
 }
 
@@ -1442,6 +1805,7 @@ mod tests {
                 workspace_id: "ws_test".to_string(),
                 state_revision_before: 1,
                 project_revision_before: 0,
+                environment_snapshot_id: Some("env_before".to_string()),
             })
             .unwrap();
         store.update_run_status("run_1", "running", None).unwrap();
@@ -1460,6 +1824,7 @@ mod tests {
                 error_message: Some("boom".to_string()),
                 error_call: Some("stop(\"boom\")".to_string()),
                 traceback: vec!["stop(\"boom\")".to_string()],
+                environment_snapshot_id_after: Some("env_after".to_string()),
             })
             .unwrap();
 
@@ -1473,8 +1838,90 @@ mod tests {
         assert_eq!(problems[0].message, "boom");
 
         let detail = store.get_run_detail("run_1").unwrap().unwrap();
+        assert_eq!(
+            detail.environment_snapshot_id.as_deref(),
+            Some("env_before")
+        );
+        assert_eq!(
+            detail.environment_snapshot_id_after.as_deref(),
+            Some("env_after")
+        );
         assert_eq!(detail.messages, vec!["hello".to_string()]);
         assert_eq!(detail.traceback, vec!["stop(\"boom\")".to_string()]);
+    }
+
+    #[test]
+    fn deduplicates_environment_snapshots_by_content_id() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        let draft = EnvironmentSnapshotDraft {
+            snapshot_id: "env_same".to_string(),
+            project_root: "D:/Rho/project".to_string(),
+            canonical_json: "{\"project_root\":\"D:/Rho/project\"}".to_string(),
+        };
+
+        store.record_environment_snapshot(&draft).unwrap();
+        let first = store.get_environment_snapshot("env_same").unwrap().unwrap();
+        store.record_environment_snapshot(&draft).unwrap();
+        let second = store.get_environment_snapshot("env_same").unwrap().unwrap();
+
+        assert_eq!(first.snapshot_id, second.snapshot_id);
+        assert_eq!(first.canonical_json, second.canonical_json);
+        assert_eq!(first.first_captured_at, second.first_captured_at);
+    }
+
+    #[test]
+    fn persists_environment_operation_requests() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        store
+            .create_environment_operation_request(&EnvironmentOperationRequestDraft {
+                request_id: "env_req_1".to_string(),
+                turn_id: None,
+                source: "user".to_string(),
+                request_name: "environment.snapshot".to_string(),
+                project_root: "D:/Rho/project".to_string(),
+                arguments_json: "{\"operation\":\"snapshot\"}".to_string(),
+                preview_json: "{\"operation\":\"snapshot\",\"diff\":{\"values\":[]}}".to_string(),
+                preview_sha256: "preview_hash".to_string(),
+                workspace_id: "ws_test".to_string(),
+                state_revision: 7,
+                project_revision: 3,
+                before_snapshot_id: Some("env_before".to_string()),
+            })
+            .unwrap();
+        store
+            .decide_environment_operation_request(
+                "env_req_1",
+                &EnvironmentOperationDecisionRecord {
+                    decision: "approve".to_string(),
+                    status: "approved".to_string(),
+                    reason: Some("looks good".to_string()),
+                },
+            )
+            .unwrap();
+        store
+            .start_environment_operation_request("env_req_1", Some("run_env_1"))
+            .unwrap();
+        store
+            .finish_environment_operation_request(&EnvironmentOperationFinish {
+                request_id: "env_req_1".to_string(),
+                status: "completed".to_string(),
+                run_id: Some("run_env_1".to_string()),
+                terminal_outcome: Some("lockfile_updated".to_string()),
+                reason: None,
+            })
+            .unwrap();
+
+        let detail = store
+            .get_environment_operation_request("env_req_1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(detail.status, "completed");
+        assert_eq!(detail.decision.as_deref(), Some("approve"));
+        assert_eq!(detail.run_id.as_deref(), Some("run_env_1"));
+        assert_eq!(detail.terminal_outcome.as_deref(), Some("lockfile_updated"));
+        assert_eq!(detail.before_snapshot_id.as_deref(), Some("env_before"));
     }
 
     #[test]
@@ -1496,6 +1943,7 @@ mod tests {
                 workspace_id: "ws_test".to_string(),
                 state_revision_before: 0,
                 project_revision_before: 0,
+                environment_snapshot_id: None,
             })
             .unwrap();
         store.update_run_status("run_1", "running", None).unwrap();
