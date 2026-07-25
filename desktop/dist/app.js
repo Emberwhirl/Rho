@@ -10,6 +10,7 @@ const state = {
   startupBusy: false,
   startupView: null,
   startupPrepared: false,
+  product: { appInfo: null, updateResult: null, updateBusy: false, dialog: null, returnFocus: null },
   busy: false,
   agentMode: "ask",
   actAutoApprove: false,
@@ -687,6 +688,34 @@ async function invoke(command, args = {}) {
 
 async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
+  if (command === "app_info") {
+    return {
+      version: "0.2.0-dev.12",
+      channel: "development",
+      commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
+      platform: "windows-x86_64",
+      website_url: "https://yulab-smu.top/Rho/",
+      source_url: "https://github.com/YuLab-SMU/Rho",
+      runtime: {
+        rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+        r_version: "R version 4.6.0",
+        agent_available: true,
+        aisdk_version: "1.5.0",
+      },
+    };
+  }
+  if (command === "check_for_updates") {
+    return {
+      status: "up_to_date",
+      channel: "development",
+      installed_version: "0.2.0-dev.12",
+      available_version: "0.2.0-dev.12",
+      published_at: "2026-07-22T14:45:23Z",
+      summary: "Rho is current for the development channel.",
+      release_page_url: "https://yulab-smu.top/Rho/",
+    };
+  }
+  if (command === "open_rho_website") return null;
   if (["startup_bootstrap", "startup_choose_rscript", "startup_status"].includes(command)) {
     return {
       phase: "runtime_ready",
@@ -4536,6 +4565,8 @@ function runWorkbenchMenuCommand(command) {
     restart: () => $("#restartButton").click(),
     "show-agent": () => applyWorkbenchLayout("agent"),
     "show-environment": () => applyWorkbenchLayout("analyze"),
+    "check-updates": () => openUpdateDialog(),
+    "about-rho": () => openAboutDialog(),
     "render-document": () => {
       const button = $("#renderDocumentButton");
       if (button.disabled) {
@@ -4546,6 +4577,160 @@ function runWorkbenchMenuCommand(command) {
     },
   };
   actions[command]?.();
+}
+
+function productDialogElements(kind) {
+  const dialog = kind === "about" ? $("#aboutDialog") : $("#updateDialog");
+  return { dialog, surface: dialog.querySelector(".product-dialog-surface") };
+}
+
+function openProductDialog(kind) {
+  if (state.product.dialog && state.product.dialog !== kind) closeProductDialog(state.product.dialog, false);
+  state.product.returnFocus = document.activeElement;
+  state.product.dialog = kind;
+  const { dialog, surface } = productDialogElements(kind);
+  dialog.classList.remove("hidden");
+  surface.focus();
+}
+
+function closeProductDialog(kind = state.product.dialog, restoreFocus = true) {
+  if (!kind) return;
+  productDialogElements(kind).dialog.classList.add("hidden");
+  state.product.dialog = null;
+  if (restoreFocus && state.product.returnFocus?.focus) state.product.returnFocus.focus();
+}
+
+function setDefinitionList(element, entries) {
+  element.replaceChildren();
+  for (const [term, description] of entries) {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = term;
+    dd.textContent = description || "Unavailable";
+    element.append(dt, dd);
+  }
+}
+
+async function loadAppInfo() {
+  if (!state.product.appInfo) state.product.appInfo = await invoke("app_info");
+  return state.product.appInfo;
+}
+
+function appDiagnostics(info) {
+  const runtime = info.runtime || {};
+  const diagnosticRscript = String(runtime.rscript || "Not started")
+    .replace(/([A-Za-z]:[\\/]+Users[\\/]+)[^\\/]+/i, "$1<user>");
+  return [
+    `Rho: ${info.version}`,
+    `Channel: ${info.channel}`,
+    `Build: ${info.commit || "unknown"}`,
+    `Platform: ${info.platform}`,
+    `R: ${runtime.r_version || "Not started"}`,
+    `Rscript: ${diagnosticRscript}`,
+    `Agent runtime: ${runtime.agent_available == null ? "Not started" : runtime.agent_available ? "available" : "unavailable"}`,
+    `aisdk: ${runtime.aisdk_version || "Unavailable"}`,
+  ].join("\n");
+}
+
+async function openAboutDialog() {
+  openProductDialog("about");
+  $("#aboutVersion").textContent = "Rho";
+  $("#aboutChannel").textContent = "loading";
+  setDefinitionList($("#aboutDetails"), [["Build", "Loading..."]]);
+  try {
+    const info = await loadAppInfo();
+    const runtime = info.runtime || {};
+    $("#aboutVersion").textContent = `Rho ${info.version}`;
+    $("#aboutChannel").textContent = info.channel;
+    setDefinitionList($("#aboutDetails"), [
+      ["Build", info.commit === "unknown" ? "unknown" : info.commit.slice(0, 12)],
+      ["Platform", info.platform],
+      ["R", runtime.r_version || "Not started"],
+      ["Rscript", runtime.rscript || "Not started"],
+      ["Agent runtime", runtime.agent_available == null ? "Not started" : runtime.agent_available ? "Available" : "Unavailable"],
+      ["aisdk", runtime.aisdk_version || "Unavailable"],
+    ]);
+  } catch (error) {
+    setDefinitionList($("#aboutDetails"), [["Application information", String(error)]]);
+  }
+}
+
+function updateFailureMessage(error) {
+  const message = String(error);
+  if (message.includes("UPDATE_HTTP")) return "The update service returned an unexpected response.";
+  if (message.includes("UPDATE_INVALID")) return "The update service returned invalid release information.";
+  return "Rho could not reach the update service. Check your connection or proxy and try again.";
+}
+
+function renderUpdateResult(result) {
+  state.product.updateResult = result;
+  const available = result.status === "update_available";
+  const current = result.status === "up_to_date";
+  const title = available ? `Rho ${result.available_version} is available` : current ? "Rho is up to date" : "This build is newer than the update feed";
+  $("#updateStatusIcon").className = "update-status-icon";
+  $("#updateStatusIcon").textContent = available ? "!" : "OK";
+  $("#updateStatusTitle").textContent = title;
+  $("#updateStatusMessage").textContent = available
+    ? result.summary
+    : current
+      ? `Rho ${result.installed_version} is current for the ${result.channel} channel.`
+      : `Rho ${result.installed_version} is newer than ${result.available_version}, the latest version in the ${result.channel} feed.`;
+  $("#updateVersions").textContent = `Installed ${result.installed_version} · Published ${result.available_version} · ${new Date(result.published_at).toLocaleDateString()}`;
+  $("#updateVersions").classList.remove("hidden");
+  $("#updateRetry").classList.add("hidden");
+  $("#updateView").classList.toggle("hidden", !available);
+  $("#updateDone").disabled = false;
+}
+
+function renderUpdateFailure(error) {
+  state.product.updateResult = null;
+  $("#updateStatusIcon").className = "update-status-icon error";
+  $("#updateStatusIcon").textContent = "!";
+  $("#updateStatusTitle").textContent = "Could not check for updates";
+  $("#updateStatusMessage").textContent = updateFailureMessage(error);
+  $("#updateVersions").classList.add("hidden");
+  $("#updateRetry").classList.remove("hidden");
+  $("#updateView").classList.add("hidden");
+  $("#updateDone").disabled = false;
+}
+
+async function checkForUpdates({ background = false } = {}) {
+  if (state.product.updateBusy) return;
+  state.product.updateBusy = true;
+  if (!background) {
+    openProductDialog("update");
+    $("#updateStatusIcon").className = "update-status-icon";
+    $("#updateStatusIcon").textContent = "...";
+    $("#updateStatusTitle").textContent = "Checking for updates...";
+    $("#updateStatusMessage").textContent = "Contacting the Rho update service.";
+    $("#updateVersions").classList.add("hidden");
+    $("#updateRetry").classList.add("hidden");
+    $("#updateView").classList.add("hidden");
+    $("#updateDone").disabled = true;
+  }
+  localStorage.setItem("rho.update.lastCheck", String(Date.now()));
+  try {
+    const result = await invoke("check_for_updates");
+    if (!background) renderUpdateResult(result);
+    if (background && result.status === "update_available" && localStorage.getItem("rho.update.dismissed") !== result.available_version) {
+      actionToast(`Rho ${result.available_version} is available.`, "View Update", async () => {
+        await invoke("open_rho_website", { url: result.release_page_url });
+      }, () => localStorage.setItem("rho.update.dismissed", result.available_version));
+    }
+  } catch (error) {
+    if (!background) renderUpdateFailure(error);
+  } finally {
+    state.product.updateBusy = false;
+  }
+}
+
+function openUpdateDialog() {
+  checkForUpdates();
+}
+
+function maybeCheckForUpdates() {
+  const lastCheck = Number(localStorage.getItem("rho.update.lastCheck")) || 0;
+  if (Date.now() - lastCheck >= 24 * 60 * 60 * 1000) setTimeout(() => checkForUpdates({ background: true }), 1500);
 }
 
 const panelDefaults = {
@@ -4764,6 +4949,35 @@ function toast(message, error = false) {
   element.textContent = message;
   $("#toastRegion").append(element);
   setTimeout(() => element.remove(), 4500);
+}
+
+function actionToast(message, label, action, dismiss = null) {
+  const element = document.createElement("div");
+  element.className = "toast";
+  const text = document.createElement("div");
+  text.textContent = message;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "toast-action";
+  button.textContent = label;
+  button.addEventListener("click", async () => {
+    try { await action(); } catch (error) { toast(String(error), true); }
+    element.remove();
+  });
+  element.append(text, button);
+  if (dismiss) {
+    const dismissButton = document.createElement("button");
+    dismissButton.type = "button";
+    dismissButton.className = "toast-action secondary";
+    dismissButton.textContent = "Dismiss";
+    dismissButton.addEventListener("click", () => {
+      dismiss();
+      element.remove();
+    });
+    element.append(dismissButton);
+  }
+  $("#toastRegion").append(element);
+  setTimeout(() => element.remove(), 12000);
 }
 
 async function listenForProjectChanges() {
@@ -4987,6 +5201,7 @@ async function finishWorkbenchStartup(startupView) {
     setKernelStatus("idle", "R idle");
     addConsole("SYSTEM", `${status.r_version} · Ark PID ${status.kernel_pid}`);
     revealWorkbench();
+    maybeCheckForUpdates();
     await loadAgentLlmSettings();
     const response = await invoke("project_restore_session");
     if (response.status === "ready") {
@@ -5199,6 +5414,27 @@ $("#agentLlmClose").addEventListener("click", closeAgentLlmDialog);
 $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
+$("#aboutClose").addEventListener("click", () => closeProductDialog("about"));
+$("#updateClose").addEventListener("click", () => closeProductDialog("update"));
+$("#updateDone").addEventListener("click", () => closeProductDialog("update"));
+$$('[data-product-dialog-close]').forEach((scrim) => scrim.addEventListener("click", () => closeProductDialog(scrim.dataset.productDialogClose)));
+$("#aboutCopyDiagnostics").addEventListener("click", async () => {
+  try {
+    await copyText(appDiagnostics(await loadAppInfo()));
+    toast("Copied Rho diagnostics.");
+  } catch (error) {
+    toast(`Could not copy diagnostics: ${error}`, true);
+  }
+});
+$("#aboutWebsite").addEventListener("click", async () => invoke("open_rho_website", { url: (await loadAppInfo()).website_url }));
+$("#aboutSource").addEventListener("click", async () => invoke("open_rho_website", { url: (await loadAppInfo()).source_url }));
+$("#updateRetry").addEventListener("click", () => checkForUpdates());
+$("#updateView").addEventListener("click", async () => {
+  const result = state.product.updateResult;
+  if (!result) return;
+  localStorage.setItem("rho.update.dismissed", result.available_version);
+  await invoke("open_rho_website", { url: result.release_page_url });
+});
 $("#agentLlmAddProvider").addEventListener("click", clearAgentProviderForm);
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
 $("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
@@ -5395,11 +5631,27 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab" && state.product.dialog) {
+    const { surface } = productDialogElements(state.product.dialog);
+    const focusable = Array.from(surface.querySelectorAll('button:not([disabled]):not(.hidden), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (focusable.length) {
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
   if (event.key === "Escape") {
     closeWorkbenchMenus();
     hideAgentFileMentions();
     closeAgentModelSelector();
     closeAgentLlmDialog();
+    closeProductDialog();
     clearAgentEditHighlight();
   }
 });

@@ -31,6 +31,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: windows-manual-publish-${{ inputs.release_tag }}
@@ -47,6 +49,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
+
+      - name: Record checked-out build identity
+        shell: pwsh
+        run: |
+          $commit = (& git rev-parse HEAD).Trim()
+          if (-not $commit) {
+            throw "Could not resolve the checked-out build commit."
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_BUILD_COMMIT=$commit"
 
       - name: Configure hosted toolchain environment
         shell: pwsh
@@ -246,3 +257,82 @@ jobs:
                 },
               });
             }
+
+      - name: Collect validated release records for Pages
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("fs");
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const records = [];
+            for (const release of releases.filter((item) => !item.draft)) {
+              const evidenceAsset = release.assets.find((asset) => asset.name === "rho-0.2-release.json");
+              if (!evidenceAsset) continue;
+              const response = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: evidenceAsset.id,
+                headers: { accept: "application/octet-stream" },
+              });
+              const evidence = JSON.parse(Buffer.from(response.data).toString("utf8"));
+              records.push({
+                tag_name: release.tag_name,
+                draft: release.draft,
+                prerelease: release.prerelease,
+                published_at: release.published_at,
+                html_url: release.html_url,
+                summary: String(release.body || "").split("\n").find((line) => line.trim()) || `Rho ${release.tag_name.replace(/^v/, "")} is available.`,
+                assets: release.assets.map((asset) => ({
+                  name: asset.name,
+                  size: asset.size,
+                  browser_download_url: asset.browser_download_url,
+                })),
+                evidence,
+              });
+            }
+            fs.writeFileSync("target/releases-for-pages.json", JSON.stringify(records, null, 2));
+
+      - name: Generate and test Rho update site
+        shell: pwsh
+        run: |
+          node scripts/generate-update-site.mjs --test true
+          node scripts/generate-update-site.mjs --input target/releases-for-pages.json --output target/pages
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Rho update site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/pages
+
+  deploy-pages:
+    name: Deploy Rho update site
+    needs: publish-windows
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Verify deployed update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          development_url="https://yulab-smu.top/Rho/updates/development.json"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error "$development_url" -o development.json; then
+              break
+            fi
+            sleep 10
+          done
+          test -s development.json
+          node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("development.json","utf8")); if(value.schema_version!==1 || value.channel!=="development" || !value.version || !/^[0-9a-f]{64}$/.test(value.artifacts.windows_x86_64.sha256)) process.exit(1)'

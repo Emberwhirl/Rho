@@ -43,6 +43,7 @@ changes.
 - Windows build contract: [`implementation/implemented-windows-build-environment.md`](implementation/implemented-windows-build-environment.md)
 - Current release gates: [`release/active-0.2-release-checklist.md`](release/active-0.2-release-checklist.md)
 - `0.2.0` hardening contract: [`release/active-0.2.0-release-hardening-spec.md`](release/active-0.2.0-release-hardening-spec.md)
+- Active About and update-check V1: [`design/active-2026-07-25-about-and-update-check-design.md`](design/active-2026-07-25-about-and-update-check-design.md)
 - Implemented Agent work handoff: [`plans/implemented-0.2x-agent-handoff.md`](plans/implemented-0.2x-agent-handoff.md)
 
 Add new documents to the category that describes their purpose. Prefer a dated

@@ -69,6 +69,14 @@
               <button type="button" role="menuitem" data-menu-command="render-document">Render Active Document</button>
             </div>
           </div>
+          <div class="menu-item">
+            <button type="button" data-menu-trigger="help" aria-haspopup="menu" aria-expanded="false">Help</button>
+            <div class="menu-popover" data-menu="help" role="menu" hidden>
+              <button type="button" role="menuitem" data-menu-command="check-updates">Check for Updates...</button>
+              <div class="menu-separator" role="separator"></div>
+              <button type="button" role="menuitem" data-menu-command="about-rho">About Rho</button>
+            </div>
+          </div>
         </nav>
         <button id="projectSwitcher" class="project-switcher" type="button" title="Open project directory">
           <span class="project-dot"></span>
@@ -460,7 +468,45 @@ plot(
         </div>
       </div>
     </div>
+    <div id="aboutDialog" class="product-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="aboutDialogTitle">
+      <div class="product-dialog-scrim" data-product-dialog-close="about"></div>
+      <section class="product-dialog-surface" tabindex="-1">
+        <header class="product-dialog-header">
+          <div><span class="brand-mark">R</span><strong id="aboutDialogTitle">About Rho</strong></div>
+          <button id="aboutClose" class="dialog-close" type="button" title="Close" aria-label="Close About Rho">&times;</button>
+        </header>
+        <div class="about-identity">
+          <strong id="aboutVersion">Rho</strong>
+          <span id="aboutChannel" class="revision-badge">loading</span>
+        </div>
+        <dl id="aboutDetails" class="product-details"></dl>
+        <p class="product-dialog-note">An agent-native scientific workbench for R.</p>
+        <footer class="product-dialog-actions">
+          <button id="aboutWebsite" type="button">Project Website</button>
+          <button id="aboutSource" type="button">Source Repository</button>
+          <button id="aboutCopyDiagnostics" class="primary" type="button">Copy Diagnostics</button>
+        </footer>
+      </section>
+    </div>
+    <div id="updateDialog" class="product-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="updateDialogTitle">
+      <div class="product-dialog-scrim" data-product-dialog-close="update"></div>
+      <section class="product-dialog-surface update-surface" tabindex="-1">
+        <header class="product-dialog-header">
+          <strong id="updateDialogTitle">Check for Updates</strong>
+          <button id="updateClose" class="dialog-close" type="button" title="Close" aria-label="Close update check">&times;</button>
+        </header>
+        <div id="updateStatusIcon" class="update-status-icon" aria-hidden="true">...</div>
+        <strong id="updateStatusTitle">Checking for updates...</strong>
+        <p id="updateStatusMessage" class="product-dialog-note">Contacting the Rho update service.</p>
+        <div id="updateVersions" class="update-versions hidden"></div>
+        <footer class="product-dialog-actions">
+          <button id="updateRetry" class="hidden" type="button">Try Again</button>
+          <button id="updateView" class="primary hidden" type="button">View Update</button>
+          <button id="updateDone" type="button">Close</button>
+        </footer>
+      </section>
+    </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.2.0-dev.11"></script>
+    <script src="app.js?v=0.2.0-dev.12"></script>
   </body>
 </html>

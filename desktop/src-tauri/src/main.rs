@@ -2,6 +2,7 @@
 
 mod agent_llm;
 mod project;
+mod update;
 
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -39,6 +40,8 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock, oneshot};
 use uuid::Uuid;
+
+use update::{ReleaseChannel, SOURCE_URL, UpdateCheckResult, WEBSITE_URL};
 
 const BRIDGE_STATE: &str = include_str!("../../../r/rho.bridge/R/state.R");
 const BRIDGE_EXECUTE: &str = include_str!("../../../r/rho.bridge/R/execute.R");
@@ -100,6 +103,25 @@ struct AgentRuntimeStatus {
     available: bool,
     aisdk_version: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AppRuntimeInfo {
+    rscript: Option<String>,
+    r_version: Option<String>,
+    agent_available: Option<bool>,
+    aisdk_version: Option<String>,
+}
+
+#[derive(Serialize)]
+struct AppInfo {
+    version: String,
+    channel: ReleaseChannel,
+    commit: String,
+    platform: String,
+    website_url: &'static str,
+    source_url: &'static str,
+    runtime: AppRuntimeInfo,
 }
 
 struct RRuntimeProbe {
@@ -219,6 +241,49 @@ fn current_startup_view(state: &AppState) -> StartupView {
 #[tauri::command]
 async fn startup_status(state: State<'_, AppState>) -> Result<StartupView, String> {
     Ok(current_startup_view(&state))
+}
+
+#[tauri::command]
+async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let channel = semver::Version::parse(&version)
+        .map(|value| ReleaseChannel::for_version(&value))
+        .map_err(display_error)?;
+    let runtime = state.config.read().ok().and_then(|config| config.clone());
+    Ok(AppInfo {
+        version,
+        channel,
+        commit: env!("RHO_BUILD_COMMIT").to_string(),
+        platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        website_url: WEBSITE_URL,
+        source_url: SOURCE_URL,
+        runtime: AppRuntimeInfo {
+            rscript: runtime
+                .as_ref()
+                .map(|value| value.rscript.to_string_lossy().into_owned()),
+            r_version: runtime.as_ref().map(|value| value.r_version.clone()),
+            agent_available: runtime.as_ref().map(|value| value.agent_runtime.available),
+            aisdk_version: runtime.and_then(|value| value.agent_runtime.aisdk_version),
+        },
+    })
+}
+
+#[tauri::command]
+async fn check_for_updates() -> Result<UpdateCheckResult, String> {
+    tauri::async_runtime::spawn_blocking(|| update::check_for_updates(env!("CARGO_PKG_VERSION")))
+        .await
+        .map_err(display_error)?
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn open_rho_website(url: String) -> Result<(), String> {
+    update::validate_product_url(&url).map_err(display_error)?;
+    let mut command = Command::new("explorer.exe");
+    command.arg(&url);
+    hide_console_window(&mut command);
+    command.spawn().map_err(display_error)?;
+    Ok(())
 }
 
 async fn bootstrap_runtime(state: &AppState, selected: Option<PathBuf>) -> StartupView {
@@ -2658,6 +2723,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_info,
+            check_for_updates,
+            open_rho_website,
             startup_status,
             startup_bootstrap,
             startup_choose_rscript,

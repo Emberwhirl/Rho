@@ -6,6 +6,16 @@ this file records behavior that is already available in a released build.
 
 ## Unreleased
 
+### Added
+
+- Added Help menu access to About and Check for Updates. About exposes the
+  installed version, build commit and bounded runtime diagnostics, while update
+  checks use channel-specific manifests under `yulab-smu.top/Rho/` and leave
+  installer download and execution under explicit user control.
+- Added deterministic generation and GitHub Pages deployment of the Rho
+  release page and stable/development update manifests, based on validated
+  GitHub Release evidence rather than free-form release text.
+
 ## 0.2.0-dev.12 - 2026-07-22
 
 ### Added
