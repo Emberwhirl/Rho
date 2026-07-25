@@ -97,13 +97,25 @@ Acceptance gate:
 
 Priority: high after M1 is stable.
 
+Implementation contract:
+[`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](../plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md).
+
+The `0.2.x` candidate already provides read-only `renv`/Bioconductor
+diagnostics, bounded object previews, project-scoped plot history and basic
+`.qmd`/`.Rmd` rendering. The `0.3.x` work extends those foundations; it must not
+reimplement them as parallel subsystems.
+
 Deliverables:
 
-- `renv` detection, status, initialize, restore and snapshot workflows.
-- Bioconductor version and package diagnostics.
-- Bounded viewers for data frames and common bioinformatics objects.
-- Plot history, export and provenance links back to code and run records.
-- Quarto `.qmd` and `.Rmd` editing/rendering with structured Problems output.
+- reviewed `renv` status, initialize, restore and snapshot workflows with
+  durable environment-operation evidence;
+- Bioconductor/package drift diagnostics beyond the current version summary;
+- paged bounded viewers for data frames and selected common bioinformatics
+  objects;
+- plot/render/table artifact export and provenance inspection building on the
+  current plot history and render results;
+- reproducibility evidence for existing Quarto `.qmd` and `.Rmd` rendering and
+  structured Problems output;
 - Project-scoped skills and the first `aisdk.bioc` semantic adapters through
   Workspace R probes.
 
