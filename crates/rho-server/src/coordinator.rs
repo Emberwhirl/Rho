@@ -1449,7 +1449,10 @@ fn authorize_agent_workspace_request(
     approved_mutations: &mut HashMap<String, ApprovedMutation>,
 ) -> Result<()> {
     match request_type {
-        "workspace.snapshot" | "workspace.inspect_object" => Ok(()),
+        "workspace.snapshot"
+        | "workspace.inspect_object"
+        | "workspace.inspect_data_object"
+        | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
         | "environment.initialize"
         | "environment.restore"
@@ -2784,6 +2787,62 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
+        "workspace.inspect_data_object" => {
+            let object_name = arguments["object_name"]
+                .as_str()
+                .context("workspace.inspect_data_object requires string argument `object_name`")?;
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_inspect_data_object({}, envir = .GlobalEnv)",
+                    r_string(object_name)?
+                ),
+            ))
+        }
+        "workspace.read_data_view" => {
+            let object_name = arguments["object_name"]
+                .as_str()
+                .context("workspace.read_data_view requires string argument `object_name`")?;
+            let view_token = arguments["view_token"]
+                .as_str()
+                .context("workspace.read_data_view requires string argument `view_token`")?;
+            let view_kind = arguments["view_kind"]
+                .as_str()
+                .context("workspace.read_data_view requires string argument `view_kind`")?;
+            let view_key = arguments["view_key"]
+                .as_str()
+                .context("workspace.read_data_view requires string argument `view_key`")?;
+            let row_offset = arguments
+                .get("row_offset")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let row_limit = arguments
+                .get("row_limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(50);
+            let column_offset = arguments
+                .get("column_offset")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let column_limit = arguments
+                .get("column_limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(20);
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_read_data_view(object_name = {}, view_token = {}, view_kind = {}, view_key = {}, row_offset = {}, row_limit = {}, column_offset = {}, column_limit = {}, envir = .GlobalEnv)",
+                    r_string(object_name)?,
+                    r_string(view_token)?,
+                    r_string(view_kind)?,
+                    r_string(view_key)?,
+                    row_offset,
+                    row_limit,
+                    column_offset,
+                    column_limit
+                ),
+            ))
+        }
         "workspace.render_document" => {
             let path = arguments["path"]
                 .as_str()
@@ -2881,6 +2940,25 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
             .get("name")
             .and_then(Value::as_str)
             .map(|name| format!("inspect {name}"))
+            .unwrap_or_else(|| bridge_expression.to_string()),
+        "workspace.inspect_data_object" => arguments
+            .get("object_name")
+            .and_then(Value::as_str)
+            .map(|name| format!("inspect data {name}"))
+            .unwrap_or_else(|| bridge_expression.to_string()),
+        "workspace.read_data_view" => arguments
+            .get("object_name")
+            .and_then(Value::as_str)
+            .map(|name| {
+                format!(
+                    "read data view {} {}",
+                    name,
+                    arguments
+                        .get("view_kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("view")
+                )
+            })
             .unwrap_or_else(|| bridge_expression.to_string()),
         "environment.initialize" | "environment.restore" | "environment.snapshot" => arguments
             .get("project_root")
@@ -3278,6 +3356,44 @@ mod tests {
             &mut approvals,
         )
         .is_err());
+    }
+
+    #[test]
+    fn bridge_expression_supports_wp2_object_inspection() {
+        let (class, expression) = bridge_expression(
+            "workspace.inspect_data_object",
+            &json!({"object_name": "sce"}),
+        )
+        .unwrap();
+
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(expression.contains("rho_inspect_data_object"));
+        assert!(expression.contains("\"sce\""));
+    }
+
+    #[test]
+    fn bridge_expression_supports_wp2_paged_reads() {
+        let (class, expression) = bridge_expression(
+            "workspace.read_data_view",
+            &json!({
+                "object_name": "sce",
+                "view_token": "sha256:token",
+                "view_kind": "assay",
+                "view_key": "counts",
+                "row_offset": 10,
+                "row_limit": 20,
+                "column_offset": 5,
+                "column_limit": 8
+            }),
+        )
+        .unwrap();
+
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(expression.contains("rho_read_data_view"));
+        assert!(expression.contains("object_name = \"sce\""));
+        assert!(expression.contains("view_kind = \"assay\""));
+        assert!(expression.contains("row_offset = 10"));
+        assert!(expression.contains("column_limit = 8"));
     }
 
     #[test]

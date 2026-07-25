@@ -1030,6 +1030,82 @@ body.resizing-vertical { cursor: col-resize; }
   font: 11px/1.45 "Cascadia Code", Consolas, monospace;
   white-space: pre-wrap;
 }
+.data-viewer {
+  display: grid;
+  gap: 8px;
+}
+.data-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.data-viewer-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.data-viewer-select select {
+  min-width: 160px;
+}
+.data-viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.data-viewer-actions button {
+  min-height: 28px;
+}
+.data-viewer-table-wrap {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fff;
+}
+.data-viewer-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.data-viewer-table th,
+.data-viewer-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #edf0f1;
+  border-right: 1px solid #edf0f1;
+  vertical-align: top;
+  text-align: left;
+}
+.data-viewer-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f6f8f8;
+  font-weight: 600;
+}
+.data-viewer-table th:first-child,
+.data-viewer-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+.data-viewer-table thead th:first-child,
+.data-viewer-table tbody th {
+  background: #f6f8f8;
+}
+.data-viewer-table tbody tr:last-child td,
+.data-viewer-table tbody tr:last-child th {
+  border-bottom: none;
+}
+.data-viewer-table .missing {
+  color: var(--muted);
+  font-style: italic;
+}
 .environment-operation-surface {
   width: min(860px, calc(100vw - 40px));
   display: grid;

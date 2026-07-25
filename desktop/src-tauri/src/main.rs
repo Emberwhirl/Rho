@@ -200,6 +200,31 @@ struct InspectObjectRequest {
 }
 
 #[derive(Deserialize)]
+struct InspectDataObjectRequest {
+    object_name: String,
+}
+
+#[derive(Deserialize)]
+struct ViewerWorkspaceRequest {
+    kernel_instance_id: Option<String>,
+    state_revision: Option<u64>,
+    project_revision: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ReadDataViewRequest {
+    object_name: String,
+    view_token: String,
+    view_kind: String,
+    view_key: String,
+    row_offset: Option<usize>,
+    row_limit: Option<usize>,
+    column_offset: Option<usize>,
+    column_limit: Option<usize>,
+    workspace: ViewerWorkspaceRequest,
+}
+
+#[derive(Deserialize)]
 struct RenderRequest {
     path: String,
     format: Option<String>,
@@ -749,6 +774,77 @@ async fn inspect_object(
     });
     dispatch_workspace_request(
         "workspace.inspect_object",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+fn viewer_expected_workspace(
+    workspace: &ViewerWorkspaceRequest,
+) -> rho_protocol::ExpectedWorkspace {
+    rho_protocol::ExpectedWorkspace {
+        kernel_instance_id: workspace.kernel_instance_id.clone(),
+        state_revision: workspace.state_revision,
+        project_revision: workspace.project_revision,
+    }
+}
+
+#[tauri::command]
+async fn inspect_data_object(
+    request: InspectDataObjectRequest,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "object_name": request.object_name
+        },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.inspect_data_object",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
+async fn read_data_view(
+    request: ReadDataViewRequest,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "object_name": request.object_name,
+            "view_token": request.view_token,
+            "view_kind": request.view_kind,
+            "view_key": request.view_key,
+            "row_offset": request.row_offset.unwrap_or(0),
+            "row_limit": request.row_limit.unwrap_or(50),
+            "column_offset": request.column_offset.unwrap_or(0),
+            "column_limit": request.column_limit.unwrap_or(20)
+        },
+        "expected_workspace": viewer_expected_workspace(&request.workspace)
+    });
+    dispatch_workspace_request(
+        "workspace.read_data_view",
         &payload,
         ExecutionOrigin::System,
         session.as_ref(),
@@ -2715,6 +2811,81 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         &mut store,
     )
     .await?;
+    let viewer_identity = broker.identity().clone();
+    let inspect_data_payload = json!({
+        "arguments": {
+            "object_name": "rho_desktop_smoke"
+        },
+        "expected_workspace": viewer_identity
+    });
+    let inspect_data = dispatch_workspace_request(
+        "workspace.inspect_data_object",
+        &inspect_data_payload,
+        ExecutionOrigin::System,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await?;
+    let view_token = inspect_data["execution"]["view_token"]
+        .as_str()
+        .context("desktop smoke viewer did not return view_token")?
+        .to_string();
+    let page_payload = json!({
+        "arguments": {
+            "object_name": "rho_desktop_smoke",
+            "view_token": view_token,
+            "view_kind": "table",
+            "view_key": "table",
+            "row_offset": 0,
+            "row_limit": 5,
+            "column_offset": 0,
+            "column_limit": 2
+        },
+        "expected_workspace": viewer_identity
+    });
+    let page = dispatch_workspace_request(
+        "workspace.read_data_view",
+        &page_payload,
+        ExecutionOrigin::System,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await?;
+    let page_row_count = page["execution"]["page"]["rows"]
+        .as_array()
+        .map(|rows| rows.len())
+        .unwrap_or_default();
+    ensure!(page_row_count > 0, "desktop smoke data viewer returned no rows");
+    let mutate_payload = json!({
+        "arguments": {
+            "code": "rho_desktop_smoke$z <- rho_desktop_smoke$x + rho_desktop_smoke$y"
+        },
+        "expected_workspace": broker.identity()
+    });
+    let _ = dispatch_workspace_request(
+        "workspace.execute",
+        &mutate_payload,
+        ExecutionOrigin::User,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await?;
+    let stale_page = dispatch_workspace_request(
+        "workspace.read_data_view",
+        &page_payload,
+        ExecutionOrigin::System,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await;
+    ensure!(
+        stale_page.is_err(),
+        "desktop smoke stale data viewer request unexpectedly succeeded"
+    );
     let plot_count = execution["events"]
         .as_array()
         .into_iter()
@@ -2800,6 +2971,8 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             "workspace": context.broker.identity(),
             "plot_count": plot_count,
             "environment_object_found": object_found,
+            "data_view_rows": page_row_count,
+            "stale_view_rejected": true,
             "agent": agent,
             "event_count": context.store.event_count()?,
             "python_required": false
@@ -2891,6 +3064,8 @@ fn main() {
             execute_r,
             snapshot_workspace,
             inspect_object,
+            inspect_data_object,
+            read_data_view,
             render_document,
             request_environment_operation_preview,
             list_environment_operation_requests,

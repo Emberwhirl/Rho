@@ -1,6 +1,7 @@
 const tauriInvoke = window.__TAURI__?.core?.invoke;
 const isDesktop = typeof tauriInvoke === "function";
 const tauriEvent = window.__TAURI__?.event;
+const previewParams = new URLSearchParams(window.location.search);
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -39,6 +40,18 @@ const state = {
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
+  selectedDataObjectDetail: null,
+  selectedDataPage: null,
+  dataViewer: {
+    busy: false,
+    loadingPage: false,
+    rowOffset: 0,
+    rowLimit: 50,
+    columnOffset: 0,
+    columnLimit: 20,
+    workspace: null,
+  },
+  previewScenarioApplied: false,
   objectInspection: null,
   lastRender: null,
   runs: [],
@@ -780,6 +793,95 @@ function mockInspectObject(name) {
   };
 }
 
+function mockInspectDataObject(name) {
+  if (name === "qc") {
+    return {
+      execution: {
+        ok: true,
+        name,
+        class: ["data.frame"],
+        display_kind: "data_frame",
+        dimensions: [12, 3],
+        view_token: `mock-view-${name}-${state.revision.state_revision}`,
+        views: [
+          { kind: "table", key: "table", label: "Table", rows: 12, columns: 3 },
+        ],
+        truncated: false,
+        truncation_reason: null,
+      },
+      workspace: state.revision,
+    };
+  }
+  return {
+    execution: {
+      ok: false,
+      error_code: "unsupported_object_class",
+      message: `Viewer support is not available for \`${name}\`.`,
+      name,
+      classes: ["numeric"],
+    },
+    workspace: state.revision,
+  };
+}
+
+function mockReadDataView(request) {
+  const viewToken = `mock-view-${request.object_name}-${request.workspace?.state_revision ?? state.revision.state_revision}`;
+  if (request.view_token !== viewToken) {
+    return {
+      execution: {
+        ok: false,
+        error_code: "stale_view_token",
+        message: "The selected data view is stale. Reload the object before requesting another page.",
+      },
+      workspace: state.revision,
+    };
+  }
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    row_name: `cell_${index + 1}`,
+    cells: [`S${index + 1}`, String(70000 + index * 231), String(3100 + index * 17)],
+  }));
+  const rowOffset = request.row_offset || 0;
+  const rowLimit = request.row_limit || 50;
+  const columnOffset = request.column_offset || 0;
+  const columnLimit = request.column_limit || 20;
+  const allColumns = [
+    { name: "sample", label: "sample" },
+    { name: "reads", label: "reads" },
+    { name: "detected", label: "detected" },
+  ];
+  const columns = allColumns.slice(columnOffset, columnOffset + columnLimit);
+  const pageRows = rows.slice(rowOffset, rowOffset + rowLimit).map((row) => ({
+    row_name: row.row_name,
+    cells: row.cells.slice(columnOffset, columnOffset + columnLimit),
+  }));
+  const page = {
+    object_name: request.object_name,
+    class: ["data.frame"],
+    dimensions: [12, 3],
+    view_kind: request.view_kind,
+    view_key: request.view_key,
+    view_token: request.view_token,
+    total_rows: 12,
+    total_columns: 3,
+    row_offset: rowOffset,
+    row_limit: rowLimit,
+    column_offset: columnOffset,
+    column_limit: columnLimit,
+    columns,
+    rows: pageRows,
+    truncated: false,
+    truncation_reason: null,
+    payload_bytes: JSON.stringify(pageRows).length,
+  };
+  return {
+    execution: {
+      ok: true,
+      page,
+    },
+    workspace: state.revision,
+  };
+}
+
 async function invoke(command, args = {}) {
   if (isDesktop) return tauriInvoke(command, args);
   return mockInvoke(command, args);
@@ -902,6 +1004,12 @@ async function mockInvoke(command, args) {
   }
   if (command === "inspect_object") {
     return mockInspectObject(args.request?.name || args.name || "qc");
+  }
+  if (command === "inspect_data_object") {
+    return mockInspectDataObject(args.request?.object_name || args.request?.objectName || "qc");
+  }
+  if (command === "read_data_view") {
+    return mockReadDataView(args.request || {});
   }
   if (command === "execute_r") {
     const request = args.request || {};
@@ -4030,6 +4138,63 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
   }
 }
 
+async function maybeApplyPreviewScenario() {
+  if (state.previewScenarioApplied || isDesktop) return;
+  const scenario = previewParams.get("preview");
+  if (scenario !== "wp2-data-viewer") return;
+  state.previewScenarioApplied = true;
+  applyWorkbenchLayout("analyze");
+  await inspectEnvironmentObject(previewParams.get("object") || "qc");
+  requestAnimationFrame(() => recordPreviewLayoutEvidence());
+}
+
+function rectEvidence(element) {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    right: Math.round(rect.right),
+    bottom: Math.round(rect.bottom),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}
+
+function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+}
+
+function recordPreviewLayoutEvidence() {
+  if (previewParams.get("preview") !== "wp2-data-viewer") return;
+  let target = $("#previewEvidence");
+  if (!target) {
+    target = document.createElement("pre");
+    target.id = "previewEvidence";
+    target.hidden = true;
+    document.body.append(target);
+  }
+  const search = rectEvidence($("#environmentSearch"));
+  const preview = rectEvidence($("#objectPreview"));
+  const viewer = rectEvidence($("#dataViewer"));
+  const actions = rectEvidence($(".data-viewer-actions"));
+  const table = rectEvidence($("#dataViewerTable"));
+  const evidence = {
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+    overlaps: {
+      search_with_preview: rectsOverlap(search, preview),
+      actions_with_table: rectsOverlap(actions, table),
+    },
+    rects: { search, preview, viewer, actions, table },
+  };
+  target.textContent = JSON.stringify(evidence);
+}
+
 function latestEnvironmentOperation() {
   return state.environmentOperations[0] || null;
 }
@@ -4240,22 +4405,262 @@ function previewSummary(detail) {
   return lines.filter((line) => line !== null && line !== undefined).join("\n");
 }
 
+function currentViewerWorkspace() {
+  return state.dataViewer.workspace || {
+    kernel_instance_id: state.revision.kernel_instance_id ?? null,
+    state_revision: state.revision.state_revision ?? null,
+    project_revision: state.revision.project_revision ?? null,
+  };
+}
+
+function selectedDataView(detail = state.selectedDataObjectDetail) {
+  if (!detail?.views?.length) return null;
+  const selected = $("#dataViewerViewSelect")?.value || "";
+  return detail.views.find((view) => `${view.kind}:${view.key}` === selected) || detail.views[0];
+}
+
+function dataViewerWindowMeta(page) {
+  if (!page) return "No bounded page loaded yet.";
+  const rowStart = page.total_rows ? (page.row_offset || 0) + 1 : 0;
+  const rowEnd = Math.min(page.total_rows || 0, (page.row_offset || 0) + (page.rows?.length || 0));
+  const columnStart = page.total_columns ? (page.column_offset || 0) + 1 : 0;
+  const columnEnd = Math.min(page.total_columns || 0, (page.column_offset || 0) + (page.columns?.length || 0));
+  return [
+    `${stringValues(page.class).join("/") || "object"} · ${page.dimensions?.join(" × ") || "shape unknown"}`,
+    `rows ${rowStart}-${rowEnd} of ${page.total_rows || 0}`,
+    `cols ${columnStart}-${columnEnd} of ${page.total_columns || 0}`,
+    `payload ${formatBytes(page.payload_bytes || 0)}`,
+    page.truncated ? `truncated: ${page.truncation_reason || "yes"}` : "truncated: no",
+  ].join(" · ");
+}
+
+function renderDataViewer() {
+  const viewer = $("#dataViewer");
+  const table = $("#dataViewerTable");
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  const detail = state.selectedDataObjectDetail;
+  const page = state.selectedDataPage;
+  const supported = Boolean(detail?.ok && detail?.views?.length);
+
+  viewer.classList.toggle("hidden", !supported);
+  $("#objectPreviewBody").classList.toggle("hidden", supported);
+
+  if (!supported) {
+    $("#dataViewerStatus").textContent = detail?.message || "Select a supported object to open the bounded viewer.";
+    $("#dataViewerMeta").textContent = "";
+    $("#dataViewerViewSelect").replaceChildren();
+    thead.replaceChildren();
+    tbody.replaceChildren();
+    $("#dataViewerExportButton").disabled = true;
+    return;
+  }
+
+  const selectedView = selectedDataView(detail);
+  const selector = $("#dataViewerViewSelect");
+  selector.replaceChildren();
+  for (const view of detail.views) {
+    const option = document.createElement("option");
+    option.value = `${view.kind}:${view.key}`;
+    option.textContent = `${view.label || view.key} · ${view.rows} × ${view.columns}`;
+    option.selected = Boolean(selectedView && view.kind === selectedView.kind && view.key === selectedView.key);
+    selector.append(option);
+  }
+
+  $("#dataViewerStatus").textContent = page
+    ? (page.truncated ? "Showing a bounded partial page." : "Showing a bounded page from Workspace R.")
+    : "Choose a view to load its first bounded page.";
+  $("#dataViewerMeta").textContent = dataViewerWindowMeta(page);
+  $("#dataViewerExportButton").disabled = !page || state.dataViewer.loadingPage;
+
+  const rowPrevDisabled = state.dataViewer.loadingPage || !page || (page.row_offset || 0) <= 0;
+  const rowNextDisabled = state.dataViewer.loadingPage || !page || ((page.row_offset || 0) + (page.rows?.length || 0) >= (page.total_rows || 0));
+  const columnPrevDisabled = state.dataViewer.loadingPage || !page || (page.column_offset || 0) <= 0;
+  const columnNextDisabled = state.dataViewer.loadingPage || !page || ((page.column_offset || 0) + (page.columns?.length || 0) >= (page.total_columns || 0));
+  $("#dataViewerRowPrev").disabled = rowPrevDisabled;
+  $("#dataViewerRowNext").disabled = rowNextDisabled;
+  $("#dataViewerColumnPrev").disabled = columnPrevDisabled;
+  $("#dataViewerColumnNext").disabled = columnNextDisabled;
+  selector.disabled = state.dataViewer.loadingPage;
+
+  thead.replaceChildren();
+  tbody.replaceChildren();
+  if (!page) return;
+
+  const headerRow = document.createElement("tr");
+  const rowHeader = document.createElement("th");
+  rowHeader.textContent = "#";
+  headerRow.append(rowHeader);
+  for (const column of page.columns || []) {
+    const cell = document.createElement("th");
+    cell.textContent = column.label || column.name || "";
+    headerRow.append(cell);
+  }
+  thead.append(headerRow);
+
+  for (const row of page.rows || []) {
+    const tr = document.createElement("tr");
+    const label = document.createElement("th");
+    label.scope = "row";
+    label.textContent = row.row_name || "";
+    tr.append(label);
+    for (const cellValue of row.cells || []) {
+      const cell = document.createElement("td");
+      if (cellValue === null || cellValue === undefined || cellValue === "") {
+        cell.textContent = "NA";
+        cell.className = "missing";
+      } else {
+        cell.textContent = String(cellValue);
+      }
+      tr.append(cell);
+    }
+    tbody.append(tr);
+  }
+}
+
+function dataViewerDelimitedText(page, delimiter = ",") {
+  if (!page) return "";
+  const quote = (value) => {
+    const text = value === null || value === undefined ? "" : String(value);
+    if (!text.includes("\"") && !text.includes("\n") && !text.includes("\r") && !text.includes(delimiter)) return text;
+    return `"${text.replaceAll("\"", "\"\"")}"`;
+  };
+  const lines = [];
+  lines.push([quote("row_name"), ...(page.columns || []).map((column) => quote(column.label || column.name || ""))].join(delimiter));
+  for (const row of page.rows || []) {
+    lines.push([quote(row.row_name || ""), ...(row.cells || []).map((cell) => quote(cell))].join(delimiter));
+  }
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+async function exportVisibleDataView() {
+  const page = state.selectedDataPage;
+  if (!page) {
+    toast("Load one bounded page before exporting.", true);
+    return;
+  }
+  const view = selectedDataView();
+  const defaultExtension = page.view_kind === "col_data" ? "tsv" : "csv";
+  const defaultPath = `${page.object_name}-${view?.key || page.view_kind}.${defaultExtension}`;
+  const path = window.prompt(
+    "Export the current bounded page to a project-relative .csv or .tsv path.",
+    defaultPath,
+  );
+  if (!path) return;
+  const normalized = String(path).trim().replace(/\\/g, "/");
+  if (!normalized) return;
+  const format = normalized.toLowerCase().endsWith(".tsv")
+    ? "tsv"
+    : normalized.toLowerCase().endsWith(".csv")
+      ? "csv"
+      : null;
+  if (!format) {
+    toast("Export path must end with .csv or .tsv.", true);
+    return;
+  }
+  try {
+    state.project = await invoke("project_create_file", {
+      path: normalized,
+      content: dataViewerDelimitedText(page, format === "tsv" ? "\t" : ","),
+    });
+    renderProjectTree();
+    toast(`Exported the visible page to ${normalized}.`);
+  } catch (error) {
+    toast(String(error), true);
+  }
+}
+
+async function loadDataViewPage(options = {}) {
+  const detail = state.selectedDataObjectDetail;
+  const view = options.view || selectedDataView(detail);
+  if (!detail?.ok || !view) {
+    state.selectedDataPage = null;
+    renderEnvironment();
+    return null;
+  }
+  state.dataViewer.loadingPage = true;
+  if (typeof options.rowOffset === "number") state.dataViewer.rowOffset = Math.max(0, options.rowOffset);
+  if (typeof options.columnOffset === "number") state.dataViewer.columnOffset = Math.max(0, options.columnOffset);
+  renderDataViewer();
+  try {
+    const response = await invoke("read_data_view", {
+      request: {
+        object_name: detail.name,
+        view_token: detail.view_token,
+        view_kind: view.kind,
+        view_key: view.key,
+        row_offset: state.dataViewer.rowOffset,
+        row_limit: state.dataViewer.rowLimit,
+        column_offset: state.dataViewer.columnOffset,
+        column_limit: state.dataViewer.columnLimit,
+        workspace: currentViewerWorkspace(),
+      },
+    });
+    updateIdentity(response.workspace);
+    state.dataViewer.workspace = { ...response.workspace };
+    state.selectedDataPage = response.execution?.page || null;
+    if (response.execution && !response.execution.ok) {
+      state.selectedDataPage = null;
+      state.selectedDataObjectDetail = { ...detail, ok: false, message: response.execution.message, error_code: response.execution.error_code };
+    }
+    renderEnvironment();
+    return state.selectedDataPage;
+  } catch (error) {
+    state.selectedDataPage = null;
+    state.selectedDataObjectDetail = { ...detail, ok: false, message: String(error), error_code: "stale_view_revision" };
+    renderEnvironment();
+    return null;
+  } finally {
+    state.dataViewer.loadingPage = false;
+    renderDataViewer();
+  }
+}
+
 async function inspectEnvironmentObject(name) {
   state.selectedObjectName = name;
-  if (state.selectedObjectDetail?.name === name) {
+  if (state.selectedObjectDetail?.name === name || state.selectedDataObjectDetail?.name === name) {
     renderEnvironment();
-    return state.selectedObjectDetail;
+    return state.selectedDataObjectDetail || state.selectedObjectDetail;
   }
   if (state.objectInspection?.name === name) return state.objectInspection.promise;
-  const promise = invoke("inspect_object", { request: { name } })
+  state.selectedObjectDetail = null;
+  state.selectedDataObjectDetail = null;
+  state.selectedDataPage = null;
+  state.dataViewer.rowOffset = 0;
+  state.dataViewer.columnOffset = 0;
+  state.dataViewer.workspace = null;
+  const promise = invoke("inspect_data_object", { request: { object_name: name } })
     .then((response) => {
       updateIdentity(response.workspace);
-      state.selectedObjectDetail = response.execution || null;
-      renderEnvironment();
-      return state.selectedObjectDetail;
+      state.dataViewer.workspace = { ...response.workspace };
+      state.selectedDataObjectDetail = response.execution || null;
+      if (response.execution?.ok && response.execution?.views?.length) {
+        state.selectedObjectDetail = null;
+        renderEnvironment();
+        return loadDataViewPage({ view: response.execution.views[0], rowOffset: 0, columnOffset: 0 })
+          .then(() => state.selectedDataObjectDetail);
+      }
+      return invoke("inspect_object", { request: { name } }).then((fallback) => {
+        updateIdentity(fallback.workspace);
+        state.selectedObjectDetail = fallback.execution || null;
+        renderEnvironment();
+        return state.selectedObjectDetail;
+      });
+    })
+    .catch((error) => {
+      return invoke("inspect_object", { request: { name } }).then((fallback) => {
+        updateIdentity(fallback.workspace);
+        state.selectedObjectDetail = fallback.execution || null;
+        state.selectedDataObjectDetail = { ok: false, message: String(error), error_code: "viewer_unavailable", name };
+        renderEnvironment();
+        return state.selectedObjectDetail;
+      });
     })
     .catch((error) => {
       toast(String(error), true);
+      state.selectedObjectDetail = null;
+      state.selectedDataObjectDetail = { ok: false, message: String(error), error_code: "viewer_unavailable", name };
+      renderEnvironment();
       return null;
     })
     .finally(() => {
@@ -4372,9 +4777,15 @@ function renderEnvironment() {
     $("#environmentList").append(row);
   }
   $("#objectCount").textContent = String(state.objects.length);
-  $("#objectPreviewTitle").textContent = state.selectedObjectDetail?.name || "Object Preview";
-  $("#objectPreviewMeta").textContent = state.selectedObjectDetail?.preview_kind || "bounded";
-  $("#objectPreviewBody").textContent = previewSummary(state.selectedObjectDetail);
+  const selectedName = state.selectedDataObjectDetail?.name || state.selectedObjectDetail?.name || "Object Preview";
+  $("#objectPreviewTitle").textContent = selectedName;
+  $("#objectPreviewMeta").textContent = state.selectedDataObjectDetail?.display_kind
+    || state.selectedObjectDetail?.preview_kind
+    || "bounded";
+  $("#objectPreviewBody").textContent = state.selectedObjectDetail
+    ? previewSummary(state.selectedObjectDetail)
+    : (state.selectedDataObjectDetail?.message || "Select an object to inspect its bounded summary.");
+  renderDataViewer();
 }
 
 async function renderActiveDocumentFile() {
@@ -5596,6 +6007,7 @@ async function finishWorkbenchStartup(startupView) {
     await loadEnvironmentOperationData();
     await loadAgentData();
     await refreshEnvironment();
+    await maybeApplyPreviewScenario();
     if (isDesktop && tauriEvent?.listen) {
       tauriEvent.listen("rho://agent-turn-updated", async () => {
         await Promise.all([loadAgentData(), loadRunData(), loadEnvironmentOperationData(), refreshEnvironment()]);
@@ -5960,6 +6372,24 @@ $("#environmentSearch").addEventListener("input", renderEnvironment);
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
 $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));
+$("#dataViewerViewSelect").addEventListener("change", () => {
+  state.dataViewer.rowOffset = 0;
+  state.dataViewer.columnOffset = 0;
+  loadDataViewPage({ rowOffset: 0, columnOffset: 0 });
+});
+$("#dataViewerRowPrev").addEventListener("click", () => {
+  loadDataViewPage({ rowOffset: Math.max(0, state.dataViewer.rowOffset - state.dataViewer.rowLimit) });
+});
+$("#dataViewerRowNext").addEventListener("click", () => {
+  loadDataViewPage({ rowOffset: state.dataViewer.rowOffset + state.dataViewer.rowLimit });
+});
+$("#dataViewerColumnPrev").addEventListener("click", () => {
+  loadDataViewPage({ columnOffset: Math.max(0, state.dataViewer.columnOffset - state.dataViewer.columnLimit) });
+});
+$("#dataViewerColumnNext").addEventListener("click", () => {
+  loadDataViewPage({ columnOffset: state.dataViewer.columnOffset + state.dataViewer.columnLimit });
+});
+$("#dataViewerExportButton").addEventListener("click", exportVisibleDataView);
 $("#environmentOperationReviewButton").addEventListener("click", async () => {
   const request = latestEnvironmentOperation();
   if (!request) return;

@@ -697,6 +697,545 @@ rho_bounded_preview <- function(value,
   )
 }
 
+rho_viewer_max_rows <- function() 100L
+rho_viewer_max_columns <- function() 50L
+rho_viewer_max_cell_bytes <- function() 4096L
+rho_viewer_max_payload_bytes <- function() 1024L * 1024L
+
+rho_viewer_error <- function(code, message, ...) {
+  extras <- list(...)
+  output <- c(
+    list(
+      ok = FALSE,
+      error_code = code,
+      message = message
+    ),
+    extras
+  )
+  output
+}
+
+rho_viewer_hex <- function(text) {
+  bytes <- as.integer(charToRaw(enc2utf8(text %||% "")))
+  paste(sprintf("%02x", bytes), collapse = "")
+}
+
+rho_viewer_token <- function(name, classes, dimensions, views) {
+  payload <- list(
+    name = name,
+    classes = as.character(classes %||% character()),
+    dimensions = as.integer(dimensions %||% integer()),
+    views = lapply(views, function(view) {
+      list(
+        kind = view$kind,
+        key = view$key,
+        rows = as.integer(view$rows %||% 0L),
+        columns = as.integer(view$columns %||% 0L)
+      )
+    })
+  )
+  rho_viewer_hex(jsonlite::toJSON(payload, auto_unbox = TRUE, null = "null"))
+}
+
+rho_viewer_missing_dependency <- function(classes) {
+  classes <- as.character(classes %||% character())
+  if ("SingleCellExperiment" %in% classes
+      && !requireNamespace("SingleCellExperiment", quietly = TRUE)) {
+    return("SingleCellExperiment")
+  }
+  if ("SummarizedExperiment" %in% classes
+      && !requireNamespace("SummarizedExperiment", quietly = TRUE)) {
+    return("SummarizedExperiment")
+  }
+  NULL
+}
+
+rho_viewer_dimensions <- function(value) {
+  dimensions <- tryCatch(dim(value), error = function(e) NULL)
+  if (is.null(dimensions)) {
+    return(NULL)
+  }
+  as.integer(dimensions)
+}
+
+rho_viewer_view_descriptor <- function(kind, key, rows, columns, label = NULL) {
+  list(
+    kind = kind,
+    key = key,
+    label = label %||% key,
+    rows = as.integer(rows),
+    columns = as.integer(columns)
+  )
+}
+
+rho_viewer_describe_object <- function(value, name) {
+  classes <- class(value)
+  missing_dependency <- rho_viewer_missing_dependency(classes)
+  if (!is.null(missing_dependency)) {
+    return(rho_viewer_error(
+      "optional_package_unavailable",
+      sprintf("Viewer support for `%s` requires the optional `%s` package.", name, missing_dependency),
+      name = name,
+      classes = classes
+    ))
+  }
+
+  dimensions <- rho_viewer_dimensions(value)
+  display_kind <- NULL
+  views <- NULL
+
+  if (is.data.frame(value)) {
+    display_kind <- "data_frame"
+    views <- list(rho_viewer_view_descriptor(
+      kind = "table",
+      key = "table",
+      rows = nrow(value),
+      columns = ncol(value),
+      label = "Table"
+    ))
+  } else if (is.matrix(value)) {
+    display_kind <- "matrix"
+    views <- list(rho_viewer_view_descriptor(
+      kind = "matrix",
+      key = "matrix",
+      rows = nrow(value),
+      columns = ncol(value),
+      label = "Matrix"
+    ))
+  } else if (requireNamespace("SummarizedExperiment", quietly = TRUE)
+             && methods::is(value, "SummarizedExperiment")) {
+    display_kind <- if (methods::is(value, "SingleCellExperiment")) {
+      "single_cell_experiment"
+    } else {
+      "summarized_experiment"
+    }
+    assay_names <- as.character(SummarizedExperiment::assayNames(value))
+    assay_views <- lapply(assay_names, function(assay_name) {
+      assay <- SummarizedExperiment::assay(value, assay_name, withDimnames = TRUE)
+      rho_viewer_view_descriptor(
+        kind = "assay",
+        key = assay_name,
+        rows = nrow(assay),
+        columns = ncol(assay),
+        label = assay_name
+      )
+    })
+    row_data <- as.data.frame(SummarizedExperiment::rowData(value), stringsAsFactors = FALSE)
+    col_data <- as.data.frame(SummarizedExperiment::colData(value), stringsAsFactors = FALSE)
+    views <- c(
+      assay_views,
+      list(
+        rho_viewer_view_descriptor(
+          kind = "row_data",
+          key = "rowData",
+          rows = nrow(row_data),
+          columns = ncol(row_data),
+          label = "rowData"
+        ),
+        rho_viewer_view_descriptor(
+          kind = "col_data",
+          key = "colData",
+          rows = nrow(col_data),
+          columns = ncol(col_data),
+          label = "colData"
+        )
+      )
+    )
+  } else if (isS4(value)) {
+    return(rho_viewer_error(
+      "unsupported_object_class",
+      sprintf("Viewer support is not available for S4 class `%s`.", paste(classes, collapse = "/")),
+      name = name,
+      classes = classes
+    ))
+  } else {
+    return(rho_viewer_error(
+      "unsupported_object_class",
+      sprintf("Viewer support is not available for class `%s`.", paste(classes, collapse = "/")),
+      name = name,
+      classes = classes
+    ))
+  }
+
+  list(
+    ok = TRUE,
+    name = name,
+    class = classes,
+    display_kind = display_kind,
+    dimensions = dimensions,
+    view_token = rho_viewer_token(name, classes, dimensions, views),
+    views = views,
+    truncated = FALSE,
+    truncation_reason = NULL
+  )
+}
+
+rho_viewer_checked_limit <- function(limit, maximum, label) {
+  limit <- as.integer(limit %||% 0L)
+  if (is.na(limit) || limit < 0L) {
+    stop(sprintf("%s must be a non-negative integer.", label), call. = FALSE)
+  }
+  if (limit > maximum) {
+    structure(
+      list(limit = maximum, label = label),
+      class = "rho_viewer_limit_error"
+    )
+  } else {
+    limit
+  }
+}
+
+rho_viewer_subset_indices <- function(offset, limit, total) {
+  offset <- as.integer(offset %||% 0L)
+  limit <- as.integer(limit %||% 0L)
+  if (is.na(offset) || offset < 0L) {
+    stop("Offsets must be non-negative integers.", call. = FALSE)
+  }
+  if (limit <= 0L || total <= 0L || offset >= total) {
+    return(integer())
+  }
+  start <- offset + 1L
+  end <- min(total, offset + limit)
+  seq.int(start, end)
+}
+
+rho_viewer_column_labels <- function(names, offset = 0L, count = NULL) {
+  values <- as.character(names %||% character())
+  if (!length(values)) {
+    values <- paste0("V", seq_len(as.integer(count %||% 0L)) + as.integer(offset))
+  }
+  lapply(seq_along(values), function(index) {
+    value <- values[[index]]
+    if (!nzchar(value)) {
+      value <- paste0("V", as.integer(offset) + index)
+    }
+    list(
+      name = value,
+      label = bounded_text(value, max_chars = 256L)
+    )
+  })
+}
+
+rho_viewer_cell_text <- function(value) {
+  if (is.null(value) || !length(value)) {
+    return(NULL)
+  }
+  if (is.list(value) && !is.data.frame(value)) {
+    if (length(value) == 1L) {
+      return(rho_viewer_cell_text(value[[1L]]))
+    }
+    return(bounded_text(compact_text(capture.output(str(value, max.level = 1L))), max_chars = rho_viewer_max_cell_bytes()))
+  }
+  if (length(value) > 1L && !is.matrix(value) && !is.data.frame(value)) {
+    return(bounded_text(
+      compact_text(capture.output(str(value, max.level = 1L))),
+      max_chars = rho_viewer_max_cell_bytes()
+    ))
+  }
+  if (is.factor(value) || inherits(value, c("Date", "POSIXt"))) {
+    return(bounded_text(as.character(value[[1L]]), max_chars = rho_viewer_max_cell_bytes()))
+  }
+  if (is.atomic(value)) {
+    scalar <- unclass(value)[[1L]]
+    if (length(scalar) == 1L && is.na(scalar)) {
+      return(NULL)
+    }
+    return(bounded_text(as.character(scalar), max_chars = rho_viewer_max_cell_bytes()))
+  }
+  bounded_text(
+    compact_text(capture.output(str(value, max.level = 1L))),
+    max_chars = rho_viewer_max_cell_bytes()
+  )
+}
+
+rho_viewer_materialize_view <- function(value, view_kind, view_key) {
+  if (view_kind %in% c("table", "matrix")) {
+    if (is.data.frame(value)) {
+      return(list(
+        data = value,
+        row_names = rownames(value),
+        column_names = colnames(value),
+        total_rows = nrow(value),
+        total_columns = ncol(value)
+      ))
+    }
+    if (is.matrix(value)) {
+      return(list(
+        data = value,
+        row_names = rownames(value),
+        column_names = colnames(value),
+        total_rows = nrow(value),
+        total_columns = ncol(value)
+      ))
+    }
+  }
+
+  if (!(requireNamespace("SummarizedExperiment", quietly = TRUE)
+        && methods::is(value, "SummarizedExperiment"))) {
+    stop(sprintf("Unsupported view `%s` for the selected object.", view_kind), call. = FALSE)
+  }
+
+  if (identical(view_kind, "assay")) {
+    assay_names <- as.character(SummarizedExperiment::assayNames(value))
+    if (!(view_key %in% assay_names)) {
+      stop(sprintf("Assay `%s` is not available.", view_key), call. = FALSE)
+    }
+    assay <- SummarizedExperiment::assay(value, view_key, withDimnames = TRUE)
+    return(list(
+      data = assay,
+      row_names = rownames(assay),
+      column_names = colnames(assay),
+      total_rows = nrow(assay),
+      total_columns = ncol(assay)
+    ))
+  }
+
+  if (identical(view_kind, "row_data")) {
+    data <- as.data.frame(SummarizedExperiment::rowData(value), stringsAsFactors = FALSE)
+    return(list(
+      data = data,
+      row_names = rownames(data) %||% rownames(value),
+      column_names = colnames(data),
+      total_rows = nrow(data),
+      total_columns = ncol(data)
+    ))
+  }
+
+  if (identical(view_kind, "col_data")) {
+    data <- as.data.frame(SummarizedExperiment::colData(value), stringsAsFactors = FALSE)
+    return(list(
+      data = data,
+      row_names = rownames(data) %||% colnames(value),
+      column_names = colnames(data),
+      total_rows = nrow(data),
+      total_columns = ncol(data)
+    ))
+  }
+
+  stop(sprintf("Unsupported view `%s` for the selected object.", view_kind), call. = FALSE)
+}
+
+rho_viewer_subset_data <- function(data, row_indices, column_indices) {
+  if (is.data.frame(data)) {
+    return(data[row_indices, column_indices, drop = FALSE])
+  }
+  data[row_indices, column_indices, drop = FALSE]
+}
+
+rho_viewer_rows_payload <- function(data, row_indices, column_indices, row_names) {
+  if (!length(row_indices) || !length(column_indices)) {
+    return(list())
+  }
+  subset <- rho_viewer_subset_data(data, row_indices, column_indices)
+  lapply(seq_along(row_indices), function(index) {
+    row_index <- row_indices[[index]]
+    if (is.data.frame(subset)) {
+      row_values <- lapply(subset[index, , drop = FALSE], function(cell) {
+        rho_viewer_cell_text(cell[[1L]])
+      })
+    } else {
+      row_values <- lapply(seq_along(column_indices), function(column_index) {
+        rho_viewer_cell_text(subset[index, column_index])
+      })
+    }
+    list(
+      row_name = bounded_text((row_names %||% character())[[row_index]] %||% as.character(row_index), max_chars = 256L),
+      cells = row_values
+    )
+  })
+}
+
+rho_viewer_payload_bytes <- function(value) {
+  nchar(
+    jsonlite::toJSON(value, auto_unbox = TRUE, null = "null"),
+    type = "bytes"
+  )
+}
+
+#' Inspect One Supported Data Object for the Paged Viewer
+#' @export
+rho_inspect_data_object <- function(object_name, envir = .GlobalEnv) {
+  stopifnot(is.character(object_name), length(object_name) == 1L, nzchar(object_name))
+  if (!exists(object_name, envir = envir, inherits = FALSE)) {
+    return(rho_viewer_error(
+      "object_not_found",
+      sprintf("Object `%s` does not exist in the workspace.", object_name),
+      name = object_name
+    ))
+  }
+  value <- get(object_name, envir = envir, inherits = FALSE)
+  response <- rho_viewer_describe_object(value, object_name)
+  if (!isTRUE(response$ok)) {
+    return(response)
+  }
+  if (rho_viewer_payload_bytes(response) > rho_viewer_max_payload_bytes()) {
+    response$truncated <- TRUE
+    response$truncation_reason <- "payload_limit"
+  }
+  response
+}
+
+#' Read One Bounded Page from a Supported Data Object View
+#' @export
+rho_read_data_view <- function(object_name,
+                               view_token,
+                               view_kind,
+                               view_key,
+                               row_offset = 0L,
+                               row_limit = 50L,
+                               column_offset = 0L,
+                               column_limit = 20L,
+                               envir = .GlobalEnv) {
+  stopifnot(is.character(object_name), length(object_name) == 1L, nzchar(object_name))
+  stopifnot(is.character(view_token), length(view_token) == 1L, nzchar(view_token))
+  stopifnot(is.character(view_kind), length(view_kind) == 1L, nzchar(view_kind))
+  stopifnot(is.character(view_key), length(view_key) == 1L, nzchar(view_key))
+
+  if (!exists(object_name, envir = envir, inherits = FALSE)) {
+    return(rho_viewer_error(
+      "object_not_found",
+      sprintf("Object `%s` does not exist in the workspace.", object_name),
+      name = object_name
+    ))
+  }
+
+  row_limit_checked <- tryCatch(
+    rho_viewer_checked_limit(row_limit, rho_viewer_max_rows(), "row_limit"),
+    rho_viewer_limit_error = function(error) error
+  )
+  if (inherits(row_limit_checked, "rho_viewer_limit_error")) {
+    return(rho_viewer_error(
+      "page_limit_exceeded",
+      "Requested row limit exceeds the supported maximum.",
+      limit_name = row_limit_checked$label,
+      supported_maximum = row_limit_checked$limit
+    ))
+  }
+  column_limit_checked <- tryCatch(
+    rho_viewer_checked_limit(column_limit, rho_viewer_max_columns(), "column_limit"),
+    rho_viewer_limit_error = function(error) error
+  )
+  if (inherits(column_limit_checked, "rho_viewer_limit_error")) {
+    return(rho_viewer_error(
+      "page_limit_exceeded",
+      "Requested column limit exceeds the supported maximum.",
+      limit_name = column_limit_checked$label,
+      supported_maximum = column_limit_checked$limit
+    ))
+  }
+
+  value <- get(object_name, envir = envir, inherits = FALSE)
+  descriptor <- rho_viewer_describe_object(value, object_name)
+  if (!isTRUE(descriptor$ok)) {
+    return(descriptor)
+  }
+  if (!identical(descriptor$view_token, view_token)) {
+    return(rho_viewer_error(
+      "stale_view_token",
+      "The selected data view is stale. Reload the object before requesting another page.",
+      object_name = object_name,
+      view_kind = view_kind,
+      view_key = view_key
+    ))
+  }
+
+  view <- Filter(function(item) identical(item$kind, view_kind) && identical(item$key, view_key), descriptor$views)
+  if (!length(view)) {
+    return(rho_viewer_error(
+      "unsupported_view",
+      sprintf("View `%s/%s` is not available for `%s`.", view_kind, view_key, object_name),
+      object_name = object_name,
+      view_kind = view_kind,
+      view_key = view_key
+    ))
+  }
+
+  materialized <- rho_viewer_materialize_view(value, view_kind, view_key)
+  row_indices <- rho_viewer_subset_indices(row_offset, row_limit_checked, materialized$total_rows)
+  column_indices <- rho_viewer_subset_indices(column_offset, column_limit_checked, materialized$total_columns)
+  rows <- list()
+  truncated <- FALSE
+  truncation_reason <- NULL
+  row_names <- materialized$row_names %||% rep.int("", materialized$total_rows)
+  columns <- rho_viewer_column_labels(
+    materialized$column_names[column_indices],
+    offset = as.integer(column_offset),
+    count = length(column_indices)
+  )
+
+  for (index in seq_along(row_indices)) {
+    candidate_rows <- c(
+      rows,
+      rho_viewer_rows_payload(
+        materialized$data,
+        row_indices[[index]],
+        column_indices,
+        row_names
+      )
+    )
+    candidate <- list(
+      ok = TRUE,
+      page = list(
+        object_name = object_name,
+        class = descriptor$class,
+        dimensions = descriptor$dimensions,
+        view_kind = view_kind,
+        view_key = view_key,
+        view_token = descriptor$view_token,
+        total_rows = as.integer(materialized$total_rows),
+        total_columns = as.integer(materialized$total_columns),
+        row_offset = as.integer(row_offset),
+        row_limit = as.integer(row_limit_checked),
+        column_offset = as.integer(column_offset),
+        column_limit = as.integer(column_limit_checked),
+        columns = columns,
+        rows = candidate_rows,
+        truncated = FALSE,
+        truncation_reason = NULL,
+        payload_bytes = 0L
+      )
+    )
+    candidate$page$payload_bytes <- rho_viewer_payload_bytes(candidate)
+    if (candidate$page$payload_bytes > rho_viewer_max_payload_bytes()) {
+      truncated <- TRUE
+      truncation_reason <- "payload_limit"
+      break
+    }
+    rows <- candidate_rows
+  }
+
+  if (!truncated && length(row_indices) < as.integer(row_limit_checked)
+      && (as.integer(row_offset) + length(row_indices)) < materialized$total_rows) {
+    truncated <- TRUE
+    truncation_reason <- "payload_limit"
+  }
+
+  response <- list(
+    ok = TRUE,
+    page = list(
+      object_name = object_name,
+      class = descriptor$class,
+      dimensions = descriptor$dimensions,
+      view_kind = view_kind,
+      view_key = view_key,
+      view_token = descriptor$view_token,
+      total_rows = as.integer(materialized$total_rows),
+      total_columns = as.integer(materialized$total_columns),
+      row_offset = as.integer(row_offset),
+      row_limit = as.integer(row_limit_checked),
+      column_offset = as.integer(column_offset),
+      column_limit = as.integer(column_limit_checked),
+      columns = columns,
+      rows = rows,
+      truncated = truncated,
+      truncation_reason = truncation_reason,
+      payload_bytes = 0L
+    )
+  )
+  response$page$payload_bytes <- rho_viewer_payload_bytes(response)
+  response
+}
+
 #' Return a Bounded Workspace Snapshot
 #' @export
 rho_workspace_snapshot <- function(envir = .GlobalEnv, object_limit = 200L) {
