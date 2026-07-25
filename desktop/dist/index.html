@@ -111,6 +111,8 @@
           <div class="tree-section">OUTPUTS</div>
           <button id="plotsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">▧</span><span>plots</span><span id="plotOutputCount" class="tree-count">0</span></button>
           <div id="plotOutputList" class="plot-output-list"></div>
+          <button id="artifactsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">⎘</span><span>artifacts</span><span id="artifactOutputCount" class="tree-count">0</span></button>
+          <div id="artifactOutputList" class="plot-output-list"></div>
         </div>
         <div id="runsPanel" class="side-content hidden">
           <div class="run-row"><span class="run-state success"></span><span><strong>Workspace started</strong><small>Current session</small></span></div>
@@ -190,6 +192,7 @@ plot(
                 <button type="button" data-plot-scope="history">History</button>
               </div>
               <div class="plot-clear-actions">
+                <button id="plotExportButton" type="button" title="Export selected plot as PNG">Export PNG</button>
                 <button id="clearSessionPlotsButton" type="button" title="Clear session plots">Clear session</button>
                 <button id="clearProjectPlotsButton" type="button" title="Clear current project plots">Clear project</button>
               </div>
@@ -197,6 +200,29 @@ plot(
             <div id="plotEmpty" class="empty-state"><span class="empty-icon">▧</span><strong>No plots yet</strong></div>
             <img id="plotImage" class="plot-image hidden" alt="Latest R plot" />
             <div id="plotHistory" class="plot-history"></div>
+            <section class="artifact-panel">
+              <div class="artifact-panel-header">
+                <strong>Artifacts</strong>
+                <div class="plot-clear-actions">
+                  <button id="clearSessionArtifactsButton" type="button" title="Clear session artifacts">Clear session</button>
+                  <button id="clearProjectArtifactsButton" type="button" title="Clear current project artifacts">Clear project</button>
+                </div>
+              </div>
+              <div id="artifactEmpty" class="empty-state compact-empty hidden"><strong>No artifacts yet</strong></div>
+              <div id="artifactRecordList" class="artifact-record-list"></div>
+              <div id="artifactDetailCard" class="render-result-card hidden">
+                <div class="render-result-header">
+                  <strong id="artifactDetailTitle">Artifact</strong>
+                  <span id="artifactDetailState" class="revision-badge">idle</span>
+                </div>
+                <div id="artifactDetailSummary" class="environment-contract">Select an exported artifact to inspect its provenance.</div>
+                <div id="artifactDetailPath" class="environment-hint"></div>
+                <div id="artifactDetailMeta" class="environment-hint"></div>
+                <div class="render-result-actions">
+                  <button id="artifactOpenSourceButton" type="button">Open source</button>
+                </div>
+              </div>
+            </section>
           </div>
           <div id="problemsPanel" class="dock-content problems-panel hidden">
             <div id="problemEmpty" class="empty-state"><span class="status-check">✓</span><strong>No problems detected</strong></div>

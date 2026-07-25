@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 const DEFAULT_LIMIT: usize = 50;
 
 #[derive(Debug, Error)]
@@ -231,6 +231,45 @@ pub struct PlotArtifactSummary {
     pub media_type: String,
     pub payload_json: String,
     pub provenance_complete: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactRecordDraft {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub run_id: Option<String>,
+    pub project_root: String,
+    pub output_path: String,
+    pub source_path: Option<String>,
+    pub execution_mode: Option<String>,
+    pub document_version: Option<i64>,
+    pub workspace_id: Option<String>,
+    pub state_revision: Option<i64>,
+    pub project_revision: Option<i64>,
+    pub media_type: String,
+    pub metadata_json: String,
+    pub provenance_complete: bool,
+    pub incomplete_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtifactRecordSummary {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub run_id: Option<String>,
+    pub project_root: String,
+    pub output_path: String,
+    pub source_path: Option<String>,
+    pub execution_mode: Option<String>,
+    pub document_version: Option<i64>,
+    pub workspace_id: Option<String>,
+    pub state_revision: Option<i64>,
+    pub project_revision: Option<i64>,
+    pub media_type: String,
+    pub metadata_json: String,
+    pub provenance_complete: bool,
+    pub incomplete_reason: Option<String>,
     pub created_at: String,
 }
 
@@ -467,6 +506,24 @@ impl Store {
                 provenance_complete INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS artifact_records (
+                artifact_id TEXT PRIMARY KEY,
+                artifact_kind TEXT NOT NULL,
+                run_id TEXT,
+                project_root TEXT NOT NULL,
+                output_path TEXT NOT NULL,
+                source_path TEXT,
+                execution_mode TEXT,
+                document_version INTEGER,
+                workspace_id TEXT,
+                state_revision INTEGER,
+                project_revision INTEGER,
+                media_type TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                provenance_complete INTEGER NOT NULL DEFAULT 1,
+                incomplete_reason TEXT,
+                created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS environment_snapshots (
                 snapshot_id TEXT PRIMARY KEY,
                 project_root TEXT NOT NULL,
@@ -509,6 +566,12 @@ impl Store {
                 ON plot_artifacts(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_plot_artifacts_run_id
                 ON plot_artifacts(run_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_artifact_records_created_at
+                ON artifact_records(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_artifact_records_run_id
+                ON artifact_records(run_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_artifact_records_project
+                ON artifact_records(project_root, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_environment_snapshots_project_root
                 ON environment_snapshots(project_root, last_captured_at DESC);
             CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_status
@@ -531,7 +594,7 @@ impl Store {
             .and_then(|value| value.parse().ok());
 
         match current {
-            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(SCHEMA_VERSION) => {}
+            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(6) | Some(SCHEMA_VERSION) => {}
             Some(other) => return Err(StoreError::SchemaVersion(other)),
         }
 
@@ -1297,6 +1360,41 @@ impl Store {
         Ok(())
     }
 
+    pub fn create_artifact_record(
+        &mut self,
+        draft: &ArtifactRecordDraft,
+    ) -> Result<(), StoreError> {
+        self.connection.execute(
+            "INSERT INTO artifact_records(
+                artifact_id, artifact_kind, run_id, project_root, output_path, source_path,
+                execution_mode, document_version, workspace_id, state_revision,
+                project_revision, media_type, metadata_json, provenance_complete,
+                incomplete_reason, created_at
+             ) VALUES(
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+             )",
+            params![
+                draft.artifact_id,
+                draft.artifact_kind,
+                draft.run_id,
+                draft.project_root,
+                draft.output_path,
+                draft.source_path,
+                draft.execution_mode,
+                draft.document_version,
+                draft.workspace_id,
+                draft.state_revision,
+                draft.project_revision,
+                draft.media_type,
+                draft.metadata_json,
+                if draft.provenance_complete { 1 } else { 0 },
+                draft.incomplete_reason,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn record_environment_snapshot(
         &mut self,
         draft: &EnvironmentSnapshotDraft,
@@ -1567,6 +1665,135 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn get_plot_artifact(&self, plot_id: &str) -> Result<Option<PlotArtifactSummary>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    plot_id, run_id, project_root, source_path, execution_mode, document_version,
+                    workspace_id, state_revision, project_revision, media_type, payload_json,
+                    provenance_complete, created_at
+                 FROM plot_artifacts
+                 WHERE plot_id = ?1",
+                [plot_id],
+                |row| {
+                    Ok(PlotArtifactSummary {
+                        plot_id: row.get(0)?,
+                        run_id: row.get(1)?,
+                        project_root: row.get(2)?,
+                        source_path: row.get(3)?,
+                        execution_mode: row.get(4)?,
+                        document_version: row.get(5)?,
+                        workspace_id: row.get(6)?,
+                        state_revision: row.get(7)?,
+                        project_revision: row.get(8)?,
+                        media_type: row.get(9)?,
+                        payload_json: row.get(10)?,
+                        provenance_complete: row.get::<_, i64>(11)? != 0,
+                        created_at: row.get(12)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
+    pub fn list_artifact_records(
+        &self,
+        limit: Option<usize>,
+        project_root: &str,
+        workspace_id: Option<&str>,
+        session_only: bool,
+    ) -> Result<Vec<ArtifactRecordSummary>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT
+                artifact_id, artifact_kind, run_id, project_root, output_path, source_path,
+                execution_mode, document_version, workspace_id, state_revision,
+                project_revision, media_type, metadata_json, provenance_complete,
+                incomplete_reason, created_at
+             FROM artifact_records
+             WHERE project_root = ?1
+               AND (?2 = 0 OR workspace_id IS ?3)
+             ORDER BY created_at DESC
+             LIMIT ?4",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project_root,
+                if session_only { 1 } else { 0 },
+                workspace_id,
+                limit.unwrap_or(DEFAULT_LIMIT) as i64
+            ],
+            decode_artifact_record,
+        )?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StoreError::from)
+    }
+
+    pub fn get_artifact_record(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<ArtifactRecordSummary>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    artifact_id, artifact_kind, run_id, project_root, output_path, source_path,
+                    execution_mode, document_version, workspace_id, state_revision,
+                    project_revision, media_type, metadata_json, provenance_complete,
+                    incomplete_reason, created_at
+                 FROM artifact_records
+                 WHERE artifact_id = ?1",
+                [artifact_id],
+                decode_artifact_record,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
+    pub fn clear_artifact_records(
+        &mut self,
+        project_root: &str,
+        workspace_id: Option<&str>,
+        session_only: bool,
+    ) -> Result<usize, StoreError> {
+        let changed = self.connection.execute(
+            "DELETE FROM artifact_records
+             WHERE project_root = ?1
+               AND (?2 = 0 OR workspace_id IS ?3)",
+            params![project_root, if session_only { 1 } else { 0 }, workspace_id],
+        )?;
+        Ok(changed)
+    }
+
+    pub fn find_run_detail_for_workspace_state(
+        &self,
+        workspace_id: &str,
+        state_revision_after: i64,
+        project_revision_after: i64,
+    ) -> Result<Option<RunDetail>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    run_id, parent_run_id, origin, status, started_at, finished_at,
+                    terminal_reason, request_type, operation_class, code, arguments_json,
+                    source_path, execution_mode, document_version, workspace_id,
+                    state_revision_before, project_revision_before, state_revision_after,
+                    project_revision_after, environment_snapshot_id, environment_snapshot_id_after,
+                    stdout, value_text, messages_json, warnings_json, error_message,
+                    error_call, traceback_json
+                 FROM runs
+                 WHERE workspace_id = ?1
+                   AND state_revision_after = ?2
+                   AND project_revision_after = ?3
+                   AND finished_at IS NOT NULL
+                 ORDER BY finished_at DESC
+                 LIMIT 1",
+                params![workspace_id, state_revision_after, project_revision_after],
+                decode_run_detail,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
     pub fn get_approval_request(
         &self,
         request_id: &str,
@@ -1640,6 +1867,27 @@ fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
         error_message: row.get(25)?,
         error_call: row.get(26)?,
         traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
+    })
+}
+
+fn decode_artifact_record(row: &Row<'_>) -> rusqlite::Result<ArtifactRecordSummary> {
+    Ok(ArtifactRecordSummary {
+        artifact_id: row.get(0)?,
+        artifact_kind: row.get(1)?,
+        run_id: row.get(2)?,
+        project_root: row.get(3)?,
+        output_path: row.get(4)?,
+        source_path: row.get(5)?,
+        execution_mode: row.get(6)?,
+        document_version: row.get(7)?,
+        workspace_id: row.get(8)?,
+        state_revision: row.get(9)?,
+        project_revision: row.get(10)?,
+        media_type: row.get(11)?,
+        metadata_json: row.get(12)?,
+        provenance_complete: row.get::<_, i64>(13)? != 0,
+        incomplete_reason: row.get(14)?,
+        created_at: row.get(15)?,
     })
 }
 
@@ -1922,6 +2170,81 @@ mod tests {
         assert_eq!(detail.run_id.as_deref(), Some("run_env_1"));
         assert_eq!(detail.terminal_outcome.as_deref(), Some("lockfile_updated"));
         assert_eq!(detail.before_snapshot_id.as_deref(), Some("env_before"));
+    }
+
+    #[test]
+    fn persists_artifact_records_and_resolves_run_by_workspace_state() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        store
+            .create_run(&RunDraft {
+                run_id: "run_render_1".to_string(),
+                parent_run_id: None,
+                origin: "user".to_string(),
+                request_type: "workspace.render_document".to_string(),
+                operation_class: "state_capable".to_string(),
+                code: "render qc.Rmd".to_string(),
+                arguments_json: "{\"path\":\"reports/qc.Rmd\"}".to_string(),
+                source_path: Some("reports/qc.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(4),
+                workspace_id: "ws_test".to_string(),
+                state_revision_before: 10,
+                project_revision_before: 3,
+                environment_snapshot_id: Some("env_before".to_string()),
+            })
+            .unwrap();
+        store
+            .finish_run(&RunFinish {
+                run_id: "run_render_1".to_string(),
+                status: "completed".to_string(),
+                terminal_reason: None,
+                workspace_id: Some("ws_test".to_string()),
+                state_revision_after: Some(11),
+                project_revision_after: Some(4),
+                stdout: Some(String::new()),
+                value_text: None,
+                messages: Vec::new(),
+                warnings: Vec::new(),
+                error_message: None,
+                error_call: None,
+                traceback: Vec::new(),
+                environment_snapshot_id_after: Some("env_after".to_string()),
+            })
+            .unwrap();
+        store
+            .create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: "artifact_1".to_string(),
+                artifact_kind: "render_output".to_string(),
+                run_id: Some("run_render_1".to_string()),
+                project_root: "D:/Rho/project".to_string(),
+                output_path: "reports/qc.html".to_string(),
+                source_path: Some("reports/qc.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(4),
+                workspace_id: Some("ws_test".to_string()),
+                state_revision: Some(11),
+                project_revision: Some(4),
+                media_type: "text/html".to_string(),
+                metadata_json: "{\"tool\":\"rmarkdown\"}".to_string(),
+                provenance_complete: true,
+                incomplete_reason: None,
+            })
+            .unwrap();
+
+        let listed = store
+            .list_artifact_records(Some(10), "D:/Rho/project", Some("ws_test"), true)
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].artifact_kind, "render_output");
+        let detail = store.get_artifact_record("artifact_1").unwrap().unwrap();
+        assert_eq!(detail.output_path, "reports/qc.html");
+        let run = store
+            .find_run_detail_for_workspace_state("ws_test", 11, 4)
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.run_id, "run_render_1");
+        assert_eq!(run.source_path.as_deref(), Some("reports/qc.Rmd"));
     }
 
     #[test]

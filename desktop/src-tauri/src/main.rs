@@ -18,12 +18,13 @@ use agent_llm::{
     DeleteModelRequest,
 };
 use anyhow::{Context, Result, bail, ensure};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use project::{
     ProjectRestoreResponse, ProjectSessionSnapshot, ProjectSessionStore, ProjectState,
     ProjectWatcherControl, atomic_write, atomic_write_new, default_project_root,
     ensure_editable_content_size, ensure_editable_file, ensure_editable_file_size,
-    list_project_files, normalize_existing_project_root, project_path, replace_project_watcher,
-    validate_project_root,
+    list_project_files, normalize_existing_project_root, project_path, relative_project_path,
+    replace_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
@@ -34,8 +35,9 @@ use rho_server::coordinator::{
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
-    ApprovalRequestSummary, EnvironmentOperationRequestSummary, PlotArtifactSummary,
-    ProblemSummary, RunDetail, RunSummary, Store,
+    ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
+    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary, RunDetail,
+    RunSummary, Store,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -225,10 +227,40 @@ struct ReadDataViewRequest {
 }
 
 #[derive(Deserialize)]
+struct ExportPlotArtifactRequest {
+    plot_id: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct ExportDataViewArtifactRequest {
+    path: String,
+    format: String,
+    object_name: String,
+    view_token: String,
+    view_kind: String,
+    view_key: String,
+    row_offset: Option<usize>,
+    row_limit: Option<usize>,
+    column_offset: Option<usize>,
+    column_limit: Option<usize>,
+    workspace: ViewerWorkspaceRequest,
+}
+
+#[derive(Deserialize)]
 struct RenderRequest {
     path: String,
     format: Option<String>,
     document_version: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct ArtifactRecordView {
+    #[serde(flatten)]
+    artifact: ArtifactRecordSummary,
+    file_available: bool,
+    output_absolute_path: String,
+    run: Option<RunDetail>,
 }
 
 #[derive(Deserialize)]
@@ -705,6 +737,120 @@ fn safe_delete_project_file(root: &Path, path: &str) -> Result<()> {
     Ok(())
 }
 
+fn ensure_artifact_export_target(
+    root: &Path,
+    path: &str,
+    allowed_extensions: &[&str],
+) -> Result<(PathBuf, String, String)> {
+    let file = project_path(root, path)?;
+    let extension = file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    ensure!(
+        allowed_extensions.iter().any(|allowed| *allowed == extension),
+        "Artifact export path must use one of: {}",
+        allowed_extensions.join(", ")
+    );
+    ensure!(
+        !file.exists(),
+        "Artifact export destination already exists: {}",
+        path
+    );
+    let relative = relative_project_path(root, &file)?;
+    let absolute = file.to_string_lossy().replace('\\', "/");
+    Ok((file, relative, absolute))
+}
+
+fn artifact_file_status(root: &Path, output_path: &str) -> (String, bool) {
+    match project_path(root, output_path) {
+        Ok(path) => {
+            let absolute = path.to_string_lossy().replace('\\', "/");
+            (absolute, path.is_file())
+        }
+        Err(_) => (output_path.to_string(), false),
+    }
+}
+
+fn artifact_provenance_status(
+    run: Option<&RunDetail>,
+    source_path: Option<&str>,
+    document_version: Option<i64>,
+) -> (bool, Option<String>) {
+    if run.is_none() {
+        return (false, Some("run_link_unavailable".to_string()));
+    }
+    if source_path.is_none() {
+        return (false, Some("source_path_unavailable".to_string()));
+    }
+    if document_version.is_none() {
+        return (false, Some("document_version_unavailable".to_string()));
+    }
+    (true, None)
+}
+
+fn has_png_signature(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
+}
+
+fn quote_delimited_cell(value: Option<&str>, delimiter: char) -> String {
+    let text = value.unwrap_or_default();
+    if !text.contains('"')
+        && !text.contains('\n')
+        && !text.contains('\r')
+        && !text.contains(delimiter)
+    {
+        return text.to_string();
+    }
+    format!("\"{}\"", text.replace('"', "\"\""))
+}
+
+fn data_view_delimited_text(page: &Value, delimiter: char) -> Result<String> {
+    let columns = page
+        .get("columns")
+        .and_then(Value::as_array)
+        .context("Data view page is missing columns")?;
+    let rows = page
+        .get("rows")
+        .and_then(Value::as_array)
+        .context("Data view page is missing rows")?;
+    let mut lines = Vec::with_capacity(rows.len() + 1);
+    let mut header = Vec::with_capacity(columns.len() + 1);
+    header.push(quote_delimited_cell(Some("row_name"), delimiter));
+    for column in columns {
+        header.push(quote_delimited_cell(
+            column
+                .get("label")
+                .and_then(Value::as_str)
+                .or_else(|| column.get("name").and_then(Value::as_str)),
+            delimiter,
+        ));
+    }
+    lines.push(header.join(&delimiter.to_string()));
+    for row in rows {
+        let cells = row
+            .get("cells")
+            .and_then(Value::as_array)
+            .context("Data view row is missing cells")?;
+        let mut fields = Vec::with_capacity(cells.len() + 1);
+        fields.push(quote_delimited_cell(
+            row.get("row_name").and_then(Value::as_str),
+            delimiter,
+        ));
+        for cell in cells {
+            let value = match cell {
+                Value::Null => String::new(),
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            fields.push(quote_delimited_cell(Some(&value), delimiter));
+        }
+        lines.push(fields.join(&delimiter.to_string()));
+    }
+    Ok(format!("{}\r\n", lines.join("\r\n")))
+}
+
 #[tauri::command]
 async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Result<Value, String> {
     if request.code.trim().is_empty() {
@@ -1071,6 +1217,274 @@ async fn list_plot_artifacts(
             session_only.unwrap_or(true),
         )
         .map_err(display_error)
+}
+
+#[tauri::command]
+async fn export_plot_artifact(
+    request: ExportPlotArtifactRequest,
+    state: State<'_, AppState>,
+) -> Result<ArtifactRecordView, String> {
+    let root = state.project_root.read().await.clone();
+    let (file, output_path, output_absolute_path) =
+        ensure_artifact_export_target(&root, &request.path, &["png"]).map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let plot = context
+        .store
+        .get_plot_artifact(&request.plot_id)
+        .map_err(display_error)?
+        .context(format!("Plot artifact not found: {}", request.plot_id))
+        .map_err(display_error)?;
+    if plot.media_type != "image/png" {
+        return Err("Only PNG plot export is supported in WP3".to_string());
+    }
+    let payload: Value = serde_json::from_str(&plot.payload_json).map_err(display_error)?;
+    let encoded = payload
+        .get("image/png")
+        .and_then(Value::as_str)
+        .context("PNG plot payload is unavailable")
+        .map_err(display_error)?;
+    let bytes = BASE64_STANDARD.decode(encoded).map_err(display_error)?;
+    if !has_png_signature(&bytes) {
+        return Err("Plot PNG payload has an invalid signature".to_string());
+    }
+    atomic_write_new(&file, &bytes).map_err(display_error)?;
+    let run = context
+        .store
+        .get_run_detail(&plot.run_id)
+        .map_err(display_error)?;
+    let (provenance_complete, incomplete_reason) = artifact_provenance_status(
+        run.as_ref(),
+        plot.source_path.as_deref(),
+        plot.document_version,
+    );
+    let artifact = ArtifactRecordDraft {
+        artifact_id: format!("artifact_{}", Uuid::new_v4().simple()),
+        artifact_kind: "plot_export".to_string(),
+        run_id: Some(plot.run_id.clone()),
+        project_root: root.to_string_lossy().replace('\\', "/"),
+        output_path,
+        source_path: plot.source_path.clone(),
+        execution_mode: plot.execution_mode.clone(),
+        document_version: plot.document_version,
+        workspace_id: plot.workspace_id.clone(),
+        state_revision: plot.state_revision,
+        project_revision: plot.project_revision,
+        media_type: "image/png".to_string(),
+        metadata_json: serde_json::to_string(&json!({
+            "plot_id": plot.plot_id,
+            "payload_media_type": plot.media_type,
+        }))
+        .map_err(display_error)?,
+        provenance_complete,
+        incomplete_reason,
+    };
+    context
+        .store
+        .create_artifact_record(&artifact)
+        .map_err(display_error)?;
+    context.broker.project_changed();
+    let identity = context.broker.identity().clone();
+    context.store.save_identity(&identity).map_err(display_error)?;
+    let detail = context
+        .store
+        .get_artifact_record(&artifact.artifact_id)
+        .map_err(display_error)?
+        .context("Exported artifact record was not found")
+        .map_err(display_error)?;
+    Ok(ArtifactRecordView {
+        artifact: detail,
+        file_available: true,
+        output_absolute_path,
+        run,
+    })
+}
+
+#[tauri::command]
+async fn export_data_view_artifact(
+    request: ExportDataViewArtifactRequest,
+    state: State<'_, AppState>,
+) -> Result<ArtifactRecordView, String> {
+    let format = request.format.to_ascii_lowercase();
+    if !matches!(format.as_str(), "csv" | "tsv") {
+        return Err("Visible table export format must be csv or tsv".to_string());
+    }
+    let root = state.project_root.read().await.clone();
+    let (file, output_path, output_absolute_path) =
+        ensure_artifact_export_target(&root, &request.path, &[format.as_str()])
+            .map_err(display_error)?;
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "object_name": request.object_name,
+            "view_token": request.view_token,
+            "view_kind": request.view_kind,
+            "view_key": request.view_key,
+            "row_offset": request.row_offset.unwrap_or(0),
+            "row_limit": request.row_limit.unwrap_or(50),
+            "column_offset": request.column_offset.unwrap_or(0),
+            "column_limit": request.column_limit.unwrap_or(20)
+        },
+        "expected_workspace": viewer_expected_workspace(&request.workspace)
+    });
+    let response = dispatch_workspace_request(
+        "workspace.read_data_view",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)?;
+    let page = response
+        .get("execution")
+        .and_then(|value| value.get("page"))
+        .context("Workspace data view did not return a page")
+        .map_err(display_error)?;
+    let delimiter = if format == "tsv" { '\t' } else { ',' };
+    let content = data_view_delimited_text(page, delimiter).map_err(display_error)?;
+    atomic_write_new(&file, content.as_bytes()).map_err(display_error)?;
+    let run = match (
+        request.workspace.kernel_instance_id.as_deref(),
+        request.workspace.state_revision,
+        request.workspace.project_revision,
+    ) {
+        (Some(workspace_id), Some(state_revision), Some(project_revision)) => store
+            .find_run_detail_for_workspace_state(
+                workspace_id,
+                state_revision as i64,
+                project_revision as i64,
+            )
+            .map_err(display_error)?,
+        _ => None,
+    };
+    let source_path = run.as_ref().and_then(|item| item.source_path.clone());
+    let document_version = run.as_ref().and_then(|item| item.document_version);
+    let run_id = run.as_ref().map(|item| item.run_id.clone());
+    let (provenance_complete, incomplete_reason) = artifact_provenance_status(
+        run.as_ref(),
+        source_path.as_deref(),
+        document_version,
+    );
+    let artifact = ArtifactRecordDraft {
+        artifact_id: format!("artifact_{}", Uuid::new_v4().simple()),
+        artifact_kind: "table_export".to_string(),
+        run_id,
+        project_root: root.to_string_lossy().replace('\\', "/"),
+        output_path,
+        source_path,
+        execution_mode: Some("table_export".to_string()),
+        document_version,
+        workspace_id: request.workspace.kernel_instance_id.clone(),
+        state_revision: request.workspace.state_revision.map(|value| value as i64),
+        project_revision: request.workspace.project_revision.map(|value| value as i64),
+        media_type: if format == "tsv" {
+            "text/tab-separated-values"
+        } else {
+            "text/csv"
+        }
+        .to_string(),
+        metadata_json: serde_json::to_string(&json!({
+            "object_name": request.object_name,
+            "view_kind": request.view_kind,
+            "view_key": request.view_key,
+            "row_offset": page.get("row_offset").and_then(Value::as_u64),
+            "row_count": page.get("rows").and_then(Value::as_array).map(|rows| rows.len()),
+            "column_offset": page.get("column_offset").and_then(Value::as_u64),
+            "column_count": page.get("columns").and_then(Value::as_array).map(|columns| columns.len()),
+            "format": format,
+        }))
+        .map_err(display_error)?,
+        provenance_complete,
+        incomplete_reason,
+    };
+    store.create_artifact_record(&artifact).map_err(display_error)?;
+    broker.project_changed();
+    let identity = broker.identity().clone();
+    store.save_identity(&identity).map_err(display_error)?;
+    let detail = store
+        .get_artifact_record(&artifact.artifact_id)
+        .map_err(display_error)?
+        .context("Exported table artifact record was not found")
+        .map_err(display_error)?;
+    Ok(ArtifactRecordView {
+        artifact: detail,
+        file_available: true,
+        output_absolute_path,
+        run,
+    })
+}
+
+#[tauri::command]
+async fn list_artifact_records(
+    limit: Option<usize>,
+    session_only: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtifactRecordSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let context = active_context(&state).await.map_err(display_error)?;
+    let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
+    read_store(&state)
+        .map_err(display_error)?
+        .list_artifact_records(
+            limit,
+            &root.to_string_lossy().replace('\\', "/"),
+            Some(&workspace_id),
+            session_only.unwrap_or(false),
+        )
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn get_artifact_record(
+    artifact_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<ArtifactRecordView>, String> {
+    let root = state.project_root.read().await.clone();
+    let store = read_store(&state).map_err(display_error)?;
+    let Some(artifact) = store
+        .get_artifact_record(&artifact_id)
+        .map_err(display_error)?
+    else {
+        return Ok(None);
+    };
+    let run = artifact
+        .run_id
+        .as_deref()
+        .map(|run_id| store.get_run_detail(run_id))
+        .transpose()
+        .map_err(display_error)?
+        .flatten();
+    let (output_absolute_path, file_available) = artifact_file_status(&root, &artifact.output_path);
+    Ok(Some(ArtifactRecordView {
+        artifact,
+        file_available,
+        output_absolute_path,
+        run,
+    }))
+}
+
+#[tauri::command]
+async fn clear_artifact_records(
+    session_only: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let context = active_context(&state).await.map_err(display_error)?;
+    let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
+    let mut store = read_store(&state).map_err(display_error)?;
+    let deleted = store
+        .clear_artifact_records(
+            &root.to_string_lossy().replace('\\', "/"),
+            Some(&workspace_id),
+            session_only.unwrap_or(false),
+        )
+        .map_err(display_error)?;
+    Ok(json!({ "deleted": deleted }))
 }
 
 #[tauri::command]
@@ -2534,9 +2948,11 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 mod tests {
     use super::{
         RUserStartupFiles, bounded_diagnostic, classify_startup_error, configure_user_startup,
-        ensure_supported_r_version, existing_startup_file, parse_r_runtime_probe,
+        data_view_delimited_text, ensure_artifact_export_target, ensure_supported_r_version,
+        existing_startup_file, has_png_signature, parse_r_runtime_probe,
         safe_delete_project_file, write_r_probe_script,
     };
+    use serde_json::json;
     use std::path::Path;
     use std::process::Command;
     use tempfile::TempDir;
@@ -2771,6 +3187,71 @@ mod tests {
         let error = safe_delete_project_file(&root, "folder.R").unwrap_err();
         assert!(error.to_string().contains("is not a file"));
         assert!(root.join("folder.R").is_dir());
+    }
+
+    #[test]
+    fn ensure_artifact_export_target_rejects_parent_escape_and_collisions() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let existing = root.join("plots").join("qc.png");
+        std::fs::create_dir_all(existing.parent().unwrap()).unwrap();
+        std::fs::write(&existing, [137_u8, 80, 78, 71, 13, 10, 26, 10]).unwrap();
+
+        let escape = ensure_artifact_export_target(&root, "../outside.png", &["png"]).unwrap_err();
+        assert!(escape.to_string().contains("parent, root or drive prefix"));
+
+        let collision = ensure_artifact_export_target(&root, "plots/qc.png", &["png"]).unwrap_err();
+        assert!(collision.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn data_view_delimited_text_writes_exact_utf8_csv_with_crlf_and_quotes() {
+        let page = json!({
+            "columns": [
+                { "name": "sample", "label": "sample" },
+                { "name": "note", "label": "note" }
+            ],
+            "rows": [
+                { "row_name": "row,1", "cells": ["plain", "line\r\nbreak"] },
+                { "row_name": "第二行", "cells": [null, "He said \"hi\""] }
+            ]
+        });
+        let output = data_view_delimited_text(&page, ',').unwrap();
+        let expected = concat!(
+            "row_name,sample,note\r\n",
+            "\"row,1\",plain,\"line\r\nbreak\"\r\n",
+            "第二行,,\"He said \"\"hi\"\"\"\r\n"
+        );
+        assert_eq!(output, expected);
+        assert_eq!(output.as_bytes()[output.len() - 2..], [b'\r', b'\n']);
+    }
+
+    #[test]
+    fn data_view_delimited_text_writes_exact_utf8_tsv_with_missing_values() {
+        let page = json!({
+            "columns": [
+                { "name": "detected", "label": "detected" },
+                { "name": "group", "label": "group\tlabel" }
+            ],
+            "rows": [
+                { "row_name": "cell_1", "cells": ["A", "组1"] },
+                { "row_name": "cell_2", "cells": [null, ""] }
+            ]
+        });
+        let output = data_view_delimited_text(&page, '\t').unwrap();
+        let expected = concat!(
+            "row_name\tdetected\t\"group\tlabel\"\r\n",
+            "cell_1\tA\t组1\r\n",
+            "cell_2\t\t\r\n"
+        );
+        assert_eq!(output, expected);
+        assert!(String::from_utf8(output.into_bytes()).is_ok());
+    }
+
+    #[test]
+    fn validates_png_signature() {
+        assert!(has_png_signature(&[137, 80, 78, 71, 13, 10, 26, 10, 0, 1]));
+        assert!(!has_png_signature(b"not-a-png"));
     }
 }
 
@@ -3073,6 +3554,11 @@ fn main() {
             respond_environment_operation,
             list_runs,
             list_plot_artifacts,
+            export_plot_artifact,
+            export_data_view_artifact,
+            list_artifact_records,
+            get_artifact_record,
+            clear_artifact_records,
             clear_plot_artifacts,
             list_problems,
             get_run_detail,

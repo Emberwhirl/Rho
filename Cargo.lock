@@ -3465,6 +3465,7 @@ name = "rho-desktop"
 version = "0.2.0-dev.12"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "notify",
  "reqwest 0.12.28",

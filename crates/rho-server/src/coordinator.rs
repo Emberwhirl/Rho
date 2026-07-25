@@ -14,9 +14,10 @@ use rho_kernel::{ArkLaunchConfig, ArkSession, CorrelatedKernelEvent, KernelEvent
 use rho_protocol::{Envelope, ExpectedWorkspace, MAX_FRAME_BYTES, MessageKind, OperationClass};
 use rho_store::{
     AgentConversationTurn, AgentTurnEventDraft, AgentTurnFinish, ApprovalDecisionRecord,
-    ApprovalRequestDraft, EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
-    EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft,
-    PlotArtifactDraft, RunDraft, RunFinish, Store,
+    ApprovalRequestDraft, ArtifactRecordDraft, EnvironmentOperationDecisionRecord,
+    EnvironmentOperationFinish, EnvironmentOperationRequestDraft,
+    EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft, PlotArtifactDraft, RunDraft,
+    RunFinish, Store,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -974,6 +975,45 @@ pub async fn dispatch_workspace_request(
                     .and_then(Value::as_i64)
                     .is_some(),
         })?;
+    }
+    if !failed && request_type == "workspace.render_document" {
+        if let Some(output_path) = result.get("output_path").and_then(Value::as_str) {
+            if let Some(project_root) = store.active_project_root()? {
+                let source_path = arguments
+                    .get("source_path")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let document_version = arguments.get("document_version").and_then(Value::as_i64);
+                let (provenance_complete, incomplete_reason) = artifact_provenance_status(
+                    Some(&request.execution_id),
+                    source_path.as_deref(),
+                    document_version,
+                );
+                store.create_artifact_record(&ArtifactRecordDraft {
+                    artifact_id: format!("artifact_{}_render", request.execution_id),
+                    artifact_kind: "render_output".to_string(),
+                    run_id: Some(request.execution_id.clone()),
+                    project_root: project_root.clone(),
+                    output_path: artifact_output_path(Some(&project_root), output_path),
+                    source_path,
+                    execution_mode: arguments
+                        .get("execution_mode")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    document_version,
+                    workspace_id: Some(after.workspace_id.clone()),
+                    state_revision: Some(after.state_revision as i64),
+                    project_revision: Some(after.project_revision as i64),
+                    media_type: infer_output_media_type(output_path),
+                    metadata_json: serde_json::to_string(&json!({
+                        "tool": result.get("tool").and_then(Value::as_str),
+                        "source_path": arguments.get("source_path").and_then(Value::as_str),
+                    }))?,
+                    provenance_complete,
+                    incomplete_reason,
+                })?;
+            }
+        }
     }
     Ok(json!({
         "execution_id": request.execution_id,
@@ -2972,6 +3012,59 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
             .unwrap_or_else(|| bridge_expression.to_string()),
         _ => bridge_expression.to_string(),
     }
+}
+
+fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String {
+    let normalized_output = output_path.replace('\\', "/");
+    let Some(project_root) = project_root else {
+        return normalized_output;
+    };
+    let normalized_root = project_root.replace('\\', "/").trim_end_matches('/').to_string();
+    if let Some(relative) = normalized_output
+        .strip_prefix(&(normalized_root.clone() + "/"))
+        .filter(|value| !value.is_empty())
+    {
+        relative.to_string()
+    } else if normalized_output == normalized_root {
+        ".".to_string()
+    } else {
+        normalized_output
+    }
+}
+
+fn infer_output_media_type(path: &str) -> String {
+    let extension = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "html" | "htm" => "text/html",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "svg" => "image/svg+xml",
+        "csv" => "text/csv",
+        "tsv" | "txt" => "text/tab-separated-values",
+        _ => "application/octet-stream",
+    }
+    .to_string()
+}
+
+fn artifact_provenance_status(
+    run_id: Option<&str>,
+    source_path: Option<&str>,
+    document_version: Option<i64>,
+) -> (bool, Option<String>) {
+    if run_id.is_none() {
+        return (false, Some("run_link_unavailable".to_string()));
+    }
+    if source_path.is_none() {
+        return (false, Some("source_path_unavailable".to_string()));
+    }
+    if document_version.is_none() {
+        return (false, Some("document_version_unavailable".to_string()));
+    }
+    (true, None)
 }
 
 fn extract_plot_payloads(events: &[CorrelatedKernelEvent]) -> Vec<(String, String)> {

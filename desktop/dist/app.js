@@ -34,7 +34,11 @@ const state = {
   },
   objects: [],
   plots: [],
+  artifacts: [],
   plotScope: "session",
+  selectedPlotId: null,
+  selectedArtifactId: null,
+  selectedArtifactDetail: null,
   environment: null,
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
@@ -131,6 +135,8 @@ const mockProjectSessions = {};
 let mockRunSequence = 0;
 const mockRuns = [];
 const mockPlots = [];
+const mockArtifacts = [];
+let mockArtifactSequence = 0;
 let mockAgentTurnSequence = 0;
 let mockApprovalSequence = 0;
 let mockEnvironmentOperationSequence = 0;
@@ -138,6 +144,7 @@ const mockAgentTurns = [];
 const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
 
 function slugifyAgentId(value, fallback = "item") {
   const slug = String(value || "")
@@ -565,6 +572,101 @@ function recordMockRun({
   return entry;
 }
 
+function nextMockArtifactId() {
+  mockArtifactSequence += 1;
+  return `artifact_mock_${mockArtifactSequence}`;
+}
+
+function mockOutputAbsolutePath(projectRoot, outputPath) {
+  const root = String(projectRoot || mockLastProject).replace(/\\/g, "/").replace(/\/+$/, "");
+  const relative = validateProjectRelativePath(outputPath);
+  return `${root}/${relative}`;
+}
+
+function mockFileAvailable(projectRoot, outputPath) {
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  return Object.prototype.hasOwnProperty.call(project.contents || {}, outputPath);
+}
+
+function mockUpsertProjectFile(projectRoot, path, content, options = {}) {
+  const { trackInTree = true, kind = "source" } = options;
+  const normalized = validateProjectRelativePath(path);
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  project.contents[normalized] = content;
+  if (!trackInTree) return normalized;
+  const size = typeof content === "string" ? content.length : 0;
+  const existing = project.files.find((file) => file.path === normalized);
+  if (existing) {
+    existing.size_bytes = size;
+    existing.kind = kind;
+    existing.name = normalized.split("/").at(-1);
+  } else {
+    project.files.push({
+      path: normalized,
+      name: normalized.split("/").at(-1),
+      kind,
+      size_bytes: size,
+    });
+  }
+  return normalized;
+}
+
+function createMockArtifactRecord({
+  artifactKind,
+  runId = null,
+  projectRoot = mockLastProject,
+  outputPath,
+  sourcePath = null,
+  executionMode = null,
+  documentVersion = null,
+  workspaceId = "desktop_mock",
+  stateRevision = state.revision.state_revision,
+  projectRevision = state.revision.project_revision,
+  mediaType,
+  metadata = {},
+  provenanceComplete = true,
+  incompleteReason = null,
+}) {
+  const record = {
+    artifact_id: nextMockArtifactId(),
+    artifact_kind: artifactKind,
+    run_id: runId,
+    project_root: projectRoot,
+    output_path: validateProjectRelativePath(outputPath),
+    source_path: sourcePath,
+    execution_mode: executionMode,
+    document_version: documentVersion,
+    workspace_id: workspaceId,
+    state_revision: stateRevision,
+    project_revision: projectRevision,
+    media_type: mediaType,
+    metadata_json: JSON.stringify(metadata || {}),
+    provenance_complete: Boolean(provenanceComplete),
+    incomplete_reason: incompleteReason || null,
+    created_at: new Date().toISOString(),
+  };
+  mockArtifacts.unshift(record);
+  return record;
+}
+
+function mockArtifactView(record) {
+  if (!record) return null;
+  return {
+    artifact: structuredClone(record),
+    file_available: mockFileAvailable(record.project_root, record.output_path),
+    output_absolute_path: mockOutputAbsolutePath(record.project_root, record.output_path),
+    run: record.run_id ? structuredClone(mockRuns.find((run) => run.run_id === record.run_id) || null) : null,
+  };
+}
+
+function mockRunForWorkspaceState(workspaceId, stateRevision, projectRevision) {
+  return mockRuns.find((run) =>
+    run.workspace_id === workspaceId
+    && run.state_revision_after === stateRevision
+    && run.project_revision_after === projectRevision,
+  ) || null;
+}
+
 function mockProblemList() {
   return mockRuns
     .filter((run) => run.error_message)
@@ -978,15 +1080,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "project_write_file" || command === "project_create_file") {
     const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
-    project.contents[args.path] = args.content || "";
-    if (!project.files.some((file) => file.path === args.path)) {
-      project.files.push({
-        path: args.path,
-        name: args.path.split("/").at(-1),
-        kind: "source",
-        size_bytes: (args.content || "").length,
-      });
-    }
+    mockUpsertProjectFile(mockLastProject, args.path, args.content || "", { trackInTree: true, kind: "source" });
     state.revision.project_revision += 1;
     updateIdentity(state.revision);
     return mockInvoke("project_state", {});
@@ -1040,8 +1134,8 @@ async function mockInvoke(command, args) {
         workspace_id: "desktop_mock",
         state_revision: state.revision.state_revision,
         project_revision: state.revision.project_revision,
-        media_type: "rho/mock-image",
-        payload_json: JSON.stringify({ "rho/mock-image": "assets/demo-plot.png" }),
+        media_type: "image/png",
+        payload_json: JSON.stringify({ "image/png": MOCK_PNG_BASE64, "rho/mock-image": "assets/demo-plot.png" }),
         provenance_complete: Boolean(request.source_path ?? request.sourcePath ?? null),
         created_at: new Date().toISOString(),
       });
@@ -1058,7 +1152,7 @@ async function mockInvoke(command, args) {
         error: request.code?.includes("stop(") ? { message: "boom", call: "stop(\"boom\")" } : null,
         traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
       },
-      events: [{ event: { type: "display_data", data: { "rho/mock-image": "assets/demo-plot.png" } } }],
+      events: [{ event: { type: "display_data", data: { "image/png": MOCK_PNG_BASE64, "rho/mock-image": "assets/demo-plot.png" } } }],
       workspace: state.revision,
     };
   }
@@ -1081,6 +1175,32 @@ async function mockInvoke(command, args) {
       mockPlots.splice(index, 1);
     }
     return { deleted: before - mockPlots.length };
+  }
+  if (command === "export_plot_artifact") {
+    const plot = mockPlots.find((item) => item.plot_id === args.request?.plot_id || item.plot_id === args.plot_id);
+    if (!plot) throw new Error(`Plot artifact not found: ${args.request?.plot_id || args.plot_id}`);
+    const outputPath = validateProjectRelativePath(args.request?.path || args.path || "plot.png");
+    if (!outputPath.toLowerCase().endsWith(".png")) throw new Error("Plot export path must end with .png.");
+    if (mockFileAvailable(mockLastProject, outputPath)) throw new Error(`Artifact path already exists: ${outputPath}`);
+    mockUpsertProjectFile(mockLastProject, outputPath, "PNG", { trackInTree: false, kind: "artifact" });
+    state.revision.project_revision += 1;
+    updateIdentity(state.revision);
+    const artifact = createMockArtifactRecord({
+      artifactKind: "plot_export",
+      runId: plot.run_id,
+      outputPath,
+      sourcePath: plot.source_path,
+      executionMode: plot.execution_mode,
+      documentVersion: plot.document_version,
+      workspaceId: plot.workspace_id,
+      stateRevision: plot.state_revision,
+      projectRevision: state.revision.project_revision,
+      mediaType: "image/png",
+      metadata: { plot_id: plot.plot_id, payload_media_type: plot.media_type },
+      provenanceComplete: plot.provenance_complete,
+      incompleteReason: plot.provenance_complete ? null : "Source path or document version is unavailable.",
+    });
+    return mockArtifactView(artifact);
   }
   if (command === "list_problems") {
     return structuredClone(mockProblemList().slice(0, args.limit || 50));
@@ -1125,6 +1245,28 @@ async function mockInvoke(command, args) {
       executionMode: "render",
       documentVersion: args.request?.document_version ?? null,
     });
+    const outputPath = sourcePath.replace(/\.Rmd$/i, ".html");
+    mockUpsertProjectFile(mockLastProject, outputPath, "<html><body>Mock render output</body></html>", { trackInTree: false, kind: "artifact" });
+    state.revision.project_revision += 1;
+    updateIdentity(state.revision);
+    run.project_revision_after = state.revision.project_revision;
+    createMockArtifactRecord({
+      artifactKind: "render_output",
+      runId: run.run_id,
+      outputPath,
+      sourcePath,
+      executionMode: "render",
+      documentVersion: args.request?.document_version ?? null,
+      workspaceId: run.workspace_id,
+      stateRevision: run.state_revision_after,
+      projectRevision: state.revision.project_revision,
+      mediaType: "text/html",
+      metadata: { tool: "rmarkdown", source_path: sourcePath },
+      provenanceComplete: Boolean(sourcePath && args.request?.document_version !== null && args.request?.document_version !== undefined),
+      incompleteReason: sourcePath && args.request?.document_version !== null && args.request?.document_version !== undefined
+        ? null
+        : "Source path or document version is unavailable.",
+    });
     return {
       execution_id: run.run_id,
       execution: {
@@ -1132,7 +1274,7 @@ async function mockInvoke(command, args) {
         kind: "render",
         tool: "rmarkdown",
         source_path: sourcePath,
-        output_path: sourcePath.replace(/\.Rmd$/i, ".html"),
+        output_path: outputPath,
         stdout: "Output created.",
         messages: [],
         warnings: [],
@@ -1414,6 +1556,86 @@ async function mockInvoke(command, args) {
   }
   if (command === "request_environment_operation_preview") {
     return structuredClone(createMockEnvironmentOperationRequest(args.request?.operation, args.request || {}));
+  }
+  if (command === "export_data_view_artifact") {
+    const request = args.request || {};
+    const outputPath = validateProjectRelativePath(request.path || args.path || "view.csv");
+    const format = String(request.format || "").toLowerCase();
+    if (!["csv", "tsv"].includes(format)) throw new Error("Visible table export format must be csv or tsv.");
+    if (!outputPath.toLowerCase().endsWith(`.${format}`)) throw new Error(`Visible table export path must end with .${format}.`);
+    if (mockFileAvailable(mockLastProject, outputPath)) throw new Error(`Artifact path already exists: ${outputPath}`);
+    const response = mockReadDataView({
+      object_name: request.object_name,
+      view_token: request.view_token,
+      view_kind: request.view_kind,
+      view_key: request.view_key,
+      row_offset: request.row_offset,
+      row_limit: request.row_limit,
+      column_offset: request.column_offset,
+      column_limit: request.column_limit,
+      workspace: request.workspace,
+    });
+    if (!response.execution?.ok) throw new Error(response.execution?.message || "Workspace data view did not return a page");
+    const page = response.execution.page;
+    const content = dataViewerDelimitedText(page, format === "tsv" ? "\t" : ",");
+    mockUpsertProjectFile(mockLastProject, outputPath, content, { trackInTree: true, kind: "source" });
+    state.revision.project_revision += 1;
+    updateIdentity(state.revision);
+    const run = mockRunForWorkspaceState(
+      request.workspace?.kernel_instance_id || "desktop_mock",
+      request.workspace?.state_revision,
+      request.workspace?.project_revision,
+    );
+    const sourcePath = run?.source_path || null;
+    const documentVersion = run?.document_version ?? null;
+    const artifact = createMockArtifactRecord({
+      artifactKind: "table_export",
+      runId: run?.run_id || null,
+      outputPath,
+      sourcePath,
+      executionMode: "table_export",
+      documentVersion,
+      workspaceId: request.workspace?.kernel_instance_id || "desktop_mock",
+      stateRevision: request.workspace?.state_revision ?? state.revision.state_revision,
+      projectRevision: state.revision.project_revision,
+      mediaType: format === "tsv" ? "text/tab-separated-values" : "text/csv",
+      metadata: {
+        object_name: request.object_name,
+        view_kind: request.view_kind,
+        view_key: request.view_key,
+        row_offset: page.row_offset,
+        row_count: page.rows?.length || 0,
+        column_offset: page.column_offset,
+        column_count: page.columns?.length || 0,
+        format,
+      },
+      provenanceComplete: Boolean(sourcePath && documentVersion !== null && documentVersion !== undefined),
+      incompleteReason: sourcePath && documentVersion !== null && documentVersion !== undefined
+        ? null
+        : "The exporting run could not be linked to a source document.",
+    });
+    return mockArtifactView(artifact);
+  }
+  if (command === "list_artifact_records") {
+    const items = mockArtifacts.filter((artifact) =>
+      artifact.project_root === mockLastProject
+      && (!args.session_only || artifact.workspace_id === "desktop_mock")
+    );
+    return structuredClone(items.slice(0, args.limit || 100));
+  }
+  if (command === "get_artifact_record") {
+    const artifactId = args.artifact_id ?? args.artifactId;
+    return mockArtifactView(mockArtifacts.find((artifact) => artifact.artifact_id === artifactId) || null);
+  }
+  if (command === "clear_artifact_records") {
+    const before = mockArtifacts.length;
+    for (let index = mockArtifacts.length - 1; index >= 0; index -= 1) {
+      const artifact = mockArtifacts[index];
+      if (artifact.project_root !== mockLastProject) continue;
+      if (args.session_only && artifact.workspace_id !== "desktop_mock") continue;
+      mockArtifacts.splice(index, 1);
+    }
+    return { deleted: before - mockArtifacts.length };
   }
   if (command === "list_environment_operation_requests") {
     const filtered = mockEnvironmentOperationRequests.filter((item) => !args.status || item.status === args.status);
@@ -2493,14 +2715,26 @@ function activeRunRecord() {
 
 async function loadRunData() {
   try {
-    const [runs, problems, plots] = await Promise.all([
+    const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
       invoke("list_problems", { limit: 50 }),
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
+      invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
     ]);
     state.runs = runs || [];
     state.problems = problems || [];
     state.plots = plots || [];
+    state.artifacts = artifacts || [];
+    if (!state.plots.some((plot) => plot.plot_id === state.selectedPlotId)) {
+      state.selectedPlotId = state.plots[0]?.plot_id || null;
+    }
+    if (!state.artifacts.some((artifact) => artifact.artifact_id === state.selectedArtifactId)) {
+      state.selectedArtifactId = state.artifacts[0]?.artifact_id || null;
+      state.selectedArtifactDetail = null;
+    }
+    if (state.selectedArtifactId) {
+      state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: state.selectedArtifactId });
+    }
     state.activeRunId = activeRunRecord()?.run_id || null;
     await syncAgentRunsToConsole(state.runs);
     renderRuns();
@@ -3911,31 +4145,171 @@ function renderDisplay(data) {
   $("#plotEmpty").classList.add("hidden");
 }
 
+function activePlotRecord() {
+  return state.plots.find((plot) => plot.plot_id === state.selectedPlotId) || state.plots[0] || null;
+}
+
+function artifactKindLabel(kind) {
+  return {
+    plot_export: "Plot export",
+    table_export: "Table export",
+    render_output: "Render output",
+  }[kind] || kind || "Artifact";
+}
+
+function artifactStateLabel(detail) {
+  if (!detail) return "idle";
+  if (!detail.file_available) return "missing";
+  return detail.artifact?.provenance_complete ? "ready" : "incomplete provenance";
+}
+
+function formatTimestamp(value) {
+  if (!value) return "unknown time";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function defaultPlotExportPath(plot) {
+  const source = String(plot?.source_path || "")
+    .split("/")
+    .filter(Boolean)
+    .at(-1)
+    ?.replace(/\.[^.]+$/, "");
+  const stem = source || plot?.execution_mode || "plot";
+  return `artifacts/${stem}.png`;
+}
+
+function defaultDataViewExportPath(page, view) {
+  const extension = page?.view_kind === "col_data" ? "tsv" : "csv";
+  return `artifacts/${page?.object_name || "view"}-${view?.key || page?.view_kind || "table"}.${extension}`;
+}
+
+function renderArtifactDetail() {
+  const detail = state.selectedArtifactDetail;
+  const card = $("#artifactDetailCard");
+  const action = $("#artifactOpenSourceButton");
+  card.className = "render-result-card";
+  if (!detail?.artifact) {
+    card.classList.add("hidden");
+    $("#artifactDetailTitle").textContent = "Artifact";
+    $("#artifactDetailState").textContent = "idle";
+    $("#artifactDetailSummary").textContent = "Select an exported artifact to inspect its provenance.";
+    $("#artifactDetailPath").textContent = "";
+    $("#artifactDetailMeta").textContent = "";
+    action.disabled = true;
+    return;
+  }
+  const artifact = detail.artifact;
+  card.classList.remove("hidden");
+  if (!detail.file_available) card.classList.add("error");
+  else if (artifact.provenance_complete) card.classList.add("success");
+  $("#artifactDetailTitle").textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`;
+  $("#artifactDetailState").textContent = artifactStateLabel(detail);
+  $("#artifactDetailSummary").textContent = detail.file_available
+    ? (artifact.provenance_complete
+      ? "File is available on disk and linked to captured provenance."
+      : `File is available on disk, but provenance is incomplete${artifact.incomplete_reason ? `: ${artifact.incomplete_reason}` : "."}`)
+    : "File is missing from the recorded path. Re-render or export again to recreate it.";
+  $("#artifactDetailPath").textContent = `Output ${detail.output_absolute_path} · created ${formatTimestamp(artifact.created_at)}`;
+  $("#artifactDetailMeta").textContent = [
+    artifact.run_id ? `run ${artifact.run_id}` : "run unavailable",
+    artifact.source_path ? `source ${artifact.source_path}` : "source unavailable",
+    artifact.document_version !== null && artifact.document_version !== undefined ? `doc rev ${artifact.document_version}` : "doc rev unavailable",
+    artifact.workspace_id ? `workspace ${artifact.workspace_id}` : null,
+    artifact.state_revision !== null && artifact.state_revision !== undefined ? `state ${artifact.state_revision}` : null,
+    artifact.project_revision !== null && artifact.project_revision !== undefined ? `project ${artifact.project_revision}` : null,
+    artifact.media_type ? `media ${artifact.media_type}` : null,
+  ].filter(Boolean).join(" · ");
+  action.disabled = !artifact.source_path;
+}
+
+function renderArtifactRecords() {
+  const list = $("#artifactRecordList");
+  const outputList = $("#artifactOutputList");
+  list.replaceChildren();
+  outputList.replaceChildren();
+  $("#artifactOutputCount").textContent = String(state.artifacts.length);
+  const empty = $("#artifactEmpty");
+  empty.classList.toggle("hidden", state.artifacts.length > 0);
+  for (const artifact of state.artifacts) {
+    const selected = artifact.artifact_id === state.selectedArtifactId;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `plot-history-row artifact-row ${selected ? "active" : ""}`;
+    const title = document.createElement("strong");
+    title.textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`;
+    const line1 = document.createElement("p");
+    line1.textContent = `${artifact.media_type || "artifact"} · ${formatTimestamp(artifact.created_at)}`;
+    const line2 = document.createElement("p");
+    line2.textContent = artifact.provenance_complete
+      ? `${artifact.source_path || "No source"} · run ${artifact.run_id || "unlinked"}`
+      : `Provenance incomplete${artifact.incomplete_reason ? ` · ${artifact.incomplete_reason}` : ""}`;
+    row.append(title, line1, line2);
+    row.addEventListener("click", async () => {
+      state.selectedArtifactId = artifact.artifact_id;
+      try {
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+      } catch (error) {
+        state.selectedArtifactDetail = null;
+        toast(`Artifact detail is unavailable: ${error}`, true);
+      }
+      renderPlots();
+    });
+    list.append(row);
+
+    const output = document.createElement("button");
+    output.type = "button";
+    output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
+    const outputLabel = document.createElement("span");
+    outputLabel.textContent = artifact.output_path;
+    const outputIndex = document.createElement("small");
+    outputIndex.textContent = artifactKindLabel(artifact.artifact_kind);
+    output.append(outputLabel, outputIndex);
+    output.addEventListener("click", async () => {
+      switchDockTab("plots");
+      state.selectedArtifactId = artifact.artifact_id;
+      try {
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+      } catch (error) {
+        state.selectedArtifactDetail = null;
+        toast(`Artifact detail is unavailable: ${error}`, true);
+      }
+      renderPlots();
+    });
+    outputList.append(output);
+  }
+  renderArtifactDetail();
+}
+
 function renderPlots() {
   const history = $("#plotHistory");
   const outputList = $("#plotOutputList");
   history.replaceChildren();
   outputList.replaceChildren();
   const plots = state.plots || [];
+  const selectedPlot = activePlotRecord();
   $$('[data-plot-scope]').forEach((button) => button.classList.toggle("active", button.dataset.plotScope === state.plotScope));
   $("#plotCount").textContent = String(plots.length);
   $("#plotOutputCount").textContent = String(plots.length);
+  $("#plotExportButton").disabled = !selectedPlot;
   if (!plots.length) {
     $("#plotEmpty").classList.remove("hidden");
     $("#plotImage").classList.add("hidden");
+    renderArtifactRecords();
     return;
   }
   $("#plotEmpty").classList.add("hidden");
-  const latest = plots[0];
   try {
-    const payload = JSON.parse(latest.payload_json || "{}");
+    const payload = JSON.parse((selectedPlot || plots[0]).payload_json || "{}");
     renderDisplay(payload);
   } catch {
     $("#plotImage").classList.add("hidden");
   }
   for (const plot of plots) {
-    const row = document.createElement("div");
-    row.className = "plot-history-row";
+    const selected = plot.plot_id === selectedPlot?.plot_id;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `plot-history-row ${selected ? "active" : ""}`;
     const title = document.createElement("strong");
     title.textContent = plot.source_path || plot.run_id;
     const line1 = document.createElement("p");
@@ -3946,17 +4320,19 @@ function renderPlots() {
       : "Provenance incomplete";
     row.append(title, line1, line2);
     row.addEventListener("click", () => {
+      state.selectedPlotId = plot.plot_id;
       try {
         renderDisplay(JSON.parse(plot.payload_json || "{}"));
       } catch {
         toast("Plot payload is unavailable.", true);
       }
+      renderPlots();
     });
     history.append(row);
 
     const output = document.createElement("button");
     output.type = "button";
-    output.className = "tree-item plot-output-item";
+    output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
     const outputLabel = document.createElement("span");
     outputLabel.textContent = plot.source_path || plot.execution_mode || "Console plot";
     const outputIndex = document.createElement("small");
@@ -3964,14 +4340,17 @@ function renderPlots() {
     output.append(outputLabel, outputIndex);
     output.addEventListener("click", () => {
       switchDockTab("plots");
+      state.selectedPlotId = plot.plot_id;
       try {
         renderDisplay(JSON.parse(plot.payload_json || "{}"));
       } catch {
         toast("Plot payload is unavailable.", true);
       }
+      renderPlots();
     });
     outputList.append(output);
   }
+  renderArtifactRecords();
 }
 
 async function executeCode(request, origin = "USER") {
@@ -4141,10 +4520,66 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (scenario !== "wp2-data-viewer") return;
+  if (!["wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   applyWorkbenchLayout("analyze");
+  if (scenario === "wp2-data-viewer") {
+    await inspectEnvironmentObject(previewParams.get("object") || "qc");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  await invoke("execute_r", {
+    request: {
+      code: "plot(qc$reads, qc$detected)",
+      source_path: "analysis.R",
+      execution_mode: "file",
+      document_version: 1,
+    },
+  });
+  await loadRunData();
   await inspectEnvironmentObject(previewParams.get("object") || "qc");
+  const page = state.selectedDataPage;
+  if (page) {
+    const tableDetail = await invoke("export_data_view_artifact", {
+      request: {
+        path: "artifacts/qc-table.csv",
+        format: "csv",
+        object_name: page.object_name,
+        view_token: page.view_token,
+        view_kind: page.view_kind,
+        view_key: page.view_key,
+        row_offset: page.row_offset,
+        row_limit: page.row_limit,
+        column_offset: page.column_offset,
+        column_limit: page.column_limit,
+        workspace: currentViewerWorkspace(),
+      },
+    });
+    state.selectedArtifactId = tableDetail?.artifact?.artifact_id || null;
+    state.selectedArtifactDetail = tableDetail || null;
+  }
+  await invoke("render_document", {
+    request: {
+      path: "report.Rmd",
+      document_version: 3,
+    },
+  });
+  const plot = activePlotRecord();
+  if (plot) {
+    const plotDetail = await invoke("export_plot_artifact", {
+      request: { plot_id: plot.plot_id, path: "artifacts/qc-plot.png" },
+    });
+    state.selectedArtifactId = plotDetail?.artifact?.artifact_id || state.selectedArtifactId;
+    state.selectedArtifactDetail = plotDetail || state.selectedArtifactDetail;
+  }
+  const missingArtifact = mockArtifacts.find((artifact) => artifact.artifact_kind === "render_output") || null;
+  if (missingArtifact) {
+    const project = mockProjects[missingArtifact.project_root] || mockProjects[mockLastProject];
+    if (project?.contents) delete project.contents[missingArtifact.output_path];
+    state.selectedArtifactId = missingArtifact.artifact_id;
+  }
+  await loadRunData();
+  switchDockTab("plots");
   requestAnimationFrame(() => recordPreviewLayoutEvidence());
 }
 
@@ -4167,13 +4602,46 @@ function rectsOverlap(a, b) {
 }
 
 function recordPreviewLayoutEvidence() {
-  if (previewParams.get("preview") !== "wp2-data-viewer") return;
+  const scenario = previewParams.get("preview");
+  if (!["wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
     target.id = "previewEvidence";
     target.hidden = true;
     document.body.append(target);
+  }
+  if (scenario === "wp3-artifacts") {
+    const history = rectEvidence($("#plotHistory"));
+    const artifactPanel = rectEvidence($(".artifact-panel"));
+    const artifactList = rectEvidence($("#artifactRecordList"));
+    const artifactDetail = rectEvidence($("#artifactDetailCard"));
+    const evidence = {
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+      active_dock_tab: document.querySelector("[data-dock-tab].active")?.dataset.dockTab || null,
+      counts: {
+        plots: state.plots.length,
+        artifacts: state.artifacts.length,
+      },
+      selected_artifact: state.selectedArtifactDetail?.artifact
+        ? {
+          kind: state.selectedArtifactDetail.artifact.artifact_kind,
+          output_path: state.selectedArtifactDetail.artifact.output_path,
+          file_available: state.selectedArtifactDetail.file_available,
+          provenance_complete: state.selectedArtifactDetail.artifact.provenance_complete,
+        }
+        : null,
+      overlaps: {
+        history_with_artifact_panel: rectsOverlap(history, artifactPanel),
+        artifact_list_with_detail: rectsOverlap(artifactList, artifactDetail),
+      },
+      rects: { history, artifactPanel, artifactList, artifactDetail },
+    };
+    target.textContent = JSON.stringify(evidence);
+    return;
   }
   const search = rectEvidence($("#environmentSearch"));
   const preview = rectEvidence($("#objectPreview"));
@@ -4540,8 +5008,7 @@ async function exportVisibleDataView() {
     return;
   }
   const view = selectedDataView();
-  const defaultExtension = page.view_kind === "col_data" ? "tsv" : "csv";
-  const defaultPath = `${page.object_name}-${view?.key || page.view_kind}.${defaultExtension}`;
+  const defaultPath = defaultDataViewExportPath(page, view);
   const path = window.prompt(
     "Export the current bounded page to a project-relative .csv or .tsv path.",
     defaultPath,
@@ -4559,14 +5026,75 @@ async function exportVisibleDataView() {
     return;
   }
   try {
-    state.project = await invoke("project_create_file", {
-      path: normalized,
-      content: dataViewerDelimitedText(page, format === "tsv" ? "\t" : ","),
+    const safePath = validateProjectRelativePath(normalized);
+    const detail = await invoke("export_data_view_artifact", {
+      request: {
+        path: safePath,
+        format,
+        object_name: page.object_name,
+        view_token: page.view_token,
+        view_kind: page.view_kind,
+        view_key: page.view_key,
+        row_offset: page.row_offset,
+        row_limit: page.row_limit,
+        column_offset: page.column_offset,
+        column_limit: page.column_limit,
+        workspace: currentViewerWorkspace(),
+      },
     });
-    renderProjectTree();
-    toast(`Exported the visible page to ${normalized}.`);
+    state.selectedArtifactId = detail?.artifact?.artifact_id || null;
+    state.selectedArtifactDetail = detail || null;
+    await refreshProject();
+    await loadRunData();
+    switchDockTab("plots");
+    toast(`Exported the visible page to ${safePath}.`);
   } catch (error) {
     toast(String(error), true);
+  }
+}
+
+async function exportActivePlot() {
+  const plot = activePlotRecord();
+  if (!plot) {
+    toast("Run code that produces a plot before exporting.", true);
+    return;
+  }
+  const path = window.prompt(
+    "Export the selected plot to a project-relative .png path.",
+    defaultPlotExportPath(plot),
+  );
+  if (!path) return;
+  try {
+    const normalized = validateProjectRelativePath(path);
+    if (!normalized.toLowerCase().endsWith(".png")) {
+      toast("Plot export path must end with .png.", true);
+      return;
+    }
+    const detail = await invoke("export_plot_artifact", {
+      request: { plot_id: plot.plot_id, path: normalized },
+    });
+    state.selectedArtifactId = detail?.artifact?.artifact_id || null;
+    state.selectedArtifactDetail = detail || null;
+    await refreshProject();
+    await loadRunData();
+    switchDockTab("plots");
+    toast(`Exported the selected plot to ${normalized}.`);
+  } catch (error) {
+    toast(`Could not export plot: ${error}`, true);
+  }
+}
+
+async function clearArtifacts(sessionOnly) {
+  const scope = sessionOnly ? "this session" : "this project";
+  if (!window.confirm(`Clear artifact records from ${scope}?`)) return;
+  try {
+    await invoke("clear_artifact_records", { session_only: sessionOnly });
+    state.selectedArtifactId = null;
+    state.selectedArtifactDetail = null;
+    await loadRunData();
+    toast(`Cleared artifact records from ${scope}.`);
+  } catch (error) {
+    toast(`Could not clear artifact records: ${error}`, true);
   }
 }
 
@@ -6416,6 +6944,8 @@ $("#renderShowPlotsButton").addEventListener("click", () => {
   switchDockTab("plots");
 });
 $("#plotsShortcut").addEventListener("click", () => switchDockTab("plots"));
+$("#artifactsShortcut").addEventListener("click", () => switchDockTab("plots"));
+$("#plotExportButton").addEventListener("click", exportActivePlot);
 async function clearPlots(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
   if (!window.confirm(`Clear plots from ${scope}?`)) return;
@@ -6429,6 +6959,17 @@ async function clearPlots(sessionOnly) {
 }
 $("#clearSessionPlotsButton").addEventListener("click", () => clearPlots(true));
 $("#clearProjectPlotsButton").addEventListener("click", () => clearPlots(false));
+$("#clearSessionArtifactsButton").addEventListener("click", () => clearArtifacts(true));
+$("#clearProjectArtifactsButton").addEventListener("click", () => clearArtifacts(false));
+$("#artifactOpenSourceButton").addEventListener("click", async () => {
+  const sourcePath = state.selectedArtifactDetail?.artifact?.source_path;
+  if (!sourcePath) return;
+  try {
+    await openDocument(sourcePath);
+  } catch (error) {
+    toast(`Could not open source document: ${error}`, true);
+  }
+});
 $$('[data-plot-scope]').forEach((button) => button.addEventListener("click", async () => {
   state.plotScope = button.dataset.plotScope;
   await loadRunData();

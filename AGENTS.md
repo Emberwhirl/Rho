@@ -21,3 +21,6 @@
 
 - Keep browser/mock mode in lockstep with new Tauri commands.
   If a new desktop command changes Environment panel state, add a mock handler in `desktop/dist/app.js` in the same round. Otherwise UI review in browser mode quickly drifts away from the real contract.
+
+- Do not trust `msedge --dump-dom` blindly for local preview evidence on Windows.
+  In this repo it can return empty output even when the page rendered and screenshots succeeded. Keep a deterministic preview hook in the page, and treat screenshot readiness checks as the primary fallback when DOM capture goes mute.
