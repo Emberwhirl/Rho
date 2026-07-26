@@ -1,8 +1,21 @@
 # aisdk family changes proposed for Rho
 
-Status: proposed; no external repository changes made
+Status: proposed and deferred; no external repository changes authorized
 
 Date: 2026-07-15
+
+## Current Scheduling Decision
+
+This document is a candidate catalog, not an active dependency plan. No item is
+required for the current `0.3.x` milestone, and the earlier P0/P1 labels express
+the original proposal's relative priority rather than current authorization.
+The active roadmap and milestone handoff take precedence.
+
+Before implementing any item, a focused design must demonstrate a concrete gap
+that cannot be handled by the current Rho adapter, identify the owning
+repository, define compatibility and release evidence, and receive separate
+approval. In particular, `aisdk.bioc` integration, broad family refactors, MCP
+hosting, and orchestration work remain deferred beyond `0.3.x`.
 
 The packages are maintained by the same organization as Rho, so these are
 planned upstream collaborations rather than requests against immutable third-
@@ -12,7 +25,7 @@ aisdk consumers and be versioned independently from the Rho desktop release.
 These changes keep the aisdk family generally useful. Ark, Tauri, SQLite and
 Rho-specific revision rules remain in Rho rather than leaking into aisdk.
 
-## P0: before the Phase 1A vertical slice
+## Originally P0 Candidates (Now Deferred)
 
 ### 1. aisdk: versioned frontend event envelope
 
@@ -112,7 +125,7 @@ create_mcp_client(
 `transport` lets `McpClient` use broker-owned stdio without owning a processx
 process. Connector-specific credentials remain explicit in `env`.
 
-## P1: useful during desktop productization
+## Originally P1 Candidates (Now Deferred)
 
 ### 6. aisdk: external session event store
 

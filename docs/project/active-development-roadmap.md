@@ -183,11 +183,24 @@ Acceptance gate:
 2. Complete the `0.3.x` representative-project workflow, final cross-package
    validation, manual UI review, and documentation/release integration; repair
    only findings within the accepted WP1-WP4 boundaries.
-3. Review and explicitly schedule post-`0.3.x` capability and interface
-   proposals before beginning another implementation stream.
-4. Freeze the Workbench Protocol and run the cross-platform transport and UI
-   matrix.
-5. Only then expand to remote compute, MCP-heavy workflows, debugger support
+3. Approve and complete the P0 project-isolation, project-switch, and versioned
+   migration gates in
+   [`plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`](../plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md)
+   before implementing a feature that aggregates or executes historical
+   project records. Rerun affected `0.3.x` evidence after these repairs.
+4. Review and explicitly schedule post-`0.3.x` capability and interface
+   proposals before beginning another implementation stream. For user-facing
+   workflow improvement, begin with UX1 and UX2 from
+   [`design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`](../design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md)
+   rather than a broad shell rewrite.
+5. After `0.3.x` and BH1-BH3 acceptance, implement WB1 and WB2 from
+   [`design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md`](../design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md):
+   freeze a project-scoped read-only Workbench Protocol, then validate local
+   CLI, MCP, and replayable events. External execution remains a separate WB3
+   security and approval decision.
+6. Run the cross-platform transport and UI matrix against the accepted public
+   and internal protocol boundaries.
+7. Only then expand to remote compute, broader MCP workflows, debugger support
    and public release hardening.
 
 ## Explicitly deferred

@@ -1,6 +1,11 @@
 # Rho 0.2.0 Release Hardening Specification
 
-Status: implemented; release acceptance active
+Status: engineering implementation complete; release acceptance active
+
+Candidate boundary: this contract and its existing evidence apply to the exact
+`0.2.0-dev.12` candidate. Features added afterward, including About/update
+discovery, require a documented candidate revision and rerun of affected gates
+before they can be included in a `0.2.0` release decision.
 
 Date: 2026-07-22
 

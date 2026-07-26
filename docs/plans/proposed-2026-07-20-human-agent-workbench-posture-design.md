@@ -1,8 +1,28 @@
 # Human-First And Agent-First Workbench Posture Design
 
 Date: 2026-07-20
-Status: Proposed design baseline
+Status: proposed design baseline; implementation not authorized
 Scope: post-`0.2.x` workbench information architecture and incremental frontend evolution
+
+Cross-review status: proposed information architecture; implementation is not
+authorized. This document owns only the future Human/Agent posture and
+Direct/Monitor/Review navigation model. It does not own visual tokens or
+scientific capability contracts.
+
+Dependencies and precedence:
+
+- the active `0.3.x` handoff remains authoritative for environment operations,
+  viewer limits, artifact provenance, and project skills;
+- the interface-modernization plan owns shared visual tokens, component
+  presentation, responsive behavior, accessibility styling, and themes;
+- the intuitive-interaction proposal owns task-level intent entry,
+  consequence-based decisions, guided recovery, progressive disclosure, and
+  user-facing terminology; the accepted interaction decision uses one default
+  `Ask Rho` entry and keeps Ask/Plan/Act in an advanced Agent control without
+  weakening broker policy;
+- the RStudio-inspired proposal owns post-`0.3.x` capability direction;
+- roadmap and milestone acceptance must authorize a separate posture package
+  before the Phase A prototype begins.
 
 ## Summary
 
@@ -58,6 +78,12 @@ The two controls answer different questions:
   visual priority;
 - Agent mode: which observations and mutations the broker allows.
 
+The default composer does not require the user to choose Agent mode before
+stating a goal. It presents one `Ask Rho` entry and begins in the least-
+authority lane capable of understanding the request. Ask/Plan/Act remain
+available through an advanced Agent control for explicit expert policy choice.
+That control is separate from `PostureSwitcher` and `AgentSurface`.
+
 Switching to Agent-first must never imply Act mode. Switching back to
 Human-first must not cancel an active Agent turn. Ask, Plan, Act, approvals,
 stale-revision checks, and protected tool policy continue unchanged in both
@@ -72,6 +98,12 @@ AgentSurface = direct | monitor | review
 The surface may be selected manually. Rho may recommend or automatically open
 the most relevant surface after an explicit user action, but it must not move
 the user away from an object they are actively editing or reviewing.
+
+The existing Code, Analyze, and Agent controls are current layout presets, not
+a second authority model. During any future migration, Code and Analyze remain
+Human-first presets; the current Agent preset may become the compatibility
+entry to `posture = agent, surface = direct`. No implementation may persist
+both meanings for `Agent` as independent top-level states.
 
 ## Goals
 
@@ -781,6 +813,13 @@ The existing boundaries remain:
 - `rho-store` remains the only event and projection database;
 - frontend state is a projection and never writes SQLite directly.
 
+Direct UI environment operations remain in the dedicated broker-owned
+environment-operation request lane defined by the active `0.3.x` contract.
+They may be linked to a task or projected in Direct, Monitor, or Review, but
+they must never be inserted into or authorized through Agent
+`approval_requests`. File-edit acceptance and Agent execution approvals also
+retain their existing distinct records and decision semantics.
+
 ### Incremental Store Extensions
 
 A complete model may eventually require projection tables equivalent to:
@@ -797,9 +836,10 @@ task_entity_links
 
 These tables are query projections beside the append-only event stream, not a
 second event system. The first implementation should add only what its UI slice
-uses. Existing `agent_turns`, `approval_requests`, `runs`, `problems`, and
-`plot_artifacts` should be linked or migrated incrementally rather than
-duplicated.
+uses. Existing `agent_turns`, `approval_requests`,
+`environment_operation_requests`, `runs`, `problems`, and implemented WP3
+artifact records should be linked or migrated incrementally rather than
+duplicated. Linking does not merge their authorization or acceptance semantics.
 
 ### Workbench Events
 
@@ -1049,8 +1089,10 @@ Deliverables:
 
 Deliverables:
 
-- generalize plot artifacts into an artifact manifest contract;
-- add artifact versions and typed links;
+- extend the implemented WP3 artifact record through a reviewed, additive,
+  migration-safe manifest/version contract; do not create a parallel artifact
+  store or rewrite historical provenance;
+- add artifact versions and typed links only after that schema decision;
 - add ArtifactReviewCanvas and ArtifactInspector;
 - add annotations and review findings;
 - implement Review surface, version comparison, accept, and request-changes;
@@ -1149,6 +1191,10 @@ Verify desktop and narrow layouts for:
 > A user can review a versioned scientific artifact, inspect its inputs, code,
 > environment, run, messages, and findings, annotate a precise issue, request a
 > correction, and verify the resulting artifact version and audit trail.
+
+Phase C is blocked until a focused design defines artifact acceptance when
+inputs, source, or environment changed after review. That design must preserve
+WP3 provenance and distinguish review acceptance from release acceptance.
 
 ### Phase D Gate
 

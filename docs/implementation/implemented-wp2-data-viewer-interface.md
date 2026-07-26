@@ -1,6 +1,6 @@
 # Rho WP2 Data Viewer Interface
 
-Status: proposed interface design for WP2 review
+Status: implemented in `8982b12`; milestone-level acceptance remains separate
 
 Date: 2026-07-25
 Code baseline: `cc913a9` (`feat: add reviewed environment operation workflow`)
@@ -8,10 +8,10 @@ Contract authority: `docs/plans/active-2026-07-25-0.3x-scientific-workflow-hando
 
 ## Purpose
 
-This document is the pre-implementation interface design required before WP2
-product code starts. It fixes the V1 broker contract for paged scientific data
-viewers so implementation can proceed without drifting into generic object
-serialization or unbounded table browsing.
+This document records the reviewed V1 broker contract implemented by WP2. It
+remains authoritative for the current paged scientific data-viewer boundary so
+later work does not drift into generic object serialization or unbounded table
+browsing.
 
 WP2 remains limited to bounded viewers for:
 
@@ -243,12 +243,13 @@ UI rules:
   keyboard navigable;
 - pagination controls are disabled while `loading`;
 - stale state offers reload, not silent auto-refresh;
-- no hidden export button appears before the WP3-reviewed export contract
-  exists.
+- visible-page export is governed by the later implemented WP3 artifact
+  contract; it is not part of the WP2 viewer read contract.
 
-## Review Boundary
+## Implemented Boundary
 
-This document is the only WP2 artifact intended before product-code edits. Once
-the request/response shape, stale semantics, fixture metadata and UI states are
-accepted, the next implementation package may wire the broker, R adapters,
-tests and viewer UI against this contract.
+The broker, R adapters, tests, and viewer UI are implemented against this
+contract. Implementation and review evidence is recorded in
+`docs/verification/wp2/verification.md`. Expansion of supported object classes,
+views, limits, or evaluation behavior still requires a reviewed contract
+amendment.

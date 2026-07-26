@@ -37,13 +37,23 @@ changes.
 
 ## Current Entry Points
 
+- Required development governance: [`project/active-development-governance.md`](project/active-development-governance.md)
 - Product direction: [`project/active-development-roadmap.md`](project/active-development-roadmap.md)
+- Active/proposed document authority and cross-review: [`project/active-document-cross-review.md`](project/active-document-cross-review.md)
 - Phase 0 implementation snapshot: [`project/historical-phase-0-status.md`](project/historical-phase-0-status.md)
 - Windows prototype guide: [`implementation/implemented-windows-prototype.md`](implementation/implemented-windows-prototype.md)
 - Windows build contract: [`implementation/implemented-windows-build-environment.md`](implementation/implemented-windows-build-environment.md)
 - Current release gates: [`release/active-0.2-release-checklist.md`](release/active-0.2-release-checklist.md)
 - `0.2.0` hardening contract: [`release/active-0.2.0-release-hardening-spec.md`](release/active-0.2.0-release-hardening-spec.md)
 - Active About and update-check V1: [`design/active-2026-07-25-about-and-update-check-design.md`](design/active-2026-07-25-about-and-update-check-design.md)
+- Proposed implemented-baseline hardening: [`plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`](plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md)
+- Proposed intuitive interaction and guided workflows: [`design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`](design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md)
+- Proposed public Workbench Protocol, CLI, and MCP: [`design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md`](design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md)
+- Proposed reproducibility audit and run comparison: [`design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md`](design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md)
+- Proposed RStudio-inspired workflow direction: [`design/proposed-2026-07-26-rstudio-inspired-workflow-design.md`](design/proposed-2026-07-26-rstudio-inspired-workflow-design.md)
+- Proposed Human/Agent workbench posture: [`plans/proposed-2026-07-20-human-agent-workbench-posture-design.md`](plans/proposed-2026-07-20-human-agent-workbench-posture-design.md)
+- Proposed interface modernization: [`plans/proposed-2026-07-26-interface-modernization-plan.md`](plans/proposed-2026-07-26-interface-modernization-plan.md)
+- Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
 - Implemented Agent work handoff: [`plans/implemented-0.2x-agent-handoff.md`](plans/implemented-0.2x-agent-handoff.md)
 

@@ -1,5 +1,66 @@
 # Rho Agent Notes
 
+## Required development governance
+
+All non-trivial product work must follow
+`docs/project/active-development-governance.md`. That document is the execution
+contract for proposal, specification, implementation, testing, review, version,
+documentation status, commit, and release handoff.
+
+### Hard gates
+
+- Inspect the repository, relevant active/proposed documents, and worktree
+  before changing files. Preserve unrelated user changes.
+- Classify the change risk and identify the owning document and acceptance gate
+  before implementation.
+- Do not implement a `proposed-` document. Record explicit authorization and
+  rename the authorized implementation contract to `active-` first.
+- For non-trivial behavior, write or amend a testable proposal/spec before code.
+  Cross-review it against `docs/project/active-document-cross-review.md` and
+  resolve ownership, schema, policy, persistence, and sequencing conflicts.
+- Keep implementation slices small enough to review and roll back. Stop at the
+  work-package checkpoint instead of implementing a whole multi-phase proposal.
+- Keep the checked-in baseline buildable and testable at every integration
+  boundary. Do not merge half-wired schema/backend/frontend states or depend on
+  a later commit to restore required behavior.
+- Write tests in proportion to risk. Every defect fix gets a regression test;
+  every state mutation gets success, rejection/stale, failure, and recovery
+  coverage; every project-owned feature gets two-project isolation coverage.
+- Treat schema migrations, approvals, project switching, execution, file or
+  environment mutation, credentials, public protocol, and release tooling as
+  high-risk. They require negative tests and failure-injection/recovery evidence.
+- Run the narrowest relevant tests while iterating, then the complete affected
+  validation matrix before completion. Never report an unrun check as passing.
+- Review the implementation against the accepted contract after tests pass.
+  Record deviations in the contract; do not silently let code redefine it.
+- Before handoff, decide and record version impact. User-visible application
+  behavior included in a new development candidate requires synchronized
+  application version metadata and `NEWS.md`. Internal R package versions are
+  independent and change when their package contract changes.
+- Update document lifecycle and evidence only after the corresponding fact is
+  true. Implementation presence, automated verification, milestone acceptance,
+  installed-app acceptance, and release readiness are separate states.
+- Commit only the reviewed files in scope. Report tests, manual acceptance,
+  version/document changes, residual risks, worktree state, and release decision
+  separately.
+- Prefer automated enforcement over remembered convention. When a governance
+  rule can be checked deterministically, add it to repository validation or CI
+  in the same workstream or record a bounded follow-up gate.
+
+### Stop conditions
+
+Stop and amend/review the contract before continuing when:
+
+- implementation requires behavior outside the active spec;
+- two documents claim the same state, persistence, approval, or acceptance
+  semantics;
+- a migration or compatibility rule would guess historical ownership or data;
+- a required test cannot be made deterministic or a failure cannot recover
+  truthfully;
+- the change would broaden credentials, network, filesystem, execution, or
+  approval authority;
+- affected manual acceptance cannot be completed for a release candidate.
+
 ## Scientific workflow implementation
 
 - Keep scientific environment operations in their own broker-owned lane.

@@ -13,7 +13,8 @@ Validated revisions:
 
 Rho uses `aisdk` core as the Agent R execution engine and treats
 `aisdk.console` as the existing reference frontend. Rho does not embed the
-terminal REPL. Its React UI consumes broker-owned Workbench Protocol events.
+terminal REPL. Its static Tauri web frontend consumes broker-owned Workbench
+Protocol events.
 
 This preserves the useful existing behavior without weakening Rho's two-process
 authority model:
@@ -78,15 +79,16 @@ standalone terminal frontend. In desktop mode, Agent R emits events to the
 broker and SQLite remains the sole authoritative writer. This avoids duplicate
 event IDs, divergent branches and recovery races.
 
-## Required follow-up
+## Follow-up Status
 
 1. Extend the broker probe into a bidirectional Agent R request loop.
 2. Add a real-provider opt-in test with credential redaction assertions. The
    mocked typed stream, trace and run-state mapping is already verified.
-3. Implement the organization-owned family package changes in
-   `proposed-aisdk-family-change-proposals.md`, beginning with MCP environment isolation,
-   correlated events and cooperative cancellation. Typed streaming is already
-   public as `on_event`, and Rho must not depend on unexported `aisdk.console`
-   functions.
-4. Implement Bioconductor semantic adapters in `rho.bridge` using the bounded
-   contracts from `aisdk.bioc`.
+3. Treat the organization-owned family changes in
+   `proposed-aisdk-family-change-proposals.md` as deferred candidates. None is
+   on the current `0.3.x` implementation path; each requires a newly
+   demonstrated Rho gap and separate approval before an external repository is
+   changed.
+4. Keep `aisdk.bioc` and semantic-adapter integration deferred beyond `0.3.x`.
+   Any later adapter must be an optional, separately reviewed extension and
+   preserve Workspace R authority and bounded broker payloads.

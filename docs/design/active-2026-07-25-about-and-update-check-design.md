@@ -4,6 +4,14 @@ Date: 2026-07-25
 
 Status: Implementation active; live Pages deployment and installed-app acceptance pending
 
+Release inclusion boundary: this feature was implemented after the locked
+`0.2.0-dev.12` candidate baseline. It is not retroactively part of that
+candidate's release evidence. Including it in a `0.2.0` installer requires an
+explicit release-spec/checklist amendment, a new exact candidate identity, and
+rerunning all affected automated and manual P0 gates. Its Pages and
+update-discovery acceptance cannot satisfy or retroactively block the existing
+`dev.12` GO/NO-GO contract.
+
 Target: Rho Windows desktop after `0.2.0-dev.12`
 
 ## 1. Goal
