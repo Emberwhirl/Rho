@@ -57,3 +57,15 @@ so the preview scenario had finished running before the screenshot was taken.
   verification bundle currently keeps screenshot evidence but not runtime DOM
   dumps. The preview hook is still deterministic and is ready for a stronger
   browser-side DOM capture path in the final review round.
+
+## Final Review Update
+
+On 2026-07-26 the in-app browser's runtime DOM inspection successfully read the
+deterministic `#previewEvidence` hook at an actual `1440 x 900` viewport. It
+confirmed one Plot, three Artifacts, complete provenance for the selected
+missing render, no history/detail overlap, and no captured console warning or
+error. The earlier `--dump-dom` limitation is accepted as a tool-specific
+limitation rather than missing runtime DOM evidence.
+
+See `../0.3x-milestone/verification.md` for the final-round scope and remaining
+manual viewport acceptance.

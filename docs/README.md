@@ -55,6 +55,7 @@ changes.
 - Proposed interface modernization: [`plans/proposed-2026-07-26-interface-modernization-plan.md`](plans/proposed-2026-07-26-interface-modernization-plan.md)
 - Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
+- Current `0.3.x` milestone verification: [`verification/0.3x-milestone/verification.md`](verification/0.3x-milestone/verification.md)
 - Implemented Agent work handoff: [`plans/implemented-0.2x-agent-handoff.md`](plans/implemented-0.2x-agent-handoff.md)
 
 Add new documents to the category that describes their purpose. Prefer a dated

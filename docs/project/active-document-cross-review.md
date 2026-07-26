@@ -218,10 +218,14 @@ demonstrated gap and separate approval; `aisdk.bioc` remains deferred beyond
 
 ## Remaining Open Gates
 
-- record the complete `0.3.x` representative-project reproducibility workflow;
-- run and record the final cross-package validation suite;
-- resolve or explicitly accept WP3 DOM-capture evidence limitations;
-- retain WP4 R package check warnings/notes as visible debt until corrected;
+- record the complete `0.3.x` representative-project reproducibility workflow
+  and manual three-viewport UI acceptance;
+- retain the passing 2026-07-26 final cross-package validation evidence and
+  rerun it after any affected repair;
+- retain the accepted WP3 runtime DOM evidence; fresh `1024 x 768` and narrow
+  captures remain part of manual acceptance;
+- retain the current WP4 package-check result of zero errors, warnings, and
+  notes; the local roxygen version mismatch prevented re-documentation;
 - complete `0.2.0-dev.12` P0 installed-application acceptance and distribution
   decision;
 - complete About/update live endpoint and exact installed-candidate acceptance;

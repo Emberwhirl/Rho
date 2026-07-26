@@ -16,8 +16,9 @@ release path.
 The four scoped `0.3.x` implementation packages have also landed: reviewed
 environment operations, bounded data viewers, artifact export/provenance, and
 bounded project skills. The `0.3.x` milestone remains active because its
-representative-project reproducibility workflow, final cross-package suite,
-manual review, and release integration have not yet been accepted.
+representative-project reproducibility workflow and manual UI review have not
+yet been accepted. The final cross-package automated suite passed on 2026-07-26
+and is recorded in `verification/0.3x-milestone/verification.md`.
 
 ## Direction
 
@@ -209,9 +210,11 @@ active acceptance contracts. Waves 1-7 are scheduled but not authorized.
 ### Wave 0: Close Current Acceptance Work
 
 Finish the representative-project `0.3.x` workflow, final cross-package suite,
-manual UI review, WP3 DOM-capture disposition, WP4 debt record, and
-documentation/release reconciliation. Only integration findings and repairs
-inside the accepted WP1-WP4 contract are permitted without amendment.
+manual UI review, and documentation/release reconciliation. The cross-package
+suite, WP3 runtime DOM disposition, and current WP4 package checks passed on
+2026-07-26; retain their evidence and rerun only when affected. Only integration
+findings and repairs inside the accepted WP1-WP4 contract are permitted without
+amendment.
 
 The `0.2.0-dev.12` release checklist and About/update acceptance may proceed in
 parallel because they have independent candidate and deployment authority.

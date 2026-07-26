@@ -52,16 +52,16 @@ Executed:
 - `Rscript -e "devtools::check()"` in `r/rho.agent`
 - `Rscript -e "devtools::check()"` in `r/rho.bridge`
 
-Current result:
+Current result after the 2026-07-26 final rerun:
 
-- both package checks still report pre-existing documentation / namespace
-  hygiene warnings and notes;
-- no new warning tied to `aisdk.bioc` was introduced in this WP4 pivot;
-- the `rho.agent` test suite completed successfully during `check()`;
-- the `rho.bridge` test suite completed successfully during `check()`.
+- both packages report `0 errors`, `0 warnings`, and `0 notes`;
+- the `rho.agent` and `rho.bridge` test suites completed successfully;
+- the installed `roxygen2 8.0.0` differs from the declared `7.3.3`, so
+  `devtools` did not re-document either package during `check()`;
+- no `aisdk.bioc` warning or dependency was introduced.
 
-These check warnings remain review debt for the packages as a whole, not a new
-WP4 dependency regression.
+The previously recorded documentation/namespace warning debt is not present on
+the final-review baseline. See `../0.3x-milestone/verification.md`.
 
 ## Review Note
 
