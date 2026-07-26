@@ -171,6 +171,36 @@ current scientific milestone. Other documents' Phase A-D or Phase 1-4 labels
 are local to those documents and do not unlock, supersede, or run inside a
 `0.3.x` package without an explicit contract amendment.
 
+The cross-proposal schedule is the Wave 0-7 Implementation Program in
+[`active-development-roadmap.md`](active-development-roadmap.md). This record
+defines the coordination constraints that apply to that schedule:
+
+The current program state is Wave 0. No Wave 1-7 product package is active as a
+result of this schedule; each still requires the authorization and focused
+handoff recorded below.
+
+| Wave | Coordination result |
+| --- | --- |
+| 0 | `0.3.x`, exact `0.2.0-dev.12` release acceptance, and About/update acceptance may proceed independently; no track's evidence closes another track |
+| 1 | BH1 is the primary implementation; UX1 and modernization Phase 1 may run only as contract, inventory, fixture, usability-baseline, token, icon, dimension, and behavior-neutral component work |
+| 2 | BH3 retains a migration gate even when developed with BH1 schema work; BH2 waits for BH1 and owns project-switch truth; UX cannot promise switching or recovery semantics early |
+| 3 | RA-RC1 is the first new post-`0.3.x` capability and stops for review; it remains read-only and cannot create a second evidence store |
+| 4 | UX2 owns the novice first-use-to-result workflow; modernization may style it but cannot introduce structural posture navigation |
+| 5 | WB1 owns the public read-only semantic boundary; no CLI, MCP, or external execution contract may become authoritative first |
+| 6 | WB2 owns authenticated local CLI/MCP/events and remains read-only; cross-platform transport validation consumes the accepted WB1/WB2 contract |
+| 7 | RA-RC2 precedes a separately selected UX3, UX4, or UX5 package; BH4 precedes retention/deletion, and posture precedes UX4 Agent-entry placement |
+
+Only one new post-`0.3.x` product-capability stream may be implemented at a
+time. Independent acceptance/release work and behavior-neutral design-system
+foundation may run in parallel. Parallel work must not depend on an unaccepted
+schema, public protocol, navigation state, approval lane, project-switch rule,
+or retention behavior.
+
+Moving between waves is not implicit authorization. For each bounded package,
+record entry evidence, activate or create its focused implementation handoff,
+update this matrix, and name the next mandatory stop point. Later packages in
+the same proposal remain proposed.
+
 ### Release boundaries
 
 The active release checklist is the sole GO/NO-GO authority for the exact

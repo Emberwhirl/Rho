@@ -2,7 +2,7 @@
 
 Status: active
 
-Date: 2026-07-22
+Date: 2026-07-26
 Current baseline: `0.2.0-dev.12` Windows workbench candidate
 
 Progress: the core `0.2.x` daily-use workflow is implemented and is now in
@@ -175,33 +175,114 @@ Acceptance gate:
 > Local and remote runs have the same execution/revision/provenance semantics,
 > and disconnect/reconnect cannot duplicate a scientific execution.
 
-## Work order for the next iterations
+## Implementation Program
 
-1. Keep the stable M1 implementation baseline while completing its repeatable
-   clean-install acceptance and distribution decision as a parallel release
-   track.
-2. Complete the `0.3.x` representative-project workflow, final cross-package
-   validation, manual UI review, and documentation/release integration; repair
-   only findings within the accepted WP1-WP4 boundaries.
-3. Approve and complete the P0 project-isolation, project-switch, and versioned
-   migration gates in
-   [`plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`](../plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md)
-   before implementing a feature that aggregates or executes historical
-   project records. Rerun affected `0.3.x` evidence after these repairs.
-4. Review and explicitly schedule post-`0.3.x` capability and interface
-   proposals before beginning another implementation stream. For user-facing
-   workflow improvement, begin with UX1 and UX2 from
-   [`design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`](../design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md)
-   rather than a broad shell rewrite.
-5. After `0.3.x` and BH1-BH3 acceptance, implement WB1 and WB2 from
-   [`design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md`](../design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md):
-   freeze a project-scoped read-only Workbench Protocol, then validate local
-   CLI, MCP, and replayable events. External execution remains a separate WB3
-   security and approval decision.
-6. Run the cross-platform transport and UI matrix against the accepted public
-   and internal protocol boundaries.
-7. Only then expand to remote compute, broader MCP workflows, debugger support
-   and public release hardening.
+This section is the authoritative cross-proposal implementation order. Local
+phase or work-package numbering in a design document describes only that
+document. It does not override this program or authorize product-code work.
+
+Each wave has a mandatory evidence review before the next dependent wave. An
+unfinished proposal remains `proposed` until one bounded package is explicitly
+authorized under
+[`active-development-governance.md`](active-development-governance.md). At that
+point, create or activate a focused implementation handoff, record the entry
+evidence and next stop point, and update
+[`active-document-cross-review.md`](active-document-cross-review.md). Do not
+activate a whole multi-package proposal at once.
+
+Current program state: **Wave 0**. The active product scope is limited to
+`0.3.x` milestone integration, regression repair inside WP1-WP4, and acceptance
+closure. The parallel `0.2.0-dev.12` and About/update tracks retain their own
+active acceptance contracts. Waves 1-7 are scheduled but not authorized.
+
+| Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
+| --- | --- | --- | --- |
+| 0 | Close the active `0.3.x` milestone | Complete the exact `0.2.0-dev.12` installed-app release acceptance and About/update live and installed acceptance as independent tracks | Each track has its own recorded automated, manual, installed-app, documentation, and release facts |
+| 1 | BH1 canonical project identity and two-project isolation | UX1 contract/copy inventory and usability baseline; modernization Phase 1 visual tokens and component inventory only | BH1 isolation gate passes; parallel work makes no unsupported backend or navigation claim |
+| 2 | BH3 transactional schema v8 migration, then BH2 project-switch state machine | UX1 may finish; no UI may promise switching, retention, or recovery behavior before its owning backend gate | Historical migration, rollback/failure injection, and atomic project-switch evidence pass |
+| 3 | RA-RC1 deterministic run comparison | Behavior-neutral visual foundation work only | RA-RC1 is accepted at its mandatory review stop |
+| 4 | UX2 first use, files, Run scope, and result handoff | Finish modernization Phase 1 without structural navigation changes | Novice task protocol and browser/Tauri parity pass |
+| 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass |
+| 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass |
+| 7 | RA-RC2, followed by one separately selected UX3, UX4, or UX5 package | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review |
+
+### Wave 0: Close Current Acceptance Work
+
+Finish the representative-project `0.3.x` workflow, final cross-package suite,
+manual UI review, WP3 DOM-capture disposition, WP4 debt record, and
+documentation/release reconciliation. Only integration findings and repairs
+inside the accepted WP1-WP4 contract are permitted without amendment.
+
+The `0.2.0-dev.12` release checklist and About/update acceptance may proceed in
+parallel because they have independent candidate and deployment authority.
+Evidence from one track cannot close another track.
+
+### Waves 1-2: Establish The Safe Baseline
+
+Authorize BH1 first. BH3 may share its development cycle with the reviewed BH1
+schema, but retains an independent migration gate. BH2 begins only after BH1 is
+accepted and may not publish a new project until Workspace R, persistence,
+watchers, broker state, and UI state are synchronized.
+
+UX1 may run in parallel because it inventories language and defines testable
+interaction contracts without claiming new behavior. Interface modernization
+Phase 1 may establish tokens, icons, dimensions, focus treatment, and a
+component inventory. Neither track may introduce structural Human/Agent
+navigation or present unimplemented switching, retention, undo, or recovery.
+
+After BH1-BH3, rerun affected `0.3.x` evidence because project ownership,
+queries, migration, and switching are shared foundations.
+
+### Waves 3-4: Deliver Evidence And Novice Workflow Value
+
+RA-RC1 is the first new post-`0.3.x` capability. It remains a read-only derived
+view over authoritative runs, snapshots, Problems, and Artifacts and stops for
+review before RA-RC2.
+
+After RA-RC1 acceptance, implement UX2 as a vertical novice workflow covering
+first use, project files, exact Run scope, persistent results, and recovery.
+Modernization Phase 1 may finish alongside UX2, but structural layout remains
+blocked by the posture decision.
+
+### Waves 5-6: Stabilize Local Interoperability
+
+WB1 freezes the bounded, project-scoped, read-only semantic contract before a
+transport is treated as public. WB2 then adds authenticated local CLI, MCP, and
+replayable events without adding external execution. Cross-platform transport
+validation begins only against these accepted boundaries.
+
+WB3 is not part of Waves 5-6. External execution requires a separate security,
+approval, credential, and admission decision after read-only interoperability
+has demonstrated value.
+
+### Wave 7 And Later Selection
+
+Authorize RA-RC2 after RA-RC1, then select only one of UX3, UX4, or UX5 for
+product implementation at a time. UX3 requires the relevant BH1-BH3 switching
+and history behavior. UX4 requires an accepted posture implementation contract.
+UX5 requires accepted `0.3.x` behavior and BH4 before any retention or deletion
+operation.
+
+Posture phases, structural modernization, background jobs, remote execution,
+debugging, WB3, and public remote control remain later separately reviewed
+streams. Their presence in a proposal is not scheduling or authorization.
+
+### Concurrency And Stop Rules
+
+- Keep no more than one new post-`0.3.x` product-capability stream in
+  implementation at a time. Acceptance/release tracks and behavior-neutral
+  design-system work may run in parallel when their evidence and ownership are
+  independent.
+- A parallel track must not consume an unaccepted schema, protocol, navigation,
+  approval, switching, or retention behavior from another track.
+- Stop at every wave exit and package-specific review point. Reconcile tests,
+  manual evidence, version/NEWS impact, document lifecycle, remaining debt, and
+  worktree state before authorizing dependent work.
+- If evidence invalidates an entry condition, return the affected package to
+  review; do not silently reorder the program or infer acceptance.
+- Emergency repair remains governed by the exception rules in
+  `active-development-governance.md` and does not authorize adjacent roadmap
+  scope.
 
 ## Explicitly deferred
 
