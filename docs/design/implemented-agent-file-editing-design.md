@@ -266,7 +266,7 @@ Example payload:
 
 ```json
 {
-  "project_root": "D:/Rho",
+  "project_root": "E:/YuNotebooks/01_Development/source/Rho",
   "files": ["analysis.R", "R/plot.R", "report.qmd"],
   "active_path": "R/plot.R",
   "document_version": 12,

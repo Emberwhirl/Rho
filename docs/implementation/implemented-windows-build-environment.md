@@ -14,7 +14,7 @@ the installer builder reuses the same script.
 The GitHub-hosted release job uses Rust's `minimal` profile, then explicitly
 installs `rustfmt` for `stable-x86_64-pc-windows-gnu` and verifies it with
 `cargo fmt --version` before entering the release checks.
-Repository root: `D:\Rho`
+Repository root: `E:\YuNotebooks\01_Development\source\Rho`
 
 ## Purpose
 
@@ -96,7 +96,7 @@ Verify them before building:
 Test-Path E:\software-data\scoop\persist\rustup\.cargo
 Test-Path E:\software-data\scoop\persist\rustup\.rustup
 Test-Path C:\rtools45\x86_64-w64-mingw32.static.posix\bin
-Test-Path D:\Rho\desktop\resources\WebView2Loader.dll
+Test-Path E:\YuNotebooks\01_Development\source\Rho\desktop\resources\WebView2Loader.dll
 ```
 
 There are two Rust selections to distinguish:
@@ -139,7 +139,7 @@ unrelated feature work.
 From a fresh PowerShell session:
 
 ```powershell
-Set-Location D:\Rho
+Set-Location E:\YuNotebooks\01_Development\source\Rho
 Rscript -e "cat(R.version.string, '\n'); cat(R.home(), '\n'); cat(paste(.libPaths(), collapse='\n'))"
 powershell -ExecutionPolicy Bypass -File scripts\bootstrap-ark-windows.ps1
 ```
@@ -174,7 +174,7 @@ Expected bootstrap files:
 Run the narrow checks first, then the workspace suite:
 
 ```powershell
-Set-Location D:\Rho
+Set-Location E:\YuNotebooks\01_Development\source\Rho
 node --check desktop\dist\app.js
 Rscript -e "testthat::test_local('r/rho.bridge')"
 Rscript -e "testthat::test_local('r/rho.agent')"
@@ -202,7 +202,7 @@ checks.
 The canonical build command is:
 
 ```powershell
-Set-Location D:\Rho
+Set-Location E:\YuNotebooks\01_Development\source\Rho
 powershell -ExecutionPolicy Bypass -File scripts\build-windows-installer.ps1
 ```
 
@@ -225,8 +225,8 @@ directories before using the existing workstation-specific defaults.
 Expected outputs:
 
 ```text
-D:\Rho\target\release\rho-desktop.exe
-D:\Rho\target\release\bundle\nsis\Rho_0.2.0-dev.11_x64-setup.exe
+E:\YuNotebooks\01_Development\source\Rho\target\release\rho-desktop.exe
+E:\YuNotebooks\01_Development\source\Rho\target\release\bundle\nsis\Rho_0.2.0-dev.11_x64-setup.exe
 ```
 
 Validated `0.2.0-dev.11` artifact snapshot:

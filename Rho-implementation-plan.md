@@ -2,7 +2,7 @@
 
 > Status: reviewed architecture baseline  
 > Date: 2026-07-15  
-> Project root: `D:\Rho`  
+> Project root: `E:\YuNotebooks\01_Development\source\Rho`
 > Primary AI runtime: [`YuLab-SMU/aisdk`](https://github.com/YuLab-SMU/aisdk)  
 > Primary R kernel: [`posit-dev/ark`](https://github.com/posit-dev/ark)
 
@@ -812,7 +812,7 @@ Project change detection uses filesystem notifications plus a bounded post-execu
 ## 9. Proposed repository layout
 
 ```text
-D:\Rho\
+E:\YuNotebooks\01_Development\source\Rho\
   README.md
   Cargo.toml
   package.json
@@ -1220,7 +1220,7 @@ Targets should be confirmed during Phase 0 rather than treated as promises:
 
 ## 15. Immediate next actions
 
-1. Initialize the monorepo at `D:\Rho`.
+1. Initialize the monorepo at `E:\YuNotebooks\01_Development\source\Rho`.
 2. Write and approve ADR-001 through ADR-009 listed in this plan.
 3. Build Spike A: direct Rust-to-Ark launch, channels, streaming, display, stdin, interrupt, and comm probe on Windows.
 4. Build Spike B: bounded arf headless comparison and gap report.

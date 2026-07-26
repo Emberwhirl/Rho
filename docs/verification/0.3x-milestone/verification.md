@@ -17,7 +17,7 @@ changed in this review round.
 
 ## Environment
 
-- Windows PowerShell workspace: `D:\Rho`
+- Windows PowerShell workspace: `E:\YuNotebooks\01_Development\source\Rho`
 - R: `4.6.1` UCRT
 - `renv`: `1.2.3`
 - `BiocManager`: `1.30.27`

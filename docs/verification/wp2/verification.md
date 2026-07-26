@@ -43,7 +43,7 @@ This directory records the evidence used to close WP2.
 
 These screenshots were generated from browser preview mode with:
 
-- `file:///D:/Rho/desktop/dist/index.html?preview=wp2-data-viewer&object=qc`
+- `file:///E:/YuNotebooks/01_Development/source/Rho/desktop/dist/index.html?preview=wp2-data-viewer&object=qc`
 
 Additional DOM/layout evidence:
 

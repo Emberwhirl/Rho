@@ -20,7 +20,7 @@ export and provenance review.
 
 ## Automated Evidence
 
-- `node --check "D:\Rho\desktop\dist\app.js"` passed.
+- `node --check "E:\YuNotebooks\01_Development\source\Rho\desktop\dist\app.js"` passed.
 - `cargo +stable-x86_64-pc-windows-gnu test -p rho-store` passed with `10`
   tests, including `persists_artifact_records_and_resolves_run_by_workspace_state`.
 - `cargo +stable-x86_64-pc-windows-gnu test -p rho-server` passed with `15`
