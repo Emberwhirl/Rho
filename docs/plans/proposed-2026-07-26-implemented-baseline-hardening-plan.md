@@ -1,6 +1,7 @@
 # Implemented Baseline Hardening Plan
 
-Status: proposed repair plan; implementation not authorized
+Status: proposed broader repair plan; BH1 separately authorized through an
+active implementation handoff, BH2-BH5 not authorized
 
 Date: 2026-07-26
 Scope: project isolation, project-switch concurrency, durable-store migration,
@@ -19,8 +20,10 @@ Cross-reviewed against:
 - `docs/design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`;
 - `docs/design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md`.
 
-Implementation entry rule: this plan requires explicit approval before product
-code changes begin. Once approved, BH1-BH3 are correctness and privacy repairs
+Implementation entry rule: each package in this plan requires explicit approval
+before product code changes begin. BH1 alone was authorized on 2026-07-26 under
+`active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md`. BH2-BH5
+remain unapproved. Once approved, BH1-BH3 are correctness and privacy repairs
 to the implemented baseline and take precedence over post-`0.3.x` features
 that read, compare, retry, or aggregate durable runs or Agent history. Complete
 each checkpoint and stop for review before beginning the next one.

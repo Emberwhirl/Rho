@@ -120,7 +120,17 @@ review. The evidence must show:
 
 Automated result: **pass**.
 
-Milestone result: **acceptance pending**. No automated failure currently
+Wave 0 review result: **accept with follow-up**. The automated review and
+documentation reconciliation are closed. The project owner accepted the
+remaining representative-project and manual UI work as an explicit follow-up,
+not as passing evidence.
+
+`0.3.x` milestone result: **acceptance pending**. No automated failure currently
 requires a WP1-WP4 code repair, but the contract's representative-project and
-manual UI evidence is not recorded. Wave 0 remains active, and BH1 or another
-post-`0.3.x` capability is not authorized by this result.
+manual UI evidence is not recorded. This result does not claim milestone or
+release acceptance.
+
+BH1 was separately authorized on 2026-07-26 because project-scoped durable
+identity is required to make historical-project evidence, retry, continuation,
+and the remaining representative workflow truthful. That authorization does
+not close the manual gates above or authorize any other post-`0.3.x` feature.

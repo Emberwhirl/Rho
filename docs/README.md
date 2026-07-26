@@ -47,6 +47,7 @@ changes.
 - `0.2.0` hardening contract: [`release/active-0.2.0-release-hardening-spec.md`](release/active-0.2.0-release-hardening-spec.md)
 - Active About and update-check V1: [`design/active-2026-07-25-about-and-update-check-design.md`](design/active-2026-07-25-about-and-update-check-design.md)
 - Proposed implemented-baseline hardening: [`plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`](plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md)
+- Active BH1 project-scoped durable identity handoff: [`plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md`](plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md)
 - Proposed intuitive interaction and guided workflows: [`design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`](design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md)
 - Proposed public Workbench Protocol, CLI, and MCP: [`design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md`](design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md)
 - Proposed reproducibility audit and run comparison: [`design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md`](design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md)

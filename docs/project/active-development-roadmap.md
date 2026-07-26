@@ -191,10 +191,12 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 0**. The active product scope is limited to
-`0.3.x` milestone integration, regression repair inside WP1-WP4, and acceptance
-closure. The parallel `0.2.0-dev.12` and About/update tracks retain their own
-active acceptance contracts. Waves 1-7 are scheduled but not authorized.
+Current program state: **Wave 1, BH1 only**. Wave 0 automated review closed as
+`accept with follow-up`; the `0.3.x` representative-project and manual UI gates
+remain open and are not recorded as passed. BH1 project-scoped durable identity
+is the only authorized new product package. The parallel `0.2.0-dev.12` and
+About/update tracks retain their own active acceptance contracts. BH2-BH5,
+UX1, modernization, and Waves 2-7 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -222,7 +224,9 @@ Evidence from one track cannot close another track.
 
 ### Waves 1-2: Establish The Safe Baseline
 
-Authorize BH1 first. BH3 may share its development cycle with the reviewed BH1
+BH1 was authorized on 2026-07-26 under
+[`plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md`](../plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md).
+BH3 may share its development cycle with the reviewed BH1
 schema, but retains an independent migration gate. BH2 begins only after BH1 is
 accepted and may not publish a new project until Workspace R, persistence,
 watchers, broker state, and UI state are synchronized.

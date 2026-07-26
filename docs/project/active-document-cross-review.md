@@ -35,11 +35,12 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md` | active; WP1-WP4 code landed, milestone acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | only integration review, regression repair, and milestone closure without an amendment |
+| `plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md` | active; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
 | `design/active-2026-07-25-about-and-update-check-design.md` | implementation active; live and installed acceptance open | About/update V1 and Pages gates | its own live/installed acceptance; inclusion in `0.2.0` needs a revised candidate contract |
-| `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed; independently cross-reviewed | canonical durable project identity, project-switch concurrency, schema v8 migration, retention semantics, and behavior-neutral module boundaries | explicit approval; BH1-BH3 precede features that aggregate or execute historical project records |
+| `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | active; BH1 authorized 2026-07-26 | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | implement BH1-A through BH1-C only; stop for independent acceptance before BH2/BH3 |
+| `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed broader direction; BH1 separately active | BH1-BH5 baseline-hardening direction beyond the focused active handoff | BH2-BH5 remain unapproved; each requires a separate authorization and active handoff |
 | `design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md` | proposed; independently cross-reviewed | task-level interaction, intent entry, consequence-based decisions, guided recovery, progressive disclosure, and user-facing terminology | UX1 may define contracts; behavioral packages wait for their owning hardening, posture, or feature entry gates |
 | `design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md` | proposed; independently cross-reviewed | WB1 public read-only semantic contract, WB2 authenticated local CLI/MCP/events, and WB3 broker-admitted external R execution | `0.3.x` and BH1-BH3 accepted; each WB package separately authorized and stopped for review |
 | `design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md` | proposed; independently cross-reviewed | read-only deterministic audit and two-run comparison semantics | `0.3.x` milestone acceptance plus an approved RA-RC1 interface checkpoint and durable run-project identity contract |
@@ -175,9 +176,10 @@ The cross-proposal schedule is the Wave 0-7 Implementation Program in
 [`active-development-roadmap.md`](active-development-roadmap.md). This record
 defines the coordination constraints that apply to that schedule:
 
-The current program state is Wave 0. No Wave 1-7 product package is active as a
-result of this schedule; each still requires the authorization and focused
-handoff recorded below.
+The current program state is Wave 1 with BH1 as the only active product package.
+Wave 0 automated review closed as `accept with follow-up`, while `0.3.x` manual
+milestone acceptance remains open. No other Wave 1 package or Wave 2-7 package
+is active; each still requires separate authorization and a focused handoff.
 
 | Wave | Coordination result |
 | --- | --- |
