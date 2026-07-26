@@ -132,9 +132,13 @@ this proposal must not reimplement them.
 | Data Viewer | Bounded paged viewers with domain-specific summaries | P0 | `0.3.x` |
 | Plots and Viewer | Versioned artifacts linked to source, run, and environment | P0 | `0.3.x` |
 | Completion and navigation | Package-aware completion, signatures, definitions, and references | P1 | post-`0.3.x` |
+| Editor foundation | Keep Monaco and connect one broker-managed R language service | P1 | post-`0.3.x` |
+| Static diagnostics | Map bounded `lintr` findings into the existing Problems model | P1 | post-`0.3.x` |
 | Help pane | Installed-version help with examples and Agent citations | P1 | post-`0.3.x` |
+| Rich tabular interaction | Use TanStack Table over broker-paged data | P1 | post-`0.3.x` |
 | Git pane | Broker-mediated diff, staging, history, and review provenance | P1 | post-`0.3.x` |
 | Quarto/R Markdown workflow | Chunk execution, background render, source-linked diagnostics, artifact review | P1 | post-`0.3.x` |
+| Reproducible pipelines | Optional, broker-managed `targets` inspection and execution | P2 | after local jobs and Quarto |
 | Jobs pane | Typed broker jobs with status, cancellation, logs, and artifacts | P2 | advanced execution |
 | Debugger | Ark-compatible breakpoints, stack, frames, and manual takeover | P2 | advanced execution |
 | Build pane | Typed package document, test, build, and check workflows | P2 | advanced execution |
@@ -184,6 +188,40 @@ corresponding deterministic browser/mock handler in the same work package.
 Screenshot readiness is the primary browser-preview evidence when Windows Edge
 DOM capture returns empty output.
 
+### Open-Source Component Policy
+
+Open-source tools provide bounded computation or protocol capabilities; they
+do not become parallel authorities for project identity, scientific state,
+policy, persistence, Problems, runs, jobs, or Artifacts. Before a component is
+selected, its focused handoff must record the exact version, license and notice
+obligations, Windows distribution method, update policy, process and crash
+boundary, project-root access, payload limits, and unavailable behavior.
+
+Rho must not silently install an optional R package or executable into the
+user's project or library. Bundled tools require release and installer review;
+project-provided tools run only after capability detection and version
+reporting. A library may be replaced before implementation if its focused
+evaluation fails, but the accepted semantic contract must not depend on one
+library's private data structures.
+
+| Component | Role in Rho | Integration boundary | Decision |
+| --- | --- | --- | --- |
+| Monaco | Existing editor, source ranges, decorations, completion and navigation UI | Frontend consumes broker-owned document versions and bounded provider results | Retain; do not replace the editor |
+| Air / R `languageserver` | Candidate R formatting and Language Server Protocol backends | One optional broker-supervised helper process per active project context; never Workspace R or Agent R | Compare and select one primary backend; do not ship two simultaneous authorities |
+| `lintr` | Static R diagnostics with rule and source-range metadata | Typed read-only diagnostic operation using the confirmed project environment | Optional diagnostics provider after the language-service contract |
+| TanStack Table | Headless table rendering, keyboard interaction, column state and virtualization | Frontend only; paging, sorting, filtering, search and export truth remain Workspace/broker operations | Preferred post-`0.3.x` viewer interaction layer if V1 bounds are preserved |
+| `gitoxide` | Git discovery, status, diff, history and later selected mutations | Rust broker validates repository identity, revisions, paths and policy | Preferred Git implementation candidate; credentialed network operations remain out of scope |
+| Quarto CLI | Scientific document rendering | Broker-managed typed local job over saved project files and a declared format | Retain existing detection, then migrate synchronous rendering into the first local job adapter |
+| `targets` | Optional R pipeline inspection, dependency state and incremental builds | Fixed R adapter functions in a broker-managed job; `_targets` remains targets-owned | Add only after the local job and Quarto contracts are accepted |
+
+The Air and R `languageserver` comparison must use the same representative
+projects and evaluate installed-package completion, signatures,
+definition/reference accuracy, formatting stability, diagnostics, Unicode and
+space-containing paths, startup latency, cancellation, crash recovery, memory,
+offline behavior, and supported-R compatibility. Monaco remains the client in
+either case. The selected service must not mutate files except through an
+explicit formatting or refactor proposal bound to a document version.
+
 ## Workstreams
 
 ### WS1: Packages And Reproducible Environments
@@ -215,6 +253,13 @@ the active `0.3.x` handoff rather than repeated here.
 
 Extend the existing bounded completion and symbol navigation incrementally.
 
+Monaco remains the editor. Add a broker-supervised language-service adapter
+that translates Monaco/LSP requests into bounded results tied to the active
+project and document version. Air and R `languageserver` are candidates for
+this adapter, not cumulative dependencies. A focused checkpoint selects one
+primary backend and records any unsupported capabilities that Rho must supply
+through local Help or its existing Workspace bridge.
+
 Initial capabilities:
 
 - completion for visible workspace objects, installed package exports,
@@ -228,6 +273,14 @@ Initial capabilities:
 - installed-version help including usage, arguments, examples, vignettes,
   package name, and package version;
 - explicit execution of a selected example as a normal recorded Workspace run.
+
+After the language-service checkpoint, integrate `lintr` as a separate,
+optional static diagnostics provider. Its findings are normalized into the
+existing Problems schema and identify `lintr`, the rule, package version,
+source revision and scan scope. Duplicate language-service and `lintr`
+findings are grouped deterministically; neither provider owns a second Problems
+store. Autofixes or formatting never write directly: they become
+document-version-bound reviewable edits.
 
 Agent answers about an API should be able to reference the resolved local help
 record. The UI must distinguish local documentation evidence from model-only
@@ -249,6 +302,13 @@ Post-`0.3.x` delta:
 
 Extend the current bounded data viewer and plot history into a common
 inspection model.
+
+TanStack Table is the preferred headless UI layer for the tabular surface. It
+may own DOM virtualization, column sizing/order, selection, focus and keyboard
+interaction. It must not receive a full large object, execute scientific
+filter expressions, infer currentness, or become the authority for sort,
+filter, paging, export or provenance. Those operations remain typed Workspace
+or broker requests under the implemented V1 byte and dimension limits.
 
 Required capabilities:
 
@@ -272,6 +332,11 @@ reduce a plot, table, diff, HTML result, or PDF to a secondary preview.
 ### WS4: Git And Reviewable Changes
 
 Introduce Git as a project capability, not as unrestricted shell execution.
+Use `gitoxide` as the preferred implementation candidate because it can remain
+inside the Rust broker boundary. The focused Git handoff must verify the exact
+operations and Windows repository cases against the selected version before
+adoption; Rho's command and persistence contracts must not expose
+`gitoxide`-specific object layouts.
 
 Initial read operations:
 
@@ -287,6 +352,12 @@ Initial mutations:
 - restore a selected user-confirmed file or hunk;
 - resolve only explicitly selected conflict content.
 
+V1 excludes fetch, pull, push, credential discovery or storage, remote URL
+mutation, branch deletion, force operations, submodule mutation and Git hooks.
+Rho must not execute repository hooks implicitly. Worktrees, nested
+repositories, symlinks, case-only paths, non-UTF-8 metadata, large diffs and
+repository replacement require explicit fixtures and fail-closed behavior.
+
 Every mutation must validate repository identity and current diff/revision at
 execution time. Agent-originated changes and pre-existing human changes remain
 distinguishable. Rho must never stage unrelated work implicitly, and destructive
@@ -300,6 +371,11 @@ motivated it, but Git history is not a substitute for Rho's run provenance.
 ### WS5: Quarto And R Markdown Production
 
 Build on the existing saved-document render command and structured Problems.
+Quarto CLI remains an external executable with detected path and version. Rho
+does not embed Quarto internals or install it silently. The current synchronous
+`workspace.render_document` behavior is the migration baseline; the first
+accepted local-job adapter should move process lifecycle to the broker without
+changing existing render Artifact provenance semantics.
 
 Required capabilities:
 
@@ -314,6 +390,13 @@ Required capabilities:
 
 A full visual Markdown editor is not required for the first iteration. The
 first acceptance target is a dependable edit-run-render-diagnose-review loop.
+
+Rendered HTML runs in an unprivileged viewer without Tauri command access.
+Quarto exit status is authoritative; bounded stdout/stderr parsing may create
+Problems but must not define job state. Record the Quarto version, input
+document version, normalized project root, declared format, environment
+snapshot, output files and resource directories. Cancellation is best effort
+and must report outputs that may already have been written.
 
 ### WS6: Background Jobs And Monitor
 
@@ -338,6 +421,52 @@ The Monitor surface summarizes active work and exceptions. Raw streams remain
 inspectable but are collapsed by default. No job implementation may parse
 Console text as its authoritative state or silently create another live R
 workspace.
+
+Quarto rendering is the first proposed local job adapter. Freezing that narrow
+adapter precedes a general job surface: the initial contract may support only
+typed `document.render`, cancellation, bounded logs, restart reconciliation
+and Artifact registration. It must not accidentally authorize arbitrary
+process execution.
+
+### WS6A: `targets` Pipelines
+
+After the local job contract and Quarto adapter are accepted, add an optional
+`targets` adapter for projects containing `_targets.R`. Rho detects the package
+in the confirmed project environment and reports its version; it does not
+install `targets`, rewrite `_targets.R`, or own, repair, delete or migrate the
+`_targets` data store.
+
+Initial read-only operations:
+
+- capability and `_targets.R` discovery under the normalized project root;
+- bounded manifest, dependency, outdated, progress and error summaries using
+  documented `targets` APIs;
+- source locations where targets metadata can report them reliably;
+- bounded dynamic-branch aggregation instead of unbounded branch expansion.
+
+Later typed mutations:
+
+- run all outdated targets or an explicitly selected target set with the
+  dependency expansion visible before execution;
+- cancel the broker-owned R process on a best-effort basis and reconcile
+  durable state after restart;
+- register declared file targets and selected report inputs as Artifacts
+  without copying the `_targets` metadata database into Rho;
+- explicitly import a selected result into Workspace R as a separate recorded
+  action rather than silently sharing a live object or process.
+
+The adapter exposes fixed operations such as `pipeline.inspect`,
+`pipeline.outdated`, `pipeline.run` and `pipeline.cancel`; neither frontend nor
+Agent may submit arbitrary R code through it. Pipeline execution uses a
+broker-managed noninteractive R process tied to project and environment
+revisions. It is not a second interactive Workspace R.
+
+A later composed `pipeline build -> document render` command is orchestration
+over two durable jobs. It first displays the targets that may run, stops if the
+pipeline fails, registers declared file outputs, then renders a saved Quarto
+document against the recorded revisions and environment. Provenance is marked
+incomplete when document inputs are implicit, network-derived or not declared
+as file targets; Rho must not infer dependencies from matching filenames.
 
 ### WS7: Debugging And Package Development
 
@@ -375,12 +504,15 @@ Gate:
 
 ### Phase B: Daily Editing Intelligence
 
-First deliver RA-RC1 from the separately reviewed reproducibility-audit and
-run-comparison proposal. This validates the `0.3.x` evidence foundation without
-adding mutation or a second persistence model. After RA-RC1 acceptance, deliver
-the initial WS2 completion, navigation, diagnostics, and local Help
-capabilities as a separate work package. RA-RC2 may be scheduled only through
-the active cross-review record and must not be bundled into WS2.
+Deliver RA-RC1 and later RA-RC2 according to the authoritative Wave program in
+the active roadmap. After the Wave 7 selection gate, deliver the initial WS2
+completion, navigation, diagnostics, and local Help capabilities as separate
+Wave 8-9 packages. Neither reproducibility package may be bundled into WS2.
+
+The WS2 package sequence is: retain Monaco; complete the Air versus R
+`languageserver` compatibility checkpoint; select and integrate one primary
+language backend; then add normalized `lintr` diagnostics. A provider failure
+must leave editing, saving and Workspace execution available.
 
 Gate:
 
@@ -392,7 +524,10 @@ Gate:
 
 ### Phase C: Change And Document Review
 
-Deliver initial WS4 and WS5 behavior plus richer artifact review from WS3.
+First deliver the TanStack Table interaction layer over the accepted viewer
+contract, then initial `gitoxide`-backed WS4 read behavior and separately
+reviewed mutations. Deliver WS5 only after the local job entry contract is
+reviewed; richer artifact review may proceed with it without redefining WP3.
 
 Gate:
 
@@ -409,6 +544,10 @@ Gate:
 > A long render or scientific operation survives UI navigation, exposes
 > truthful state, can be cancelled or diagnosed, and produces no duplicate run
 > after broker restart or reconnect.
+
+After the Quarto job adapter passes this gate, deliver `targets` inspection as
+a read-only package, stop for review, and only then authorize pipeline
+execution and composed pipeline-to-document production.
 
 ### Phase E: Advanced Developer Workflow
 
@@ -464,16 +603,19 @@ exists.
 
 The following require focused designs before implementation:
 
-1. whether package-aware language intelligence runs in Workspace R, a bounded
-   helper R process, or an Ark-compatible language-service boundary;
+1. whether Air or R `languageserver` is the primary broker-managed language
+   backend after the compatibility checkpoint;
 2. any bioinformatics classes or views beyond the implemented
    `SummarizedExperiment` and `SingleCellExperiment` V1 contract;
-3. the Git library/process boundary and credential policy;
-4. whether document render becomes the first general broker job or remains a
-   specialized operation until the job protocol is frozen;
+3. whether the focused `gitoxide` evaluation supports every accepted V1
+   repository operation without a separately supervised Git CLI fallback;
+4. the narrow schema boundary between the first Quarto job adapter and the
+   later general local-job contract;
 5. the minimum Ark debugger contract that remains stable across supported R
    versions;
-6. the release milestone names for Phases B-E after `0.3.x` acceptance.
+6. the first accepted `targets` API/version range and the evidence required to
+   treat a file target as a declared document input;
+7. the release milestone names for Phases B-E after `0.3.x` acceptance.
 
 These decisions should be resolved one workstream at a time. Approval of this
 proposal establishes direction and sequencing; it is not permission to

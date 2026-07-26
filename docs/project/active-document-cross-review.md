@@ -44,7 +44,7 @@ semantics.
 | `design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md` | proposed; independently cross-reviewed | task-level interaction, intent entry, consequence-based decisions, guided recovery, progressive disclosure, and user-facing terminology | UX1 may define contracts; behavioral packages wait for their owning hardening, posture, or feature entry gates |
 | `design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md` | proposed; independently cross-reviewed | WB1 public read-only semantic contract, WB2 authenticated local CLI/MCP/events, and WB3 broker-admitted external R execution | `0.3.x` and BH1-BH3 accepted; each WB package separately authorized and stopped for review |
 | `design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md` | proposed; independently cross-reviewed | read-only deterministic audit and two-run comparison semantics | `0.3.x` milestone acceptance plus an approved RA-RC1 interface checkpoint and durable run-project identity contract |
-| `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed | post-`0.3.x` scientific capability direction and sequencing | one focused workstream is approved after `0.3.x` acceptance or explicit rescheduling |
+| `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed; open-source component boundaries cross-reviewed | post-`0.3.x` scientific capability direction; Monaco plus one Air/R `languageserver` backend, `lintr`, TanStack Table, `gitoxide`, Quarto jobs, and `targets` adapters | Waves 8-14 schedule bounded packages after earlier gates; each still requires separate authorization and an active handoff |
 | `plans/proposed-2026-07-20-human-agent-workbench-posture-design.md` | proposed | Human/Agent posture and Direct/Monitor/Review information architecture | open decisions close and a separate posture package is approved |
 | `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed | visual tokens, icons, component presentation, responsive behavior, themes | Phase 1 may be separately approved; structural phases wait for posture coordination |
 | `architecture/proposed-aisdk-family-change-proposals.md` | proposed and deferred | catalog of possible upstream seams | a concrete current gap and separate cross-repository approval exist |
@@ -150,6 +150,55 @@ The RStudio-inspired workflow proposal owns the future broker job capability
 contract. A posture implementation may display those jobs in Monitor or Review
 but cannot define a second runtime, policy, or persistence model.
 
+Quarto is the first scheduled broker-owned local-job adapter in Wave 13. The
+RStudio-inspired proposal owns its typed render/job behavior; implemented WP3
+continues to own V1 Artifact records and provenance. Quarto exit status defines
+process success, while parsed diagnostics are bounded projections into the
+existing Problems model. The adapter must not authorize a generic shell or
+arbitrary process command.
+
+`targets` follows the accepted Quarto/local-job contract in Wave 14. The
+`targets` package owns `_targets` metadata and pipeline semantics; Rho owns
+project/environment admission, durable job state, cancellation/restart
+reconciliation and Artifact links. A pipeline process is not Workspace R or
+Agent R, and importing a result into Workspace R is a separate recorded action.
+
+### Editor Intelligence And Problems
+
+Monaco remains the frontend editor. Air and R `languageserver` are alternative
+providers behind one Rho-owned bounded language-service contract, not parallel
+authorities. Wave 8 selects one primary provider; Wave 9 integrates it before
+adding `lintr`. Provider results are bound to canonical project identity and
+document versions and cannot redefine BH1-BH3 project ownership or switching.
+
+The existing Problems model remains authoritative. Language-service, `lintr`,
+Quarto and later job diagnostics identify their producer and are normalized,
+bounded and deduplicated; no provider receives its own durable Problems store.
+Formatting, quick fixes and refactors continue through reviewed file edits and
+cannot bypass Agent proposal/Accept or direct user save semantics.
+
+### Viewer Component Boundary
+
+TanStack Table may own frontend virtualization, focus, selection and column
+presentation in Wave 10. Implemented WP2 remains authoritative for supported
+object classes, server-side pages, sorting/filtering semantics, byte and
+dimension limits, state revisions and stale-object rejection. Implemented WP3
+continues to own export and provenance; frontend table state cannot claim a
+full-object export or current scientific truth.
+
+### Git Ownership And Mutation
+
+The RStudio-inspired proposal owns the future typed Git capability and prefers
+`gitoxide` as an implementation candidate. BH1 owns canonical project identity;
+Git must independently validate repository identity and current diff/revision.
+Git history does not replace Rho runs, approvals or Artifact provenance.
+
+Wave 11 is read-only. Wave 12 mutations require an exact selected file or hunk,
+preserve unrelated dirty work, and use a Git-specific policy/recovery contract.
+The public Workbench Protocol cannot expose Git mutation before the internal
+contract is accepted. Credentials, remotes and network mutation remain outside
+Waves 11-12.
+
 ### Public Workbench Protocol, CLI, and MCP
 
 The public-protocol proposal owns the externally consumable semantic projection,
@@ -172,13 +221,13 @@ current scientific milestone. Other documents' Phase A-D or Phase 1-4 labels
 are local to those documents and do not unlock, supersede, or run inside a
 `0.3.x` package without an explicit contract amendment.
 
-The cross-proposal schedule is the Wave 0-7 Implementation Program in
+The cross-proposal schedule is the Wave 0-14 Implementation Program in
 [`active-development-roadmap.md`](active-development-roadmap.md). This record
 defines the coordination constraints that apply to that schedule:
 
 The current program state is Wave 1 with BH1 as the only active product package.
 Wave 0 automated review closed as `accept with follow-up`, while `0.3.x` manual
-milestone acceptance remains open. No other Wave 1 package or Wave 2-7 package
+milestone acceptance remains open. No other Wave 1 package or Wave 2-14 package
 is active; each still requires separate authorization and a focused handoff.
 
 | Wave | Coordination result |
@@ -191,6 +240,13 @@ is active; each still requires separate authorization and a focused handoff.
 | 5 | WB1 owns the public read-only semantic boundary; no CLI, MCP, or external execution contract may become authoritative first |
 | 6 | WB2 owns authenticated local CLI/MCP/events and remains read-only; cross-platform transport validation consumes the accepted WB1/WB2 contract |
 | 7 | RA-RC2 precedes a separately selected UX3, UX4, or UX5 package; BH4 precedes retention/deletion, and posture precedes UX4 Agent-entry placement |
+| 8 | Retain Monaco and compare Air with R `languageserver`; select one primary backend before product integration |
+| 9 | Integrate the selected language backend, then normalize optional `lintr` findings into Problems; providers never write files directly |
+| 10 | TanStack Table may enhance the UI only; implemented WP2/WP3 remain data, bounds, staleness, export and provenance authorities |
+| 11 | `gitoxide` read-only status/diff/history only, bound to canonical project and repository identities |
+| 12 | Selected Git mutations require their own stale/rejection/failure/recovery gate; no credentials or remotes |
+| 13 | Freeze a narrow local-job contract through Quarto rendering; no arbitrary process execution or second Artifact store |
+| 14 | Stop after read-only `targets` inspection, then separately authorize execution and pipeline-to-Quarto composition |
 
 Only one new post-`0.3.x` product-capability stream may be implemented at a
 time. Independent acceptance/release work and behavior-neutral design-system

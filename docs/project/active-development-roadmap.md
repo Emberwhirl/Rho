@@ -196,7 +196,7 @@ Current program state: **Wave 1, BH1 only**. Wave 0 automated review closed as
 remain open and are not recorded as passed. BH1 project-scoped durable identity
 is the only authorized new product package. The parallel `0.2.0-dev.12` and
 About/update tracks retain their own active acceptance contracts. BH2-BH5,
-UX1, modernization, and Waves 2-7 remain scheduled but not authorized.
+UX1, modernization, and Waves 2-14 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -208,6 +208,13 @@ UX1, modernization, and Waves 2-7 remain scheduled but not authorized.
 | 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass |
 | 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass |
 | 7 | RA-RC2, followed by one separately selected UX3, UX4, or UX5 package | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review |
+| 8 | WS2 editor-intelligence checkpoint: Monaco with Air versus R `languageserver` evaluation | Local Help contract refinement only | One primary language backend is selected with bounded protocol, process, recovery, license and Windows evidence; no provider mutates project files directly |
+| 9 | WS2 selected language backend, then `lintr` Problems integration | Behavior-neutral editor presentation work only | Completion/navigation/help and normalized diagnostics pass provider-unavailable, stale-document, duplicate-finding and two-project isolation gates |
+| 10 | WS3 TanStack Table interaction layer over the implemented bounded viewer | Accepted Artifact presentation work only | Server-owned paging/sort/filter/export limits remain authoritative and desktop/narrow keyboard and payload evidence pass |
+| 11 | WS4 `gitoxide` read-only repository status, diff and history | No Git mutations or credentials | Repository identity, replacement, nested/worktree, bounds, redaction and two-project isolation gates pass |
+| 12 | WS4 selected staging/commit mutations | Quarto local-job contract design may proceed without code | Exact diff/repository revision, dirty-worktree preservation, hook policy, rejection, failure and recovery evidence pass |
+| 13 | WS6 narrow local-job contract with Quarto as the first adapter | WS5 chunk discovery and source-linked diagnostic fixtures | Saved-input revision, environment, cancellation, restart reconciliation, bounded logs and Artifact provenance pass without arbitrary process execution |
+| 14 | WS6A read-only `targets` inspection, then separately authorized pipeline execution and pipeline-to-Quarto composition | Package-development job design only after the Quarto job gate | `_targets` ownership is preserved; selected execution, partial outputs, cancellation, restart, declared-file provenance and two-project isolation pass |
 
 ### Wave 0: Close Current Acceptance Work
 
@@ -262,7 +269,7 @@ WB3 is not part of Waves 5-6. External execution requires a separate security,
 approval, credential, and admission decision after read-only interoperability
 has demonstrated value.
 
-### Wave 7 And Later Selection
+### Wave 7 Selection
 
 Authorize RA-RC2 after RA-RC1, then select only one of UX3, UX4, or UX5 for
 product implementation at a time. UX3 requires the relevant BH1-BH3 switching
@@ -270,9 +277,47 @@ and history behavior. UX4 requires an accepted posture implementation contract.
 UX5 requires accepted `0.3.x` behavior and BH4 before any retention or deletion
 operation.
 
-Posture phases, structural modernization, background jobs, remote execution,
-debugging, WB3, and public remote control remain later separately reviewed
-streams. Their presence in a proposal is not scheduling or authorization.
+### Waves 8-10: Complete Daily Scientific Editing And Inspection
+
+Wave 8 is a compatibility and contract checkpoint, not permission to ship both
+Air and R `languageserver`. Monaco remains the editor. The checkpoint selects
+one primary broker-managed language backend using representative base-R,
+package and Bioconductor projects on Windows. Wave 9 integrates the selected
+backend and then adds `lintr` as a separate optional producer normalized into
+the existing Problems model. Neither service may become Workspace R, Agent R,
+a second Problems store, or a direct file-mutation channel.
+
+Wave 10 may use TanStack Table for frontend table interaction only after the
+implemented viewer contract is accepted as the data authority. Server-side
+paging, sorting, filtering, search, payload bounds, stale-object rejection and
+export provenance remain Workspace/broker behavior.
+
+### Waves 11-12: Add Reviewable Local Git
+
+Wave 11 evaluates and integrates `gitoxide` for bounded read-only status, diff
+and history. Wave 12 adds only separately reviewed staging and commit mutations
+bound to exact repository and diff revisions. Credentialed network operations,
+implicit hooks, destructive branch operations and remote mutation remain out
+of scope until a later security contract.
+
+### Waves 13-14: Establish Document And Pipeline Jobs
+
+Wave 13 freezes a narrow broker-owned local-job contract with Quarto rendering
+as its first adapter. It migrates the current synchronous render path without
+creating a generic shell, a second runtime authority or a second Artifact
+store. Wave 14 begins with read-only `targets` inspection and stops for review;
+pipeline execution and composed `targets`-to-Quarto production require a
+second authorization inside the wave.
+
+`targets` continues to own `_targets` metadata. Rho owns admission, project and
+environment revisions, durable job state, cancellation/restart reconciliation
+and links to declared file Artifacts. Pipeline workers are broker-managed
+noninteractive R processes, not additional interactive Workspace R sessions.
+
+Posture phases, structural modernization, remote execution, debugging, WB3,
+and public remote control remain later separately reviewed streams. Waves 8-14
+schedule local editor, viewer, Git, Quarto job and `targets` work but do not
+authorize any package; each still requires a focused active handoff.
 
 ### Concurrency And Stop Rules
 
