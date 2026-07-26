@@ -39,11 +39,12 @@ semantics.
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
 | `design/active-2026-07-25-about-and-update-check-design.md` | implementation active; live and installed acceptance open | About/update V1 and Pages gates | its own live/installed acceptance; inclusion in `0.2.0` needs a revised candidate contract |
-| `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | active; BH1 authorized 2026-07-26 | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | implement BH1-A through BH1-C only; stop for independent acceptance before BH2/BH3 |
+| `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | BH1-C implemented; independent acceptance and manual follow-ups open | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | review BH1 evidence and stop for disposition; BH2/BH3 remain unapproved |
 | `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed broader direction; BH1 separately active | BH1-BH5 baseline-hardening direction beyond the focused active handoff | BH2-BH5 remain unapproved; each requires a separate authorization and active handoff |
 | `design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md` | proposed; independently cross-reviewed | task-level interaction, intent entry, consequence-based decisions, guided recovery, progressive disclosure, and user-facing terminology | UX1 may define contracts; behavioral packages wait for their owning hardening, posture, or feature entry gates |
 | `design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md` | proposed; independently cross-reviewed | WB1 public read-only semantic contract, WB2 authenticated local CLI/MCP/events, and WB3 broker-admitted external R execution | `0.3.x` and BH1-BH3 accepted; each WB package separately authorized and stopped for review |
 | `design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md` | proposed; independently cross-reviewed | read-only deterministic audit and two-run comparison semantics | `0.3.x` milestone acceptance plus an approved RA-RC1 interface checkpoint and durable run-project identity contract |
+| `design/proposed-2026-07-26-evidence-workspace-and-claim-review-design.md` | proposed; independently cross-reviewed | project-scoped scholarly evidence entries, citation normalization, claim-to-evidence linkage, and bounded claim-review semantics | `0.3.x` milestone acceptance, BH1-BH3 acceptance, RA-RC1 acceptance, and a separately authorized EW-CR1 handoff |
 | `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed; open-source component boundaries cross-reviewed | post-`0.3.x` scientific capability direction; Monaco plus one Air/R `languageserver` backend, `lintr`, TanStack Table, `gitoxide`, Quarto jobs, and `targets` adapters | Waves 8-14 schedule bounded packages after earlier gates; each still requires separate authorization and an active handoff |
 | `plans/proposed-2026-07-20-human-agent-workbench-posture-design.md` | proposed | Human/Agent posture and Direct/Monitor/Review information architecture | open decisions close and a separate posture package is approved |
 | `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed | visual tokens, icons, component presentation, responsive behavior, themes | Phase 1 may be separately approved; structural phases wait for posture coordination |
@@ -102,6 +103,35 @@ RStudio-inspired proposal may sequence richer artifact capabilities. The
 posture proposal may define how artifacts are navigated and reviewed, but any
 version, link, annotation, finding, or acceptance schema must be an additive,
 migration-safe extension of WP3 after a focused design.
+
+### Scholarly evidence workspace and claim review
+
+The evidence-workspace proposal owns project-scoped scholarly evidence entries,
+citation normalization, bounded evidence excerpts, and claim-to-evidence
+linkage. It does not replace WP3 Artifact provenance, RA-RC internal evidence,
+package help, or a full manuscript/publication system.
+
+The accepted separation is:
+
+- WP3 Artifact provenance answers what source, run, and environment produced a
+  project result;
+- RA-RC answers whether internal project evidence is reproducible and how runs
+  differ;
+- the evidence workspace answers which external scholarly evidence a project
+  claim cites and whether that linkage is structurally reviewable.
+
+An external citation does not satisfy internal reproducibility evidence, and a
+clean internal audit does not prove that a manuscript claim is literature-
+grounded. Claim-review statuses therefore remain bounded to `linked`,
+`missing_evidence`, `unresolved_source`, `incomplete_evidence`, and
+`cross_project_rejected`; they are not semantic truth verdicts.
+
+The RStudio-inspired proposal continues to own broader post-`0.3.x`
+capability sequencing. The evidence-workspace proposal narrows only the
+scholarly evidence/claim slice and explicitly restricts core implementation to
+small-footprint permissive-license components and open-data providers. Hosted
+platforms and heavier literature services remain optional later connectors and
+may not become the sole core dependency.
 
 ### Reproducibility audit and run comparison
 
@@ -225,7 +255,10 @@ The cross-proposal schedule is the Wave 0-14 Implementation Program in
 [`active-development-roadmap.md`](active-development-roadmap.md). This record
 defines the coordination constraints that apply to that schedule:
 
-The current program state is Wave 1 with BH1 as the only active product package.
+The current program state is Wave 1 at the BH1 acceptance stop, with BH1 still
+the only active product package. BH1-A through BH1-C are implemented and their
+automated matrix passed; independent privacy review and documented manual
+follow-ups remain open.
 Wave 0 automated review closed as `accept with follow-up`, while `0.3.x` manual
 milestone acceptance remains open. No other Wave 1 package or Wave 2-14 package
 is active; each still requires separate authorization and a focused handoff.
@@ -239,7 +272,7 @@ is active; each still requires separate authorization and a focused handoff.
 | 4 | UX2 owns the novice first-use-to-result workflow; modernization may style it but cannot introduce structural posture navigation |
 | 5 | WB1 owns the public read-only semantic boundary; no CLI, MCP, or external execution contract may become authoritative first |
 | 6 | WB2 owns authenticated local CLI/MCP/events and remains read-only; cross-platform transport validation consumes the accepted WB1/WB2 contract |
-| 7 | RA-RC2 precedes a separately selected UX3, UX4, or UX5 package; BH4 precedes retention/deletion, and posture precedes UX4 Agent-entry placement |
+| 7 | RA-RC2 precedes a separately selected EW-CR1, UX3, UX4, or UX5 package; BH4 precedes retention/deletion, posture precedes UX4 Agent-entry placement, and EW-CR1 requires accepted `0.3.x`, BH1-BH3, and RA-RC1 evidence |
 | 8 | Retain Monaco and compare Air with R `languageserver`; select one primary backend before product integration |
 | 9 | Integrate the selected language backend, then normalize optional `lintr` findings into Problems; providers never write files directly |
 | 10 | TanStack Table may enhance the UI only; implemented WP2/WP3 remain data, bounds, staleness, export and provenance authorities |

@@ -1,6 +1,6 @@
 # Rho WP4 Project Skills Interface
 
-Status: implemented in `2415c3f` and hardened in `3d45af2`
+Status: proposed interface design for WP4 review
 
 Date: 2026-07-25
 Code baseline: `92a5d71` (`feat: add artifact export and provenance review`)
@@ -8,7 +8,7 @@ Contract authority: `docs/plans/active-2026-07-25-0.3x-scientific-workflow-hando
 
 ## Purpose
 
-This document records the implemented dependency-light WP4 baseline. It lets a
+This document defines the dependency-light WP4 baseline. The goal is to let a
 project ship bounded domain guidance to Agent turns without turning
 Bioconductor, `aisdk.bioc`, or any other scientific extension into a default
 core dependency.
@@ -154,7 +154,7 @@ Future requirements for an optional extension:
 - any future semantic adapter must prove its own versioning, runtime checks,
   payload bounds and fixture-backed claims in a separate review round.
 
-## Implementation Evidence
+## Review Evidence Required By This Design
 
 - invalid JSON and oversized manifest rejection;
 - out-of-root and symlink skill path rejection;
@@ -162,8 +162,3 @@ Future requirements for an optional extension:
 - Ask and Plan mode keep project skill content read-only;
 - no default dependency on `aisdk.bioc` or Bioconductor packages in core WP4
   packages.
-
-The implementation and verification record is
-`docs/verification/wp4/verification.md`. Its existing R package check warnings
-and notes remain project debt; this status does not claim a warning-free
-repository-wide check.

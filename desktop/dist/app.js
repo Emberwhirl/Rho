@@ -692,9 +692,7 @@ function mockRunForWorkspaceState(workspaceId, stateRevision, projectRevision) {
   return mockRuns.find((run) =>
     run.workspace_id === workspaceId
     && run.state_revision_after === stateRevision
-    && run.project_revision_after <= projectRevision
-    && run.status === "completed"
-    && run.request_type === "workspace.execute",
+    && run.project_revision_after === projectRevision,
   ) || null;
 }
 

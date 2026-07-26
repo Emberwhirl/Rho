@@ -18,7 +18,7 @@ use rho_store::{
     ApprovalRequestDraft, ArtifactRecordDraft, EnvironmentOperationDecisionRecord,
     EnvironmentOperationFinish, EnvironmentOperationRequestDraft,
     EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft, PlotArtifactDraft, RunDraft,
-    RunFinish, Store,
+    RunFinish, Store, normalize_project_root,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -261,6 +261,10 @@ pub struct PendingApprovalRegistry {
 }
 
 impl PendingApprovalRegistry {
+    pub async fn is_empty(&self) -> bool {
+        self.waiters.lock().await.is_empty()
+    }
+
     pub async fn register(&self, request_id: String) -> oneshot::Receiver<ApprovalResponseInput> {
         let (sender, receiver) = oneshot::channel();
         self.waiters.lock().await.insert(request_id, sender);
@@ -316,6 +320,13 @@ pub async fn probe(
     }
 
     let mut store = Store::open(&store_path)?;
+    let probe_project_root = std::env::current_dir()
+        .context("resolving the probe project root")?
+        .canonicalize()
+        .context("canonicalizing the probe project root")?;
+    store.set_project_root(Some(&normalize_project_root(
+        probe_project_root.to_string_lossy().as_ref(),
+    )))?;
     let recovered_runs = store.recover_incomplete_runs()?;
     let mut broker = BrokerState::new("ws_phase0_coordinator");
     store.save_identity(broker.identity())?;
@@ -536,9 +547,13 @@ pub async fn bootstrap_bridge(
         code.clone(),
     );
     let before = broker.identity().clone();
+    let project_root = store
+        .active_project_root()?
+        .context("Cannot persist bootstrap run without an active project identity")?;
     store.create_run(&RunDraft {
         run_id: request.execution_id.clone(),
         parent_run_id: None,
+        project_root: project_root.clone(),
         origin: execution_origin_name(request.origin).to_string(),
         request_type: "workspace.bootstrap".to_string(),
         operation_class: operation_class_name(request.operation_class).to_string(),
@@ -775,10 +790,13 @@ pub async fn dispatch_workspace_request(
         .cloned()
         .unwrap_or_else(|| json!({}));
     let environment_operation_request_id = if request_type_uses_environment_contract(request_type) {
-        payload
-            .get("approval_request_id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
+        Some(
+            payload
+                .get("approval_request_id")
+                .and_then(Value::as_str)
+                .context("Environment operation omitted approval_request_id")?
+                .to_string(),
+        )
     } else {
         None
     };
@@ -787,6 +805,20 @@ pub async fn dispatch_workspace_request(
         ExecutionRequest::new(origin, operation_class, expected, bridge_expression.clone());
     broker.authorize(&request)?;
     let before = broker.identity().clone();
+    let project_root = store
+        .active_project_root()?
+        .context("Cannot persist run without an active project identity")?;
+    if let Some(request_id) = environment_operation_request_id.as_deref() {
+        ensure!(
+            store.claim_environment_operation_request(
+                &project_root,
+                request_type,
+                request_id,
+                &request.execution_id,
+            )?,
+            "Environment operation approval is missing, invalid, or already consumed"
+        );
+    }
     let environment_snapshot_id = if scientific_run_requires_environment_snapshot(request_type) {
         Some(capture_environment_snapshot_id(session, store).await?)
     } else {
@@ -798,6 +830,7 @@ pub async fn dispatch_workspace_request(
             .get("parent_run_id")
             .and_then(Value::as_str)
             .map(str::to_string),
+        project_root: project_root.clone(),
         origin: execution_origin_name(origin).to_string(),
         request_type: request_type.to_string(),
         operation_class: operation_class_name(operation_class).to_string(),
@@ -818,10 +851,6 @@ pub async fn dispatch_workspace_request(
         environment_snapshot_id,
     })?;
     store.update_run_status(&request.execution_id, "running", None)?;
-    if let Some(request_id) = environment_operation_request_id.as_deref() {
-        let _ = store.start_environment_operation_request(request_id, Some(&request.execution_id))?;
-    }
-
     let result_file = ResultFile::new(&request.execution_id)?;
     let bridge_call = bridge_result_publisher(&bridge_expression, &result_file)?;
     request.code = bridge_call.clone();
@@ -878,24 +907,25 @@ pub async fn dispatch_workspace_request(
                 environment_snapshot_id_after,
             })?;
             if let Some(request_id) = environment_operation_request_id.as_deref() {
-                let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
-                    request_id: request_id.to_string(),
-                    status: if cancelled {
-                        "interrupted".to_string()
-                    } else {
-                        "failed".to_string()
-                    },
-                    run_id: Some(request.execution_id.clone()),
-                    terminal_outcome: Some(
-                        if cancelled {
-                            "user_interrupt"
+                let _ =
+                    store.finish_environment_operation_request(&EnvironmentOperationFinish {
+                        request_id: request_id.to_string(),
+                        status: if cancelled {
+                            "interrupted".to_string()
                         } else {
-                            "execution_error"
-                        }
-                        .to_string(),
-                    ),
-                    reason: Some(redact_sensitive_text(&error.to_string())),
-                })?;
+                            "failed".to_string()
+                        },
+                        run_id: Some(request.execution_id.clone()),
+                        terminal_outcome: Some(
+                            if cancelled {
+                                "user_interrupt"
+                            } else {
+                                "execution_error"
+                            }
+                            .to_string(),
+                        ),
+                        reason: Some(redact_sensitive_text(&error.to_string())),
+                    })?;
             }
             return Err(error).context("executing Workspace R request");
         }
@@ -936,24 +966,25 @@ pub async fn dispatch_workspace_request(
                 environment_snapshot_id_after,
             })?;
             if let Some(request_id) = environment_operation_request_id.as_deref() {
-                let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
-                    request_id: request_id.to_string(),
-                    status: if cancelled {
-                        "interrupted".to_string()
-                    } else {
-                        "failed".to_string()
-                    },
-                    run_id: Some(request.execution_id.clone()),
-                    terminal_outcome: Some(
-                        if cancelled {
-                            "user_interrupt"
+                let _ =
+                    store.finish_environment_operation_request(&EnvironmentOperationFinish {
+                        request_id: request_id.to_string(),
+                        status: if cancelled {
+                            "interrupted".to_string()
                         } else {
-                            "result_unavailable"
-                        }
-                        .to_string(),
-                    ),
-                    reason: Some(redact_sensitive_text(&error.to_string())),
-                })?;
+                            "failed".to_string()
+                        },
+                        run_id: Some(request.execution_id.clone()),
+                        terminal_outcome: Some(
+                            if cancelled {
+                                "user_interrupt"
+                            } else {
+                                "result_unavailable"
+                            }
+                            .to_string(),
+                        ),
+                        reason: Some(redact_sensitive_text(&error.to_string())),
+                    })?;
             }
             return Err(error);
         }
@@ -1110,7 +1141,11 @@ fn has_allowed_skill_extension(path: &str, allowed: &[&str]) -> bool {
     Path::new(path)
         .extension()
         .and_then(|value| value.to_str())
-        .map(|value| allowed.iter().any(|candidate| value.eq_ignore_ascii_case(candidate)))
+        .map(|value| {
+            allowed
+                .iter()
+                .any(|candidate| value.eq_ignore_ascii_case(candidate))
+        })
         .unwrap_or(false)
 }
 
@@ -1136,14 +1171,21 @@ fn ensure_path_without_symlinks(base: &Path, relative: &Path) -> Result<()> {
     let mut current = base.to_path_buf();
     for component in relative.components() {
         current.push(component.as_os_str());
-        let metadata = fs::symlink_metadata(&current)
-            .with_context(|| format!("reading project skill path metadata for {}", current.display()))?;
+        let metadata = fs::symlink_metadata(&current).with_context(|| {
+            format!(
+                "reading project skill path metadata for {}",
+                current.display()
+            )
+        })?;
         ensure_not_project_skill_symlink(&current, metadata.file_type().is_symlink())?;
     }
     Ok(())
 }
 
-fn ensure_project_skill_root_without_symlinks(project_root: &Path, skills_dir: &Path) -> Result<()> {
+fn ensure_project_skill_root_without_symlinks(
+    project_root: &Path,
+    skills_dir: &Path,
+) -> Result<()> {
     let relative = Path::new(".rho").join("skills");
     if !skills_dir.exists() {
         return Ok(());
@@ -1187,8 +1229,12 @@ fn resolve_project_skill_text_file(
         canonical_candidate.starts_with(&canonical_base),
         "project skill path escapes .rho/skills: {relative}"
     );
-    let metadata = fs::metadata(&canonical_candidate)
-        .with_context(|| format!("reading project skill file metadata for {}", canonical_candidate.display()))?;
+    let metadata = fs::metadata(&canonical_candidate).with_context(|| {
+        format!(
+            "reading project skill file metadata for {}",
+            canonical_candidate.display()
+        )
+    })?;
     ensure!(
         metadata.is_file(),
         "project skill path must reference a file: {}",
@@ -1224,7 +1270,10 @@ fn discover_project_skills(project_root: &str) -> ProjectSkillDiscovery {
         }
         let manifest_metadata = fs::symlink_metadata(&manifest_path)
             .with_context(|| format!("reading {}", manifest_path.display()))?;
-        ensure_not_project_skill_symlink(&manifest_path, manifest_metadata.file_type().is_symlink())?;
+        ensure_not_project_skill_symlink(
+            &manifest_path,
+            manifest_metadata.file_type().is_symlink(),
+        )?;
         ensure!(
             manifest_metadata.len() <= MAX_PROJECT_SKILL_MANIFEST_BYTES,
             "project skill manifest is too large: {} bytes",
@@ -1332,7 +1381,11 @@ pub fn discover_project_skill_summaries(project_root: &str) -> ProjectSkillDisco
                 description: skill.description,
                 trust_status: skill.trust_status,
                 instructions_path: skill.instructions_path,
-                references: skill.references.into_iter().map(|reference| reference.path).collect(),
+                references: skill
+                    .references
+                    .into_iter()
+                    .map(|reference| reference.path)
+                    .collect(),
             })
             .collect(),
         discovery_error: discovery.discovery_error,
@@ -1533,7 +1586,13 @@ pub async fn run_agent_turn(
     let result = async {
         let history = {
             let context = context.lock().await;
-            context.store.recent_agent_conversation(&turn_id, 4)?
+            let project_root = context
+                .store
+                .active_project_root()?
+                .context("Cannot load Agent context without an active project identity")?;
+            context
+                .store
+                .recent_agent_conversation(&project_root, &turn_id, 4)?
         };
         let project_skills = {
             let context = context.lock().await;
@@ -1710,6 +1769,21 @@ async fn serve_desktop_agent(
         .await
         .context("timed out waiting for desktop Agent R request")??;
         context.lock().await.store.append_event(&incoming)?;
+
+        {
+            let context = context.lock().await;
+            let active_project = context
+                .store
+                .active_project_root()?
+                .context("Agent request has no active project identity")?;
+            ensure!(
+                context
+                    .store
+                    .get_agent_turn_detail(&active_project, turn_id)?
+                    .is_some(),
+                "Agent turn does not belong to the active project"
+            );
+        }
 
         match incoming.kind {
             MessageKind::Request => {
@@ -1930,7 +2004,8 @@ async fn handle_tool_approval_required(
         .to_string();
     let request_id = incoming.id.clone();
     let request_type = agent_tool_request_type(&tool);
-    let uses_environment_contract = request_type.is_some_and(request_type_uses_environment_contract);
+    let uses_environment_contract =
+        request_type.is_some_and(request_type_uses_environment_contract);
     let mut context_guard = context.lock().await;
     let CoordinatorRuntime { broker, store } = &mut *context_guard;
     let identity = broker.identity().clone();
@@ -1979,7 +2054,9 @@ async fn handle_tool_approval_required(
         let request_type = request.request_name.clone();
         let approved_arguments: Value = serde_json::from_str(&request.arguments_json)
             .context("decoding approved environment operation arguments")?;
-        let receiver = environment_approvals.register(request.request_id.clone()).await;
+        let receiver = environment_approvals
+            .register(request.request_id.clone())
+            .await;
         store.update_agent_turn_status(turn_id, "waiting")?;
         store.append_agent_turn_event(&AgentTurnEventDraft {
             turn_id: turn_id.to_string(),
@@ -2006,8 +2083,7 @@ async fn handle_tool_approval_required(
         let response = receiver.await.unwrap_or(ApprovalResponseInput {
             decision: "cancel".to_string(),
             reason: Some(
-                "Environment operation channel closed before a decision was delivered."
-                    .to_string(),
+                "Environment operation channel closed before a decision was delivered.".to_string(),
             ),
         });
         environment_approvals.remove(&request.request_id).await;
@@ -2015,7 +2091,7 @@ async fn handle_tool_approval_required(
         let mut context_guard = context.lock().await;
         let CoordinatorRuntime { broker, store } = &mut *context_guard;
         let request = store
-            .get_environment_operation_request(&request.request_id)?
+            .get_environment_operation_request(&request.project_root, &request.request_id)?
             .context("Environment operation request disappeared before approval resolution")?;
         if response.decision == "approve" {
             let current_project_root = store
@@ -2148,9 +2224,13 @@ async fn handle_tool_approval_required(
         }));
     }
 
+    let project_root = store
+        .active_project_root()?
+        .context("Cannot persist approval without an active project identity")?;
     store.create_approval_request(&ApprovalRequestDraft {
         request_id: request_id.clone(),
         turn_id: turn_id.to_string(),
+        project_root,
         tool: tool.clone(),
         policy: policy.clone(),
         arguments_json: serde_json::to_string(&arguments)?,
@@ -2628,7 +2708,7 @@ async fn preview_environment_operation(
         turn_id: turn_id.map(str::to_string),
         source: source.to_string(),
         request_name: request_name.to_string(),
-        project_root,
+        project_root: project_root.clone(),
         arguments_json: serde_json::to_string(&stored_arguments)?,
         preview_json,
         preview_sha256,
@@ -2638,7 +2718,7 @@ async fn preview_environment_operation(
         before_snapshot_id,
     })?;
     store
-        .get_environment_operation_request(&request_id)?
+        .get_environment_operation_request(&project_root, &request_id)?
         .context("Environment operation request was not persisted")
 }
 
@@ -2720,8 +2800,11 @@ pub async fn decide_environment_operation(
     broker: &mut BrokerState,
     store: &mut Store,
 ) -> Result<Value> {
+    let project_root = store
+        .active_project_root()?
+        .context("Cannot decide environment operation without an active project identity")?;
     let request = store
-        .get_environment_operation_request(request_id)?
+        .get_environment_operation_request(&project_root, request_id)?
         .context(format!(
             "Environment operation request not found: {request_id}"
         ))?;
@@ -3345,7 +3428,10 @@ fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String
     let Some(project_root) = project_root else {
         return normalized_output;
     };
-    let normalized_root = project_root.replace('\\', "/").trim_end_matches('/').to_string();
+    let normalized_root = project_root
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_string();
     if let Some(relative) = normalized_output
         .strip_prefix(&(normalized_root.clone() + "/"))
         .filter(|value| !value.is_empty())
@@ -3734,7 +3820,11 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        fs::write(skills_dir.join("qc-notes.md"), "# QC\nUse the project thresholds.\n").unwrap();
+        fs::write(
+            skills_dir.join("qc-notes.md"),
+            "# QC\nUse the project thresholds.\n",
+        )
+        .unwrap();
         fs::write(
             skills_dir.join("thresholds.json"),
             "{\"detected_min\":200,\"mitochondrial_percent_max\":20}\n",
@@ -3773,7 +3863,11 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        fs::write(project_root.join(".rho").join("outside.md"), "should not load").unwrap();
+        fs::write(
+            project_root.join(".rho").join("outside.md"),
+            "should not load",
+        )
+        .unwrap();
 
         let discovery = discover_project_skills(&normalized_path(&project_root));
 

@@ -1,6 +1,6 @@
 # BH1 Project-Scoped Durable Identity Handoff
 
-Status: active implementation contract; BH1 only
+Status: BH1-C implemented; independent acceptance review pending
 
 Authorization date: 2026-07-26
 Authorized by: project owner
@@ -187,3 +187,50 @@ Stop after BH1-C and its independent acceptance review. Report one of `accept`,
 `accept with follow-up`, `changes required`, or `re-scope required`. Do not
 begin BH2 or BH3 until the project owner separately authorizes it and the
 cross-review matrix is updated.
+
+## Implementation Update (2026-07-26)
+
+BH1-A through BH1-C are implemented in the pending BH1 change set. Runs, Agent
+turns, and ordinary approvals now persist the broker/store active normalized
+project root. Their list, detail, recent-context, retry, continuation, and
+project-local clear paths fail closed for foreign and `legacy_unscoped`
+records. Artifact, plot, environment-operation, and exact workspace-state run
+lookups were also checked and project-scoped where their existing schemas
+already carry ownership.
+
+The compatibility bridge adds nullable `project_root` columns and indexes under
+schema version 7. It does not infer legacy ownership, backfill records, advance
+to schema v8, or claim BH3 migration completion. New desktop startup, project
+switch, and coordinator probe paths explicitly bind one normalized project
+root before durable admission. No Tauri command name or frontend payload shape
+changed, so the existing browser mock handlers remain in parity and no visible
+fixture changed.
+
+Independent review initially found that unrestricted history retry could
+replay environment or project-control mutations, that a switch control Run
+could be owned by the previous project, and that Windows volume roots lost
+their trailing slash. The implementation now allowlists retry to user/Agent
+`workspace.execute`, requires a same-project approved and unconsumed request at
+the environment dispatch boundary, binds switch control Runs to the destination
+identity with failure rollback, and preserves drive/extended volume roots.
+Run interruption lookups are project-scoped as part of the same control-plane
+review. Final independent re-review remains the acceptance stop.
+
+Automated verification passed:
+
+- GNU Rust `cargo test --workspace`: 50 desktop, 21 server, 12 store, and all
+  other workspace unit/doc tests passed;
+- `rho.bridge` and `rho.agent` local testthat suites passed;
+- `node --check desktop/dist/app.js` passed;
+- `rho-desktop.exe --smoke-test` passed for the existing Workspace R, data
+  view, plot, stale-view, and environment-object path;
+- `git diff --check` remains a final pre-commit gate.
+
+Detailed evidence is recorded in `../verification/bh1/verification.md`.
+Automated evidence proves the tested store and command contracts, but not rapid
+interactive switching, restart recovery across two representative projects,
+or the still-open `0.3.x` three-viewport acceptance. The final BH1 disposition
+therefore waits for independent code review and the documented manual
+follow-ups. Application/R package versions and `NEWS.md` are unchanged because
+this is an internal correctness and privacy foundation with no new public
+interface.

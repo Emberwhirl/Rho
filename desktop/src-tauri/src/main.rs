@@ -24,21 +24,21 @@ use project::{
     ProjectWatcherControl, atomic_write, atomic_write_new, default_project_root,
     ensure_editable_content_size, ensure_editable_file, ensure_editable_file_size,
     list_project_files, normalize_existing_project_root, project_path, relative_project_path,
-    replace_project_watcher, validate_project_root,
+    replace_project_watcher, start_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
 use rho_server::coordinator::{
     ApprovalResponseInput, CoordinatorRuntime, EnvironmentOperationArguments,
-    ProjectSkillDiscoverySummary, discover_project_skill_summaries,
-    PendingApprovalRegistry, bootstrap_bridge, decide_environment_operation,
-    dispatch_workspace_request, request_environment_operation, run_agent_turn,
+    PendingApprovalRegistry, ProjectSkillDiscoverySummary, bootstrap_bridge,
+    decide_environment_operation, discover_project_skill_summaries, dispatch_workspace_request,
+    request_environment_operation, run_agent_turn,
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
-    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary, RunDetail,
-    RunSummary, Store,
+    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary, RunDetail, RunSummary,
+    Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -750,7 +750,9 @@ fn ensure_artifact_export_target(
         .unwrap_or_default()
         .to_ascii_lowercase();
     ensure!(
-        allowed_extensions.iter().any(|allowed| *allowed == extension),
+        allowed_extensions
+            .iter()
+            .any(|allowed| *allowed == extension),
         "Artifact export path must use one of: {}",
         allowed_extensions.join(", ")
     );
@@ -1079,9 +1081,11 @@ async fn list_environment_operation_requests(
     status: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<EnvironmentOperationRequestSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .list_environment_operation_requests(limit, status.as_deref())
+        .list_environment_operation_requests(&project_root, limit, status.as_deref())
         .map_err(display_error)
 }
 
@@ -1090,9 +1094,11 @@ async fn get_environment_operation_request(
     request_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<EnvironmentOperationRequestSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .get_environment_operation_request(&request_id)
+        .get_environment_operation_request(&project_root, &request_id)
         .map_err(display_error)
 }
 
@@ -1107,9 +1113,11 @@ async fn respond_environment_operation(
             request.decision
         ));
     }
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let pending = read_store(&state)
         .map_err(display_error)?
-        .get_environment_operation_request(&request.request_id)
+        .get_environment_operation_request(&project_root, &request.request_id)
         .map_err(display_error)?
         .filter(|item| item.status == "requested")
         .context(format!(
@@ -1172,9 +1180,11 @@ async fn list_runs(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<RunSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .list_runs(limit)
+        .list_runs(&project_root, limit)
         .map_err(display_error)
 }
 
@@ -1183,9 +1193,11 @@ async fn list_problems(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProblemSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .list_problems(limit)
+        .list_problems(&project_root, limit)
         .map_err(display_error)
 }
 
@@ -1194,9 +1206,11 @@ async fn get_run_detail(
     run_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<RunDetail>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .get_run_detail(&run_id)
+        .get_run_detail(&project_root, &run_id)
         .map_err(display_error)
 }
 
@@ -1226,13 +1240,14 @@ async fn export_plot_artifact(
     state: State<'_, AppState>,
 ) -> Result<ArtifactRecordView, String> {
     let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let (file, output_path, output_absolute_path) =
         ensure_artifact_export_target(&root, &request.path, &["png"]).map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
     let plot = context
         .store
-        .get_plot_artifact(&request.plot_id)
+        .get_plot_artifact(&project_root, &request.plot_id)
         .map_err(display_error)?
         .context(format!("Plot artifact not found: {}", request.plot_id))
         .map_err(display_error)?;
@@ -1252,7 +1267,7 @@ async fn export_plot_artifact(
     atomic_write_new(&file, &bytes).map_err(display_error)?;
     let run = context
         .store
-        .get_run_detail(&plot.run_id)
+        .get_run_detail(&project_root, &plot.run_id)
         .map_err(display_error)?;
     let (provenance_complete, incomplete_reason) = artifact_provenance_status(
         run.as_ref(),
@@ -1286,10 +1301,13 @@ async fn export_plot_artifact(
         .map_err(display_error)?;
     context.broker.project_changed();
     let identity = context.broker.identity().clone();
-    context.store.save_identity(&identity).map_err(display_error)?;
+    context
+        .store
+        .save_identity(&identity)
+        .map_err(display_error)?;
     let detail = context
         .store
-        .get_artifact_record(&artifact.artifact_id)
+        .get_artifact_record(&project_root, &artifact.artifact_id)
         .map_err(display_error)?
         .context("Exported artifact record was not found")
         .map_err(display_error)?;
@@ -1311,6 +1329,7 @@ async fn export_data_view_artifact(
         return Err("Visible table export format must be csv or tsv".to_string());
     }
     let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let (file, output_path, output_absolute_path) =
         ensure_artifact_export_target(&root, &request.path, &[format.as_str()])
             .map_err(display_error)?;
@@ -1356,6 +1375,7 @@ async fn export_data_view_artifact(
     ) {
         (Some(workspace_id), Some(state_revision), Some(project_revision)) => store
             .find_run_detail_for_workspace_state(
+                &project_root,
                 workspace_id,
                 state_revision as i64,
                 project_revision as i64,
@@ -1366,11 +1386,8 @@ async fn export_data_view_artifact(
     let source_path = run.as_ref().and_then(|item| item.source_path.clone());
     let document_version = run.as_ref().and_then(|item| item.document_version);
     let run_id = run.as_ref().map(|item| item.run_id.clone());
-    let (provenance_complete, incomplete_reason) = artifact_provenance_status(
-        run.as_ref(),
-        source_path.as_deref(),
-        document_version,
-    );
+    let (provenance_complete, incomplete_reason) =
+        artifact_provenance_status(run.as_ref(), source_path.as_deref(), document_version);
     let artifact = ArtifactRecordDraft {
         artifact_id: format!("artifact_{}", Uuid::new_v4().simple()),
         artifact_kind: "table_export".to_string(),
@@ -1403,12 +1420,14 @@ async fn export_data_view_artifact(
         provenance_complete,
         incomplete_reason,
     };
-    store.create_artifact_record(&artifact).map_err(display_error)?;
+    store
+        .create_artifact_record(&artifact)
+        .map_err(display_error)?;
     broker.project_changed();
     let identity = broker.identity().clone();
     store.save_identity(&identity).map_err(display_error)?;
     let detail = store
-        .get_artifact_record(&artifact.artifact_id)
+        .get_artifact_record(&project_root, &artifact.artifact_id)
         .map_err(display_error)?
         .context("Exported table artifact record was not found")
         .map_err(display_error)?;
@@ -1446,9 +1465,10 @@ async fn get_artifact_record(
     state: State<'_, AppState>,
 ) -> Result<Option<ArtifactRecordView>, String> {
     let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let store = read_store(&state).map_err(display_error)?;
     let Some(artifact) = store
-        .get_artifact_record(&artifact_id)
+        .get_artifact_record(&project_root, &artifact_id)
         .map_err(display_error)?
     else {
         return Ok(None);
@@ -1456,7 +1476,7 @@ async fn get_artifact_record(
     let run = artifact
         .run_id
         .as_deref()
-        .map(|run_id| store.get_run_detail(run_id))
+        .map(|run_id| store.get_run_detail(&project_root, run_id))
         .transpose()
         .map_err(display_error)?
         .flatten();
@@ -1470,7 +1490,9 @@ async fn get_artifact_record(
 }
 
 #[tauri::command]
-async fn list_project_skills(state: State<'_, AppState>) -> Result<ProjectSkillDiscoverySummary, String> {
+async fn list_project_skills(
+    state: State<'_, AppState>,
+) -> Result<ProjectSkillDiscoverySummary, String> {
     let root = state.project_root.read().await.clone();
     let normalized = root.to_string_lossy().replace('\\', "/");
     if normalized.trim().is_empty() {
@@ -1519,15 +1541,23 @@ async fn clear_plot_artifacts(
 
 #[tauri::command]
 async fn retry_run(run_id: String, state: State<'_, AppState>) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
     let detail = context
         .store
-        .get_run_detail(&run_id)
+        .get_run_detail(&project_root, &run_id)
         .map_err(display_error)?
         .context(format!("Run not found: {run_id}"))
         .map_err(display_error)?;
+    if !run_is_retryable(&detail.request_type, &detail.origin) {
+        return Err(format!(
+            "Run type `{}` cannot be retried from history",
+            detail.request_type
+        ));
+    }
     let mut arguments: Value =
         serde_json::from_str(&detail.arguments_json).map_err(display_error)?;
     let object = arguments
@@ -1553,6 +1583,10 @@ async fn retry_run(run_id: String, state: State<'_, AppState>) -> Result<Value, 
     )
     .await
     .map_err(display_error)
+}
+
+fn run_is_retryable(request_type: &str, origin: &str) -> bool {
+    request_type == "workspace.execute" && matches!(origin, "user" | "agent")
 }
 
 #[tauri::command]
@@ -1598,10 +1632,17 @@ async fn run_agent(
     {
         let mut context_guard = context.lock().await;
         let identity = context_guard.broker.identity().clone();
+        let project_root = context_guard
+            .store
+            .active_project_root()
+            .map_err(display_error)?
+            .context("Cannot start Agent without an active project identity")
+            .map_err(display_error)?;
         context_guard
             .store
             .create_agent_turn(&AgentTurnDraft {
                 turn_id: turn_id.clone(),
+                project_root,
                 mode: mode.clone(),
                 prompt: prompt.clone(),
                 model: resolved_model.effective_model_ref.clone(),
@@ -1799,9 +1840,11 @@ async fn list_agent_turns(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<AgentTurnSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .list_agent_turns(limit)
+        .list_agent_turns(&project_root, limit)
         .map_err(display_error)
 }
 
@@ -1811,9 +1854,11 @@ async fn list_approval_requests(
     status: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ApprovalRequestSummary>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .list_approval_requests(limit, status.as_deref())
+        .list_approval_requests(&project_root, limit, status.as_deref())
         .map_err(display_error)
 }
 
@@ -1822,9 +1867,11 @@ async fn get_agent_turn_detail(
     turn_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<AgentTurnDetail>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     read_store(&state)
         .map_err(display_error)?
-        .get_agent_turn_detail(&turn_id)
+        .get_agent_turn_detail(&project_root, &turn_id)
         .map_err(display_error)
 }
 
@@ -1839,9 +1886,11 @@ async fn respond_approval(
             request.decision
         ));
     }
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let pending = read_store(&state)
         .map_err(display_error)?
-        .get_approval_request(&request.request_id)
+        .get_approval_request(&project_root, &request.request_id)
         .map_err(display_error)?
         .filter(|item| item.status == "waiting")
         .context(format!(
@@ -1910,10 +1959,16 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
     }
 
     let active_run_id = {
+        let root = state.project_root.read().await.clone();
+        let project_root = normalize_project_root(root.to_string_lossy().as_ref());
         let mut store = read_store(&state).map_err(display_error)?;
-        let run_id = store.latest_active_run_id().map_err(display_error)?;
+        let run_id = store
+            .latest_active_run_id(&project_root)
+            .map_err(display_error)?;
         if let Some(run_id) = run_id.as_ref() {
-            let _ = store.request_cancel(run_id).map_err(display_error)?;
+            let _ = store
+                .request_cancel(&project_root, run_id)
+                .map_err(display_error)?;
         }
         run_id
     };
@@ -2074,6 +2129,12 @@ async fn start_workspace(state: &AppState) -> Result<WorkspaceStatus> {
             .context("starting Ark-backed Workspace R")?,
     );
     let mut store = Store::open(&config.store_path).context("opening Rho event store")?;
+    let project_root = state.project_root.read().await.clone();
+    store
+        .set_project_root(Some(&normalize_project_root(
+            project_root.to_string_lossy().as_ref(),
+        )))
+        .context("binding the active project identity")?;
     store
         .recover_incomplete_runs()
         .context("recovering incomplete runs after desktop restart")?;
@@ -2103,17 +2164,19 @@ async fn start_workspace(state: &AppState) -> Result<WorkspaceStatus> {
 
 async fn request_run_interrupt(run_id: Option<String>, state: &AppState) -> Result<Value> {
     let session = active_session(state).await?;
+    let root = state.project_root.read().await.clone();
+    let project_root = normalize_project_root(root.to_string_lossy().as_ref());
     let mut store = read_store(state)?;
     let target = match run_id {
         Some(value) => value,
         None => store
-            .latest_active_run_id()
+            .latest_active_run_id(&project_root)
             .context("looking up active run")?
             .context("No active run is available to interrupt")?,
     };
     ensure!(
         store
-            .request_cancel(&target)
+            .request_cancel(&project_root, &target)
             .context("marking run as cancel-requested")?,
         "Run is not active: {target}"
     );
@@ -2142,22 +2205,41 @@ async fn switch_project(
     app: AppHandle,
     state: &AppState,
 ) -> Result<ProjectRestoreResponse> {
-    sync_workspace_project_root(state, &root).await?;
-    {
+    ensure!(
+        state.agent_tasks.lock().await.is_empty(),
+        "Stop the active Agent turn before switching projects."
+    );
+    ensure!(
+        state.approvals.is_empty().await && state.environment_approvals.is_empty().await,
+        "Resolve or cancel pending approvals before switching projects."
+    );
+    let project = list_project_files(&root)?;
+    let next_watcher = start_project_watcher(app.clone(), root.clone())?;
+    state.project_store.save_last_opened_project(&root)?;
+    let normalized_root = normalize_project_root(root.to_string_lossy().as_ref());
+    let previous_root = {
+        let context = active_context(state).await?;
+        let mut context = context.lock().await;
+        let previous_root = context.store.active_project_root()?;
+        context.store.set_project_root(Some(&normalized_root))?;
+        previous_root
+    };
+    if let Err(error) = sync_workspace_project_root(state, &root).await {
         let context = active_context(state).await?;
         context
             .lock()
             .await
             .store
-            .set_project_root(Some(root.to_string_lossy().as_ref()))?;
+            .set_project_root(previous_root.as_deref())?;
+        return Err(error);
     }
-    state.project_store.save_last_opened_project(&root)?;
     let session_snapshot =
         session_snapshot.unwrap_or_else(|| state.project_store.load_session_or_default(&root));
     *state.project_root.write().await = root.clone();
     let mut watcher = state.project_watcher.lock().await;
-    replace_project_watcher(&mut watcher, app, root.clone())?;
-    let project = list_project_files(&root)?;
+    if let Some(previous) = watcher.replace(next_watcher) {
+        previous.stop();
+    }
     Ok(ProjectRestoreResponse::ready(project, session_snapshot))
 }
 
@@ -2679,8 +2761,12 @@ async fn clear_agent_history(state: State<'_, AppState>) -> Result<Value, String
     if !state.agent_tasks.lock().await.is_empty() {
         return Err("Stop the active Agent turn before clearing its history.".to_string());
     }
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
     let mut store = read_store(&state).map_err(display_error)?;
-    let deleted = store.clear_agent_history().map_err(display_error)?;
+    let deleted = store
+        .clear_agent_history(&project_root)
+        .map_err(display_error)?;
     Ok(json!({"deleted": deleted}))
 }
 
@@ -2733,9 +2819,15 @@ async fn cancel_agent_turn(
 
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
+    let project_root = context
+        .store
+        .active_project_root()
+        .map_err(display_error)?
+        .context("Cannot cancel Agent without an active project identity")
+        .map_err(display_error)?;
     let detail = context
         .store
-        .get_agent_turn_detail(&turn_id)
+        .get_agent_turn_detail(&project_root, &turn_id)
         .map_err(display_error)?;
     let status = detail
         .as_ref()
@@ -2960,9 +3052,18 @@ mod tests {
     use super::{
         RUserStartupFiles, bounded_diagnostic, classify_startup_error, configure_user_startup,
         data_view_delimited_text, ensure_artifact_export_target, ensure_supported_r_version,
-        existing_startup_file, has_png_signature, parse_r_runtime_probe,
+        existing_startup_file, has_png_signature, parse_r_runtime_probe, run_is_retryable,
         safe_delete_project_file, write_r_probe_script,
     };
+
+    #[test]
+    fn retries_only_scientific_workspace_execution() {
+        assert!(run_is_retryable("workspace.execute", "user"));
+        assert!(run_is_retryable("workspace.execute", "agent"));
+        assert!(!run_is_retryable("environment.restore", "user"));
+        assert!(!run_is_retryable("workspace.set_project_root", "system"));
+        assert!(!run_is_retryable("workspace.bootstrap", "system"));
+    }
     use serde_json::json;
     use std::path::Path;
     use std::process::Command;
@@ -3349,7 +3450,10 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         .as_array()
         .map(|rows| rows.len())
         .unwrap_or_default();
-    ensure!(page_row_count > 0, "desktop smoke data viewer returned no rows");
+    ensure!(
+        page_row_count > 0,
+        "desktop smoke data viewer returned no rows"
+    );
     let mutate_payload = json!({
         "arguments": {
             "code": "rho_desktop_smoke$z <- rho_desktop_smoke$x + rho_desktop_smoke$y"
@@ -3404,8 +3508,13 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         {
             let mut context_guard = context.lock().await;
             let identity = context_guard.broker.identity().clone();
+            let project_root = context_guard
+                .store
+                .active_project_root()?
+                .context("Cannot run Agent smoke without an active project identity")?;
             context_guard.store.create_agent_turn(&AgentTurnDraft {
                 turn_id: turn_id.clone(),
+                project_root,
                 mode: "ask".to_string(),
                 prompt: prompt.clone(),
                 model: resolved_model.effective_model_ref.clone(),

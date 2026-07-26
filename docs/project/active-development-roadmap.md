@@ -191,10 +191,11 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 1, BH1 only**. Wave 0 automated review closed as
+Current program state: **Wave 1, BH1 acceptance review**. Wave 0 automated review closed as
 `accept with follow-up`; the `0.3.x` representative-project and manual UI gates
 remain open and are not recorded as passed. BH1 project-scoped durable identity
-is the only authorized new product package. The parallel `0.2.0-dev.12` and
+is implemented through BH1-C and is the only authorized new product package;
+its independent acceptance review and manual follow-ups remain open. The parallel `0.2.0-dev.12` and
 About/update tracks retain their own active acceptance contracts. BH2-BH5,
 UX1, modernization, and Waves 2-14 remain scheduled but not authorized.
 
@@ -207,7 +208,7 @@ UX1, modernization, and Waves 2-14 remain scheduled but not authorized.
 | 4 | UX2 first use, files, Run scope, and result handoff | Finish modernization Phase 1 without structural navigation changes | Novice task protocol and browser/Tauri parity pass |
 | 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass |
 | 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass |
-| 7 | RA-RC2, followed by one separately selected UX3, UX4, or UX5 package | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review |
+| 7 | RA-RC2, followed by one separately selected EW-CR1, UX3, UX4, or UX5 package | BH4 must precede any retention, prune, hide, or delete behavior; EW-CR1 also requires accepted `0.3.x`, BH1-BH3, and RA-RC1 evidence | Each package is separately authorized, accepted, and stopped for review |
 | 8 | WS2 editor-intelligence checkpoint: Monaco with Air versus R `languageserver` evaluation | Local Help contract refinement only | One primary language backend is selected with bounded protocol, process, recovery, license and Windows evidence; no provider mutates project files directly |
 | 9 | WS2 selected language backend, then `lintr` Problems integration | Behavior-neutral editor presentation work only | Completion/navigation/help and normalized diagnostics pass provider-unavailable, stale-document, duplicate-finding and two-project isolation gates |
 | 10 | WS3 TanStack Table interaction layer over the implemented bounded viewer | Accepted Artifact presentation work only | Server-owned paging/sort/filter/export limits remain authoritative and desktop/narrow keyboard and payload evidence pass |
@@ -233,6 +234,11 @@ Evidence from one track cannot close another track.
 
 BH1 was authorized on 2026-07-26 under
 [`plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md`](../plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md).
+BH1-A through BH1-C are implemented and the complete Rust workspace, affected
+R suites, JavaScript syntax check, and desktop smoke passed. The acceptance
+stop remains active for independent privacy review and representative
+two-project switching/restart follow-up; see
+[`verification/bh1/verification.md`](../verification/bh1/verification.md).
 BH3 may share its development cycle with the reviewed BH1
 schema, but retains an independent migration gate. BH2 begins only after BH1 is
 accepted and may not publish a new project until Workspace R, persistence,
@@ -271,11 +277,22 @@ has demonstrated value.
 
 ### Wave 7 Selection
 
-Authorize RA-RC2 after RA-RC1, then select only one of UX3, UX4, or UX5 for
-product implementation at a time. UX3 requires the relevant BH1-BH3 switching
-and history behavior. UX4 requires an accepted posture implementation contract.
-UX5 requires accepted `0.3.x` behavior and BH4 before any retention or deletion
-operation.
+Authorize RA-RC2 after RA-RC1, then select only one of EW-CR1, UX3, UX4, or
+UX5 for product implementation at a time.
+
+EW-CR1 owns the first project-scoped scholarly evidence workspace and bounded
+claim-review package. It is intentionally narrower than a general literature
+platform: the core package may use only small-footprint permissive-license
+utilities and open-data scholarly metadata providers, and it must not make a
+commercial or heavyweight hosted service the sole dependency. EW-CR1 requires
+accepted `0.3.x` artifact/environment provenance, BH1-BH3 project identity and
+query isolation, and RA-RC1's first read-only internal evidence view so the new
+external-evidence layer does not compete with unresolved internal evidence
+semantics.
+
+UX3 requires the relevant BH1-BH3 switching and history behavior. UX4 requires
+an accepted posture implementation contract. UX5 requires accepted `0.3.x`
+behavior and BH4 before any retention or deletion operation.
 
 ### Waves 8-10: Complete Daily Scientific Editing And Inspection
 

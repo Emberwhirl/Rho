@@ -9,6 +9,19 @@ use thiserror::Error;
 const SCHEMA_VERSION: i64 = 7;
 const DEFAULT_LIMIT: usize = 50;
 
+pub fn normalize_project_root(root: &str) -> String {
+    let normalized = root.replace('\\', "/");
+    if normalized.ends_with(":/") {
+        return normalized;
+    }
+    let trimmed = normalized.trim_end_matches('/');
+    if trimmed.is_empty() && normalized.starts_with('/') {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("SQLite error: {0}")]
@@ -23,6 +36,7 @@ pub enum StoreError {
 pub struct RunDraft {
     pub run_id: String,
     pub parent_run_id: Option<String>,
+    pub project_root: String,
     pub origin: String,
     pub request_type: String,
     pub operation_class: String,
@@ -59,6 +73,7 @@ pub struct RunFinish {
 pub struct RunSummary {
     pub run_id: String,
     pub parent_run_id: Option<String>,
+    pub project_root: String,
     pub origin: String,
     pub status: String,
     pub started_at: String,
@@ -84,6 +99,7 @@ pub struct RunSummary {
 pub struct ProblemSummary {
     pub run_id: String,
     pub parent_run_id: Option<String>,
+    pub project_root: String,
     pub origin: String,
     pub status: String,
     pub message: String,
@@ -101,6 +117,7 @@ pub struct ProblemSummary {
 pub struct RunDetail {
     pub run_id: String,
     pub parent_run_id: Option<String>,
+    pub project_root: String,
     pub origin: String,
     pub status: String,
     pub started_at: String,
@@ -276,6 +293,7 @@ pub struct ArtifactRecordSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTurnDraft {
     pub turn_id: String,
+    pub project_root: String,
     pub mode: String,
     pub prompt: String,
     pub model: String,
@@ -298,6 +316,7 @@ pub struct AgentTurnFinish {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTurnSummary {
     pub turn_id: String,
+    pub project_root: String,
     pub mode: String,
     pub status: String,
     pub started_at: String,
@@ -358,6 +377,7 @@ pub struct AgentTurnEvent {
 pub struct ApprovalRequestDraft {
     pub request_id: String,
     pub turn_id: String,
+    pub project_root: String,
     pub tool: String,
     pub policy: String,
     pub arguments_json: String,
@@ -379,6 +399,7 @@ pub struct ApprovalDecisionRecord {
 pub struct ApprovalRequestSummary {
     pub request_id: String,
     pub turn_id: String,
+    pub project_root: String,
     pub tool: String,
     pub policy: String,
     pub status: String,
@@ -432,6 +453,7 @@ impl Store {
             );
             CREATE TABLE IF NOT EXISTS runs (
                 run_id TEXT PRIMARY KEY,
+                project_root TEXT,
                 status TEXT NOT NULL,
                 started_at TEXT NOT NULL,
                 finished_at TEXT,
@@ -443,6 +465,7 @@ impl Store {
             );
             CREATE TABLE IF NOT EXISTS agent_turns (
                 turn_id TEXT PRIMARY KEY,
+                project_root TEXT,
                 mode TEXT NOT NULL,
                 prompt TEXT NOT NULL,
                 prompt_preview TEXT NOT NULL,
@@ -476,6 +499,7 @@ impl Store {
             CREATE TABLE IF NOT EXISTS approval_requests (
                 request_id TEXT PRIMARY KEY,
                 turn_id TEXT NOT NULL,
+                project_root TEXT,
                 tool TEXT NOT NULL,
                 policy TEXT NOT NULL,
                 status TEXT NOT NULL,
@@ -594,17 +618,27 @@ impl Store {
             .and_then(|value| value.parse().ok());
 
         match current {
-            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(6) | Some(SCHEMA_VERSION) => {}
+            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(6)
+            | Some(SCHEMA_VERSION) => {}
             Some(other) => return Err(StoreError::SchemaVersion(other)),
         }
 
         ensure_column(&self.connection, "runs", "parent_run_id", "TEXT")?;
+        ensure_column(&self.connection, "runs", "project_root", "TEXT")?;
+        ensure_column(&self.connection, "agent_turns", "project_root", "TEXT")?;
+        ensure_column(
+            &self.connection,
+            "approval_requests",
+            "project_root",
+            "TEXT",
+        )?;
         ensure_column(
             &self.connection,
             "runs",
             "origin",
             "TEXT NOT NULL DEFAULT 'system'",
         )?;
+
         ensure_column(
             &self.connection,
             "runs",
@@ -679,6 +713,15 @@ impl Store {
             "TEXT",
         )?;
 
+        self.connection.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_runs_project_started
+                 ON runs(project_root, started_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_agent_turns_project_started
+                 ON agent_turns(project_root, started_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_approval_requests_project_status
+                 ON approval_requests(project_root, status, requested_at DESC);",
+        )?;
+
         self.connection.execute(
             "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -734,16 +777,17 @@ impl Store {
     pub fn create_run(&mut self, draft: &RunDraft) -> Result<(), StoreError> {
         self.connection.execute(
             "INSERT INTO runs(
-                run_id, parent_run_id, origin, status, started_at, request_type,
+                run_id, parent_run_id, project_root, origin, status, started_at, request_type,
                 operation_class, code, arguments_json, source_path, execution_mode,
                 document_version, workspace_id, state_revision_before,
                 project_revision_before, cancel_requested, environment_snapshot_id
              ) VALUES(
-                ?1, ?2, ?3, 'queued', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, ?15
+                ?1, ?2, ?3, ?4, 'queued', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16
              )",
             params![
                 draft.run_id,
                 draft.parent_run_id,
+                draft.project_root,
                 draft.origin,
                 Utc::now().to_rfc3339(),
                 draft.request_type,
@@ -818,13 +862,14 @@ impl Store {
         Ok(())
     }
 
-    pub fn request_cancel(&mut self, run_id: &str) -> Result<bool, StoreError> {
+    pub fn request_cancel(&mut self, project_root: &str, run_id: &str) -> Result<bool, StoreError> {
         let changed = self.connection.execute(
             "UPDATE runs
              SET cancel_requested = 1,
                  terminal_reason = 'cancel_requested'
-             WHERE run_id = ?1 AND status IN ('queued', 'running', 'waiting')",
-            [run_id],
+             WHERE project_root = ?1 AND run_id = ?2
+               AND status IN ('queued', 'running', 'waiting')",
+            params![project_root, run_id],
         )?;
         Ok(changed > 0)
     }
@@ -838,101 +883,123 @@ impl Store {
         Ok(requested != 0)
     }
 
-    pub fn latest_active_run_id(&self) -> Result<Option<String>, StoreError> {
+    pub fn latest_active_run_id(&self, project_root: &str) -> Result<Option<String>, StoreError> {
         self.connection
             .query_row(
                 "SELECT run_id FROM runs
-                 WHERE status IN ('queued', 'running', 'waiting')
+                 WHERE project_root = ?1
+                   AND status IN ('queued', 'running', 'waiting')
                  ORDER BY started_at DESC
                  LIMIT 1",
-                [],
+                [project_root],
                 |row| row.get(0),
             )
             .optional()
             .map_err(StoreError::from)
     }
 
-    pub fn list_runs(&self, limit: Option<usize>) -> Result<Vec<RunSummary>, StoreError> {
+    pub fn list_runs(
+        &self,
+        project_root: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<RunSummary>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT
-                run_id, parent_run_id, origin, status, started_at, finished_at,
+                run_id, parent_run_id, project_root, origin, status, started_at, finished_at,
                 terminal_reason, request_type, operation_class, code, source_path,
                 execution_mode, document_version, workspace_id,
                 state_revision_before, project_revision_before,
                 state_revision_after, project_revision_after,
                 environment_snapshot_id, environment_snapshot_id_after, error_message
              FROM runs
+             WHERE project_root = ?1
              ORDER BY started_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
         )?;
-        let rows = statement.query_map([limit.unwrap_or(DEFAULT_LIMIT) as i64], |row| {
-            let code: String = row.get(9)?;
-            Ok(RunSummary {
-                run_id: row.get(0)?,
-                parent_run_id: row.get(1)?,
-                origin: row.get(2)?,
-                status: row.get(3)?,
-                started_at: row.get(4)?,
-                finished_at: row.get(5)?,
-                terminal_reason: row.get(6)?,
-                request_type: row.get(7)?,
-                operation_class: row.get(8)?,
-                source_path: row.get(10)?,
-                execution_mode: row.get(11)?,
-                document_version: row.get(12)?,
-                workspace_id: row.get(13)?,
-                state_revision_before: row.get(14)?,
-                project_revision_before: row.get(15)?,
-                state_revision_after: row.get(16)?,
-                project_revision_after: row.get(17)?,
-                environment_snapshot_id: row.get(18)?,
-                environment_snapshot_id_after: row.get(19)?,
-                code_preview: code_preview(&code),
-                error_message: row.get(20)?,
-            })
-        })?;
+        let rows = statement.query_map(
+            params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64],
+            |row| {
+                let code: String = row.get(10)?;
+                Ok(RunSummary {
+                    run_id: row.get(0)?,
+                    parent_run_id: row.get(1)?,
+                    project_root: row.get(2)?,
+                    origin: row.get(3)?,
+                    status: row.get(4)?,
+                    started_at: row.get(5)?,
+                    finished_at: row.get(6)?,
+                    terminal_reason: row.get(7)?,
+                    request_type: row.get(8)?,
+                    operation_class: row.get(9)?,
+                    source_path: row.get(11)?,
+                    execution_mode: row.get(12)?,
+                    document_version: row.get(13)?,
+                    workspace_id: row.get(14)?,
+                    state_revision_before: row.get(15)?,
+                    project_revision_before: row.get(16)?,
+                    state_revision_after: row.get(17)?,
+                    project_revision_after: row.get(18)?,
+                    environment_snapshot_id: row.get(19)?,
+                    environment_snapshot_id_after: row.get(20)?,
+                    code_preview: code_preview(&code),
+                    error_message: row.get(21)?,
+                })
+            },
+        )?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
     }
 
-    pub fn list_problems(&self, limit: Option<usize>) -> Result<Vec<ProblemSummary>, StoreError> {
+    pub fn list_problems(
+        &self,
+        project_root: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<ProblemSummary>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT
-                run_id, parent_run_id, origin, status, error_message, error_call,
+                run_id, parent_run_id, project_root, origin, status, error_message, error_call,
                 traceback_json, source_path, execution_mode, document_version,
                 workspace_id, started_at, finished_at
              FROM runs
-             WHERE error_message IS NOT NULL
+             WHERE project_root = ?1 AND error_message IS NOT NULL
              ORDER BY started_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
         )?;
-        let rows = statement.query_map([limit.unwrap_or(DEFAULT_LIMIT) as i64], |row| {
-            let traceback: String = row.get(6)?;
-            Ok(ProblemSummary {
-                run_id: row.get(0)?,
-                parent_run_id: row.get(1)?,
-                origin: row.get(2)?,
-                status: row.get(3)?,
-                message: row.get(4)?,
-                call: row.get(5)?,
-                traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
-                source_path: row.get(7)?,
-                execution_mode: row.get(8)?,
-                document_version: row.get(9)?,
-                workspace_id: row.get(10)?,
-                started_at: row.get(11)?,
-                finished_at: row.get(12)?,
-            })
-        })?;
+        let rows = statement.query_map(
+            params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64],
+            |row| {
+                let traceback: String = row.get(7)?;
+                Ok(ProblemSummary {
+                    run_id: row.get(0)?,
+                    parent_run_id: row.get(1)?,
+                    project_root: row.get(2)?,
+                    origin: row.get(3)?,
+                    status: row.get(4)?,
+                    message: row.get(5)?,
+                    call: row.get(6)?,
+                    traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
+                    source_path: row.get(8)?,
+                    execution_mode: row.get(9)?,
+                    document_version: row.get(10)?,
+                    workspace_id: row.get(11)?,
+                    started_at: row.get(12)?,
+                    finished_at: row.get(13)?,
+                })
+            },
+        )?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
     }
 
-    pub fn get_run_detail(&self, run_id: &str) -> Result<Option<RunDetail>, StoreError> {
+    pub fn get_run_detail(
+        &self,
+        project_root: &str,
+        run_id: &str,
+    ) -> Result<Option<RunDetail>, StoreError> {
         self.connection
             .query_row(
                 "SELECT
-                    run_id, parent_run_id, origin, status, started_at, finished_at,
+                    run_id, parent_run_id, project_root, origin, status, started_at, finished_at,
                     terminal_reason, request_type, operation_class, code, arguments_json,
                     source_path, execution_mode, document_version, workspace_id,
                     state_revision_before, project_revision_before,
@@ -941,8 +1008,8 @@ impl Store {
                     stdout, value_text, messages_json, warnings_json,
                     error_message, error_call, traceback_json
                  FROM runs
-                 WHERE run_id = ?1",
-                [run_id],
+                 WHERE project_root = ?1 AND run_id = ?2",
+                params![project_root, run_id],
                 decode_run_detail,
             )
             .optional()
@@ -968,13 +1035,14 @@ impl Store {
     pub fn create_agent_turn(&mut self, draft: &AgentTurnDraft) -> Result<(), StoreError> {
         self.connection.execute(
             "INSERT INTO agent_turns(
-                turn_id, mode, prompt, prompt_preview, model, status, started_at,
+                turn_id, project_root, mode, prompt, prompt_preview, model, status, started_at,
                 workspace_id_before, state_revision_before, project_revision_before
              ) VALUES(
-                ?1, ?2, ?3, ?4, ?5, 'running', ?6, ?7, ?8, ?9
+                ?1, ?2, ?3, ?4, ?5, ?6, 'running', ?7, ?8, ?9, ?10
              )",
             params![
                 draft.turn_id,
+                draft.project_root,
                 draft.mode,
                 draft.prompt,
                 text_preview(&draft.prompt, 120),
@@ -1059,14 +1127,15 @@ impl Store {
     ) -> Result<(), StoreError> {
         self.connection.execute(
             "INSERT INTO approval_requests(
-                request_id, turn_id, tool, policy, status, arguments_json, code,
+                request_id, turn_id, project_root, tool, policy, status, arguments_json, code,
                 workspace_id, state_revision, project_revision, requested_at
              ) VALUES(
-                ?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?7, ?8, ?9, ?10
+                ?1, ?2, ?3, ?4, ?5, 'waiting', ?6, ?7, ?8, ?9, ?10, ?11
              )",
             params![
                 draft.request_id,
                 draft.turn_id,
+                draft.project_root,
                 draft.tool,
                 draft.policy,
                 draft.arguments_json,
@@ -1107,11 +1176,12 @@ impl Store {
 
     pub fn list_agent_turns(
         &self,
+        project_root: &str,
         limit: Option<usize>,
     ) -> Result<Vec<AgentTurnSummary>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT
-                turn_id, mode, status, started_at, finished_at, prompt_preview, model,
+                turn_id, project_root, mode, status, started_at, finished_at, prompt_preview, model,
                 workspace_id_before, state_revision_before, project_revision_before,
                 workspace_id_after, state_revision_after, project_revision_after,
                 final_message, error_message,
@@ -1124,35 +1194,41 @@ impl Store {
                     LIMIT 1
                 ) AS pending_request_id
              FROM agent_turns
+             WHERE project_root = ?1
              ORDER BY started_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
         )?;
-        let rows = statement.query_map([limit.unwrap_or(DEFAULT_LIMIT) as i64], |row| {
-            Ok(AgentTurnSummary {
-                turn_id: row.get(0)?,
-                mode: row.get(1)?,
-                status: row.get(2)?,
-                started_at: row.get(3)?,
-                finished_at: row.get(4)?,
-                prompt_preview: row.get(5)?,
-                model: row.get(6)?,
-                workspace_id_before: row.get(7)?,
-                state_revision_before: row.get(8)?,
-                project_revision_before: row.get(9)?,
-                workspace_id_after: row.get(10)?,
-                state_revision_after: row.get(11)?,
-                project_revision_after: row.get(12)?,
-                final_message: row.get(13)?,
-                error_message: row.get(14)?,
-                pending_request_id: row.get(15)?,
-            })
-        })?;
+        let rows = statement.query_map(
+            params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64],
+            |row| {
+                Ok(AgentTurnSummary {
+                    turn_id: row.get(0)?,
+                    project_root: row.get(1)?,
+                    mode: row.get(2)?,
+                    status: row.get(3)?,
+                    started_at: row.get(4)?,
+                    finished_at: row.get(5)?,
+                    prompt_preview: row.get(6)?,
+                    model: row.get(7)?,
+                    workspace_id_before: row.get(8)?,
+                    state_revision_before: row.get(9)?,
+                    project_revision_before: row.get(10)?,
+                    workspace_id_after: row.get(11)?,
+                    state_revision_after: row.get(12)?,
+                    project_revision_after: row.get(13)?,
+                    final_message: row.get(14)?,
+                    error_message: row.get(15)?,
+                    pending_request_id: row.get(16)?,
+                })
+            },
+        )?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
     }
 
     pub fn recent_agent_conversation(
         &self,
+        project_root: &str,
         exclude_turn_id: &str,
         limit: usize,
     ) -> Result<Vec<AgentConversationTurn>, StoreError> {
@@ -1160,12 +1236,13 @@ impl Store {
             "SELECT
                 turn_id, mode, status, prompt, final_message, error_message, started_at
              FROM agent_turns
-             WHERE turn_id != ?1
+             WHERE project_root = ?1 AND turn_id != ?2
              ORDER BY started_at DESC, rowid DESC
-             LIMIT ?2",
+             LIMIT ?3",
         )?;
-        let rows =
-            statement.query_map(params![exclude_turn_id, limit.clamp(1, 8) as i64], |row| {
+        let rows = statement.query_map(
+            params![project_root, exclude_turn_id, limit.clamp(1, 8) as i64],
+            |row| {
                 Ok(AgentConversationTurn {
                     turn_id: row.get(0)?,
                     mode: row.get(1)?,
@@ -1175,7 +1252,8 @@ impl Store {
                     error_message: row.get(5)?,
                     started_at: row.get(6)?,
                 })
-            })?;
+            },
+        )?;
         let mut turns = rows.collect::<Result<Vec<_>, _>>()?;
         turns.reverse();
         Ok(turns)
@@ -1183,21 +1261,22 @@ impl Store {
 
     pub fn list_approval_requests(
         &self,
+        project_root: &str,
         limit: Option<usize>,
         status: Option<&str>,
     ) -> Result<Vec<ApprovalRequestSummary>, StoreError> {
         let mut statement = self.connection.prepare(
             "SELECT
-                request_id, turn_id, tool, policy, status, decision, reason,
+                request_id, turn_id, project_root, tool, policy, status, decision, reason,
                 arguments_json, code, workspace_id, state_revision, project_revision,
                 requested_at, responded_at, continuation_outcome
              FROM approval_requests
-             WHERE (?2 IS NULL OR status = ?2)
+             WHERE project_root = ?1 AND (?3 IS NULL OR status = ?3)
              ORDER BY requested_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
         )?;
         let rows = statement.query_map(
-            params![limit.unwrap_or(DEFAULT_LIMIT) as i64, status],
+            params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64, status],
             decode_approval_request,
         )?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -1206,13 +1285,14 @@ impl Store {
 
     pub fn get_agent_turn_detail(
         &self,
+        project_root: &str,
         turn_id: &str,
     ) -> Result<Option<AgentTurnDetail>, StoreError> {
         let turn = self
             .connection
             .query_row(
                 "SELECT
-                    turn_id, mode, status, started_at, finished_at, prompt_preview, model,
+                    turn_id, project_root, mode, status, started_at, finished_at, prompt_preview, model,
                     workspace_id_before, state_revision_before, project_revision_before,
                     workspace_id_after, state_revision_after, project_revision_after,
                     final_message, error_message,
@@ -1225,8 +1305,8 @@ impl Store {
                         LIMIT 1
                     ) AS pending_request_id
                  FROM agent_turns
-                 WHERE turn_id = ?1",
-                [turn_id],
+                 WHERE project_root = ?1 AND turn_id = ?2",
+                params![project_root, turn_id],
                 decode_agent_turn_summary,
             )
             .optional()?;
@@ -1245,14 +1325,15 @@ impl Store {
 
         let mut approval_statement = self.connection.prepare(
             "SELECT
-                request_id, turn_id, tool, policy, status, decision, reason,
+                request_id, turn_id, project_root, tool, policy, status, decision, reason,
                 arguments_json, code, workspace_id, state_revision, project_revision,
                 requested_at, responded_at, continuation_outcome
              FROM approval_requests
-             WHERE turn_id = ?1
+             WHERE project_root = ?1 AND turn_id = ?2
              ORDER BY requested_at DESC",
         )?;
-        let approval_rows = approval_statement.query_map([turn_id], decode_approval_request)?;
+        let approval_rows = approval_statement
+            .query_map(params![project_root, turn_id], decode_approval_request)?;
         let approvals = approval_rows.collect::<Result<Vec<_>, _>>()?;
 
         Ok(Some(AgentTurnDetail {
@@ -1274,11 +1355,21 @@ impl Store {
         Ok(changed)
     }
 
-    pub fn clear_agent_history(&mut self) -> Result<usize, StoreError> {
+    pub fn clear_agent_history(&mut self, project_root: &str) -> Result<usize, StoreError> {
         let transaction = self.connection.transaction()?;
-        transaction.execute("DELETE FROM approval_requests", [])?;
-        transaction.execute("DELETE FROM agent_turn_events", [])?;
-        let deleted = transaction.execute("DELETE FROM agent_turns", [])?;
+        transaction.execute(
+            "DELETE FROM approval_requests WHERE project_root = ?1",
+            [project_root],
+        )?;
+        transaction.execute(
+            "DELETE FROM agent_turn_events
+             WHERE turn_id IN (SELECT turn_id FROM agent_turns WHERE project_root = ?1)",
+            [project_root],
+        )?;
+        let deleted = transaction.execute(
+            "DELETE FROM agent_turns WHERE project_root = ?1",
+            [project_root],
+        )?;
         transaction.commit()?;
         Ok(deleted)
     }
@@ -1514,6 +1605,23 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn claim_environment_operation_request(
+        &mut self,
+        project_root: &str,
+        request_name: &str,
+        request_id: &str,
+        run_id: &str,
+    ) -> Result<bool, StoreError> {
+        let changed = self.connection.execute(
+            "UPDATE environment_operation_requests
+             SET status = 'running', run_id = ?4
+             WHERE project_root = ?1 AND request_name = ?2 AND request_id = ?3
+               AND status = 'approved' AND run_id IS NULL",
+            params![project_root, request_name, request_id, run_id],
+        )?;
+        Ok(changed == 1)
+    }
+
     pub fn finish_environment_operation_request(
         &mut self,
         finish: &EnvironmentOperationFinish,
@@ -1540,6 +1648,7 @@ impl Store {
 
     pub fn get_environment_operation_request(
         &self,
+        project_root: &str,
         request_id: &str,
     ) -> Result<Option<EnvironmentOperationRequestSummary>, StoreError> {
         self.connection
@@ -1550,8 +1659,8 @@ impl Store {
                     state_revision, project_revision, before_snapshot_id, run_id, requested_at,
                     responded_at, completed_at, terminal_outcome
                  FROM environment_operation_requests
-                 WHERE request_id = ?1",
-                [request_id],
+                 WHERE project_root = ?1 AND request_id = ?2",
+                params![project_root, request_id],
                 decode_environment_operation_request,
             )
             .optional()
@@ -1560,6 +1669,7 @@ impl Store {
 
     pub fn list_environment_operation_requests(
         &self,
+        project_root: &str,
         limit: Option<usize>,
         status: Option<&str>,
     ) -> Result<Vec<EnvironmentOperationRequestSummary>, StoreError> {
@@ -1570,12 +1680,12 @@ impl Store {
                 state_revision, project_revision, before_snapshot_id, run_id, requested_at,
                 responded_at, completed_at, terminal_outcome
              FROM environment_operation_requests
-             WHERE (?2 IS NULL OR status = ?2)
+             WHERE project_root = ?1 AND (?3 IS NULL OR status = ?3)
              ORDER BY requested_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
         )?;
         let rows = statement.query_map(
-            params![limit.unwrap_or(DEFAULT_LIMIT) as i64, status],
+            params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64, status],
             decode_environment_operation_request,
         )?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -1583,10 +1693,11 @@ impl Store {
     }
 
     pub fn set_project_root(&mut self, root: Option<&str>) -> Result<(), StoreError> {
+        let normalized = root.map(normalize_project_root).unwrap_or_default();
         self.connection.execute(
             "INSERT INTO metadata(key, value) VALUES('active_project_root', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            [root.unwrap_or_default()],
+            [normalized],
         )?;
         Ok(())
     }
@@ -1665,7 +1776,11 @@ impl Store {
         Ok(changed)
     }
 
-    pub fn get_plot_artifact(&self, plot_id: &str) -> Result<Option<PlotArtifactSummary>, StoreError> {
+    pub fn get_plot_artifact(
+        &self,
+        project_root: &str,
+        plot_id: &str,
+    ) -> Result<Option<PlotArtifactSummary>, StoreError> {
         self.connection
             .query_row(
                 "SELECT
@@ -1673,8 +1788,8 @@ impl Store {
                     workspace_id, state_revision, project_revision, media_type, payload_json,
                     provenance_complete, created_at
                  FROM plot_artifacts
-                 WHERE plot_id = ?1",
-                [plot_id],
+                 WHERE project_root = ?1 AND plot_id = ?2",
+                params![project_root, plot_id],
                 |row| {
                     Ok(PlotArtifactSummary {
                         plot_id: row.get(0)?,
@@ -1731,6 +1846,7 @@ impl Store {
 
     pub fn get_artifact_record(
         &self,
+        project_root: &str,
         artifact_id: &str,
     ) -> Result<Option<ArtifactRecordSummary>, StoreError> {
         self.connection
@@ -1741,8 +1857,8 @@ impl Store {
                     project_revision, media_type, metadata_json, provenance_complete,
                     incomplete_reason, created_at
                  FROM artifact_records
-                 WHERE artifact_id = ?1",
-                [artifact_id],
+                 WHERE project_root = ?1 AND artifact_id = ?2",
+                params![project_root, artifact_id],
                 decode_artifact_record,
             )
             .optional()
@@ -1766,6 +1882,7 @@ impl Store {
 
     pub fn find_run_detail_for_workspace_state(
         &self,
+        project_root: &str,
         workspace_id: &str,
         state_revision_after: i64,
         project_revision_after: i64,
@@ -1773,7 +1890,7 @@ impl Store {
         self.connection
             .query_row(
                 "SELECT
-                    run_id, parent_run_id, origin, status, started_at, finished_at,
+                    run_id, parent_run_id, project_root, origin, status, started_at, finished_at,
                     terminal_reason, request_type, operation_class, code, arguments_json,
                     source_path, execution_mode, document_version, workspace_id,
                     state_revision_before, project_revision_before, state_revision_after,
@@ -1781,15 +1898,21 @@ impl Store {
                     stdout, value_text, messages_json, warnings_json, error_message,
                     error_call, traceback_json
                  FROM runs
-                 WHERE workspace_id = ?1
-                   AND state_revision_after = ?2
-                   AND project_revision_after <= ?3
+                 WHERE project_root = ?1
+                   AND workspace_id = ?2
+                   AND state_revision_after = ?3
+                   AND project_revision_after <= ?4
                    AND status = 'completed'
                    AND request_type = 'workspace.execute'
                    AND finished_at IS NOT NULL
                  ORDER BY project_revision_after DESC, finished_at DESC
                  LIMIT 1",
-                params![workspace_id, state_revision_after, project_revision_after],
+                params![
+                    project_root,
+                    workspace_id,
+                    state_revision_after,
+                    project_revision_after
+                ],
                 decode_run_detail,
             )
             .optional()
@@ -1798,17 +1921,18 @@ impl Store {
 
     pub fn get_approval_request(
         &self,
+        project_root: &str,
         request_id: &str,
     ) -> Result<Option<ApprovalRequestSummary>, StoreError> {
         self.connection
             .query_row(
                 "SELECT
-                    request_id, turn_id, tool, policy, status, decision, reason,
+                    request_id, turn_id, project_root, tool, policy, status, decision, reason,
                     arguments_json, code, workspace_id, state_revision, project_revision,
                     requested_at, responded_at, continuation_outcome
                  FROM approval_requests
-                 WHERE request_id = ?1",
-                [request_id],
+                 WHERE project_root = ?1 AND request_id = ?2",
+                params![project_root, request_id],
                 decode_approval_request,
             )
             .optional()
@@ -1837,37 +1961,38 @@ fn ensure_column(
 }
 
 fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
-    let messages: String = row.get(23)?;
-    let warnings: String = row.get(24)?;
-    let traceback: String = row.get(27)?;
+    let messages: String = row.get(24)?;
+    let warnings: String = row.get(25)?;
+    let traceback: String = row.get(28)?;
     Ok(RunDetail {
         run_id: row.get(0)?,
         parent_run_id: row.get(1)?,
-        origin: row.get(2)?,
-        status: row.get(3)?,
-        started_at: row.get(4)?,
-        finished_at: row.get(5)?,
-        terminal_reason: row.get(6)?,
-        request_type: row.get(7)?,
-        operation_class: row.get(8)?,
-        code: row.get(9)?,
-        arguments_json: row.get(10)?,
-        source_path: row.get(11)?,
-        execution_mode: row.get(12)?,
-        document_version: row.get(13)?,
-        workspace_id: row.get(14)?,
-        state_revision_before: row.get(15)?,
-        project_revision_before: row.get(16)?,
-        state_revision_after: row.get(17)?,
-        project_revision_after: row.get(18)?,
-        environment_snapshot_id: row.get(19)?,
-        environment_snapshot_id_after: row.get(20)?,
-        stdout: row.get(21)?,
-        value_text: row.get(22)?,
+        project_root: row.get(2)?,
+        origin: row.get(3)?,
+        status: row.get(4)?,
+        started_at: row.get(5)?,
+        finished_at: row.get(6)?,
+        terminal_reason: row.get(7)?,
+        request_type: row.get(8)?,
+        operation_class: row.get(9)?,
+        code: row.get(10)?,
+        arguments_json: row.get(11)?,
+        source_path: row.get(12)?,
+        execution_mode: row.get(13)?,
+        document_version: row.get(14)?,
+        workspace_id: row.get(15)?,
+        state_revision_before: row.get(16)?,
+        project_revision_before: row.get(17)?,
+        state_revision_after: row.get(18)?,
+        project_revision_after: row.get(19)?,
+        environment_snapshot_id: row.get(20)?,
+        environment_snapshot_id_after: row.get(21)?,
+        stdout: row.get(22)?,
+        value_text: row.get(23)?,
         messages: decode_string_list(&messages).map_err(sqlite_function_error)?,
         warnings: decode_string_list(&warnings).map_err(sqlite_function_error)?,
-        error_message: row.get(25)?,
-        error_call: row.get(26)?,
+        error_message: row.get(26)?,
+        error_call: row.get(27)?,
         traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
     })
 }
@@ -1896,21 +2021,22 @@ fn decode_artifact_record(row: &Row<'_>) -> rusqlite::Result<ArtifactRecordSumma
 fn decode_agent_turn_summary(row: &Row<'_>) -> rusqlite::Result<AgentTurnSummary> {
     Ok(AgentTurnSummary {
         turn_id: row.get(0)?,
-        mode: row.get(1)?,
-        status: row.get(2)?,
-        started_at: row.get(3)?,
-        finished_at: row.get(4)?,
-        prompt_preview: row.get(5)?,
-        model: row.get(6)?,
-        workspace_id_before: row.get(7)?,
-        state_revision_before: row.get(8)?,
-        project_revision_before: row.get(9)?,
-        workspace_id_after: row.get(10)?,
-        state_revision_after: row.get(11)?,
-        project_revision_after: row.get(12)?,
-        final_message: row.get(13)?,
-        error_message: row.get(14)?,
-        pending_request_id: row.get(15)?,
+        project_root: row.get(1)?,
+        mode: row.get(2)?,
+        status: row.get(3)?,
+        started_at: row.get(4)?,
+        finished_at: row.get(5)?,
+        prompt_preview: row.get(6)?,
+        model: row.get(7)?,
+        workspace_id_before: row.get(8)?,
+        state_revision_before: row.get(9)?,
+        project_revision_before: row.get(10)?,
+        workspace_id_after: row.get(11)?,
+        state_revision_after: row.get(12)?,
+        project_revision_after: row.get(13)?,
+        final_message: row.get(14)?,
+        error_message: row.get(15)?,
+        pending_request_id: row.get(16)?,
     })
 }
 
@@ -1934,19 +2060,20 @@ fn decode_approval_request(row: &Row<'_>) -> rusqlite::Result<ApprovalRequestSum
     Ok(ApprovalRequestSummary {
         request_id: row.get(0)?,
         turn_id: row.get(1)?,
-        tool: row.get(2)?,
-        policy: row.get(3)?,
-        status: row.get(4)?,
-        decision: row.get(5)?,
-        reason: row.get(6)?,
-        arguments_json: row.get(7)?,
-        code: row.get(8)?,
-        workspace_id: row.get(9)?,
-        state_revision: row.get(10)?,
-        project_revision: row.get(11)?,
-        requested_at: row.get(12)?,
-        responded_at: row.get(13)?,
-        continuation_outcome: row.get(14)?,
+        project_root: row.get(2)?,
+        tool: row.get(3)?,
+        policy: row.get(4)?,
+        status: row.get(5)?,
+        decision: row.get(6)?,
+        reason: row.get(7)?,
+        arguments_json: row.get(8)?,
+        code: row.get(9)?,
+        workspace_id: row.get(10)?,
+        state_revision: row.get(11)?,
+        project_revision: row.get(12)?,
+        requested_at: row.get(13)?,
+        responded_at: row.get(14)?,
+        continuation_outcome: row.get(15)?,
     })
 }
 
@@ -2044,6 +2171,7 @@ mod tests {
             .create_run(&RunDraft {
                 run_id: "run_1".to_string(),
                 parent_run_id: None,
+                project_root: "D:/Rho/project".to_string(),
                 origin: "user".to_string(),
                 request_type: "workspace.execute".to_string(),
                 operation_class: "state_capable".to_string(),
@@ -2078,16 +2206,19 @@ mod tests {
             })
             .unwrap();
 
-        let runs = store.list_runs(None).unwrap();
+        let runs = store.list_runs("D:/Rho/project", None).unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].status, "failed");
         assert_eq!(runs[0].code_preview, "stop('boom')");
 
-        let problems = store.list_problems(None).unwrap();
+        let problems = store.list_problems("D:/Rho/project", None).unwrap();
         assert_eq!(problems.len(), 1);
         assert_eq!(problems[0].message, "boom");
 
-        let detail = store.get_run_detail("run_1").unwrap().unwrap();
+        let detail = store
+            .get_run_detail("D:/Rho/project", "run_1")
+            .unwrap()
+            .unwrap();
         assert_eq!(
             detail.environment_snapshot_id.as_deref(),
             Some("env_before")
@@ -2150,9 +2281,26 @@ mod tests {
                 },
             )
             .unwrap();
-        store
-            .start_environment_operation_request("env_req_1", Some("run_env_1"))
-            .unwrap();
+        assert!(
+            store
+                .claim_environment_operation_request(
+                    "D:/Rho/project",
+                    "environment.snapshot",
+                    "env_req_1",
+                    "run_env_1",
+                )
+                .unwrap()
+        );
+        assert!(
+            !store
+                .claim_environment_operation_request(
+                    "D:/Rho/project",
+                    "environment.snapshot",
+                    "env_req_1",
+                    "run_env_2",
+                )
+                .unwrap()
+        );
         store
             .finish_environment_operation_request(&EnvironmentOperationFinish {
                 request_id: "env_req_1".to_string(),
@@ -2164,7 +2312,7 @@ mod tests {
             .unwrap();
 
         let detail = store
-            .get_environment_operation_request("env_req_1")
+            .get_environment_operation_request("D:/Rho/project", "env_req_1")
             .unwrap()
             .unwrap();
         assert_eq!(detail.status, "completed");
@@ -2182,6 +2330,7 @@ mod tests {
             .create_run(&RunDraft {
                 run_id: "run_science_1".to_string(),
                 parent_run_id: None,
+                project_root: "D:/Rho/project".to_string(),
                 origin: "user".to_string(),
                 request_type: "workspace.execute".to_string(),
                 operation_class: "state_capable".to_string(),
@@ -2218,6 +2367,7 @@ mod tests {
             .create_run(&RunDraft {
                 run_id: "run_render_1".to_string(),
                 parent_run_id: None,
+                project_root: "D:/Rho/project".to_string(),
                 origin: "user".to_string(),
                 request_type: "workspace.render_document".to_string(),
                 operation_class: "project_mutation".to_string(),
@@ -2254,6 +2404,7 @@ mod tests {
             .create_run(&RunDraft {
                 run_id: "run_viewer_probe_1".to_string(),
                 parent_run_id: None,
+                project_root: "D:/Rho/project".to_string(),
                 origin: "system".to_string(),
                 request_type: "workspace.read_data_view".to_string(),
                 operation_class: "probe".to_string(),
@@ -2311,10 +2462,13 @@ mod tests {
             .unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].artifact_kind, "render_output");
-        let detail = store.get_artifact_record("artifact_1").unwrap().unwrap();
+        let detail = store
+            .get_artifact_record("D:/Rho/project", "artifact_1")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.output_path, "reports/qc.html");
         let run = store
-            .find_run_detail_for_workspace_state("ws_test", 11, 5)
+            .find_run_detail_for_workspace_state("D:/Rho/project", "ws_test", 11, 5)
             .unwrap()
             .unwrap();
         assert_eq!(run.run_id, "run_science_1");
@@ -2329,6 +2483,7 @@ mod tests {
             .create_run(&RunDraft {
                 run_id: "run_1".to_string(),
                 parent_run_id: None,
+                project_root: "D:/Rho/project".to_string(),
                 origin: "system".to_string(),
                 request_type: "workspace.snapshot".to_string(),
                 operation_class: "probe".to_string(),
@@ -2346,7 +2501,10 @@ mod tests {
         store.update_run_status("run_1", "running", None).unwrap();
         assert_eq!(store.recover_incomplete_runs().unwrap(), 1);
         assert_eq!(store.recover_incomplete_runs().unwrap(), 0);
-        let detail = store.get_run_detail("run_1").unwrap().unwrap();
+        let detail = store
+            .get_run_detail("D:/Rho/project", "run_1")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.status, "interrupted");
         assert_eq!(detail.terminal_reason.as_deref(), Some("broker_restart"));
     }
@@ -2358,6 +2516,7 @@ mod tests {
         store
             .create_agent_turn(&AgentTurnDraft {
                 turn_id: "turn_1".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 mode: "act".to_string(),
                 prompt: "请汇总 qc".to_string(),
                 model: "deepseek:deepseek-v4-flash".to_string(),
@@ -2383,6 +2542,7 @@ mod tests {
             .create_approval_request(&ApprovalRequestDraft {
                 request_id: "req_1".to_string(),
                 turn_id: "turn_1".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 tool: "run_r".to_string(),
                 policy: "required".to_string(),
                 arguments_json: "{\"code\":\"summary(qc)\"}".to_string(),
@@ -2393,7 +2553,7 @@ mod tests {
             })
             .unwrap();
 
-        let turns = store.list_agent_turns(None).unwrap();
+        let turns = store.list_agent_turns("D:/Rho/project", None).unwrap();
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].pending_request_id.as_deref(), Some("req_1"));
 
@@ -2420,7 +2580,10 @@ mod tests {
             })
             .unwrap();
 
-        let detail = store.get_agent_turn_detail("turn_1").unwrap().unwrap();
+        let detail = store
+            .get_agent_turn_detail("D:/Rho/project", "turn_1")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.turn.status, "completed");
         assert_eq!(detail.events.len(), 1);
         assert_eq!(detail.approvals.len(), 1);
@@ -2442,6 +2605,7 @@ mod tests {
             store
                 .create_agent_turn(&AgentTurnDraft {
                     turn_id: turn_id.to_string(),
+                    project_root: "D:/Rho/project".to_string(),
                     mode: "act".to_string(),
                     prompt: prompt.to_string(),
                     model: "test".to_string(),
@@ -2463,7 +2627,9 @@ mod tests {
             })
             .unwrap();
 
-        let history = store.recent_agent_conversation("turn_retry", 4).unwrap();
+        let history = store
+            .recent_agent_conversation("D:/Rho/project", "turn_retry", 4)
+            .unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].turn_id, "turn_plot");
         assert_eq!(history[0].prompt, "用 iris 数据集画图，并按 species 上色。");
@@ -2481,6 +2647,7 @@ mod tests {
         store
             .create_agent_turn(&AgentTurnDraft {
                 turn_id: "turn_1".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 mode: "act".to_string(),
                 prompt: "run something".to_string(),
                 model: "test".to_string(),
@@ -2494,6 +2661,7 @@ mod tests {
             .create_approval_request(&ApprovalRequestDraft {
                 request_id: "req_1".to_string(),
                 turn_id: "turn_1".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 tool: "run_r".to_string(),
                 policy: "required".to_string(),
                 arguments_json: "{\"code\":\"x <- 1\"}".to_string(),
@@ -2505,7 +2673,10 @@ mod tests {
             .unwrap();
         assert_eq!(store.recover_incomplete_agent_turns().unwrap(), 1);
         assert_eq!(store.recover_incomplete_approvals().unwrap(), 1);
-        let detail = store.get_agent_turn_detail("turn_1").unwrap().unwrap();
+        let detail = store
+            .get_agent_turn_detail("D:/Rho/project", "turn_1")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.turn.status, "interrupted");
         assert!(detail.turn.error_message.is_some());
         assert_eq!(detail.approvals[0].status, "interrupted");
@@ -2518,6 +2689,7 @@ mod tests {
         store
             .create_agent_turn(&AgentTurnDraft {
                 turn_id: "turn_cancel".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 mode: "act".to_string(),
                 prompt: "run something".to_string(),
                 model: "test".to_string(),
@@ -2530,6 +2702,7 @@ mod tests {
             .create_approval_request(&ApprovalRequestDraft {
                 request_id: "req_cancel".to_string(),
                 turn_id: "turn_cancel".to_string(),
+                project_root: "D:/Rho/project".to_string(),
                 tool: "run_r".to_string(),
                 policy: "required".to_string(),
                 arguments_json: "{\"code\":\"x <- 1\"}".to_string(),
@@ -2546,7 +2719,10 @@ mod tests {
                 .unwrap(),
             1
         );
-        let detail = store.get_agent_turn_detail("turn_cancel").unwrap().unwrap();
+        let detail = store
+            .get_agent_turn_detail("D:/Rho/project", "turn_cancel")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.approvals[0].status, "interrupted");
         assert_eq!(detail.approvals[0].decision.as_deref(), Some("cancel"));
         assert_eq!(
@@ -2556,6 +2732,188 @@ mod tests {
         assert_eq!(
             detail.approvals[0].continuation_outcome.as_deref(),
             Some("user_cancelled")
+        );
+    }
+
+    #[test]
+    fn isolates_project_owned_history_and_excludes_legacy_unscoped_records() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        let mut store = Store::open(&database).unwrap();
+        for (project_root, suffix) in [("D:/projects/A", "a"), ("D:/projects/B", "b")] {
+            store
+                .create_run(&RunDraft {
+                    run_id: format!("run_{suffix}"),
+                    parent_run_id: None,
+                    project_root: project_root.to_string(),
+                    origin: "user".to_string(),
+                    request_type: "workspace.execute".to_string(),
+                    operation_class: "state_capable".to_string(),
+                    code: "stop('same failure')".to_string(),
+                    arguments_json: "{\"source_path\":\"analysis.R\"}".to_string(),
+                    source_path: Some("analysis.R".to_string()),
+                    execution_mode: Some("file".to_string()),
+                    document_version: Some(1),
+                    workspace_id: format!("ws_{suffix}"),
+                    state_revision_before: 1,
+                    project_revision_before: 1,
+                    environment_snapshot_id: None,
+                })
+                .unwrap();
+            store
+                .finish_run(&RunFinish {
+                    run_id: format!("run_{suffix}"),
+                    status: "failed".to_string(),
+                    terminal_reason: Some("r_error".to_string()),
+                    workspace_id: Some(format!("ws_{suffix}")),
+                    state_revision_after: Some(2),
+                    project_revision_after: Some(1),
+                    stdout: None,
+                    value_text: None,
+                    messages: Vec::new(),
+                    warnings: Vec::new(),
+                    error_message: Some(format!("failure {suffix}")),
+                    error_call: None,
+                    traceback: Vec::new(),
+                    environment_snapshot_id_after: None,
+                })
+                .unwrap();
+            store
+                .create_agent_turn(&AgentTurnDraft {
+                    turn_id: format!("turn_{suffix}"),
+                    project_root: project_root.to_string(),
+                    mode: "act".to_string(),
+                    prompt: format!("project {suffix} prompt"),
+                    model: "test".to_string(),
+                    workspace_id: format!("ws_{suffix}"),
+                    state_revision_before: 2,
+                    project_revision_before: 1,
+                })
+                .unwrap();
+            store
+                .create_approval_request(&ApprovalRequestDraft {
+                    request_id: format!("req_{suffix}"),
+                    turn_id: format!("turn_{suffix}"),
+                    project_root: project_root.to_string(),
+                    tool: "run_r".to_string(),
+                    policy: "required".to_string(),
+                    arguments_json: "{\"code\":\"x <- 1\"}".to_string(),
+                    code: Some("x <- 1".to_string()),
+                    workspace_id: format!("ws_{suffix}"),
+                    state_revision: 2,
+                    project_revision: 1,
+                })
+                .unwrap();
+        }
+
+        store
+            .connection
+            .execute(
+                "INSERT INTO runs(run_id, status, started_at) VALUES('run_legacy', 'failed', ?1)",
+                [Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        store
+            .connection
+            .execute(
+                "INSERT INTO agent_turns(
+                    turn_id, mode, prompt, prompt_preview, model, status, started_at
+                 ) VALUES('turn_legacy', 'ask', 'legacy prompt', 'legacy prompt', 'test', 'completed', ?1)",
+                [Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+
+        let runs_a = store.list_runs("D:/projects/A", None).unwrap();
+        assert_eq!(runs_a.len(), 1);
+        assert_eq!(runs_a[0].run_id, "run_a");
+        assert_eq!(store.list_problems("D:/projects/A", None).unwrap().len(), 1);
+        assert!(
+            store
+                .get_run_detail("D:/projects/A", "run_b")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get_run_detail("D:/projects/A", "run_legacy")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(store.latest_active_run_id("D:/projects/A").unwrap(), None);
+        assert!(!store.request_cancel("D:/projects/A", "run_b").unwrap());
+
+        let turns_a = store.list_agent_turns("D:/projects/A", None).unwrap();
+        assert_eq!(turns_a.len(), 1);
+        assert_eq!(turns_a[0].turn_id, "turn_a");
+        assert_eq!(
+            store
+                .recent_agent_conversation("D:/projects/A", "turn_current", 8)
+                .unwrap()
+                .iter()
+                .map(|turn| turn.turn_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["turn_a"]
+        );
+        assert!(
+            store
+                .get_agent_turn_detail("D:/projects/A", "turn_b")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get_agent_turn_detail("D:/projects/A", "turn_legacy")
+                .unwrap()
+                .is_none()
+        );
+        let approvals_a = store
+            .list_approval_requests("D:/projects/A", None, None)
+            .unwrap();
+        assert_eq!(approvals_a.len(), 1);
+        assert_eq!(approvals_a[0].request_id, "req_a");
+        assert!(
+            store
+                .get_approval_request("D:/projects/A", "req_b")
+                .unwrap()
+                .is_none()
+        );
+
+        assert_eq!(store.clear_agent_history("D:/projects/A").unwrap(), 1);
+        assert!(
+            store
+                .list_agent_turns("D:/projects/A", None)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store.list_agent_turns("D:/projects/B", None).unwrap().len(),
+            1
+        );
+        assert!(
+            store
+                .list_approval_requests("D:/projects/B", None, None)
+                .unwrap()
+                .iter()
+                .any(|approval| approval.request_id == "req_b")
+        );
+    }
+
+    #[test]
+    fn normalizes_active_project_root_for_windows_queries() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        store.set_project_root(Some("D:\\projects\\A\\")).unwrap();
+
+        assert_eq!(
+            store.active_project_root().unwrap().as_deref(),
+            Some("D:/projects/A")
+        );
+        store.set_project_root(Some("C:\\")).unwrap();
+        assert_eq!(store.active_project_root().unwrap().as_deref(), Some("C:/"));
+        store.set_project_root(Some("\\\\?\\C:\\")).unwrap();
+        assert_eq!(
+            store.active_project_root().unwrap().as_deref(),
+            Some("//?/C:/")
         );
     }
 }
