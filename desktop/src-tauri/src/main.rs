@@ -24,7 +24,7 @@ use project::{
     ProjectWatcherControl, atomic_write, atomic_write_new, default_project_root,
     ensure_editable_content_size, ensure_editable_file, ensure_editable_file_size,
     list_project_files, normalize_existing_project_root, project_path, relative_project_path,
-    replace_project_watcher, start_project_watcher, validate_project_root,
+    start_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
@@ -3368,14 +3368,21 @@ mod tests {
 }
 
 async fn smoke_test(include_agent: bool) -> Result<Value> {
-    let data_dir = std::env::temp_dir().join("rho-desktop-smoke");
+    let smoke_root = std::env::temp_dir().join(format!("rho-desktop-smoke-{}", Uuid::new_v4()));
+    let data_dir = smoke_root.join("data");
+    let project_a_root = smoke_root.join("project-a");
+    let project_b_root = smoke_root.join("project-b");
+    std::fs::create_dir_all(&project_a_root)?;
+    std::fs::create_dir_all(&project_b_root)?;
     let ark = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/runtime/ark.exe");
     let config = prepare_runtime_files(data_dir, ark)?;
     let mut session = ArkSession::launch(&ArkLaunchConfig::new(&config.kernelspec)).await?;
     let mut store = Store::open(&config.store_path)?;
     let mut broker = BrokerState::new("desktop_smoke");
+    store.set_project_root(Some(project_a_root.to_string_lossy().as_ref()))?;
     store.save_identity(broker.identity())?;
     bootstrap_bridge(&session, &mut broker, &mut store, &config.bridge_package).await?;
+    set_smoke_project_root(&session, &mut broker, &mut store, &project_a_root).await?;
     let execute_payload = json!({
         "arguments": {
             "code": "rho_desktop_smoke <- data.frame(x = 1:5, y = (1:5)^2); plot(rho_desktop_smoke$x, rho_desktop_smoke$y, pch = 19)"
@@ -3498,6 +3505,84 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         object_found,
         "desktop smoke object was absent from Environment"
     );
+    let project_a = normalize_project_root(project_a_root.to_string_lossy().as_ref());
+    let initial_a_runs = store.list_runs(&project_a, Some(10))?;
+    let project_a_run = initial_a_runs
+        .iter()
+        .find(|run| run.request_type == "workspace.execute")
+        .context("desktop smoke did not persist a project A execution run")?
+        .run_id
+        .clone();
+
+    set_smoke_project_root(&session, &mut broker, &mut store, &project_b_root).await?;
+    let project_b_payload = json!({
+        "arguments": {
+            "code": "rho_desktop_smoke_b <- data.frame(group = c('b1', 'b2'), value = c(10, 20))"
+        },
+        "expected_workspace": broker.identity()
+    });
+    let _ = dispatch_workspace_request(
+        "workspace.execute",
+        &project_b_payload,
+        ExecutionOrigin::User,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await?;
+    let project_b = normalize_project_root(project_b_root.to_string_lossy().as_ref());
+    let project_b_runs = store.list_runs(&project_b, Some(10))?;
+    let project_b_run = project_b_runs
+        .iter()
+        .find(|run| run.request_type == "workspace.execute")
+        .context("desktop smoke did not persist a project B execution run")?
+        .run_id
+        .clone();
+    ensure!(
+        store.get_run_detail(&project_a, &project_b_run)?.is_none(),
+        "project B run leaked into project A detail lookup"
+    );
+    ensure!(
+        store.get_run_detail(&project_b, &project_a_run)?.is_none(),
+        "project A run leaked into project B detail lookup"
+    );
+
+    session.shutdown().await?;
+    let mut session = ArkSession::launch(&ArkLaunchConfig::new(&config.kernelspec)).await?;
+    let mut broker = BrokerState::new("desktop_smoke_restart");
+    store.save_identity(broker.identity())?;
+    bootstrap_bridge(&session, &mut broker, &mut store, &config.bridge_package).await?;
+    set_smoke_project_root(&session, &mut broker, &mut store, &project_a_root).await?;
+    let restart_payload = json!({
+        "arguments": {
+            "code": "rho_desktop_restart <- nrow(rho_desktop_smoke)"
+        },
+        "expected_workspace": broker.identity()
+    });
+    let _ = dispatch_workspace_request(
+        "workspace.execute",
+        &restart_payload,
+        ExecutionOrigin::User,
+        &session,
+        &mut broker,
+        &mut store,
+    )
+    .await?;
+    let project_a_runs_after_restart = store.list_runs(&project_a, Some(10))?;
+    let project_a_restart_run = project_a_runs_after_restart
+        .iter()
+        .find(|run| {
+            run.request_type == "workspace.execute"
+                && run.code_preview.contains("rho_desktop_restart")
+        })
+        .context("desktop smoke restart execution was not recorded under project A")?
+        .run_id
+        .clone();
+    ensure!(
+        store.get_run_detail(&project_b, &project_a_restart_run)?.is_none(),
+        "project A restart run leaked into project B after Workspace R restart"
+    );
+
     let context = Arc::new(Mutex::new(CoordinatorRuntime { broker, store }));
     let agent = if include_agent {
         let turn_id = format!("smoke_turn_{}", Uuid::new_v4());
@@ -3574,6 +3659,10 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             "environment_object_found": object_found,
             "data_view_rows": page_row_count,
             "stale_view_rejected": true,
+            "project_switch_isolated": true,
+            "workspace_restart_project_isolated": true,
+            "project_a_run_count": initial_a_runs.len(),
+            "project_b_run_count": project_b_runs.len(),
             "agent": agent,
             "event_count": context.store.event_count()?,
             "python_required": false
@@ -3581,6 +3670,31 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
     };
     session.shutdown().await?;
     Ok(report)
+}
+
+async fn set_smoke_project_root(
+    session: &ArkSession,
+    broker: &mut BrokerState,
+    store: &mut Store,
+    root: &Path,
+) -> Result<()> {
+    store.set_project_root(Some(root.to_string_lossy().as_ref()))?;
+    let payload = json!({
+        "arguments": {
+            "code": format!("setwd({})", serde_json::to_string(&root.to_string_lossy())?)
+        },
+        "expected_workspace": broker.identity()
+    });
+    let _ = dispatch_workspace_request(
+        "workspace.set_project_root",
+        &payload,
+        ExecutionOrigin::System,
+        session,
+        broker,
+        store,
+    )
+    .await?;
+    Ok(())
 }
 
 fn main() {

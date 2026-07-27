@@ -39,7 +39,7 @@ semantics.
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
 | `design/active-2026-07-25-about-and-update-check-design.md` | implementation active; live and installed acceptance open | About/update V1 and Pages gates | its own live/installed acceptance; inclusion in `0.2.0` needs a revised candidate contract |
-| `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | BH1-C implemented; independent acceptance and manual follow-ups open | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | review BH1 evidence and stop for disposition; BH2/BH3 remain unapproved |
+| `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | accepted; Wave 1 exit gate passed | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | BH2/BH3 remain unapproved and each still requires separate authorization |
 | `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed broader direction; BH1 separately active | BH1-BH5 baseline-hardening direction beyond the focused active handoff | BH2-BH5 remain unapproved; each requires a separate authorization and active handoff |
 | `design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md` | proposed; independently cross-reviewed | task-level interaction, intent entry, consequence-based decisions, guided recovery, progressive disclosure, and user-facing terminology | UX1 may define contracts; behavioral packages wait for their owning hardening, posture, or feature entry gates |
 | `design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md` | proposed; independently cross-reviewed | WB1 public read-only semantic contract, WB2 authenticated local CLI/MCP/events, and WB3 broker-admitted external R execution | `0.3.x` and BH1-BH3 accepted; each WB package separately authorized and stopped for review |
@@ -255,13 +255,13 @@ The cross-proposal schedule is the Wave 0-14 Implementation Program in
 [`active-development-roadmap.md`](active-development-roadmap.md). This record
 defines the coordination constraints that apply to that schedule:
 
-The current program state is Wave 1 at the BH1 acceptance stop, with BH1 still
-the only active product package. BH1-A through BH1-C are implemented and their
-automated matrix passed; independent privacy review and documented manual
-follow-ups remain open.
-Wave 0 automated review closed as `accept with follow-up`, while `0.3.x` manual
-milestone acceptance remains open. No other Wave 1 package or Wave 2-14 package
-is active; each still requires separate authorization and a focused handoff.
+The current program state is post-Wave 1 review, with BH1 accepted and no Wave
+2 package active yet. BH1-A through BH1-C are implemented, their automated
+matrix passed, and independent review found no unresolved BH1-scope P0/P1
+finding. Wave 0 automated review closed as `accept with follow-up`, while
+`0.3.x` manual milestone acceptance remains open. No other Wave 1 package or
+Wave 2-14 package is active; each still requires separate authorization and a
+focused handoff.
 
 | Wave | Coordination result |
 | --- | --- |

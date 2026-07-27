@@ -1,6 +1,6 @@
 # BH1 Project-Scoped Durable Identity Handoff
 
-Status: BH1-C implemented; independent acceptance review pending
+Status: accepted; Wave 1 exit gate passed
 
 Authorization date: 2026-07-26
 Authorized by: project owner
@@ -183,9 +183,8 @@ evidence separately.
 
 ## Next Mandatory Stop
 
-Stop after BH1-C and its independent acceptance review. Report one of `accept`,
-`accept with follow-up`, `changes required`, or `re-scope required`. Do not
-begin BH2 or BH3 until the project owner separately authorizes it and the
+BH1 independent acceptance review is complete with disposition `accept`. Do not
+begin BH2 or BH3 until the project owner separately authorizes them and the
 cross-review matrix is updated.
 
 ## Implementation Update (2026-07-26)
@@ -214,7 +213,7 @@ their trailing slash. The implementation now allowlists retry to user/Agent
 the environment dispatch boundary, binds switch control Runs to the destination
 identity with failure rollback, and preserves drive/extended volume roots.
 Run interruption lookups are project-scoped as part of the same control-plane
-review. Final independent re-review remains the acceptance stop.
+review.
 
 Automated verification passed:
 
@@ -222,15 +221,18 @@ Automated verification passed:
   other workspace unit/doc tests passed;
 - `rho.bridge` and `rho.agent` local testthat suites passed;
 - `node --check desktop/dist/app.js` passed;
-- `rho-desktop.exe --smoke-test` passed for the existing Workspace R, data
-  view, plot, stale-view, and environment-object path;
-- `git diff --check` remains a final pre-commit gate.
+- `git diff --check` passed;
+- current-source `cargo run -p rho-desktop -- --smoke-test` passed for the
+  existing Workspace R, data view, plot, stale-view, explicit project-root
+  binding, representative project switching, and post-restart project
+  isolation;
 
 Detailed evidence is recorded in `../verification/bh1/verification.md`.
-Automated evidence proves the tested store and command contracts, but not rapid
-interactive switching, restart recovery across two representative projects,
-or the still-open `0.3.x` three-viewport acceptance. The final BH1 disposition
-therefore waits for independent code review and the documented manual
-follow-ups. Application/R package versions and `NEWS.md` are unchanged because
-this is an internal correctness and privacy foundation with no new public
-interface.
+Independent review initially found that the earlier desktop smoke path could
+reuse persisted temporary-store metadata and therefore did not truthfully close
+the switching/restart gate. That evidence path is now fixed and rerun on the
+current source baseline. The final BH1 review result is `accept`: no unresolved
+P0/P1 privacy, ownership, execution, migration-boundary, or recovery finding
+remains in BH1 scope. Application/R package versions and `NEWS.md` are
+unchanged because this is an internal correctness and privacy foundation with
+no new public interface.

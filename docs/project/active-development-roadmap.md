@@ -191,13 +191,14 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 1, BH1 acceptance review**. Wave 0 automated review closed as
-`accept with follow-up`; the `0.3.x` representative-project and manual UI gates
-remain open and are not recorded as passed. BH1 project-scoped durable identity
-is implemented through BH1-C and is the only authorized new product package;
-its independent acceptance review and manual follow-ups remain open. The parallel `0.2.0-dev.12` and
-About/update tracks retain their own active acceptance contracts. BH2-BH5,
-UX1, modernization, and Waves 2-14 remain scheduled but not authorized.
+Current program state: **Wave 1 accepted; no Wave 2 package is active**. Wave 0
+automated review closed as `accept with follow-up`; the `0.3.x`
+representative-project and manual UI gates remain open and are not recorded as
+passed. BH1 project-scoped durable identity is accepted on current-source
+evidence and closes the Wave 1 isolation gate, but it does not authorize BH2 or
+BH3. The parallel `0.2.0-dev.12` and About/update tracks retain their own
+active acceptance contracts. BH2-BH5, UX1, modernization, and Waves 2-14
+remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -234,10 +235,11 @@ Evidence from one track cannot close another track.
 
 BH1 was authorized on 2026-07-26 under
 [`plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md`](../plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md).
-BH1-A through BH1-C are implemented and the complete Rust workspace, affected
-R suites, JavaScript syntax check, and desktop smoke passed. The acceptance
-stop remains active for independent privacy review and representative
-two-project switching/restart follow-up; see
+BH1-A through BH1-C are accepted. The complete Rust workspace, affected R
+suites, JavaScript syntax check, `git diff --check`, and current-source desktop
+smoke passed. Independent review found no unresolved BH1-scope P0/P1 privacy,
+ownership, execution, migration-boundary, or recovery issue, and the smoke now
+records representative two-project switching/restart isolation; see
 [`verification/bh1/verification.md`](../verification/bh1/verification.md).
 BH3 may share its development cycle with the reviewed BH1
 schema, but retains an independent migration gate. BH2 begins only after BH1 is

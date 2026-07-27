@@ -1,7 +1,7 @@
 # BH1 Verification
 
 Date: 2026-07-26
-Status: automated matrix passed; independent acceptance review pending
+Status: accepted; Wave 1 isolation gate passed
 
 ## Implemented Contract
 
@@ -25,7 +25,8 @@ Status: automated matrix passed; independent acceptance review pending
 
 ## Automated Evidence
 
-The following commands passed on 2026-07-26:
+The following commands passed on 2026-07-26 against the current source
+baseline:
 
 ```powershell
 $env:PATH="C:\rtools45\x86_64-w64-mingw32.static.posix\bin;$env:PATH"
@@ -33,7 +34,8 @@ cargo +stable-x86_64-pc-windows-gnu test --workspace
 Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"
 Rscript -e "testthat::test_local('r/rho.agent', reporter = 'summary')"
 node --check desktop\dist\app.js
-target\debug\rho-desktop.exe --smoke-test
+git diff --check
+cargo +stable-x86_64-pc-windows-gnu run -p rho-desktop -- --smoke-test
 ```
 
 Rust results include 50 desktop, 21 server, and 12 store tests with zero
@@ -41,22 +43,44 @@ failures. The store suite includes a shared-SQLite two-project fixture proving
 list/detail/context/approval/clear isolation and legacy exclusion, plus a
 Windows separator and drive/extended-root normalization regression. Desktop
 tests also reject retry for environment, project-root, and bootstrap request
-types. The desktop smoke passed Workspace
-R execution, plot capture, bounded data view, stale-view rejection, and
-environment-object discovery.
+types.
+
+The current-source desktop smoke now runs from a fresh temporary root, binds an
+explicit project identity before bootstrap, switches between representative
+project A/B roots, restarts Workspace R, and verifies that foreign-project run
+detail lookups remain rejected after switching and restart. The smoke reported:
+
+- `plot_count = 1`
+- `environment_object_found = true`
+- `data_view_rows = 5`
+- `stale_view_rejected = true`
+- `project_switch_isolated = true`
+- `workspace_restart_project_isolated = true`
 
 No frontend command signature or visible state changed, so no new browser mock
 handler or screenshot fixture was required. The JavaScript syntax check proves
 the unchanged mock bundle remains parseable; Rust tests prove the changed Tauri
 command contracts compile.
 
+## Independent Review Result
+
+Independent review initially found one blocking evidence issue: the desktop
+smoke used a fixed temporary directory and could reuse prior persisted
+`active_project_root` metadata, so it was not sufficient to close the BH1
+switching/restart gate truthfully.
+
+That smoke path is now corrected in `desktop/src-tauri/src/main.rs` to use a
+fresh temporary root, explicit project-root binding, two-project switching, and
+post-restart isolation assertions. After rerunning the current-source smoke and
+rechecking the BH1 store/coordinator/desktop control-plane changes, no
+unresolved P0/P1 privacy, ownership, execution, migration-boundary, or recovery
+finding remains in BH1 scope.
+
+Review disposition: **accept**.
+
 ## Acceptance Boundary
 
-Automation does not yet prove rapid interactive project changes, a Workspace R
-restart while alternating two representative projects, or installed-app
-recovery. Those remain manual BH1 follow-ups. Independent review must also
-report no unresolved P0/P1 privacy, ownership, execution, or migration-boundary
-finding before final disposition.
-
 The broader `0.3.x` representative-project and manual three-viewport acceptance
-remain open and are not closed by this evidence. BH2 and BH3 are not authorized.
+remain open and are not closed by this evidence. The `0.2.0-dev.12`
+installed-app release acceptance and BH3 migration/recovery work also retain
+their own gates. BH2 and BH3 are not authorized by this BH1 acceptance result.
