@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use rho_protocol::{Envelope, WorkspaceIdentity};
@@ -6,8 +6,10 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 const DEFAULT_LIMIT: usize = 50;
+#[cfg(test)]
+const LEGACY_UNSCOPED: &str = "legacy_unscoped";
 
 pub fn normalize_project_root(root: &str) -> String {
     let normalized = root.replace('\\', "/");
@@ -28,8 +30,125 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("unsupported schema version: {0}")]
-    SchemaVersion(i64),
+    #[error("migration rejected: {message}")]
+    MigrationRejected {
+        message: String,
+        outcome: MigrationOutcome,
+    },
+}
+
+impl StoreError {
+    pub fn migration_outcome(&self) -> Option<&MigrationOutcome> {
+        match self {
+            Self::MigrationRejected { outcome, .. } => Some(outcome),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MigrationStatus {
+    OpenedCurrent,
+    BootstrappedCurrent,
+    Migrated,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MigrationOutcome {
+    pub status: MigrationStatus,
+    pub from_schema_version: Option<i64>,
+    pub to_schema_version: Option<i64>,
+    pub backup_path: Option<String>,
+    pub scoped_count: i64,
+    pub legacy_unscoped_count: i64,
+    pub rejected_count: i64,
+    pub reason_code: Option<String>,
+}
+
+impl MigrationOutcome {
+    fn opened_current() -> Self {
+        Self {
+            status: MigrationStatus::OpenedCurrent,
+            from_schema_version: Some(SCHEMA_VERSION),
+            to_schema_version: Some(SCHEMA_VERSION),
+            backup_path: None,
+            scoped_count: 0,
+            legacy_unscoped_count: 0,
+            rejected_count: 0,
+            reason_code: None,
+        }
+    }
+
+    fn bootstrapped_current() -> Self {
+        Self {
+            status: MigrationStatus::BootstrappedCurrent,
+            from_schema_version: None,
+            to_schema_version: Some(SCHEMA_VERSION),
+            backup_path: None,
+            scoped_count: 0,
+            legacy_unscoped_count: 0,
+            rejected_count: 0,
+            reason_code: None,
+        }
+    }
+
+    fn migrated(
+        from_schema_version: i64,
+        backup_path: Option<String>,
+        counts: MigrationRecordCounts,
+    ) -> Self {
+        Self {
+            status: MigrationStatus::Migrated,
+            from_schema_version: Some(from_schema_version),
+            to_schema_version: Some(SCHEMA_VERSION),
+            backup_path,
+            scoped_count: counts.scoped,
+            legacy_unscoped_count: counts.legacy_unscoped,
+            rejected_count: counts.rejected,
+            reason_code: None,
+        }
+    }
+
+    fn rejected(
+        from_schema_version: Option<i64>,
+        backup_path: Option<String>,
+        counts: MigrationRecordCounts,
+        reason_code: &'static str,
+    ) -> Self {
+        Self {
+            status: MigrationStatus::Rejected,
+            from_schema_version,
+            to_schema_version: None,
+            backup_path,
+            scoped_count: counts.scoped,
+            legacy_unscoped_count: counts.legacy_unscoped,
+            rejected_count: counts.rejected,
+            reason_code: Some(reason_code.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct MigrationRecordCounts {
+    scoped: i64,
+    legacy_unscoped: i64,
+    rejected: i64,
+}
+
+impl std::ops::AddAssign for MigrationRecordCounts {
+    fn add_assign(&mut self, rhs: Self) {
+        self.scoped += rhs.scoped;
+        self.legacy_unscoped += rhs.legacy_unscoped;
+        self.rejected += rhs.rejected;
+    }
+}
+
+#[derive(Default)]
+struct StoreOpenOptions {
+    #[cfg(test)]
+    inject_v7_failure_before_commit: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -422,311 +541,162 @@ pub struct AgentTurnDetail {
     pub approvals: Vec<ApprovalRequestSummary>,
 }
 
+#[derive(Debug)]
 pub struct Store {
     connection: Connection,
+    migration_outcome: MigrationOutcome,
 }
 
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
+        Self::open_with_options(path.as_ref(), StoreOpenOptions::default())
+    }
+
+    fn open_with_options(path: &Path, options: StoreOpenOptions) -> Result<Self, StoreError> {
         let connection = Connection::open(path)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        let mut store = Self { connection };
-        store.migrate()?;
+        let mut store = Self {
+            connection,
+            migration_outcome: MigrationOutcome::opened_current(),
+        };
+        store.migrate(path, &options)?;
         Ok(store)
     }
 
-    fn migrate(&mut self) -> Result<(), StoreError> {
-        self.connection.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS events (
-                seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id TEXT NOT NULL UNIQUE,
-                timestamp TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                payload TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS runs (
-                run_id TEXT PRIMARY KEY,
-                project_root TEXT,
-                status TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                finished_at TEXT,
-                terminal_reason TEXT
-            );
-            CREATE TABLE IF NOT EXISTS workspace_identity (
-                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-                payload TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS agent_turns (
-                turn_id TEXT PRIMARY KEY,
-                project_root TEXT,
-                mode TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                prompt_preview TEXT NOT NULL,
-                model TEXT NOT NULL,
-                status TEXT NOT NULL,
-                started_at TEXT NOT NULL,
-                finished_at TEXT,
-                workspace_id_before TEXT,
-                state_revision_before INTEGER,
-                project_revision_before INTEGER,
-                workspace_id_after TEXT,
-                state_revision_after INTEGER,
-                project_revision_after INTEGER,
-                final_message TEXT,
-                error_message TEXT
-            );
-            CREATE TABLE IF NOT EXISTS agent_turn_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                turn_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                title TEXT NOT NULL,
-                body TEXT,
-                status TEXT NOT NULL,
-                tool TEXT,
-                request_id TEXT,
-                code TEXT,
-                details_json TEXT NOT NULL DEFAULT '{}',
-                FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
-            );
-            CREATE TABLE IF NOT EXISTS approval_requests (
-                request_id TEXT PRIMARY KEY,
-                turn_id TEXT NOT NULL,
-                project_root TEXT,
-                tool TEXT NOT NULL,
-                policy TEXT NOT NULL,
-                status TEXT NOT NULL,
-                decision TEXT,
-                reason TEXT,
-                arguments_json TEXT NOT NULL,
-                code TEXT,
-                workspace_id TEXT,
-                state_revision INTEGER,
-                project_revision INTEGER,
-                requested_at TEXT NOT NULL,
-                responded_at TEXT,
-                continuation_outcome TEXT,
-                FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
-            );
-            CREATE TABLE IF NOT EXISTS plot_artifacts (
-                plot_id TEXT PRIMARY KEY,
-                run_id TEXT NOT NULL,
-                project_root TEXT,
-                source_path TEXT,
-                execution_mode TEXT,
-                document_version INTEGER,
-                workspace_id TEXT,
-                state_revision INTEGER,
-                project_revision INTEGER,
-                media_type TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                provenance_complete INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS artifact_records (
-                artifact_id TEXT PRIMARY KEY,
-                artifact_kind TEXT NOT NULL,
-                run_id TEXT,
-                project_root TEXT NOT NULL,
-                output_path TEXT NOT NULL,
-                source_path TEXT,
-                execution_mode TEXT,
-                document_version INTEGER,
-                workspace_id TEXT,
-                state_revision INTEGER,
-                project_revision INTEGER,
-                media_type TEXT NOT NULL,
-                metadata_json TEXT NOT NULL,
-                provenance_complete INTEGER NOT NULL DEFAULT 1,
-                incomplete_reason TEXT,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS environment_snapshots (
-                snapshot_id TEXT PRIMARY KEY,
-                project_root TEXT NOT NULL,
-                canonical_json TEXT NOT NULL,
-                first_captured_at TEXT NOT NULL,
-                last_captured_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS environment_operation_requests (
-                request_id TEXT PRIMARY KEY,
-                turn_id TEXT,
-                source TEXT NOT NULL,
-                request_name TEXT NOT NULL,
-                status TEXT NOT NULL,
-                decision TEXT,
-                reason TEXT,
-                project_root TEXT NOT NULL,
-                arguments_json TEXT NOT NULL,
-                preview_json TEXT NOT NULL,
-                preview_sha256 TEXT NOT NULL,
-                workspace_id TEXT,
-                state_revision INTEGER,
-                project_revision INTEGER,
-                before_snapshot_id TEXT,
-                run_id TEXT,
-                requested_at TEXT NOT NULL,
-                responded_at TEXT,
-                completed_at TEXT,
-                terminal_outcome TEXT,
-                FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE SET NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_agent_turns_started_at
-                ON agent_turns(started_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_agent_turn_events_turn_id
-                ON agent_turn_events(turn_id, id);
-            CREATE INDEX IF NOT EXISTS idx_approval_requests_turn_id
-                ON approval_requests(turn_id, requested_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_approval_requests_status
-                ON approval_requests(status, requested_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_plot_artifacts_created_at
-                ON plot_artifacts(created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_plot_artifacts_run_id
-                ON plot_artifacts(run_id, created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_artifact_records_created_at
-                ON artifact_records(created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_artifact_records_run_id
-                ON artifact_records(run_id, created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_artifact_records_project
-                ON artifact_records(project_root, created_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_environment_snapshots_project_root
-                ON environment_snapshots(project_root, last_captured_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_status
-                ON environment_operation_requests(status, requested_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_turn_id
-                ON environment_operation_requests(turn_id, requested_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_environment_operation_requests_project
-                ON environment_operation_requests(project_root, requested_at DESC);
-            ",
-        )?;
-
-        let current: Option<i64> = self
-            .connection
-            .query_row(
-                "SELECT value FROM metadata WHERE key = 'schema_version'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .and_then(|value| value.parse().ok());
-
-        match current {
-            None | Some(1) | Some(2) | Some(3) | Some(4) | Some(5) | Some(6)
-            | Some(SCHEMA_VERSION) => {}
-            Some(other) => return Err(StoreError::SchemaVersion(other)),
+    fn migrate(&mut self, path: &Path, options: &StoreOpenOptions) -> Result<(), StoreError> {
+        if database_is_empty(&self.connection)? {
+            self.connection.execute_batch(v8_schema_sql())?;
+            self.set_schema_version(SCHEMA_VERSION)?;
+            self.assert_v8_schema()?;
+            self.migration_outcome = MigrationOutcome::bootstrapped_current();
+            return Ok(());
         }
 
-        ensure_column(&self.connection, "runs", "parent_run_id", "TEXT")?;
-        ensure_column(&self.connection, "runs", "project_root", "TEXT")?;
-        ensure_column(&self.connection, "agent_turns", "project_root", "TEXT")?;
-        ensure_column(
-            &self.connection,
-            "approval_requests",
-            "project_root",
-            "TEXT",
-        )?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "origin",
-            "TEXT NOT NULL DEFAULT 'system'",
-        )?;
+        let current = read_schema_version(&self.connection)?;
+        match current {
+            Some(SCHEMA_VERSION) => {
+                self.assert_v8_schema()?;
+                self.migration_outcome = MigrationOutcome::opened_current();
+            }
+            Some(7) => {
+                let backup_path = create_pre_migration_backup(&self.connection, path, 7)?;
+                let outcome = self.migrate_v7_to_v8(backup_path, options)?;
+                self.migration_outcome = outcome;
+            }
+            Some(other) => {
+                return Err(StoreError::MigrationRejected {
+                    message: format!("unsupported schema version {other}"),
+                    outcome: MigrationOutcome::rejected(
+                        Some(other),
+                        None,
+                        MigrationRecordCounts::default(),
+                        "unsupported_schema_version",
+                    ),
+                });
+            }
+            None => {
+                return Err(StoreError::MigrationRejected {
+                    message: "missing schema version metadata".to_string(),
+                    outcome: MigrationOutcome::rejected(
+                        None,
+                        None,
+                        MigrationRecordCounts::default(),
+                        "missing_schema_version",
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
 
-        ensure_column(
-            &self.connection,
-            "runs",
-            "request_type",
-            "TEXT NOT NULL DEFAULT 'workspace.execute'",
-        )?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "operation_class",
-            "TEXT NOT NULL DEFAULT 'probe'",
-        )?;
-        ensure_column(&self.connection, "runs", "code", "TEXT NOT NULL DEFAULT ''")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "arguments_json",
-            "TEXT NOT NULL DEFAULT '{}'",
-        )?;
-        ensure_column(&self.connection, "runs", "source_path", "TEXT")?;
-        ensure_column(&self.connection, "runs", "execution_mode", "TEXT")?;
-        ensure_column(&self.connection, "runs", "document_version", "INTEGER")?;
-        ensure_column(&self.connection, "runs", "workspace_id", "TEXT")?;
-        ensure_column(&self.connection, "runs", "state_revision_before", "INTEGER")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "project_revision_before",
-            "INTEGER",
-        )?;
-        ensure_column(&self.connection, "runs", "state_revision_after", "INTEGER")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "project_revision_after",
-            "INTEGER",
-        )?;
-        ensure_column(&self.connection, "runs", "stdout", "TEXT")?;
-        ensure_column(&self.connection, "runs", "value_text", "TEXT")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "messages_json",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "warnings_json",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )?;
-        ensure_column(&self.connection, "runs", "error_message", "TEXT")?;
-        ensure_column(&self.connection, "runs", "error_call", "TEXT")?;
-        ensure_column(&self.connection, "plot_artifacts", "project_root", "TEXT")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "traceback_json",
-            "TEXT NOT NULL DEFAULT '[]'",
-        )?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "cancel_requested",
-            "INTEGER NOT NULL DEFAULT 0",
-        )?;
-        ensure_column(&self.connection, "runs", "environment_snapshot_id", "TEXT")?;
-        ensure_column(
-            &self.connection,
-            "runs",
-            "environment_snapshot_id_after",
-            "TEXT",
-        )?;
+    pub fn migration_outcome(&self) -> &MigrationOutcome {
+        &self.migration_outcome
+    }
 
-        self.connection.execute_batch(
-            "CREATE INDEX IF NOT EXISTS idx_runs_project_started
-                 ON runs(project_root, started_at DESC);
-             CREATE INDEX IF NOT EXISTS idx_agent_turns_project_started
-                 ON agent_turns(project_root, started_at DESC);
-             CREATE INDEX IF NOT EXISTS idx_approval_requests_project_status
-                 ON approval_requests(project_root, status, requested_at DESC);",
-        )?;
+    fn migrate_v7_to_v8(
+        &mut self,
+        backup_path: Option<PathBuf>,
+        _options: &StoreOpenOptions,
+    ) -> Result<MigrationOutcome, StoreError> {
+        let backup_path_string = backup_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().replace('\\', "/"));
+        let transaction = self.connection.transaction()?;
+        let counts = v7_record_counts(&transaction)?;
+        if counts.rejected > 0 {
+            return Err(StoreError::MigrationRejected {
+                message: "malformed project identity metadata".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(7),
+                    backup_path_string,
+                    counts,
+                    "malformed_project_identity",
+                ),
+            });
+        }
 
-        self.connection.execute(
+        rebuild_runs_v8(&transaction)?;
+        rebuild_agent_turns_v8(&transaction)?;
+        rebuild_approval_requests_v8(&transaction)?;
+        rebuild_plot_artifacts_v8(&transaction)?;
+        transaction.execute_batch(
+            "
+            CREATE INDEX IF NOT EXISTS idx_runs_project_started
+                ON runs(project_root, started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_agent_turns_project_started
+                ON agent_turns(project_root, started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_approval_requests_project_status
+                ON approval_requests(project_root, status, requested_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_plot_artifacts_project_created
+                ON plot_artifacts(project_root, created_at DESC);
+            ",
+        )?;
+        transaction.execute(
             "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             [SCHEMA_VERSION.to_string()],
         )?;
+
+        #[cfg(test)]
+        if _options.inject_v7_failure_before_commit {
+            return Err(StoreError::MigrationRejected {
+                message: "injected migration failure".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(7),
+                    backup_path_string,
+                    counts,
+                    "injected_failure",
+                ),
+            });
+        }
+
+        transaction.commit()?;
+        self.assert_v8_schema()?;
+        Ok(MigrationOutcome::migrated(
+            7,
+            backup_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+            counts,
+        ))
+    }
+
+    fn set_schema_version(&self, version: i64) -> Result<(), StoreError> {
+        set_schema_version(&self.connection, version)?;
+        Ok(())
+    }
+
+    fn assert_v8_schema(&self) -> Result<(), StoreError> {
+        assert_not_null_project_identity(&self.connection, "runs")?;
+        assert_not_null_project_identity(&self.connection, "agent_turns")?;
+        assert_not_null_project_identity(&self.connection, "approval_requests")?;
+        assert_not_null_project_identity(&self.connection, "plot_artifacts")?;
+        assert_index_exists(&self.connection, "idx_runs_project_started")?;
+        assert_index_exists(&self.connection, "idx_agent_turns_project_started")?;
+        assert_index_exists(&self.connection, "idx_approval_requests_project_status")?;
+        assert_index_exists(&self.connection, "idx_plot_artifacts_project_created")?;
         Ok(())
     }
 
@@ -1940,24 +1910,584 @@ impl Store {
     }
 }
 
-fn ensure_column(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-    definition: &str,
-) -> Result<(), StoreError> {
-    let pragma = format!("PRAGMA table_info({table})");
-    let mut statement = connection.prepare(&pragma)?;
-    let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
-    let columns = rows.collect::<Result<Vec<_>, _>>()?;
-    if columns.iter().any(|value| value == column) {
-        return Ok(());
-    }
-    connection.execute(
-        &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
+fn database_is_empty(connection: &Connection) -> Result<bool, StoreError> {
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_master
+         WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
         [],
+        |row| row.get(0),
+    )?;
+    Ok(count == 0)
+}
+
+fn read_schema_version(connection: &Connection) -> Result<Option<i64>, StoreError> {
+    let has_metadata = connection
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metadata'",
+            [],
+            |_row| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !has_metadata {
+        return Ok(None);
+    }
+    Ok(connection
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'schema_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|value| value.parse().ok()))
+}
+
+fn set_schema_version(connection: &Connection, version: i64) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [version.to_string()],
     )?;
     Ok(())
+}
+
+fn v8_schema_sql() -> &'static str {
+    "
+    CREATE TABLE metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        timestamp TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        payload TEXT NOT NULL
+    );
+    CREATE TABLE runs (
+        run_id TEXT PRIMARY KEY,
+        parent_run_id TEXT,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        origin TEXT NOT NULL DEFAULT 'system',
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        terminal_reason TEXT,
+        request_type TEXT NOT NULL DEFAULT 'workspace.execute',
+        operation_class TEXT NOT NULL DEFAULT 'probe',
+        code TEXT NOT NULL DEFAULT '',
+        arguments_json TEXT NOT NULL DEFAULT '{}',
+        source_path TEXT,
+        execution_mode TEXT,
+        document_version INTEGER,
+        workspace_id TEXT,
+        state_revision_before INTEGER,
+        project_revision_before INTEGER,
+        state_revision_after INTEGER,
+        project_revision_after INTEGER,
+        stdout TEXT,
+        value_text TEXT,
+        messages_json TEXT NOT NULL DEFAULT '[]',
+        warnings_json TEXT NOT NULL DEFAULT '[]',
+        error_message TEXT,
+        error_call TEXT,
+        traceback_json TEXT NOT NULL DEFAULT '[]',
+        cancel_requested INTEGER NOT NULL DEFAULT 0,
+        environment_snapshot_id TEXT,
+        environment_snapshot_id_after TEXT
+    );
+    CREATE TABLE workspace_identity (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        payload TEXT NOT NULL
+    );
+    CREATE TABLE agent_turns (
+        turn_id TEXT PRIMARY KEY,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        mode TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        prompt_preview TEXT NOT NULL,
+        model TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        workspace_id_before TEXT,
+        state_revision_before INTEGER,
+        project_revision_before INTEGER,
+        workspace_id_after TEXT,
+        state_revision_after INTEGER,
+        project_revision_after INTEGER,
+        final_message TEXT,
+        error_message TEXT
+    );
+    CREATE TABLE agent_turn_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        turn_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT,
+        status TEXT NOT NULL,
+        tool TEXT,
+        request_id TEXT,
+        code TEXT,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
+    );
+    CREATE TABLE approval_requests (
+        request_id TEXT PRIMARY KEY,
+        turn_id TEXT NOT NULL,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        tool TEXT NOT NULL,
+        policy TEXT NOT NULL,
+        status TEXT NOT NULL,
+        decision TEXT,
+        reason TEXT,
+        arguments_json TEXT NOT NULL,
+        code TEXT,
+        workspace_id TEXT,
+        state_revision INTEGER,
+        project_revision INTEGER,
+        requested_at TEXT NOT NULL,
+        responded_at TEXT,
+        continuation_outcome TEXT,
+        FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
+    );
+    CREATE TABLE plot_artifacts (
+        plot_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        source_path TEXT,
+        execution_mode TEXT,
+        document_version INTEGER,
+        workspace_id TEXT,
+        state_revision INTEGER,
+        project_revision INTEGER,
+        media_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        provenance_complete INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE artifact_records (
+        artifact_id TEXT PRIMARY KEY,
+        artifact_kind TEXT NOT NULL,
+        run_id TEXT,
+        project_root TEXT NOT NULL,
+        output_path TEXT NOT NULL,
+        source_path TEXT,
+        execution_mode TEXT,
+        document_version INTEGER,
+        workspace_id TEXT,
+        state_revision INTEGER,
+        project_revision INTEGER,
+        media_type TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        provenance_complete INTEGER NOT NULL DEFAULT 1,
+        incomplete_reason TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE environment_snapshots (
+        snapshot_id TEXT PRIMARY KEY,
+        project_root TEXT NOT NULL,
+        canonical_json TEXT NOT NULL,
+        first_captured_at TEXT NOT NULL,
+        last_captured_at TEXT NOT NULL
+    );
+    CREATE TABLE environment_operation_requests (
+        request_id TEXT PRIMARY KEY,
+        turn_id TEXT,
+        source TEXT NOT NULL,
+        request_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        decision TEXT,
+        reason TEXT,
+        project_root TEXT NOT NULL,
+        arguments_json TEXT NOT NULL,
+        preview_json TEXT NOT NULL,
+        preview_sha256 TEXT NOT NULL,
+        workspace_id TEXT,
+        state_revision INTEGER,
+        project_revision INTEGER,
+        before_snapshot_id TEXT,
+        run_id TEXT,
+        requested_at TEXT NOT NULL,
+        responded_at TEXT,
+        completed_at TEXT,
+        terminal_outcome TEXT,
+        FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE SET NULL
+    );
+    CREATE INDEX idx_agent_turns_started_at
+        ON agent_turns(started_at DESC);
+    CREATE INDEX idx_agent_turn_events_turn_id
+        ON agent_turn_events(turn_id, id);
+    CREATE INDEX idx_approval_requests_turn_id
+        ON approval_requests(turn_id, requested_at DESC);
+    CREATE INDEX idx_approval_requests_status
+        ON approval_requests(status, requested_at DESC);
+    CREATE INDEX idx_plot_artifacts_created_at
+        ON plot_artifacts(created_at DESC);
+    CREATE INDEX idx_plot_artifacts_run_id
+        ON plot_artifacts(run_id, created_at DESC);
+    CREATE INDEX idx_plot_artifacts_project_created
+        ON plot_artifacts(project_root, created_at DESC);
+    CREATE INDEX idx_artifact_records_created_at
+        ON artifact_records(created_at DESC);
+    CREATE INDEX idx_artifact_records_run_id
+        ON artifact_records(run_id, created_at DESC);
+    CREATE INDEX idx_artifact_records_project
+        ON artifact_records(project_root, created_at DESC);
+    CREATE INDEX idx_environment_snapshots_project_root
+        ON environment_snapshots(project_root, last_captured_at DESC);
+    CREATE INDEX idx_environment_operation_requests_status
+        ON environment_operation_requests(status, requested_at DESC);
+    CREATE INDEX idx_environment_operation_requests_turn_id
+        ON environment_operation_requests(turn_id, requested_at DESC);
+    CREATE INDEX idx_environment_operation_requests_project
+        ON environment_operation_requests(project_root, requested_at DESC);
+    CREATE INDEX idx_runs_project_started
+        ON runs(project_root, started_at DESC);
+    CREATE INDEX idx_agent_turns_project_started
+        ON agent_turns(project_root, started_at DESC);
+    CREATE INDEX idx_approval_requests_project_status
+        ON approval_requests(project_root, status, requested_at DESC);
+    "
+}
+
+fn create_pre_migration_backup(
+    connection: &Connection,
+    path: &Path,
+    schema_version: i64,
+) -> Result<Option<PathBuf>, StoreError> {
+    if path.as_os_str().is_empty() || path == Path::new(":memory:") {
+        return Ok(None);
+    }
+    let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+        return Ok(None);
+    };
+    let backup_path = path.with_file_name(format!("{file_name}.schema-v{schema_version}.bak"));
+    if backup_path.exists() {
+        std::fs::remove_file(&backup_path)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    }
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    let escaped = backup_path.to_string_lossy().replace('\'', "''");
+    connection.execute_batch(&format!("VACUUM INTO '{escaped}'"))?;
+    Ok(Some(backup_path))
+}
+
+fn v7_record_counts(transaction: &rusqlite::Transaction<'_>) -> Result<MigrationRecordCounts, StoreError> {
+    let mut counts = MigrationRecordCounts::default();
+    for table in ["runs", "agent_turns", "approval_requests", "plot_artifacts"] {
+        counts += table_project_identity_counts(transaction, table)?;
+    }
+    Ok(counts)
+}
+
+fn table_project_identity_counts(
+    transaction: &rusqlite::Transaction<'_>,
+    table: &str,
+) -> Result<MigrationRecordCounts, StoreError> {
+    let sql = format!(
+        "SELECT
+            COALESCE(SUM(CASE WHEN project_root IS NOT NULL AND TRIM(project_root) <> '' THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN project_root IS NULL THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN project_root IS NOT NULL AND TRIM(project_root) = '' THEN 1 ELSE 0 END), 0)
+         FROM {table}"
+    );
+    transaction.query_row(&sql, [], |row| {
+        Ok(MigrationRecordCounts {
+            scoped: row.get(0)?,
+            legacy_unscoped: row.get(1)?,
+            rejected: row.get(2)?,
+        })
+    }).map_err(StoreError::from)
+}
+
+fn rebuild_runs_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "
+        ALTER TABLE runs RENAME TO runs_v7;
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            parent_run_id TEXT,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            origin TEXT NOT NULL DEFAULT 'system',
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            terminal_reason TEXT,
+            request_type TEXT NOT NULL DEFAULT 'workspace.execute',
+            operation_class TEXT NOT NULL DEFAULT 'probe',
+            code TEXT NOT NULL DEFAULT '',
+            arguments_json TEXT NOT NULL DEFAULT '{}',
+            source_path TEXT,
+            execution_mode TEXT,
+            document_version INTEGER,
+            workspace_id TEXT,
+            state_revision_before INTEGER,
+            project_revision_before INTEGER,
+            state_revision_after INTEGER,
+            project_revision_after INTEGER,
+            stdout TEXT,
+            value_text TEXT,
+            messages_json TEXT NOT NULL DEFAULT '[]',
+            warnings_json TEXT NOT NULL DEFAULT '[]',
+            error_message TEXT,
+            error_call TEXT,
+            traceback_json TEXT NOT NULL DEFAULT '[]',
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            environment_snapshot_id TEXT,
+            environment_snapshot_id_after TEXT
+        );
+        INSERT INTO runs(
+            run_id, parent_run_id, project_root, origin, status, started_at, finished_at,
+            terminal_reason, request_type, operation_class, code, arguments_json, source_path,
+            execution_mode, document_version, workspace_id, state_revision_before,
+            project_revision_before, state_revision_after, project_revision_after, stdout,
+            value_text, messages_json, warnings_json, error_message, error_call,
+            traceback_json, cancel_requested, environment_snapshot_id,
+            environment_snapshot_id_after
+        )
+        SELECT
+            run_id,
+            parent_run_id,
+            COALESCE(project_root, 'legacy_unscoped'),
+            origin,
+            status,
+            started_at,
+            finished_at,
+            terminal_reason,
+            request_type,
+            operation_class,
+            code,
+            arguments_json,
+            source_path,
+            execution_mode,
+            document_version,
+            workspace_id,
+            state_revision_before,
+            project_revision_before,
+            state_revision_after,
+            project_revision_after,
+            stdout,
+            value_text,
+            messages_json,
+            warnings_json,
+            error_message,
+            error_call,
+            traceback_json,
+            cancel_requested,
+            environment_snapshot_id,
+            environment_snapshot_id_after
+        FROM runs_v7;
+        DROP TABLE runs_v7;
+        ",
+    )?;
+    Ok(())
+}
+
+fn rebuild_agent_turns_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "
+        ALTER TABLE agent_turns RENAME TO agent_turns_v7;
+        CREATE TABLE agent_turns (
+            turn_id TEXT PRIMARY KEY,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            mode TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            prompt_preview TEXT NOT NULL,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            workspace_id_before TEXT,
+            state_revision_before INTEGER,
+            project_revision_before INTEGER,
+            workspace_id_after TEXT,
+            state_revision_after INTEGER,
+            project_revision_after INTEGER,
+            final_message TEXT,
+            error_message TEXT
+        );
+        INSERT INTO agent_turns(
+            turn_id, project_root, mode, prompt, prompt_preview, model, status, started_at,
+            finished_at, workspace_id_before, state_revision_before, project_revision_before,
+            workspace_id_after, state_revision_after, project_revision_after, final_message,
+            error_message
+        )
+        SELECT
+            turn_id,
+            COALESCE(project_root, 'legacy_unscoped'),
+            mode,
+            prompt,
+            prompt_preview,
+            model,
+            status,
+            started_at,
+            finished_at,
+            workspace_id_before,
+            state_revision_before,
+            project_revision_before,
+            workspace_id_after,
+            state_revision_after,
+            project_revision_after,
+            final_message,
+            error_message
+        FROM agent_turns_v7;
+        ",
+    )?;
+    Ok(())
+}
+
+fn rebuild_approval_requests_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "
+        ALTER TABLE approval_requests RENAME TO approval_requests_v7;
+        CREATE TABLE approval_requests (
+            request_id TEXT PRIMARY KEY,
+            turn_id TEXT NOT NULL,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            tool TEXT NOT NULL,
+            policy TEXT NOT NULL,
+            status TEXT NOT NULL,
+            decision TEXT,
+            reason TEXT,
+            arguments_json TEXT NOT NULL,
+            code TEXT,
+            workspace_id TEXT,
+            state_revision INTEGER,
+            project_revision INTEGER,
+            requested_at TEXT NOT NULL,
+            responded_at TEXT,
+            continuation_outcome TEXT,
+            FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
+        );
+        INSERT INTO approval_requests(
+            request_id, turn_id, project_root, tool, policy, status, decision, reason,
+            arguments_json, code, workspace_id, state_revision, project_revision, requested_at,
+            responded_at, continuation_outcome
+        )
+        SELECT
+            request_id,
+            turn_id,
+            COALESCE(project_root, 'legacy_unscoped'),
+            tool,
+            policy,
+            status,
+            decision,
+            reason,
+            arguments_json,
+            code,
+            workspace_id,
+            state_revision,
+            project_revision,
+            requested_at,
+            responded_at,
+            continuation_outcome
+        FROM approval_requests_v7;
+        DROP TABLE approval_requests_v7;
+        DROP TABLE agent_turns_v7;
+        ",
+    )?;
+    Ok(())
+}
+
+fn rebuild_plot_artifacts_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "
+        ALTER TABLE plot_artifacts RENAME TO plot_artifacts_v7;
+        CREATE TABLE plot_artifacts (
+            plot_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            source_path TEXT,
+            execution_mode TEXT,
+            document_version INTEGER,
+            workspace_id TEXT,
+            state_revision INTEGER,
+            project_revision INTEGER,
+            media_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            provenance_complete INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+        INSERT INTO plot_artifacts(
+            plot_id, run_id, project_root, source_path, execution_mode, document_version,
+            workspace_id, state_revision, project_revision, media_type, payload_json,
+            provenance_complete, created_at
+        )
+        SELECT
+            plot_id,
+            run_id,
+            COALESCE(project_root, 'legacy_unscoped'),
+            source_path,
+            execution_mode,
+            document_version,
+            workspace_id,
+            state_revision,
+            project_revision,
+            media_type,
+            payload_json,
+            provenance_complete,
+            created_at
+        FROM plot_artifacts_v7;
+        DROP TABLE plot_artifacts_v7;
+        ",
+    )?;
+    Ok(())
+}
+
+fn assert_not_null_project_identity(connection: &Connection, table: &str) -> Result<(), StoreError> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut statement = connection.prepare(&pragma)?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
+    })?;
+    for row in rows {
+        let (name, declared_type, not_null) = row?;
+        if name == "project_root" {
+            if declared_type.eq_ignore_ascii_case("TEXT") && not_null == 1 {
+                return Ok(());
+            }
+            return Err(invalid_v8_schema(format!(
+                "{table}.project_root must be TEXT NOT NULL"
+            )));
+        }
+    }
+    Err(invalid_v8_schema(format!(
+        "{table}.project_root column is missing"
+    )))
+}
+
+fn assert_index_exists(connection: &Connection, index_name: &str) -> Result<(), StoreError> {
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            [index_name],
+            |_row| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if exists {
+        Ok(())
+    } else {
+        Err(invalid_v8_schema(format!("required index {index_name} is missing")))
+    }
+}
+
+fn invalid_v8_schema(message: String) -> StoreError {
+    StoreError::MigrationRejected {
+        message,
+        outcome: MigrationOutcome::rejected(
+            Some(SCHEMA_VERSION),
+            None,
+            MigrationRecordCounts::default(),
+            "invalid_v8_schema",
+        ),
+    }
 }
 
 fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
@@ -2149,6 +2679,197 @@ mod tests {
     use rho_protocol::{MessageKind, WorkspaceIdentity};
     use serde_json::json;
     use tempfile::TempDir;
+
+    fn create_v7_fixture(path: &Path) {
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE runs (
+                    run_id TEXT PRIMARY KEY,
+                    parent_run_id TEXT,
+                    project_root TEXT,
+                    origin TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    terminal_reason TEXT,
+                    request_type TEXT NOT NULL,
+                    operation_class TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    arguments_json TEXT NOT NULL,
+                    source_path TEXT,
+                    execution_mode TEXT,
+                    document_version INTEGER,
+                    workspace_id TEXT,
+                    state_revision_before INTEGER,
+                    project_revision_before INTEGER,
+                    state_revision_after INTEGER,
+                    project_revision_after INTEGER,
+                    stdout TEXT,
+                    value_text TEXT,
+                    messages_json TEXT NOT NULL,
+                    warnings_json TEXT NOT NULL,
+                    error_message TEXT,
+                    error_call TEXT,
+                    traceback_json TEXT NOT NULL,
+                    cancel_requested INTEGER NOT NULL DEFAULT 0,
+                    environment_snapshot_id TEXT,
+                    environment_snapshot_id_after TEXT
+                );
+                CREATE TABLE agent_turns (
+                    turn_id TEXT PRIMARY KEY,
+                    project_root TEXT,
+                    mode TEXT NOT NULL,
+                    prompt TEXT NOT NULL,
+                    prompt_preview TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    workspace_id_before TEXT,
+                    state_revision_before INTEGER,
+                    project_revision_before INTEGER,
+                    workspace_id_after TEXT,
+                    state_revision_after INTEGER,
+                    project_revision_after INTEGER,
+                    final_message TEXT,
+                    error_message TEXT
+                );
+                CREATE TABLE approval_requests (
+                    request_id TEXT PRIMARY KEY,
+                    turn_id TEXT NOT NULL,
+                    project_root TEXT,
+                    tool TEXT NOT NULL,
+                    policy TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    decision TEXT,
+                    reason TEXT,
+                    arguments_json TEXT NOT NULL,
+                    code TEXT,
+                    workspace_id TEXT,
+                    state_revision INTEGER,
+                    project_revision INTEGER,
+                    requested_at TEXT NOT NULL,
+                    responded_at TEXT,
+                    continuation_outcome TEXT,
+                    FOREIGN KEY(turn_id) REFERENCES agent_turns(turn_id) ON DELETE CASCADE
+                );
+                CREATE TABLE plot_artifacts (
+                    plot_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    project_root TEXT,
+                    source_path TEXT,
+                    execution_mode TEXT,
+                    document_version INTEGER,
+                    workspace_id TEXT,
+                    state_revision INTEGER,
+                    project_revision INTEGER,
+                    media_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    provenance_complete INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL
+                );
+                ",
+            )
+            .unwrap();
+        set_schema_version(&connection, 7).unwrap();
+        let now = Utc::now().to_rfc3339();
+        connection.execute(
+            "INSERT INTO runs(
+                run_id, parent_run_id, project_root, origin, status, started_at, request_type,
+                operation_class, code, arguments_json, source_path, execution_mode,
+                document_version, workspace_id, state_revision_before, project_revision_before,
+                messages_json, warnings_json, traceback_json
+             ) VALUES(
+                'run_scoped', NULL, 'D:/projects/A', 'user', 'queued', ?1, 'workspace.execute',
+                'state_capable', 'x <- 1', '{}', 'analysis.R', 'file', 1, 'ws_a', 1, 1, '[]', '[]', '[]'
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO runs(
+                run_id, parent_run_id, project_root, origin, status, started_at, request_type,
+                operation_class, code, arguments_json, source_path, execution_mode,
+                document_version, workspace_id, state_revision_before, project_revision_before,
+                messages_json, warnings_json, traceback_json
+             ) VALUES(
+                'run_legacy', NULL, NULL, 'user', 'queued', ?1, 'workspace.execute',
+                'state_capable', 'x <- 2', '{}', 'analysis.R', 'file', 1, 'ws_b', 1, 1, '[]', '[]', '[]'
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO agent_turns(
+                turn_id, project_root, mode, prompt, prompt_preview, model, status, started_at
+             ) VALUES(
+                'turn_scoped', 'D:/projects/A', 'ask', 'scoped prompt', 'scoped prompt', 'test', 'completed', ?1
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO agent_turns(
+                turn_id, project_root, mode, prompt, prompt_preview, model, status, started_at
+             ) VALUES(
+                'turn_legacy', NULL, 'ask', 'legacy prompt', 'legacy prompt', 'test', 'completed', ?1
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO approval_requests(
+                request_id, turn_id, project_root, tool, policy, status, arguments_json, requested_at
+             ) VALUES(
+                'req_scoped', 'turn_scoped', 'D:/projects/A', 'run_r', 'required', 'pending', '{}', ?1
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO approval_requests(
+                request_id, turn_id, project_root, tool, policy, status, arguments_json, requested_at
+             ) VALUES(
+                'req_legacy', 'turn_legacy', NULL, 'run_r', 'required', 'pending', '{}', ?1
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO plot_artifacts(
+                plot_id, run_id, project_root, media_type, payload_json, created_at
+             ) VALUES(
+                'plot_scoped', 'run_scoped', 'D:/projects/A', 'application/json', '{}', ?1
+             )",
+            [now.clone()],
+        ).unwrap();
+        connection.execute(
+            "INSERT INTO plot_artifacts(
+                plot_id, run_id, project_root, media_type, payload_json, created_at
+             ) VALUES(
+                'plot_legacy', 'run_legacy', NULL, 'application/json', '{}', ?1
+             )",
+            [now],
+        ).unwrap();
+    }
+
+    fn create_nonempty_store_without_schema_version(path: &Path) {
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE placeholder (
+                    id INTEGER PRIMARY KEY
+                );
+                INSERT INTO placeholder(id) VALUES(1);
+                ",
+            )
+            .unwrap();
+    }
 
     #[test]
     fn persists_identity_and_events() {
@@ -2809,17 +3530,27 @@ mod tests {
         store
             .connection
             .execute(
-                "INSERT INTO runs(run_id, status, started_at) VALUES('run_legacy', 'failed', ?1)",
-                [Utc::now().to_rfc3339()],
+                "INSERT INTO runs(run_id, project_root, status, started_at)
+                 VALUES('run_legacy', ?1, 'failed', ?2)",
+                params![LEGACY_UNSCOPED, Utc::now().to_rfc3339()],
             )
             .unwrap();
         store
             .connection
             .execute(
                 "INSERT INTO agent_turns(
-                    turn_id, mode, prompt, prompt_preview, model, status, started_at
-                 ) VALUES('turn_legacy', 'ask', 'legacy prompt', 'legacy prompt', 'test', 'completed', ?1)",
-                [Utc::now().to_rfc3339()],
+                    turn_id, project_root, mode, prompt, prompt_preview, model, status, started_at
+                 ) VALUES('turn_legacy', ?1, 'ask', 'legacy prompt', 'legacy prompt', 'test', 'completed', ?2)",
+                params![LEGACY_UNSCOPED, Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        store
+            .connection
+            .execute(
+                "INSERT INTO approval_requests(
+                    request_id, turn_id, project_root, tool, policy, status, arguments_json, requested_at
+                 ) VALUES('req_legacy', 'turn_legacy', ?1, 'run_r', 'required', 'pending', '{}', ?2)",
+                params![LEGACY_UNSCOPED, Utc::now().to_rfc3339()],
             )
             .unwrap();
 
@@ -2896,6 +3627,156 @@ mod tests {
                 .iter()
                 .any(|approval| approval.request_id == "req_b")
         );
+    }
+
+    #[test]
+    fn bootstraps_empty_store_to_v8_and_reopens_idempotently() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+
+        let store = Store::open(&database).unwrap();
+        assert_eq!(
+            store.migration_outcome(),
+            &MigrationOutcome::bootstrapped_current()
+        );
+        drop(store);
+
+        let reopened = Store::open(&database).unwrap();
+        assert_eq!(
+            reopened.migration_outcome(),
+            &MigrationOutcome::opened_current()
+        );
+    }
+
+    #[test]
+    fn migrates_v7_to_v8_and_marks_legacy_unscoped_records() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v7_fixture(&database);
+
+        let store = Store::open(&database).unwrap();
+        assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
+        assert_eq!(store.migration_outcome().from_schema_version, Some(7));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(8));
+        assert_eq!(store.migration_outcome().scoped_count, 4);
+        assert_eq!(store.migration_outcome().legacy_unscoped_count, 4);
+        assert_eq!(store.migration_outcome().rejected_count, 0);
+        assert!(
+            store
+                .migration_outcome()
+                .backup_path
+                .as_deref()
+                .unwrap()
+                .ends_with("rho.sqlite.schema-v7.bak")
+        );
+        assert_eq!(store.list_runs("D:/projects/A", None).unwrap().len(), 1);
+        assert_eq!(store.list_agent_turns("D:/projects/A", None).unwrap().len(), 1);
+        assert_eq!(
+            store
+                .list_approval_requests("D:/projects/A", None, None)
+                .unwrap()
+                .len(),
+            1
+        );
+        let legacy_runs: i64 = store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM runs WHERE project_root = ?1",
+                [LEGACY_UNSCOPED],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_runs, 1);
+        assert_not_null_project_identity(&store.connection, "runs").unwrap();
+        assert_not_null_project_identity(&store.connection, "agent_turns").unwrap();
+        assert_not_null_project_identity(&store.connection, "approval_requests").unwrap();
+        assert_not_null_project_identity(&store.connection, "plot_artifacts").unwrap();
+        assert_index_exists(&store.connection, "idx_plot_artifacts_project_created").unwrap();
+    }
+
+    #[test]
+    fn rejects_blank_project_identity_in_v7_fixture() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v7_fixture(&database);
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "UPDATE runs SET project_root = '' WHERE run_id = 'run_legacy'",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = Store::open(&database).unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(
+            outcome.reason_code.as_deref(),
+            Some("malformed_project_identity")
+        );
+        assert_eq!(outcome.rejected_count, 1);
+        assert!(Path::new(outcome.backup_path.as_deref().unwrap()).exists());
+
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(7));
+        let blank_count: i64 = verification
+            .query_row(
+                "SELECT COUNT(*) FROM runs WHERE project_root = ''",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(blank_count, 1);
+    }
+
+    #[test]
+    fn rejects_unsupported_nonempty_schema_version() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_nonempty_store_without_schema_version(&database);
+        let connection = Connection::open(&database).unwrap();
+        set_schema_version(&connection, 6).unwrap();
+        drop(connection);
+
+        let error = Store::open(&database).unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(
+            outcome.reason_code.as_deref(),
+            Some("unsupported_schema_version")
+        );
+        assert_eq!(outcome.from_schema_version, Some(6));
+    }
+
+    #[test]
+    fn rolls_back_v7_migration_after_injected_failure_and_preserves_backup() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v7_fixture(&database);
+
+        let error = Store::open_with_options(
+            &database,
+            StoreOpenOptions {
+                inject_v7_failure_before_commit: true,
+            },
+        )
+        .unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(outcome.reason_code.as_deref(), Some("injected_failure"));
+        assert!(Path::new(outcome.backup_path.as_deref().unwrap()).exists());
+
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(7));
+        let legacy_null_runs: i64 = verification
+            .query_row(
+                "SELECT COUNT(*) FROM runs WHERE project_root IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_null_runs, 1);
     }
 
     #[test]

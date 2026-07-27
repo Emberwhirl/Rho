@@ -2128,7 +2128,24 @@ async fn start_workspace(state: &AppState) -> Result<WorkspaceStatus> {
             .await
             .context("starting Ark-backed Workspace R")?,
     );
-    let mut store = Store::open(&config.store_path).context("opening Rho event store")?;
+    let mut store = match Store::open(&config.store_path) {
+        Ok(store) => {
+            write_startup_event(json!({
+                "kind": "store_migration",
+                "outcome": store.migration_outcome(),
+            }));
+            store
+        }
+        Err(error) => {
+            if let Some(outcome) = error.migration_outcome() {
+                write_startup_event(json!({
+                    "kind": "store_migration",
+                    "outcome": outcome,
+                }));
+            }
+            return Err(error).context("opening Rho event store");
+        }
+    };
     let project_root = state.project_root.read().await.clone();
     store
         .set_project_root(Some(&normalize_project_root(
@@ -2900,17 +2917,21 @@ fn initialize_startup_log(data_dir: &Path) {
 }
 
 fn write_startup_log(message: &str) {
+    write_startup_event(json!({ "message": bounded_diagnostic(message) }));
+}
+
+fn write_startup_event(event: Value) {
     let path = startup_log_path();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let timestamp = chrono::Utc::now().to_rfc3339();
-        let event = json!({
+        let envelope = json!({
             "timestamp": timestamp,
-            "message": bounded_diagnostic(message),
+            "event": event,
         });
-        let _ = writeln!(file, "{event}");
+        let _ = writeln!(file, "{envelope}");
     }
 }
 

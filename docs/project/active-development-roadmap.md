@@ -191,14 +191,16 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 1 accepted; no Wave 2 package is active**. Wave 0
-automated review closed as `accept with follow-up`; the `0.3.x`
-representative-project and manual UI gates remain open and are not recorded as
-passed. BH1 project-scoped durable identity is accepted on current-source
-evidence and closes the Wave 1 isolation gate, but it does not authorize BH2 or
-BH3. The parallel `0.2.0-dev.12` and About/update tracks retain their own
-active acceptance contracts. BH2-BH5, UX1, modernization, and Waves 2-14
-remain scheduled but not authorized.
+Current program state: **Wave 2 BH3 transactional migration is accepted; no
+Wave 2 package is active**. Wave 0 automated review closed as
+`accept with follow-up`; the `0.3.x` representative-project and manual UI gates
+remain open and are not recorded as passed. BH1 project-scoped durable identity
+is accepted on current-source evidence and closes the Wave 1 isolation gate.
+BH3 is accepted on current-source migration evidence under its own focused
+handoff and verification gate. BH2 still remains unauthorized and must not
+begin until separately authorized. The parallel `0.2.0-dev.12` and
+About/update tracks retain their own active acceptance contracts. BH4-BH5,
+UX1, modernization, and Waves 3-14 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -241,10 +243,16 @@ smoke passed. Independent review found no unresolved BH1-scope P0/P1 privacy,
 ownership, execution, migration-boundary, or recovery issue, and the smoke now
 records representative two-project switching/restart isolation; see
 [`verification/bh1/verification.md`](../verification/bh1/verification.md).
-BH3 may share its development cycle with the reviewed BH1
-schema, but retains an independent migration gate. BH2 begins only after BH1 is
-accepted and may not publish a new project until Workspace R, persistence,
-watchers, broker state, and UI state are synchronized.
+BH3 was authorized on 2026-07-27 under
+[`plans/active-2026-07-27-bh3-transactional-schema-v8-migration-handoff.md`](../plans/active-2026-07-27-bh3-transactional-schema-v8-migration-handoff.md).
+Its scope was limited to transactional `v7 -> v8` migration, fail-closed
+historical rejection, same-directory recoverable backup, and bounded migration
+diagnostics; it did not authorize recovery UI or BH2 switching behavior. BH3
+is now accepted on the evidence in
+[`verification/bh3/verification.md`](../verification/bh3/verification.md). BH2
+may begin only after separate authorization and may not publish a new project
+until Workspace R, persistence, watchers, broker state, and UI state are
+synchronized.
 
 UX1 may run in parallel because it inventories language and defines testable
 interaction contracts without claiming new behavior. Interface modernization
