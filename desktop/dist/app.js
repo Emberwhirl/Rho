@@ -1084,6 +1084,11 @@ async function mockInvoke(command, args) {
         panels: { left: 214, right: 362, dock: 260 },
       },
       unavailable: null,
+      blocker: null,
+      reason_code: null,
+      message: null,
+      restored_root: null,
+      restart_required: false,
     };
   }
   if (command === "project_pick_directory") {
@@ -6643,6 +6648,10 @@ async function finishWorkbenchStartup(startupView) {
     const response = await invoke("project_restore_session");
     if (response.status === "ready") {
       await hydrateProject(response);
+    } else if (response.status === "blocked") {
+      toast(response.blocker?.message || "Project switch is blocked.", true);
+    } else if (response.status === "failed_restored" || response.status === "fatal") {
+      toast(response.message || "Project switch failed.", true);
     } else if (response.status === "unavailable") {
       state.project = { root: "", files: [], truncated: false };
       state.documents = {};
@@ -6741,6 +6750,14 @@ $("#projectSwitcher").addEventListener("click", async () => {
     await flushSessionSnapshot();
     const response = await invoke("project_pick_directory");
     if (response.status === "cancelled") return;
+    if (response.status === "blocked") {
+      toast(response.blocker?.message || "Project switch is blocked.", true);
+      return;
+    }
+    if (response.status === "failed_restored" || response.status === "fatal") {
+      toast(response.message || "Project switch failed.", true);
+      return;
+    }
     if (response.status === "unavailable") {
       setProjectStatus("unavailable", response.unavailable || null);
       renderActiveDocument();

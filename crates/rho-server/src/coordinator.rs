@@ -265,6 +265,10 @@ impl PendingApprovalRegistry {
         self.waiters.lock().await.is_empty()
     }
 
+    pub async fn count(&self) -> usize {
+        self.waiters.lock().await.len()
+    }
+
     pub async fn register(&self, request_id: String) -> oneshot::Receiver<ApprovalResponseInput> {
         let (sender, receiver) = oneshot::channel();
         self.waiters.lock().await.insert(request_id, sender);

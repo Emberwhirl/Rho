@@ -191,16 +191,17 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 2 BH3 transactional migration is accepted; no
-Wave 2 package is active**. Wave 0 automated review closed as
+Current program state: **Wave 2 BH1-BH3 are accepted; no later Wave 2 package
+is active**. Wave 0 automated review closed as
 `accept with follow-up`; the `0.3.x` representative-project and manual UI gates
 remain open and are not recorded as passed. BH1 project-scoped durable identity
 is accepted on current-source evidence and closes the Wave 1 isolation gate.
 BH3 is accepted on current-source migration evidence under its own focused
-handoff and verification gate. BH2 still remains unauthorized and must not
-begin until separately authorized. The parallel `0.2.0-dev.12` and
-About/update tracks retain their own active acceptance contracts. BH4-BH5,
-UX1, modernization, and Waves 3-14 remain scheduled but not authorized.
+handoff and verification gate. BH2 is accepted on current-source switching
+evidence under its own focused handoff and verification gate. The parallel
+`0.2.0-dev.12` and About/update
+tracks retain their own active acceptance contracts. BH4-BH5, UX1,
+modernization, and Waves 3-14 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -250,9 +251,15 @@ historical rejection, same-directory recoverable backup, and bounded migration
 diagnostics; it did not authorize recovery UI or BH2 switching behavior. BH3
 is now accepted on the evidence in
 [`verification/bh3/verification.md`](../verification/bh3/verification.md). BH2
-may begin only after separate authorization and may not publish a new project
-until Workspace R, persistence, watchers, broker state, and UI state are
-synchronized.
+was authorized on 2026-07-28 under
+[`plans/active-2026-07-28-bh2-project-switch-state-machine-handoff.md`](../plans/active-2026-07-28-bh2-project-switch-state-machine-handoff.md).
+Its scope is limited to one broker-owned preflight result, blocked/synchronized/
+committed/failed-restored outcomes, and deterministic switch recovery; it does
+not authorize retention, recovery UI, or destructive blocker-clearing
+behavior. The affected automated matrix and desktop smoke now pass on
+current-source evidence, and BH2 closeout review found no unresolved P0/P1
+switching, ownership, execution, blocker, or recovery finding; see
+[`verification/bh2/verification.md`](../verification/bh2/verification.md).
 
 UX1 may run in parallel because it inventories language and defines testable
 interaction contracts without claiming new behavior. Interface modernization

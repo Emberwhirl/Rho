@@ -65,12 +65,37 @@ pub struct UnavailableProject {
     pub reason: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSwitchBlockerKind {
+    ActiveRun,
+    AgentTurn,
+    Approval,
+    EnvironmentOperation,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectSwitchBlocker {
+    pub kind: ProjectSwitchBlockerKind,
+    pub message: String,
+    pub pending_count: usize,
+    pub run_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub request_id: Option<String>,
+    pub operation_status: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct ProjectRestoreResponse {
     pub status: String,
     pub project: Option<ProjectState>,
     pub session: ProjectSessionSnapshot,
     pub unavailable: Option<UnavailableProject>,
+    pub blocker: Option<ProjectSwitchBlocker>,
+    pub reason_code: Option<String>,
+    pub message: Option<String>,
+    pub restored_root: Option<String>,
+    pub restart_required: bool,
 }
 
 impl ProjectRestoreResponse {
@@ -80,6 +105,11 @@ impl ProjectRestoreResponse {
             project: Some(project),
             session,
             unavailable: None,
+            blocker: None,
+            reason_code: None,
+            message: None,
+            restored_root: None,
+            restart_required: false,
         }
     }
 
@@ -92,6 +122,62 @@ impl ProjectRestoreResponse {
                 path,
                 reason: reason.into(),
             }),
+            blocker: None,
+            reason_code: None,
+            message: None,
+            restored_root: None,
+            restart_required: false,
+        }
+    }
+
+    pub fn blocked(session: ProjectSessionSnapshot, blocker: ProjectSwitchBlocker) -> Self {
+        Self {
+            status: "blocked".to_string(),
+            project: None,
+            session,
+            unavailable: None,
+            reason_code: Some("project_switch_blocked".to_string()),
+            message: Some(blocker.message.clone()),
+            blocker: Some(blocker),
+            restored_root: None,
+            restart_required: false,
+        }
+    }
+
+    pub fn failed_restored(
+        session: ProjectSessionSnapshot,
+        restored_root: String,
+        reason_code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status: "failed_restored".to_string(),
+            project: None,
+            session,
+            unavailable: None,
+            blocker: None,
+            reason_code: Some(reason_code.into()),
+            message: Some(message.into()),
+            restored_root: Some(restored_root),
+            restart_required: false,
+        }
+    }
+
+    pub fn fatal(
+        session: ProjectSessionSnapshot,
+        reason_code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            status: "fatal".to_string(),
+            project: None,
+            session,
+            unavailable: None,
+            blocker: None,
+            reason_code: Some(reason_code.into()),
+            message: Some(message.into()),
+            restored_root: None,
+            restart_required: true,
         }
     }
 
@@ -101,6 +187,11 @@ impl ProjectRestoreResponse {
             project: None,
             session: ProjectSessionSnapshot::default(),
             unavailable: None,
+            blocker: None,
+            reason_code: None,
+            message: None,
+            restored_root: None,
+            restart_required: false,
         }
     }
 }
@@ -182,6 +273,12 @@ pub struct ProjectWatcherControl {
 }
 
 impl ProjectWatcherControl {
+    #[cfg(test)]
+    pub fn noop() -> Self {
+        let (stop_tx, _stop_rx) = channel();
+        Self { stop_tx }
+    }
+
     pub fn stop(self) {
         let _ = self.stop_tx.send(());
     }

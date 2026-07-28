@@ -10,21 +10,21 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, RwLock as SyncRwLock};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as SyncRwLock};
 use std::time::{Duration, Instant};
 
 use agent_llm::{
     AgentLlmSettingsView, AgentModelProfile, AgentModelTestControl, AgentProviderProfile,
     DeleteModelRequest,
 };
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use project::{
     ProjectRestoreResponse, ProjectSessionSnapshot, ProjectSessionStore, ProjectState,
-    ProjectWatcherControl, atomic_write, atomic_write_new, default_project_root,
-    ensure_editable_content_size, ensure_editable_file, ensure_editable_file_size,
-    list_project_files, normalize_existing_project_root, project_path, relative_project_path,
-    start_project_watcher, validate_project_root,
+    ProjectSwitchBlocker, ProjectSwitchBlockerKind, ProjectWatcherControl, atomic_write,
+    atomic_write_new, default_project_root, ensure_editable_content_size, ensure_editable_file,
+    ensure_editable_file_size, list_project_files, normalize_existing_project_root, project_path,
+    relative_project_path, start_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
@@ -173,10 +173,55 @@ struct AppState {
     environment_approvals: Arc<PendingApprovalRegistry>,
     agent_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     agent_llm_test_control: AgentModelTestControl,
+    switch_test_control: SwitchTestControl,
     shutdown_started: AtomicBool,
 }
 
 static STARTUP_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+enum SwitchTestStep {
+    SyncWorkspace,
+    SetActiveProjectRoot,
+    SaveLastOpenedProject,
+    RestoreWorkspace,
+    RestoreActiveProjectRoot,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Clone, Debug)]
+enum SwitchTestDirective {
+    SucceedWithoutRunning,
+    Fail(String),
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Clone, Default)]
+struct SwitchTestControl {
+    directives: Arc<StdMutex<HashMap<SwitchTestStep, SwitchTestDirective>>>,
+}
+
+impl SwitchTestControl {
+    #[cfg(test)]
+    fn succeed_without_running(&self, step: SwitchTestStep) {
+        self.directives
+            .lock()
+            .unwrap()
+            .insert(step, SwitchTestDirective::SucceedWithoutRunning);
+    }
+
+    #[cfg(test)]
+    fn fail(&self, step: SwitchTestStep, message: impl Into<String>) {
+        self.directives
+            .lock()
+            .unwrap()
+            .insert(step, SwitchTestDirective::Fail(message.into()));
+    }
+
+    fn take(&self, step: SwitchTestStep) -> Option<SwitchTestDirective> {
+        self.directives.lock().unwrap().remove(&step)
+    }
+}
 
 #[derive(Serialize)]
 struct WorkspaceStatus {
@@ -1996,7 +2041,7 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
     drop(old_context);
     let status = start_workspace(&state).await.map_err(display_error)?;
     let root = state.project_root.read().await.clone();
-    sync_workspace_project_root(&state, &root)
+    sync_workspace_project_root(&state, &root, SwitchTestStep::SyncWorkspace)
         .await
         .map_err(display_error)?;
     Ok(status)
@@ -2222,45 +2267,311 @@ async fn switch_project(
     app: AppHandle,
     state: &AppState,
 ) -> Result<ProjectRestoreResponse> {
-    ensure!(
-        state.agent_tasks.lock().await.is_empty(),
-        "Stop the active Agent turn before switching projects."
-    );
-    ensure!(
-        state.approvals.is_empty().await && state.environment_approvals.is_empty().await,
-        "Resolve or cancel pending approvals before switching projects."
-    );
-    let project = list_project_files(&root)?;
-    let next_watcher = start_project_watcher(app.clone(), root.clone())?;
-    state.project_store.save_last_opened_project(&root)?;
-    let normalized_root = normalize_project_root(root.to_string_lossy().as_ref());
-    let previous_root = {
-        let context = active_context(state).await?;
-        let mut context = context.lock().await;
-        let previous_root = context.store.active_project_root()?;
-        context.store.set_project_root(Some(&normalized_root))?;
-        previous_root
-    };
-    if let Err(error) = sync_workspace_project_root(state, &root).await {
-        let context = active_context(state).await?;
-        context
-            .lock()
-            .await
-            .store
-            .set_project_root(previous_root.as_deref())?;
-        return Err(error);
-    }
-    let session_snapshot =
-        session_snapshot.unwrap_or_else(|| state.project_store.load_session_or_default(&root));
-    *state.project_root.write().await = root.clone();
-    let mut watcher = state.project_watcher.lock().await;
-    if let Some(previous) = watcher.replace(next_watcher) {
-        previous.stop();
-    }
-    Ok(ProjectRestoreResponse::ready(project, session_snapshot))
+    switch_project_with_watcher_factory(root, session_snapshot, state, |watch_root| {
+        start_project_watcher(app.clone(), watch_root.to_path_buf())
+    })
+    .await
 }
 
-async fn sync_workspace_project_root(state: &AppState, root: &Path) -> Result<()> {
+async fn switch_project_with_watcher_factory<F>(
+    root: PathBuf,
+    session_snapshot: Option<ProjectSessionSnapshot>,
+    state: &AppState,
+    start_watcher: F,
+) -> Result<ProjectRestoreResponse>
+where
+    F: FnOnce(&Path) -> Result<ProjectWatcherControl>,
+{
+    let target_session =
+        session_snapshot.unwrap_or_else(|| state.project_store.load_session_or_default(&root));
+    if let Some(blocker) = project_switch_blocker(state).await? {
+        write_project_switch_event(
+            "project_switch_blocked",
+            &root,
+            None,
+            Some("project_switch_blocked"),
+            Some(blocker.message.as_str()),
+        );
+        return Ok(ProjectRestoreResponse::blocked(target_session, blocker));
+    }
+
+    let project = list_project_files(&root)?;
+    let normalized_root = normalize_project_root(root.to_string_lossy().as_ref());
+    let previous_ui_root = state.project_root.read().await.clone();
+    let previous_session = state
+        .project_store
+        .load_session_or_default(&previous_ui_root);
+    let previous_store_root = read_store(state)?.active_project_root()?;
+
+    sync_workspace_project_root(state, &root, SwitchTestStep::SyncWorkspace).await?;
+
+    let next_watcher = start_watcher(&root)
+        .map_err(|error| anyhow!("starting target project watcher failed: {error:#}"));
+
+    let next_watcher = match next_watcher {
+        Ok(next_watcher) => next_watcher,
+        Err(error) => {
+            return recover_failed_project_switch(
+                state,
+                &previous_ui_root,
+                previous_store_root.as_deref(),
+                previous_session,
+                "project_switch_watcher_failed",
+                format!("Target project watcher failed after workspace sync: {error:#}"),
+            )
+            .await;
+        }
+    };
+
+    if let Err(error) = set_store_active_project_root(
+        state,
+        Some(&normalized_root),
+        SwitchTestStep::SetActiveProjectRoot,
+    ) {
+        return recover_failed_project_switch(
+            state,
+            &previous_ui_root,
+            previous_store_root.as_deref(),
+            previous_session,
+            "project_switch_store_root_failed",
+            format!("Project identity could not be committed: {error:#}"),
+        )
+        .await;
+    }
+
+    if let Err(error) = save_last_opened_project(
+        state,
+        &root,
+        SwitchTestStep::SaveLastOpenedProject,
+    ) {
+        return recover_failed_project_switch(
+            state,
+            &previous_ui_root,
+            previous_store_root.as_deref(),
+            previous_session,
+            "project_switch_last_opened_failed",
+            format!("Last opened project could not be committed: {error:#}"),
+        )
+        .await;
+    }
+
+    *state.project_root.write().await = root.clone();
+    let mut watcher = state.project_watcher.lock().await;
+    let previous_watcher = watcher.replace(next_watcher);
+    drop(watcher);
+    if let Some(previous) = previous_watcher {
+        previous.stop();
+    }
+
+    write_project_switch_event(
+        "project_switch_succeeded",
+        &root,
+        None,
+        None,
+        Some("project switch committed"),
+    );
+
+    Ok(ProjectRestoreResponse::ready(project, target_session))
+}
+
+async fn recover_failed_project_switch(
+    state: &AppState,
+    previous_ui_root: &Path,
+    previous_store_root: Option<&str>,
+    previous_session: ProjectSessionSnapshot,
+    reason_code: &str,
+    message: String,
+) -> Result<ProjectRestoreResponse> {
+    let restore_result = async {
+        sync_workspace_project_root(state, previous_ui_root, SwitchTestStep::RestoreWorkspace).await?;
+        set_store_active_project_root(
+            state,
+            previous_store_root,
+            SwitchTestStep::RestoreActiveProjectRoot,
+        )?;
+        Result::<()>::Ok(())
+    }
+    .await;
+
+    match restore_result {
+        Ok(()) => {
+            let restored_root = previous_ui_root.to_string_lossy().replace('\\', "/");
+            write_project_switch_event(
+                "project_switch_failed_restored",
+                previous_ui_root,
+                Some(previous_ui_root),
+                Some(reason_code),
+                Some(message.as_str()),
+            );
+            Ok(ProjectRestoreResponse::failed_restored(
+                previous_session,
+                restored_root,
+                reason_code,
+                message,
+            ))
+        }
+        Err(restore_error) => {
+            let fatal_message =
+                format!("{message}; restore failed and restart is required: {restore_error:#}");
+            write_project_switch_event(
+                "project_switch_fatal",
+                previous_ui_root,
+                None,
+                Some("project_switch_restore_failed"),
+                Some(fatal_message.as_str()),
+            );
+            Ok(ProjectRestoreResponse::fatal(
+                previous_session,
+                "project_switch_restore_failed",
+                fatal_message,
+            ))
+        }
+    }
+}
+
+async fn project_switch_blocker(state: &AppState) -> Result<Option<ProjectSwitchBlocker>> {
+    let fallback_root = {
+        let root = state.project_root.read().await.clone();
+        normalize_project_root(root.to_string_lossy().as_ref())
+    };
+    let approval_count = state.approvals.count().await;
+    let environment_approval_count = state.environment_approvals.count().await;
+    let store = read_store(state)?;
+    let current_root = store.active_project_root()?.unwrap_or(fallback_root);
+
+    if let Some(run_id) = store.latest_active_run_id(&current_root)? {
+        return Ok(Some(ProjectSwitchBlocker {
+            kind: ProjectSwitchBlockerKind::ActiveRun,
+            message: "Finish or interrupt the active scientific run before switching projects."
+                .to_string(),
+            pending_count: 1,
+            run_id: Some(run_id),
+            turn_id: None,
+            request_id: None,
+            operation_status: Some("running".to_string()),
+        }));
+    }
+
+    let agent_tasks = state.agent_tasks.lock().await;
+    if let Some(turn_id) = agent_tasks.keys().next().cloned() {
+        return Ok(Some(ProjectSwitchBlocker {
+            kind: ProjectSwitchBlockerKind::AgentTurn,
+            message: "Stop the active Agent turn before switching projects.".to_string(),
+            pending_count: agent_tasks.len(),
+            run_id: None,
+            turn_id: Some(turn_id),
+            request_id: None,
+            operation_status: Some("running".to_string()),
+        }));
+    }
+    drop(agent_tasks);
+
+    let waiting_approvals = store.list_approval_requests(&current_root, Some(10), Some("waiting"))?;
+    if approval_count > 0 || !waiting_approvals.is_empty() {
+        return Ok(Some(ProjectSwitchBlocker {
+            kind: ProjectSwitchBlockerKind::Approval,
+            message:
+                "Resolve the waiting approval before switching projects.".to_string(),
+            pending_count: approval_count.max(waiting_approvals.len()),
+            run_id: None,
+            turn_id: waiting_approvals.first().map(|approval| approval.turn_id.clone()),
+            request_id: waiting_approvals
+                .first()
+                .map(|approval| approval.request_id.clone()),
+            operation_status: Some("waiting".to_string()),
+        }));
+    }
+
+    if let Some(blocker) = environment_operation_switch_blocker(
+        &store,
+        &current_root,
+        environment_approval_count,
+    )?
+    {
+        return Ok(Some(blocker));
+    }
+
+    Ok(None)
+}
+
+fn environment_operation_switch_blocker(
+    store: &Store,
+    project_root: &str,
+    environment_approval_count: usize,
+) -> Result<Option<ProjectSwitchBlocker>> {
+    for status in ["running", "approved", "requested"] {
+        let requests = store.list_environment_operation_requests(project_root, Some(10), Some(status))?;
+        if !requests.is_empty() {
+            let message = match status {
+                "running" => {
+                    "Wait for the active direct environment operation to finish before switching projects."
+                }
+                _ => {
+                    "Resolve the direct environment operation decision before switching projects."
+                }
+            };
+            return Ok(Some(ProjectSwitchBlocker {
+                kind: ProjectSwitchBlockerKind::EnvironmentOperation,
+                message: message.to_string(),
+                pending_count: environment_approval_count.max(requests.len()),
+                run_id: requests.first().and_then(|request| request.run_id.clone()),
+                turn_id: requests.first().and_then(|request| request.turn_id.clone()),
+                request_id: requests.first().map(|request| request.request_id.clone()),
+                operation_status: Some(status.to_string()),
+            }));
+        }
+    }
+    if environment_approval_count > 0 {
+        return Ok(Some(ProjectSwitchBlocker {
+            kind: ProjectSwitchBlockerKind::EnvironmentOperation,
+            message: "Resolve the direct environment operation decision before switching projects."
+                .to_string(),
+            pending_count: environment_approval_count,
+            run_id: None,
+            turn_id: None,
+            request_id: None,
+            operation_status: Some("requested".to_string()),
+        }));
+    }
+    Ok(None)
+}
+
+fn maybe_handle_switch_test_directive(state: &AppState, step: SwitchTestStep) -> Result<bool> {
+    match state.switch_test_control.take(step) {
+        Some(SwitchTestDirective::SucceedWithoutRunning) => Ok(true),
+        Some(SwitchTestDirective::Fail(message)) => Err(anyhow!(message)),
+        None => Ok(false),
+    }
+}
+
+fn set_store_active_project_root(
+    state: &AppState,
+    project_root: Option<&str>,
+    step: SwitchTestStep,
+) -> Result<()> {
+    if maybe_handle_switch_test_directive(state, step)? {
+        return Ok(());
+    }
+    let mut store = read_store(state)?;
+    store.set_project_root(project_root)?;
+    Ok(())
+}
+
+fn save_last_opened_project(state: &AppState, root: &Path, step: SwitchTestStep) -> Result<()> {
+    if maybe_handle_switch_test_directive(state, step)? {
+        return Ok(());
+    }
+    state.project_store.save_last_opened_project(root)
+}
+
+async fn sync_workspace_project_root(
+    state: &AppState,
+    root: &Path,
+    step: SwitchTestStep,
+) -> Result<()> {
+    if maybe_handle_switch_test_directive(state, step)? {
+        return Ok(());
+    }
     let session = active_session(state).await?;
     let context = active_context(state).await?;
     let mut context = context.lock().await;
@@ -2279,6 +2590,22 @@ async fn sync_workspace_project_root(state: &AppState, root: &Path) -> Result<()
     )
     .await?;
     Ok(())
+}
+
+fn write_project_switch_event(
+    kind: &str,
+    target_root: &Path,
+    restored_root: Option<&Path>,
+    reason_code: Option<&str>,
+    message: Option<&str>,
+) {
+    write_startup_event(json!({
+        "kind": kind,
+        "target_root": bounded_diagnostic(&target_root.to_string_lossy()),
+        "restored_root": restored_root.map(|value| bounded_diagnostic(&value.to_string_lossy())),
+        "reason_code": reason_code.map(bounded_diagnostic),
+        "message": message.map(bounded_diagnostic),
+    }));
 }
 
 fn status_from(
@@ -3071,11 +3398,32 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 #[cfg(test)]
 mod tests {
     use super::{
-        RUserStartupFiles, bounded_diagnostic, classify_startup_error, configure_user_startup,
-        data_view_delimited_text, ensure_artifact_export_target, ensure_supported_r_version,
-        existing_startup_file, has_png_signature, parse_r_runtime_probe, run_is_retryable,
-        safe_delete_project_file, write_r_probe_script,
+        AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RuntimeConfig,
+        StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic,
+        classify_startup_error, configure_user_startup, data_view_delimited_text,
+        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
+        has_png_signature, parse_r_runtime_probe, project_switch_blocker,
+        switch_project_with_watcher_factory, run_is_retryable, safe_delete_project_file,
+        write_r_probe_script,
     };
+
+    use crate::project::{
+        ProjectSessionSnapshot, ProjectSessionStore, ProjectSwitchBlockerKind,
+        ProjectWatcherControl,
+    };
+    use rho_server::coordinator::PendingApprovalRegistry;
+    use rho_store::{
+        AgentTurnDraft, ApprovalRequestDraft, EnvironmentOperationRequestDraft, RunDraft, Store,
+        normalize_project_root,
+    };
+    use serde_json::json;
+    use std::collections::HashMap;
+    use std::path::Path;
+    use std::process::Command;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use tempfile::TempDir;
+    use tokio::sync::{Mutex, RwLock};
 
     #[test]
     fn retries_only_scientific_workspace_execution() {
@@ -3085,10 +3433,407 @@ mod tests {
         assert!(!run_is_retryable("workspace.set_project_root", "system"));
         assert!(!run_is_retryable("workspace.bootstrap", "system"));
     }
-    use serde_json::json;
-    use std::path::Path;
-    use std::process::Command;
-    use tempfile::TempDir;
+
+    fn test_runtime_config(store_path: &Path, data_dir: &Path) -> RuntimeConfig {
+        RuntimeConfig {
+            data_dir: data_dir.to_path_buf(),
+            kernelspec: data_dir.join("kernel.json"),
+            rscript: Path::new("Rscript").to_path_buf(),
+            r_version: "R version 4.6.1".to_string(),
+            r_home: "C:/R".to_string(),
+            r_profile_user: None,
+            r_environ_user: None,
+            bridge_package: data_dir.join("rho.bridge"),
+            agent_package: data_dir.join("rho.agent"),
+            agent_runtime: AgentRuntimeStatus {
+                available: true,
+                aisdk_version: Some("1.0.0".to_string()),
+                error: None,
+            },
+            store_path: store_path.to_path_buf(),
+        }
+    }
+
+    fn test_app_state(data_dir: &Path, project_root: &Path, store_path: &Path) -> AppState {
+        AppState {
+            data_dir: data_dir.to_path_buf(),
+            ark: data_dir.join("ark.exe"),
+            config: std::sync::RwLock::new(Some(test_runtime_config(store_path, data_dir))),
+            selected_rscript: std::sync::RwLock::new(None),
+            startup: std::sync::RwLock::new(StartupView {
+                phase: "shell_ready".to_string(),
+                busy: false,
+                runtime: None,
+                issue: None,
+            }),
+            project_store: ProjectSessionStore::new(data_dir.to_path_buf()).unwrap(),
+            project_root: RwLock::new(project_root.to_path_buf()),
+            project_watcher: Mutex::new(None),
+            session: RwLock::new(None),
+            context: Mutex::new(None),
+            approvals: Arc::new(PendingApprovalRegistry::default()),
+            environment_approvals: Arc::new(PendingApprovalRegistry::default()),
+            agent_tasks: Arc::new(Mutex::new(HashMap::new())),
+            agent_llm_test_control: AgentModelTestControl::default(),
+            switch_test_control: SwitchTestControl::default(),
+            shutdown_started: AtomicBool::new(false),
+        }
+    }
+
+    fn create_waiting_approval(store: &mut Store, project_root: &str, turn_id: &str, request_id: &str) {
+        store
+            .create_agent_turn(&AgentTurnDraft {
+                turn_id: turn_id.to_string(),
+                project_root: project_root.to_string(),
+                mode: "ask".to_string(),
+                prompt: "Need approval".to_string(),
+                model: "test-model".to_string(),
+                workspace_id: "ws-1".to_string(),
+                state_revision_before: 1,
+                project_revision_before: 1,
+            })
+            .unwrap();
+        store
+            .create_approval_request(&ApprovalRequestDraft {
+                request_id: request_id.to_string(),
+                turn_id: turn_id.to_string(),
+                project_root: project_root.to_string(),
+                tool: "write_file".to_string(),
+                policy: "ask".to_string(),
+                arguments_json: "{}".to_string(),
+                code: None,
+                workspace_id: "ws-1".to_string(),
+                state_revision: 1,
+                project_revision: 1,
+            })
+            .unwrap();
+    }
+
+    fn save_session_fixture(
+        state: &AppState,
+        root: &Path,
+        active_document: &str,
+        left_panel: u32,
+    ) -> ProjectSessionSnapshot {
+        let snapshot = ProjectSessionSnapshot {
+            open_documents: vec![],
+            closed_documents: vec![],
+            active_document: Some(active_document.to_string()),
+            panels: crate::project::PanelSizes {
+                left: Some(left_panel),
+                right: Some(300),
+                dock: Some(240),
+            },
+        };
+        state.project_store.save_session(root, &snapshot).unwrap();
+        snapshot
+    }
+
+    #[test]
+    fn project_switch_preflight_blocks_active_run() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            store
+                .create_run(&RunDraft {
+                    run_id: "run-active".to_string(),
+                    parent_run_id: None,
+                    project_root: normalized_root.clone(),
+                    origin: "user".to_string(),
+                    request_type: "workspace.execute".to_string(),
+                    operation_class: "scientific".to_string(),
+                    code: "x <- 1".to_string(),
+                    arguments_json: "{}".to_string(),
+                    source_path: None,
+                    execution_mode: Some("console".to_string()),
+                    document_version: None,
+                    workspace_id: "ws-1".to_string(),
+                    state_revision_before: 1,
+                    project_revision_before: 1,
+                    environment_snapshot_id: None,
+                })
+                .unwrap();
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+
+            let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
+            assert_eq!(blocker.kind, ProjectSwitchBlockerKind::ActiveRun);
+            assert_eq!(blocker.run_id.as_deref(), Some("run-active"));
+        });
+    }
+
+    #[test]
+    fn project_switch_preflight_blocks_active_agent_turn() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+            let handle = tauri::async_runtime::spawn(async { std::future::pending::<()>().await });
+            state
+                .agent_tasks
+                .lock()
+                .await
+                .insert("turn-running".to_string(), handle);
+
+            let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
+            assert_eq!(blocker.kind, ProjectSwitchBlockerKind::AgentTurn);
+            assert_eq!(blocker.turn_id.as_deref(), Some("turn-running"));
+
+            if let Some(handle) = state.agent_tasks.lock().await.remove("turn-running") {
+                handle.abort();
+            }
+        });
+    }
+
+    #[test]
+    fn project_switch_preflight_blocks_waiting_approval() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            create_waiting_approval(&mut store, &normalized_root, "turn-approval", "req-approval");
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+            let _receiver = state.approvals.register("req-approval".to_string()).await;
+
+            let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
+            assert_eq!(blocker.kind, ProjectSwitchBlockerKind::Approval);
+            assert_eq!(blocker.turn_id.as_deref(), Some("turn-approval"));
+            assert_eq!(blocker.request_id.as_deref(), Some("req-approval"));
+        });
+    }
+
+    #[test]
+    fn project_switch_preflight_blocks_environment_operation() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            store
+                .create_environment_operation_request(&EnvironmentOperationRequestDraft {
+                    request_id: "env-req-1".to_string(),
+                    turn_id: None,
+                    source: "direct".to_string(),
+                    request_name: "renv::restore".to_string(),
+                    project_root: normalized_root.clone(),
+                    arguments_json: "{}".to_string(),
+                    preview_json: "{}".to_string(),
+                    preview_sha256: "sha".to_string(),
+                    workspace_id: "ws-1".to_string(),
+                    state_revision: 1,
+                    project_revision: 1,
+                    before_snapshot_id: None,
+                })
+                .unwrap();
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+            let _receiver = state
+                .environment_approvals
+                .register("env-req-1".to_string())
+                .await;
+
+            let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
+            assert_eq!(blocker.kind, ProjectSwitchBlockerKind::EnvironmentOperation);
+            assert_eq!(blocker.request_id.as_deref(), Some("env-req-1"));
+            assert_eq!(blocker.operation_status.as_deref(), Some("requested"));
+        });
+    }
+
+    #[test]
+    fn project_switch_preflight_allows_clean_project() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+
+            assert!(project_switch_blocker(&state).await.unwrap().is_none());
+        });
+    }
+
+    #[test]
+    fn project_switch_commits_only_after_full_chain_success() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_a = tempdir.path().join("project-a");
+            let project_b = tempdir.path().join("project-b");
+            std::fs::create_dir_all(&project_a).unwrap();
+            std::fs::create_dir_all(&project_b).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let root_a = normalize_project_root(project_a.to_string_lossy().as_ref());
+            let root_b = normalize_project_root(project_b.to_string_lossy().as_ref());
+            store.set_project_root(Some(&root_a)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_a, &store_path);
+            save_session_fixture(&state, &project_a, "old.R", 210);
+            let target_session = save_session_fixture(&state, &project_b, "new.R", 260);
+            state
+                .switch_test_control
+                .succeed_without_running(SwitchTestStep::SyncWorkspace);
+
+            let response = switch_project_with_watcher_factory(
+                project_b.clone(),
+                Some(target_session.clone()),
+                &state,
+                |_| Ok(ProjectWatcherControl::noop()),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(response.status, "ready");
+            assert_eq!(response.session.active_document.as_deref(), Some("new.R"));
+            assert_eq!(
+                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                project_b.to_string_lossy().replace('\\', "/")
+            );
+            let active_root = Store::open(&store_path)
+                .unwrap()
+                .active_project_root()
+                .unwrap()
+                .unwrap();
+            assert_eq!(active_root, root_b);
+            let last_opened = state
+                .project_store
+                .last_opened_project()
+                .unwrap()
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            assert_eq!(last_opened, project_b.to_string_lossy().replace('\\', "/"));
+        });
+    }
+
+    #[test]
+    fn project_switch_returns_failed_restored_and_preserves_previous_state() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_a = tempdir.path().join("project-a");
+            let project_b = tempdir.path().join("project-b");
+            std::fs::create_dir_all(&project_a).unwrap();
+            std::fs::create_dir_all(&project_b).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let root_a = normalize_project_root(project_a.to_string_lossy().as_ref());
+            store.set_project_root(Some(&root_a)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_a, &store_path);
+            let previous_session = save_session_fixture(&state, &project_a, "old.R", 210);
+            save_session_fixture(&state, &project_b, "new.R", 260);
+            state
+                .switch_test_control
+                .succeed_without_running(SwitchTestStep::SyncWorkspace);
+            state
+                .switch_test_control
+                .fail(
+                    SwitchTestStep::SetActiveProjectRoot,
+                    "inject store root failure",
+                );
+            state
+                .switch_test_control
+                .succeed_without_running(SwitchTestStep::RestoreWorkspace);
+
+            let response = switch_project_with_watcher_factory(
+                project_b.clone(),
+                None,
+                &state,
+                |_| Ok(ProjectWatcherControl::noop()),
+            )
+            .await
+            .unwrap();
+
+            let restored_root = project_a.to_string_lossy().replace('\\', "/");
+            assert_eq!(response.status, "failed_restored");
+            assert_eq!(response.reason_code.as_deref(), Some("project_switch_store_root_failed"));
+            assert_eq!(response.restored_root.as_deref(), Some(restored_root.as_str()));
+            assert_eq!(response.session.active_document, previous_session.active_document);
+            assert_eq!(
+                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                project_a.to_string_lossy().replace('\\', "/")
+            );
+            let active_root = Store::open(&store_path)
+                .unwrap()
+                .active_project_root()
+                .unwrap()
+                .unwrap();
+            assert_eq!(active_root, root_a);
+        });
+    }
+
+    #[test]
+    fn project_switch_returns_fatal_when_restore_path_fails() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_a = tempdir.path().join("project-a");
+            let project_b = tempdir.path().join("project-b");
+            std::fs::create_dir_all(&project_a).unwrap();
+            std::fs::create_dir_all(&project_b).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let root_a = normalize_project_root(project_a.to_string_lossy().as_ref());
+            store.set_project_root(Some(&root_a)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_a, &store_path);
+            let previous_session = save_session_fixture(&state, &project_a, "old.R", 210);
+            state
+                .switch_test_control
+                .succeed_without_running(SwitchTestStep::SyncWorkspace);
+            state
+                .switch_test_control
+                .fail(
+                    SwitchTestStep::SetActiveProjectRoot,
+                    "inject store root failure",
+                );
+            state
+                .switch_test_control
+                .fail(SwitchTestStep::RestoreWorkspace, "inject restore failure");
+
+            let response = switch_project_with_watcher_factory(
+                project_b.clone(),
+                None,
+                &state,
+                |_| Ok(ProjectWatcherControl::noop()),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(response.status, "fatal");
+            assert!(response.restart_required);
+            assert_eq!(
+                response.reason_code.as_deref(),
+                Some("project_switch_restore_failed")
+            );
+            assert_eq!(response.session.active_document, previous_session.active_document);
+            assert_eq!(
+                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                project_a.to_string_lossy().replace('\\', "/")
+            );
+        });
+    }
 
     #[test]
     fn enforces_the_documented_minimum_r_version() {
@@ -3771,6 +4516,7 @@ fn main() {
                 environment_approvals: Arc::new(PendingApprovalRegistry::default()),
                 agent_tasks: Arc::new(Mutex::new(HashMap::new())),
                 agent_llm_test_control: AgentModelTestControl::default(),
+                switch_test_control: SwitchTestControl::default(),
                 shutdown_started: AtomicBool::new(false),
             });
             Ok(())
