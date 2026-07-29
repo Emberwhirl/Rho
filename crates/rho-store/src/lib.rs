@@ -409,6 +409,21 @@ pub struct ArtifactRecordSummary {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RetentionScopeSummary {
+    pub plot_history_count: i64,
+    pub plot_payload_bytes: i64,
+    pub artifact_record_count: i64,
+    pub artifact_metadata_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectRetentionSummary {
+    pub project_root: String,
+    pub session: RetentionScopeSummary,
+    pub project: RetentionScopeSummary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTurnDraft {
     pub turn_id: String,
@@ -1850,6 +1865,52 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn project_retention_summary(
+        &self,
+        project_root: &str,
+        workspace_id: Option<&str>,
+    ) -> Result<ProjectRetentionSummary, StoreError> {
+        Ok(ProjectRetentionSummary {
+            project_root: project_root.to_string(),
+            session: self.retention_scope_summary(project_root, workspace_id, true)?,
+            project: self.retention_scope_summary(project_root, workspace_id, false)?,
+        })
+    }
+
+    fn retention_scope_summary(
+        &self,
+        project_root: &str,
+        workspace_id: Option<&str>,
+        session_only: bool,
+    ) -> Result<RetentionScopeSummary, StoreError> {
+        let (plot_history_count, plot_payload_bytes) = self.connection.query_row(
+            "SELECT
+                COUNT(*),
+                COALESCE(SUM(LENGTH(payload_json)), 0)
+             FROM plot_artifacts
+             WHERE project_root = ?1
+               AND (?2 = 0 OR workspace_id IS ?3)",
+            params![project_root, if session_only { 1 } else { 0 }, workspace_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let (artifact_record_count, artifact_metadata_bytes) = self.connection.query_row(
+            "SELECT
+                COUNT(*),
+                COALESCE(SUM(LENGTH(metadata_json)), 0)
+             FROM artifact_records
+             WHERE project_root = ?1
+               AND (?2 = 0 OR workspace_id IS ?3)",
+            params![project_root, if session_only { 1 } else { 0 }, workspace_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok(RetentionScopeSummary {
+            plot_history_count,
+            plot_payload_bytes,
+            artifact_record_count,
+            artifact_metadata_bytes,
+        })
+    }
+
     pub fn find_run_detail_for_workspace_state(
         &self,
         project_root: &str,
@@ -2174,7 +2235,9 @@ fn create_pre_migration_backup(
     Ok(Some(backup_path))
 }
 
-fn v7_record_counts(transaction: &rusqlite::Transaction<'_>) -> Result<MigrationRecordCounts, StoreError> {
+fn v7_record_counts(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<MigrationRecordCounts, StoreError> {
     let mut counts = MigrationRecordCounts::default();
     for table in ["runs", "agent_turns", "approval_requests", "plot_artifacts"] {
         counts += table_project_identity_counts(transaction, table)?;
@@ -2193,13 +2256,15 @@ fn table_project_identity_counts(
             COALESCE(SUM(CASE WHEN project_root IS NOT NULL AND TRIM(project_root) = '' THEN 1 ELSE 0 END), 0)
          FROM {table}"
     );
-    transaction.query_row(&sql, [], |row| {
-        Ok(MigrationRecordCounts {
-            scoped: row.get(0)?,
-            legacy_unscoped: row.get(1)?,
-            rejected: row.get(2)?,
+    transaction
+        .query_row(&sql, [], |row| {
+            Ok(MigrationRecordCounts {
+                scoped: row.get(0)?,
+                legacy_unscoped: row.get(1)?,
+                rejected: row.get(2)?,
+            })
         })
-    }).map_err(StoreError::from)
+        .map_err(StoreError::from)
 }
 
 fn rebuild_runs_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
@@ -2436,7 +2501,10 @@ fn rebuild_plot_artifacts_v8(transaction: &rusqlite::Transaction<'_>) -> Result<
     Ok(())
 }
 
-fn assert_not_null_project_identity(connection: &Connection, table: &str) -> Result<(), StoreError> {
+fn assert_not_null_project_identity(
+    connection: &Connection,
+    table: &str,
+) -> Result<(), StoreError> {
     let pragma = format!("PRAGMA table_info({table})");
     let mut statement = connection.prepare(&pragma)?;
     let rows = statement.query_map([], |row| {
@@ -2474,7 +2542,9 @@ fn assert_index_exists(connection: &Connection, index_name: &str) -> Result<(), 
     if exists {
         Ok(())
     } else {
-        Err(invalid_v8_schema(format!("required index {index_name} is missing")))
+        Err(invalid_v8_schema(format!(
+            "required index {index_name} is missing"
+        )))
     }
 }
 
@@ -2835,22 +2905,26 @@ mod tests {
              )",
             [now.clone()],
         ).unwrap();
-        connection.execute(
-            "INSERT INTO plot_artifacts(
+        connection
+            .execute(
+                "INSERT INTO plot_artifacts(
                 plot_id, run_id, project_root, media_type, payload_json, created_at
              ) VALUES(
                 'plot_scoped', 'run_scoped', 'D:/projects/A', 'application/json', '{}', ?1
              )",
-            [now.clone()],
-        ).unwrap();
-        connection.execute(
-            "INSERT INTO plot_artifacts(
+                [now.clone()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO plot_artifacts(
                 plot_id, run_id, project_root, media_type, payload_json, created_at
              ) VALUES(
                 'plot_legacy', 'run_legacy', NULL, 'application/json', '{}', ?1
              )",
-            [now],
-        ).unwrap();
+                [now],
+            )
+            .unwrap();
     }
 
     fn create_nonempty_store_without_schema_version(path: &Path) {
@@ -3194,6 +3268,149 @@ mod tests {
             .unwrap();
         assert_eq!(run.run_id, "run_science_1");
         assert_eq!(run.source_path.as_deref(), Some("analysis.R"));
+    }
+
+    #[test]
+    fn summarizes_retention_by_project_and_session_scope() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        let session_plot_payload = "{\"image/png\":\"abc\"}".to_string();
+        let project_plot_payload = "{\"image/png\":\"abcdef\"}".to_string();
+        let other_project_plot_payload = "{\"image/png\":\"z\"}".to_string();
+        let session_artifact_metadata = "{\"tool\":\"session\"}".to_string();
+        let project_artifact_metadata = "{\"tool\":\"project\"}".to_string();
+        let other_project_artifact_metadata = "{\"tool\":\"other\"}".to_string();
+
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_session".to_string(),
+                run_id: "run_session".to_string(),
+                project_root: Some("D:/Rho/project-a".to_string()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: session_plot_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_project".to_string(),
+                run_id: "run_project".to_string(),
+                project_root: Some("D:/Rho/project-a".to_string()),
+                source_path: Some("report.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(2),
+                workspace_id: Some("ws_other".to_string()),
+                state_revision: Some(2),
+                project_revision: Some(2),
+                media_type: "image/png".to_string(),
+                payload_json: project_plot_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_other_project".to_string(),
+                run_id: "run_other_project".to_string(),
+                project_root: Some("D:/Rho/project-b".to_string()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: other_project_plot_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        store
+            .create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: "artifact_session".to_string(),
+                artifact_kind: "plot_export".to_string(),
+                run_id: Some("run_session".to_string()),
+                project_root: "D:/Rho/project-a".to_string(),
+                output_path: "artifacts/session.png".to_string(),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                metadata_json: session_artifact_metadata.clone(),
+                provenance_complete: true,
+                incomplete_reason: None,
+            })
+            .unwrap();
+        store
+            .create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: "artifact_project".to_string(),
+                artifact_kind: "render_output".to_string(),
+                run_id: Some("run_project".to_string()),
+                project_root: "D:/Rho/project-a".to_string(),
+                output_path: "reports/project.html".to_string(),
+                source_path: Some("report.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(2),
+                workspace_id: Some("ws_other".to_string()),
+                state_revision: Some(2),
+                project_revision: Some(2),
+                media_type: "text/html".to_string(),
+                metadata_json: project_artifact_metadata.clone(),
+                provenance_complete: true,
+                incomplete_reason: None,
+            })
+            .unwrap();
+        store
+            .create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: "artifact_other_project".to_string(),
+                artifact_kind: "render_output".to_string(),
+                run_id: Some("run_other_project".to_string()),
+                project_root: "D:/Rho/project-b".to_string(),
+                output_path: "reports/other.html".to_string(),
+                source_path: Some("report.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(3),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(3),
+                project_revision: Some(3),
+                media_type: "text/html".to_string(),
+                metadata_json: other_project_artifact_metadata.clone(),
+                provenance_complete: true,
+                incomplete_reason: None,
+            })
+            .unwrap();
+
+        let summary = store
+            .project_retention_summary("D:/Rho/project-a", Some("ws_session"))
+            .unwrap();
+        assert_eq!(summary.project_root, "D:/Rho/project-a");
+        assert_eq!(summary.session.plot_history_count, 1);
+        assert_eq!(
+            summary.session.plot_payload_bytes,
+            session_plot_payload.len() as i64
+        );
+        assert_eq!(summary.session.artifact_record_count, 1);
+        assert_eq!(
+            summary.session.artifact_metadata_bytes,
+            session_artifact_metadata.len() as i64
+        );
+        assert_eq!(summary.project.plot_history_count, 2);
+        assert_eq!(
+            summary.project.plot_payload_bytes,
+            (session_plot_payload.len() + project_plot_payload.len()) as i64
+        );
+        assert_eq!(summary.project.artifact_record_count, 2);
+        assert_eq!(
+            summary.project.artifact_metadata_bytes,
+            (session_artifact_metadata.len() + project_artifact_metadata.len()) as i64
+        );
     }
 
     #[test]
@@ -3670,7 +3887,10 @@ mod tests {
                 .ends_with("rho.sqlite.schema-v7.bak")
         );
         assert_eq!(store.list_runs("D:/projects/A", None).unwrap().len(), 1);
-        assert_eq!(store.list_agent_turns("D:/projects/A", None).unwrap().len(), 1);
+        assert_eq!(
+            store.list_agent_turns("D:/projects/A", None).unwrap().len(),
+            1
+        );
         assert_eq!(
             store
                 .list_approval_requests("D:/projects/A", None, None)

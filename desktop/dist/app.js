@@ -36,6 +36,7 @@ const state = {
   objects: [],
   plots: [],
   artifacts: [],
+  retentionSummary: null,
   plotScope: "session",
   selectedPlotId: null,
   selectedArtifactId: null,
@@ -688,6 +689,39 @@ function mockArtifactView(record) {
   };
 }
 
+function mockRetentionScopeSummary({ sessionOnly }) {
+  const plots = mockPlots.filter((plot) =>
+    plot.project_root === mockLastProject
+    && (!sessionOnly || plot.workspace_id === "desktop_mock")
+  );
+  const artifacts = mockArtifacts.filter((artifact) =>
+    artifact.project_root === mockLastProject
+    && (!sessionOnly || artifact.workspace_id === "desktop_mock")
+  );
+  return {
+    plot_history_count: plots.length,
+    plot_payload_bytes: plots.reduce((total, plot) => total + String(plot.payload_json || "").length, 0),
+    artifact_record_count: artifacts.length,
+    artifact_metadata_bytes: artifacts.reduce((total, artifact) => total + String(artifact.metadata_json || "").length, 0),
+  };
+}
+
+function mockProjectRetentionSummary() {
+  return {
+    project_root: mockLastProject,
+    session: mockRetentionScopeSummary({ sessionOnly: true }),
+    project: mockRetentionScopeSummary({ sessionOnly: false }),
+    policy: {
+      plot_history: "Manual delete removes plot-history rows only.",
+      artifact_records: "Manual delete removes artifact-record rows only.",
+      agent_history: "Manual delete removes Agent turns, events, and approvals for this project.",
+      output_files: "Output files stay on disk; current history/record deletion does not remove files.",
+      automatic_pruning: false,
+      quota_enforced: false,
+    },
+  };
+}
+
 function mockRunForWorkspaceState(workspaceId, stateRevision, projectRevision) {
   return mockRuns.find((run) =>
     run.workspace_id === workspaceId
@@ -1199,6 +1233,9 @@ async function mockInvoke(command, args) {
       && (!args.session_only || plot.workspace_id === "desktop_mock")
     );
     return structuredClone(plots.slice(0, args.limit || 50));
+  }
+  if (command === "get_project_retention_summary") {
+    return structuredClone(mockProjectRetentionSummary());
   }
   if (command === "clear_plot_artifacts") {
     const before = mockPlots.length;
@@ -2754,16 +2791,18 @@ function activeRunRecord() {
 
 async function loadRunData() {
   try {
-    const [runs, problems, plots, artifacts] = await Promise.all([
+    const [runs, problems, plots, artifacts, retentionSummary] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
       invoke("list_problems", { limit: 50 }),
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
+      invoke("get_project_retention_summary"),
     ]);
     state.runs = runs || [];
     state.problems = problems || [];
     state.plots = plots || [];
     state.artifacts = artifacts || [];
+    state.retentionSummary = retentionSummary || null;
     if (!state.plots.some((plot) => plot.plot_id === state.selectedPlotId)) {
       state.selectedPlotId = state.plots[0]?.plot_id || null;
     }
@@ -4350,11 +4389,53 @@ function renderArtifactDetail() {
   action.disabled = !artifact.source_path;
 }
 
+function renderRetentionSummary() {
+  const metrics = $("#retentionSummaryMetrics");
+  const policyList = $("#retentionPolicyList");
+  const scopeBadge = $("#retentionScopeBadge");
+  if (!metrics || !policyList || !scopeBadge) return;
+  policyList.replaceChildren();
+  const summary = state.retentionSummary;
+  const scopeName = state.plotScope === "session" ? "session" : "project";
+  scopeBadge.textContent = scopeName;
+  if (!summary) {
+    metrics.textContent = "Retention summary is unavailable.";
+    return;
+  }
+  const scope = state.plotScope === "session" ? summary.session : summary.project;
+  metrics.textContent = [
+    `${scope.plot_history_count} plot rows`,
+    `${formatBytes(scope.plot_payload_bytes || 0)} plot payload`,
+    `${scope.artifact_record_count} artifact rows`,
+    `${formatBytes(scope.artifact_metadata_bytes || 0)} artifact metadata`,
+  ].join(" · ");
+  [
+    ["Plots", summary.policy?.plot_history],
+    ["Artifacts", summary.policy?.artifact_records],
+    ["Agent", summary.policy?.agent_history],
+    ["Files", summary.policy?.output_files],
+    ["Auto prune", summary.policy?.automatic_pruning ? "Enabled" : "Not enabled"],
+    ["Quotas", summary.policy?.quota_enforced ? "Enforced" : "Not enforced"],
+  ].forEach(([label, value]) => {
+    const row = document.createElement("div");
+    row.className = "retention-policy-item";
+    const name = document.createElement("strong");
+    name.className = "retention-policy-label";
+    name.textContent = label;
+    const text = document.createElement("span");
+    text.className = "retention-policy-value";
+    text.textContent = value;
+    row.append(name, text);
+    policyList.append(row);
+  });
+}
+
 function renderArtifactRecords() {
   const list = $("#artifactRecordList");
   const outputList = $("#artifactOutputList");
   list.replaceChildren();
   outputList.replaceChildren();
+  renderRetentionSummary();
   $("#artifactOutputCount").textContent = String(state.artifacts.length);
   const empty = $("#artifactEmpty");
   empty.classList.toggle("hidden", state.artifacts.length > 0);
@@ -5213,15 +5294,15 @@ async function exportActivePlot() {
 
 async function clearArtifacts(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
-  if (!window.confirm(`Clear artifact records from ${scope}?`)) return;
+  if (!window.confirm(`Delete output records from ${scope}? Output files are not deleted.`)) return;
   try {
     await invoke("clear_artifact_records", { session_only: sessionOnly });
     state.selectedArtifactId = null;
     state.selectedArtifactDetail = null;
     await loadRunData();
-    toast(`Cleared artifact records from ${scope}.`);
+    toast(`Deleted output records from ${scope}. Output files were left in place.`);
   } catch (error) {
-    toast(`Could not clear artifact records: ${error}`, true);
+    toast(`Could not delete output records: ${error}`, true);
   }
 }
 
@@ -6943,7 +7024,7 @@ $("#agentCancelButton").addEventListener("click", async () => {
   }
 });
 $("#clearAgentHistoryButton").addEventListener("click", async () => {
-  if (!window.confirm("Clear all Agent history?")) return;
+  if (!window.confirm("Delete all Agent history for this project?")) return;
   try {
     await invoke("clear_agent_history");
     state.selectedTurnId = null;
@@ -6954,9 +7035,9 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     clearFileEditDecisions();
     clearAgentEditHighlight();
     await Promise.all([loadAgentData(), loadRunData()]);
-    toast("Agent history cleared.");
+    toast("Deleted Agent history for this project.");
   } catch (error) {
-    toast(`Could not clear Agent history: ${error}`, true);
+    toast(`Could not delete Agent history: ${error}`, true);
   }
 });
 $("#agentInput").addEventListener("keydown", (event) => {
@@ -7088,13 +7169,13 @@ $("#artifactsShortcut").addEventListener("click", () => switchDockTab("plots"));
 $("#plotExportButton").addEventListener("click", exportActivePlot);
 async function clearPlots(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
-  if (!window.confirm(`Clear plots from ${scope}?`)) return;
+  if (!window.confirm(`Delete plot history from ${scope}? Exported files are not deleted.`)) return;
   try {
     await invoke("clear_plot_artifacts", { session_only: sessionOnly });
     await loadRunData();
-    toast(`Cleared plots from ${scope}.`);
+    toast(`Deleted plot history from ${scope}. Exported files were left in place.`);
   } catch (error) {
-    toast(`Could not clear plots: ${error}`, true);
+    toast(`Could not delete plot history: ${error}`, true);
   }
 }
 $("#clearSessionPlotsButton").addEventListener("click", () => clearPlots(true));

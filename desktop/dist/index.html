@@ -193,8 +193,8 @@ plot(
               </div>
               <div class="plot-clear-actions">
                 <button id="plotExportButton" type="button" title="Export selected plot as PNG">Export PNG</button>
-                <button id="clearSessionPlotsButton" type="button" title="Clear session plots">Clear session</button>
-                <button id="clearProjectPlotsButton" type="button" title="Clear current project plots">Clear project</button>
+                <button id="clearSessionPlotsButton" type="button" title="Delete session plot history">Delete session plots</button>
+                <button id="clearProjectPlotsButton" type="button" title="Delete current project plot history">Delete project plots</button>
               </div>
             </div>
             <div id="plotEmpty" class="empty-state"><span class="empty-icon">▧</span><strong>No plots yet</strong></div>
@@ -204,10 +204,18 @@ plot(
               <div class="artifact-panel-header">
                 <strong>Artifacts</strong>
                 <div class="plot-clear-actions">
-                  <button id="clearSessionArtifactsButton" type="button" title="Clear session artifacts">Clear session</button>
-                  <button id="clearProjectArtifactsButton" type="button" title="Clear current project artifacts">Clear project</button>
+                  <button id="clearSessionArtifactsButton" type="button" title="Delete session output records">Delete session records</button>
+                  <button id="clearProjectArtifactsButton" type="button" title="Delete current project output records">Delete project records</button>
                 </div>
               </div>
+              <section id="retentionSummaryCard" class="retention-summary-card" aria-label="Retention summary">
+                <div class="retention-summary-header">
+                  <strong>Retention</strong>
+                  <span id="retentionScopeBadge" class="revision-badge">session</span>
+                </div>
+                <div id="retentionSummaryMetrics" class="environment-contract">Retention summary is unavailable.</div>
+                <div id="retentionPolicyList" class="retention-policy-list"></div>
+              </section>
               <div id="artifactEmpty" class="empty-state compact-empty hidden"><strong>No artifacts yet</strong></div>
               <div id="artifactRecordList" class="artifact-record-list"></div>
               <div id="artifactDetailCard" class="render-result-card hidden">
@@ -245,7 +253,7 @@ plot(
             <div class="agent-header-actions">
               <button id="agentRuntimeRetryButton" class="agent-clear-button hidden" type="button" title="Retry Agent runtime check">Retry Agent</button>
               <button id="agentCancelButton" class="agent-cancel-button hidden" type="button" title="Cancel Agent turn" aria-label="Cancel Agent turn">■</button>
-              <button id="clearAgentHistoryButton" class="agent-clear-button" type="button" title="Clear Agent history">Clear</button>
+              <button id="clearAgentHistoryButton" class="agent-clear-button" type="button" title="Delete Agent history">Delete history</button>
               <span id="revisionBadge" class="revision-badge">rev 1</span>
             </div>
           </div>

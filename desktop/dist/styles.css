@@ -1188,6 +1188,42 @@ body.resizing-vertical { cursor: col-resize; }
   justify-content: space-between;
   gap: 8px;
 }
+.retention-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+.retention-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.retention-policy-list {
+  display: grid;
+  gap: 4px;
+}
+.retention-policy-item {
+  display: grid;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid #eef2f2;
+}
+.retention-policy-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.retention-policy-label {
+  font-size: 11px;
+}
+.retention-policy-value {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .artifact-record-list {
   display: grid;
   gap: 6px;

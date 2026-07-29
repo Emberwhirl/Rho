@@ -37,8 +37,8 @@ use rho_server::coordinator::{
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
-    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary, RunDetail, RunSummary,
-    Store, normalize_project_root,
+    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary,
+    ProjectRetentionSummary, RunDetail, RunSummary, Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -307,6 +307,23 @@ struct ArtifactRecordView {
     file_available: bool,
     output_absolute_path: String,
     run: Option<RunDetail>,
+}
+
+#[derive(Clone, Serialize)]
+struct RetentionPolicySnapshot {
+    plot_history: String,
+    artifact_records: String,
+    agent_history: String,
+    output_files: String,
+    automatic_pruning: bool,
+    quota_enforced: bool,
+}
+
+#[derive(Serialize)]
+struct ProjectRetentionView {
+    #[serde(flatten)]
+    summary: ProjectRetentionSummary,
+    policy: RetentionPolicySnapshot,
 }
 
 #[derive(Deserialize)]
@@ -1584,6 +1601,38 @@ async fn clear_plot_artifacts(
     Ok(json!({"deleted": deleted}))
 }
 
+fn current_retention_policy_snapshot() -> RetentionPolicySnapshot {
+    RetentionPolicySnapshot {
+        plot_history: "Manual delete removes plot-history rows only.".to_string(),
+        artifact_records: "Manual delete removes artifact-record rows only.".to_string(),
+        agent_history: "Manual delete removes Agent turns, events, and approvals for this project."
+            .to_string(),
+        output_files:
+            "Output files stay on disk; current history/record deletion does not remove files."
+                .to_string(),
+        automatic_pruning: false,
+        quota_enforced: false,
+    }
+}
+
+#[tauri::command]
+async fn get_project_retention_summary(
+    state: State<'_, AppState>,
+) -> Result<ProjectRetentionView, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let context = active_context(&state).await.map_err(display_error)?;
+    let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
+    let summary = read_store(&state)
+        .map_err(display_error)?
+        .project_retention_summary(&project_root, Some(&workspace_id))
+        .map_err(display_error)?;
+    Ok(ProjectRetentionView {
+        summary,
+        policy: current_retention_policy_snapshot(),
+    })
+}
+
 #[tauri::command]
 async fn retry_run(run_id: String, state: State<'_, AppState>) -> Result<Value, String> {
     let root = state.project_root.read().await.clone();
@@ -2339,11 +2388,9 @@ where
         .await;
     }
 
-    if let Err(error) = save_last_opened_project(
-        state,
-        &root,
-        SwitchTestStep::SaveLastOpenedProject,
-    ) {
+    if let Err(error) =
+        save_last_opened_project(state, &root, SwitchTestStep::SaveLastOpenedProject)
+    {
         return recover_failed_project_switch(
             state,
             &previous_ui_root,
@@ -2383,7 +2430,8 @@ async fn recover_failed_project_switch(
     message: String,
 ) -> Result<ProjectRestoreResponse> {
     let restore_result = async {
-        sync_workspace_project_root(state, previous_ui_root, SwitchTestStep::RestoreWorkspace).await?;
+        sync_workspace_project_root(state, previous_ui_root, SwitchTestStep::RestoreWorkspace)
+            .await?;
         set_store_active_project_root(
             state,
             previous_store_root,
@@ -2466,15 +2514,17 @@ async fn project_switch_blocker(state: &AppState) -> Result<Option<ProjectSwitch
     }
     drop(agent_tasks);
 
-    let waiting_approvals = store.list_approval_requests(&current_root, Some(10), Some("waiting"))?;
+    let waiting_approvals =
+        store.list_approval_requests(&current_root, Some(10), Some("waiting"))?;
     if approval_count > 0 || !waiting_approvals.is_empty() {
         return Ok(Some(ProjectSwitchBlocker {
             kind: ProjectSwitchBlockerKind::Approval,
-            message:
-                "Resolve the waiting approval before switching projects.".to_string(),
+            message: "Resolve the waiting approval before switching projects.".to_string(),
             pending_count: approval_count.max(waiting_approvals.len()),
             run_id: None,
-            turn_id: waiting_approvals.first().map(|approval| approval.turn_id.clone()),
+            turn_id: waiting_approvals
+                .first()
+                .map(|approval| approval.turn_id.clone()),
             request_id: waiting_approvals
                 .first()
                 .map(|approval| approval.request_id.clone()),
@@ -2482,11 +2532,8 @@ async fn project_switch_blocker(state: &AppState) -> Result<Option<ProjectSwitch
         }));
     }
 
-    if let Some(blocker) = environment_operation_switch_blocker(
-        &store,
-        &current_root,
-        environment_approval_count,
-    )?
+    if let Some(blocker) =
+        environment_operation_switch_blocker(&store, &current_root, environment_approval_count)?
     {
         return Ok(Some(blocker));
     }
@@ -2500,15 +2547,14 @@ fn environment_operation_switch_blocker(
     environment_approval_count: usize,
 ) -> Result<Option<ProjectSwitchBlocker>> {
     for status in ["running", "approved", "requested"] {
-        let requests = store.list_environment_operation_requests(project_root, Some(10), Some(status))?;
+        let requests =
+            store.list_environment_operation_requests(project_root, Some(10), Some(status))?;
         if !requests.is_empty() {
             let message = match status {
                 "running" => {
                     "Wait for the active direct environment operation to finish before switching projects."
                 }
-                _ => {
-                    "Resolve the direct environment operation decision before switching projects."
-                }
+                _ => "Resolve the direct environment operation decision before switching projects.",
             };
             return Ok(Some(ProjectSwitchBlocker {
                 kind: ProjectSwitchBlockerKind::EnvironmentOperation,
@@ -3399,12 +3445,11 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 mod tests {
     use super::{
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RuntimeConfig,
-        StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic,
-        classify_startup_error, configure_user_startup, data_view_delimited_text,
-        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
-        has_png_signature, parse_r_runtime_probe, project_switch_blocker,
-        switch_project_with_watcher_factory, run_is_retryable, safe_delete_project_file,
-        write_r_probe_script,
+        StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic, classify_startup_error,
+        configure_user_startup, data_view_delimited_text, ensure_artifact_export_target,
+        ensure_supported_r_version, existing_startup_file, has_png_signature,
+        parse_r_runtime_probe, project_switch_blocker, run_is_retryable, safe_delete_project_file,
+        switch_project_with_watcher_factory, write_r_probe_script,
     };
 
     use crate::project::{
@@ -3480,7 +3525,12 @@ mod tests {
         }
     }
 
-    fn create_waiting_approval(store: &mut Store, project_root: &str, turn_id: &str, request_id: &str) {
+    fn create_waiting_approval(
+        store: &mut Store,
+        project_root: &str,
+        turn_id: &str,
+        request_id: &str,
+    ) {
         store
             .create_agent_turn(&AgentTurnDraft {
                 turn_id: turn_id.to_string(),
@@ -3607,7 +3657,12 @@ mod tests {
             let mut store = Store::open(&store_path).unwrap();
             let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
             store.set_project_root(Some(&normalized_root)).unwrap();
-            create_waiting_approval(&mut store, &normalized_root, "turn-approval", "req-approval");
+            create_waiting_approval(
+                &mut store,
+                &normalized_root,
+                "turn-approval",
+                "req-approval",
+            );
             let state = test_app_state(tempdir.path(), &project_root, &store_path);
             let _receiver = state.approvals.register("req-approval".to_string()).await;
 
@@ -3708,7 +3763,12 @@ mod tests {
             assert_eq!(response.status, "ready");
             assert_eq!(response.session.active_document.as_deref(), Some("new.R"));
             assert_eq!(
-                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                state
+                    .project_root
+                    .read()
+                    .await
+                    .to_string_lossy()
+                    .replace('\\', "/"),
                 project_b.to_string_lossy().replace('\\', "/")
             );
             let active_root = Store::open(&store_path)
@@ -3747,32 +3807,42 @@ mod tests {
             state
                 .switch_test_control
                 .succeed_without_running(SwitchTestStep::SyncWorkspace);
-            state
-                .switch_test_control
-                .fail(
-                    SwitchTestStep::SetActiveProjectRoot,
-                    "inject store root failure",
-                );
+            state.switch_test_control.fail(
+                SwitchTestStep::SetActiveProjectRoot,
+                "inject store root failure",
+            );
             state
                 .switch_test_control
                 .succeed_without_running(SwitchTestStep::RestoreWorkspace);
 
-            let response = switch_project_with_watcher_factory(
-                project_b.clone(),
-                None,
-                &state,
-                |_| Ok(ProjectWatcherControl::noop()),
-            )
-            .await
-            .unwrap();
+            let response =
+                switch_project_with_watcher_factory(project_b.clone(), None, &state, |_| {
+                    Ok(ProjectWatcherControl::noop())
+                })
+                .await
+                .unwrap();
 
             let restored_root = project_a.to_string_lossy().replace('\\', "/");
             assert_eq!(response.status, "failed_restored");
-            assert_eq!(response.reason_code.as_deref(), Some("project_switch_store_root_failed"));
-            assert_eq!(response.restored_root.as_deref(), Some(restored_root.as_str()));
-            assert_eq!(response.session.active_document, previous_session.active_document);
             assert_eq!(
-                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                response.reason_code.as_deref(),
+                Some("project_switch_store_root_failed")
+            );
+            assert_eq!(
+                response.restored_root.as_deref(),
+                Some(restored_root.as_str())
+            );
+            assert_eq!(
+                response.session.active_document,
+                previous_session.active_document
+            );
+            assert_eq!(
+                state
+                    .project_root
+                    .read()
+                    .await
+                    .to_string_lossy()
+                    .replace('\\', "/"),
                 project_a.to_string_lossy().replace('\\', "/")
             );
             let active_root = Store::open(&store_path)
@@ -3802,24 +3872,20 @@ mod tests {
             state
                 .switch_test_control
                 .succeed_without_running(SwitchTestStep::SyncWorkspace);
-            state
-                .switch_test_control
-                .fail(
-                    SwitchTestStep::SetActiveProjectRoot,
-                    "inject store root failure",
-                );
+            state.switch_test_control.fail(
+                SwitchTestStep::SetActiveProjectRoot,
+                "inject store root failure",
+            );
             state
                 .switch_test_control
                 .fail(SwitchTestStep::RestoreWorkspace, "inject restore failure");
 
-            let response = switch_project_with_watcher_factory(
-                project_b.clone(),
-                None,
-                &state,
-                |_| Ok(ProjectWatcherControl::noop()),
-            )
-            .await
-            .unwrap();
+            let response =
+                switch_project_with_watcher_factory(project_b.clone(), None, &state, |_| {
+                    Ok(ProjectWatcherControl::noop())
+                })
+                .await
+                .unwrap();
 
             assert_eq!(response.status, "fatal");
             assert!(response.restart_required);
@@ -3827,9 +3893,17 @@ mod tests {
                 response.reason_code.as_deref(),
                 Some("project_switch_restore_failed")
             );
-            assert_eq!(response.session.active_document, previous_session.active_document);
             assert_eq!(
-                state.project_root.read().await.to_string_lossy().replace('\\', "/"),
+                response.session.active_document,
+                previous_session.active_document
+            );
+            assert_eq!(
+                state
+                    .project_root
+                    .read()
+                    .await
+                    .to_string_lossy()
+                    .replace('\\', "/"),
                 project_a.to_string_lossy().replace('\\', "/")
             );
         });
@@ -4345,7 +4419,9 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         .run_id
         .clone();
     ensure!(
-        store.get_run_detail(&project_b, &project_a_restart_run)?.is_none(),
+        store
+            .get_run_detail(&project_b, &project_a_restart_run)?
+            .is_none(),
         "project A restart run leaked into project B after Workspace R restart"
     );
 
@@ -4559,6 +4635,7 @@ fn main() {
             export_data_view_artifact,
             list_artifact_records,
             get_artifact_record,
+            get_project_retention_summary,
             list_project_skills,
             clear_artifact_records,
             clear_plot_artifacts,
