@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use rho_protocol::{Envelope, WorkspaceIdentity};
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -16,6 +16,7 @@ mod run;
 mod agent;
 mod artifact;
 mod environment;
+mod project;
 
 pub use agent::{
     AgentConversationTurn, AgentTurnDetail, AgentTurnDraft, AgentTurnEvent,
@@ -29,6 +30,9 @@ pub use environment::{
     EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
     EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary,
     EnvironmentSnapshotDraft, EnvironmentSnapshotRecord,
+};
+pub use project::{
+    PlotPayloadPruneResult, ProjectRetentionSummary, RetentionPolicy, RetentionScopeSummary,
 };
 pub use run::{ProblemSummary, RunDetail, RunDraft, RunFinish, RunSummary};
 
@@ -170,50 +174,6 @@ impl std::ops::AddAssign for MigrationRecordCounts {
 struct StoreOpenOptions {
     #[cfg(test)]
     inject_v7_failure_before_commit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RetentionScopeSummary {
-    pub plot_history_count: i64,
-    pub plot_payload_bytes: i64,
-    pub artifact_record_count: i64,
-    pub artifact_metadata_bytes: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProjectRetentionSummary {
-    pub project_root: String,
-    pub session: RetentionScopeSummary,
-    pub project: RetentionScopeSummary,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PlotPayloadPruneResult {
-    pub pruned_count: i64,
-    pub reclaimed_bytes: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RetentionPolicy {
-    pub max_plot_history_rows: Option<i64>,
-    pub max_plot_payload_bytes: Option<i64>,
-    pub max_artifact_record_rows: Option<i64>,
-    pub max_artifact_metadata_bytes: Option<i64>,
-    pub prune_order: String,
-    pub auto_prune_enabled: bool,
-}
-
-impl Default for RetentionPolicy {
-    fn default() -> Self {
-        Self {
-            max_plot_history_rows: Some(200),
-            max_plot_payload_bytes: Some(50 * 1024 * 1024),
-            max_artifact_record_rows: Some(500),
-            max_artifact_metadata_bytes: Some(100 * 1024 * 1024),
-            prune_order: "oldest_first".to_string(),
-            auto_prune_enabled: false,
-        }
-    }
 }
 
 #[derive(Debug)]
