@@ -4,7 +4,7 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
-## Unreleased
+## 0.3.0-dev.0 - 2026-07-31
 
 ### Added
 
@@ -15,6 +15,61 @@ this file records behavior that is already available in a released build.
 - Added deterministic generation and GitHub Pages deployment of the Rho
   release page and stable/development update manifests, based on validated
   GitHub Release evidence rather than free-form release text.
+
+### BH1: Project-scoped durable identity
+
+- Every durable record (runs, Agent turns, approvals, plot history,
+  artifact records, environment operations) now carries a canonical
+  `project_root` field.
+- Legacy unscoped records are detected and rejected during schema
+  migration; queries default to the active project.
+- Retry, approval-continuation, and workspace-state resolution are
+  isolated by project.
+- Cross-project leakage tests prevent reusing history, approvals, or
+  run identity across different project roots.
+
+### BH2: Project-switch state machine
+
+- Project switching is now broker-owned with typed blocking preflight.
+- Active Agent turns, pending approvals, and running environment
+  operations block the switch with an explicit reason.
+- Switching commits only after the full Workspace R → watcher → store
+  → UI chain succeeds; failure restores the previous project identity.
+- Fatal restoration failures surface a `restart_required` outcome
+  instead of silently entering a mixed-project state.
+
+### BH3: Transactional schema migration
+
+- SQLite schema migrates from `v7` to `v8` inside a single
+  transaction.
+- A same-directory backup is created before migration and preserved
+  when migration fails.
+- Legacy unscoped records are detected, counted, and rejected during
+  migration with a bounded reason code.
+- Migration outcomes are diagnosed through structured status, version,
+  backup path, and record counts.
+
+### BH4: Retention, privacy, and artifact lifecycle
+
+- Destructive actions now use truthful labels: Delete plot history,
+  Delete output records, Delete Agent history, and Free preview
+  storage.
+- Free preview storage replaces plot payloads with tombstones instead
+  of deleting rows; provenance, run identity, and metadata survive.
+- A per-project retention summary shows plot rows, payload bytes,
+  artifact rows, and artifact metadata broken down by session and
+  project scope.
+- Retention policy now carries concrete numeric limits (200 plot rows,
+  50 MB payload, 500 artifact rows, 100 MB metadata, oldest-first
+  prune order) rather than boolean flags.
+- All delete and prune actions are confined to the selected project;
+  cross-project guard tests prevent accidental data loss.
+
+### Changed
+
+- Version scheme advances to `0.3.0`; every commit increments the
+  dev suffix, and every completed Wave 2 hardening package
+  increments the minor version after acceptance.
 
 ## 0.2.0-dev.12 - 2026-07-22
 
