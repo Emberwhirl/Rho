@@ -191,15 +191,16 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 2 BH4 retention/privacy/artifact lifecycle is
-active; no later Wave 2 package is active**. Wave 0 automated review closed as
+Current program state: **Wave 2 BH1-BH4 are accepted; no later Wave 2 package
+is active**. Wave 0 automated review closed as
 `accept with follow-up`; the `0.3.x` representative-project and manual UI gates
 remain open and are not recorded as passed. BH1 project-scoped durable identity
 is accepted on current-source evidence and closes the Wave 1 isolation gate.
 BH3 is accepted on current-source migration evidence under its own focused
 handoff and verification gate. BH2 is accepted on current-source switching
-evidence under its own focused handoff and verification gate. BH4 is now
-separately authorized under its own focused handoff. The parallel
+evidence under its own focused handoff and verification gate. BH4 is accepted
+on current-source evidence under its own focused handoff and verification gate.
+The parallel
 `0.2.0-dev.12` and About/update
  tracks retain their own active acceptance contracts. BH5, UX1,
 modernization, and Waves 3-14 remain scheduled but not authorized.
@@ -265,8 +266,10 @@ BH4 was authorized on 2026-07-29 under
 [`plans/active-2026-07-29-bh4-retention-privacy-artifact-lifecycle-handoff.md`](../plans/active-2026-07-29-bh4-retention-privacy-artifact-lifecycle-handoff.md).
 Its scope is limited to project-scoped retention, truthful hide/prune/delete
 semantics, artifact/plot lifecycle rules, tombstones or retained metadata for
-removed payloads/files, and privacy-facing documentation/tests. It does not
-authorize BH5 refactoring, recovery UI, or any later feature package.
+removed payloads/files, and privacy-facing documentation/tests. BH4 closeout
+review found no unresolved P0/P1 finding; see
+[`verification/bh4/verification.md`](../verification/bh4/verification.md).
+It does not authorize BH5 refactoring, recovery UI, or any later feature package.
 
 UX1 may run in parallel because it inventories language and defines testable
 interaction contracts without claiming new behavior. Interface modernization

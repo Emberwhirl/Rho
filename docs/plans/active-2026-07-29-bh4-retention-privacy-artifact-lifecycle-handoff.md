@@ -1,6 +1,6 @@
 # BH4 Retention, Privacy, And Artifact Lifecycle Handoff
 
-Status: active
+Status: accepted
 
 Authorization date: 2026-07-29
 Authorized by: project owner
