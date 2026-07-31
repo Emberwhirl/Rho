@@ -1,7 +1,7 @@
 # Implemented Baseline Hardening Plan
 
-Status: proposed broader repair plan; BH1-BH4 accepted through focused
-handoffs, and BH5 not authorized
+Status: proposed broader repair plan; BH1-BH4 accepted, BH5 active, and
+Waves 3-14 not authorized
 
 Date: 2026-07-26
 Scope: project isolation, project-switch concurrency, durable-store migration,
@@ -30,7 +30,10 @@ now accepted. BH2 was authorized on 2026-07-28 under
 accepted. BH4 was authorized on 2026-07-29 under
 `active-2026-07-29-bh4-retention-privacy-artifact-lifecycle-handoff.md`
 and is now accepted.
-BH5 remains unapproved. Once approved, BH1-BH4 are correctness and privacy repairs
+BH5 was authorized on 2026-07-31 under
+`active-2026-07-31-bh5-incremental-module-boundaries-handoff.md`
+and is now active.
+Once approved, BH1-BH5 are correctness and structural repairs
 to the implemented baseline and take precedence over post-`0.3.x` features
 that read, compare, retry, or aggregate durable runs or Agent history.
 Complete each checkpoint and stop for review before beginning the next one.

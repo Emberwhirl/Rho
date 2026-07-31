@@ -191,18 +191,9 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 2 BH1-BH4 are accepted; no later Wave 2 package
-is active**. Wave 0 automated review closed as
-`accept with follow-up`; the `0.3.x` representative-project and manual UI gates
-remain open and are not recorded as passed. BH1 project-scoped durable identity
-is accepted on current-source evidence and closes the Wave 1 isolation gate.
-BH3 is accepted on current-source migration evidence under its own focused
-handoff and verification gate. BH2 is accepted on current-source switching
-evidence under its own focused handoff and verification gate. BH4 is accepted
-on current-source evidence under its own focused handoff and verification gate.
-The parallel
-`0.2.0-dev.12` and About/update
- tracks retain their own active acceptance contracts. BH5, UX1,
+Current program state: **Wave 2 BH5 incremental module boundaries is
+active; BH1-BH4 are accepted and no later Wave 2 package is active**. Wave 0
+automated review closed as `accept with follow-up`. BH5, UX1,
 modernization, and Waves 3-14 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
@@ -270,6 +261,13 @@ removed payloads/files, and privacy-facing documentation/tests. BH4 closeout
 review found no unresolved P0/P1 finding; see
 [`verification/bh4/verification.md`](../verification/bh4/verification.md).
 It does not authorize BH5 refactoring, recovery UI, or any later feature package.
+
+BH5 was authorized on 2026-07-31 under
+[`plans/active-2026-07-31-bh5-incremental-module-boundaries-handoff.md`](../plans/active-2026-07-31-bh5-incremental-module-boundaries-handoff.md).
+Its scope is limited to behavior-neutral extraction of store and command modules
+by durable domain (runs, Agent, Artifacts, environment, project/session). Each
+extraction is a separate commit with its own regression evidence. It does not
+change any test assertion, command signature, or frontend state key.
 
 UX1 may run in parallel because it inventories language and defines testable
 interaction contracts without claiming new behavior. Interface modernization
