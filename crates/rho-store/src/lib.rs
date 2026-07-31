@@ -12,6 +12,9 @@ const DEFAULT_LIMIT: usize = 50;
 pub(crate) const LEGACY_UNSCOPED: &str = "legacy_unscoped";
 
 mod migration;
+mod run;
+
+pub use run::{ProblemSummary, RunDetail, RunDraft, RunFinish, RunSummary};
 
 pub fn normalize_project_root(root: &str) -> String {
     let normalized = root.replace('\\', "/");
@@ -151,120 +154,6 @@ impl std::ops::AddAssign for MigrationRecordCounts {
 struct StoreOpenOptions {
     #[cfg(test)]
     inject_v7_failure_before_commit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunDraft {
-    pub run_id: String,
-    pub parent_run_id: Option<String>,
-    pub project_root: String,
-    pub origin: String,
-    pub request_type: String,
-    pub operation_class: String,
-    pub code: String,
-    pub arguments_json: String,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: String,
-    pub state_revision_before: i64,
-    pub project_revision_before: i64,
-    pub environment_snapshot_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunFinish {
-    pub run_id: String,
-    pub status: String,
-    pub terminal_reason: Option<String>,
-    pub workspace_id: Option<String>,
-    pub state_revision_after: Option<i64>,
-    pub project_revision_after: Option<i64>,
-    pub stdout: Option<String>,
-    pub value_text: Option<String>,
-    pub messages: Vec<String>,
-    pub warnings: Vec<String>,
-    pub error_message: Option<String>,
-    pub error_call: Option<String>,
-    pub traceback: Vec<String>,
-    pub environment_snapshot_id_after: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunSummary {
-    pub run_id: String,
-    pub parent_run_id: Option<String>,
-    pub project_root: String,
-    pub origin: String,
-    pub status: String,
-    pub started_at: String,
-    pub finished_at: Option<String>,
-    pub terminal_reason: Option<String>,
-    pub request_type: String,
-    pub operation_class: String,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision_before: Option<i64>,
-    pub project_revision_before: Option<i64>,
-    pub state_revision_after: Option<i64>,
-    pub project_revision_after: Option<i64>,
-    pub environment_snapshot_id: Option<String>,
-    pub environment_snapshot_id_after: Option<String>,
-    pub code_preview: String,
-    pub error_message: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProblemSummary {
-    pub run_id: String,
-    pub parent_run_id: Option<String>,
-    pub project_root: String,
-    pub origin: String,
-    pub status: String,
-    pub message: String,
-    pub call: Option<String>,
-    pub traceback: Vec<String>,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub started_at: String,
-    pub finished_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunDetail {
-    pub run_id: String,
-    pub parent_run_id: Option<String>,
-    pub project_root: String,
-    pub origin: String,
-    pub status: String,
-    pub started_at: String,
-    pub finished_at: Option<String>,
-    pub terminal_reason: Option<String>,
-    pub request_type: String,
-    pub operation_class: String,
-    pub code: String,
-    pub arguments_json: String,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision_before: Option<i64>,
-    pub project_revision_before: Option<i64>,
-    pub state_revision_after: Option<i64>,
-    pub project_revision_after: Option<i64>,
-    pub environment_snapshot_id: Option<String>,
-    pub environment_snapshot_id_after: Option<String>,
-    pub stdout: Option<String>,
-    pub value_text: Option<String>,
-    pub messages: Vec<String>,
-    pub warnings: Vec<String>,
-    pub error_message: Option<String>,
-    pub error_call: Option<String>,
-    pub traceback: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1026,7 +915,7 @@ impl Store {
                  FROM runs
                  WHERE project_root = ?1 AND run_id = ?2",
                 params![project_root, run_id],
-                decode_run_detail,
+                run::decode_run_detail,
             )
             .optional()
             .map_err(StoreError::from)
@@ -2026,7 +1915,7 @@ impl Store {
                     state_revision_after,
                     project_revision_after
                 ],
-                decode_run_detail,
+                run::decode_run_detail,
             )
             .optional()
             .map_err(StoreError::from)
@@ -2051,43 +1940,6 @@ impl Store {
             .optional()
             .map_err(StoreError::from)
     }
-}
-
-fn decode_run_detail(row: &Row<'_>) -> rusqlite::Result<RunDetail> {
-    let messages: String = row.get(24)?;
-    let warnings: String = row.get(25)?;
-    let traceback: String = row.get(28)?;
-    Ok(RunDetail {
-        run_id: row.get(0)?,
-        parent_run_id: row.get(1)?,
-        project_root: row.get(2)?,
-        origin: row.get(3)?,
-        status: row.get(4)?,
-        started_at: row.get(5)?,
-        finished_at: row.get(6)?,
-        terminal_reason: row.get(7)?,
-        request_type: row.get(8)?,
-        operation_class: row.get(9)?,
-        code: row.get(10)?,
-        arguments_json: row.get(11)?,
-        source_path: row.get(12)?,
-        execution_mode: row.get(13)?,
-        document_version: row.get(14)?,
-        workspace_id: row.get(15)?,
-        state_revision_before: row.get(16)?,
-        project_revision_before: row.get(17)?,
-        state_revision_after: row.get(18)?,
-        project_revision_after: row.get(19)?,
-        environment_snapshot_id: row.get(20)?,
-        environment_snapshot_id_after: row.get(21)?,
-        stdout: row.get(22)?,
-        value_text: row.get(23)?,
-        messages: decode_string_list(&messages).map_err(sqlite_function_error)?,
-        warnings: decode_string_list(&warnings).map_err(sqlite_function_error)?,
-        error_message: row.get(26)?,
-        error_call: row.get(27)?,
-        traceback: decode_string_list(&traceback).map_err(sqlite_function_error)?,
-    })
 }
 
 fn decode_artifact_record(row: &Row<'_>) -> rusqlite::Result<ArtifactRecordSummary> {
@@ -2214,11 +2066,11 @@ fn build_plot_payload_tombstone(media_type: &str) -> Result<String, StoreError> 
     .map_err(StoreError::from)
 }
 
-fn decode_string_list(input: &str) -> Result<Vec<String>, serde_json::Error> {
+pub(crate) fn decode_string_list(input: &str) -> Result<Vec<String>, serde_json::Error> {
     serde_json::from_str(input)
 }
 
-fn sqlite_function_error(error: serde_json::Error) -> rusqlite::Error {
+pub(crate) fn sqlite_function_error(error: serde_json::Error) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
 }
 
