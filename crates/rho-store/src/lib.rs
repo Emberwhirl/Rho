@@ -14,12 +14,16 @@ pub(crate) const LEGACY_UNSCOPED: &str = "legacy_unscoped";
 mod migration;
 mod run;
 mod agent;
+mod artifact;
 mod environment;
 
 pub use agent::{
     AgentConversationTurn, AgentTurnDetail, AgentTurnDraft, AgentTurnEvent,
     AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary, ApprovalDecisionRecord,
     ApprovalRequestDraft, ApprovalRequestSummary,
+};
+pub use artifact::{
+    ArtifactRecordDraft, ArtifactRecordSummary, PlotArtifactDraft, PlotArtifactSummary,
 };
 pub use environment::{
     EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
@@ -166,78 +170,6 @@ impl std::ops::AddAssign for MigrationRecordCounts {
 struct StoreOpenOptions {
     #[cfg(test)]
     inject_v7_failure_before_commit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlotArtifactDraft {
-    pub plot_id: String,
-    pub run_id: String,
-    pub project_root: Option<String>,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision: Option<i64>,
-    pub project_revision: Option<i64>,
-    pub media_type: String,
-    pub payload_json: String,
-    pub provenance_complete: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlotArtifactSummary {
-    pub plot_id: String,
-    pub run_id: String,
-    pub project_root: Option<String>,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision: Option<i64>,
-    pub project_revision: Option<i64>,
-    pub media_type: String,
-    pub payload_json: String,
-    pub provenance_complete: bool,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArtifactRecordDraft {
-    pub artifact_id: String,
-    pub artifact_kind: String,
-    pub run_id: Option<String>,
-    pub project_root: String,
-    pub output_path: String,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision: Option<i64>,
-    pub project_revision: Option<i64>,
-    pub media_type: String,
-    pub metadata_json: String,
-    pub provenance_complete: bool,
-    pub incomplete_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArtifactRecordSummary {
-    pub artifact_id: String,
-    pub artifact_kind: String,
-    pub run_id: Option<String>,
-    pub project_root: String,
-    pub output_path: String,
-    pub source_path: Option<String>,
-    pub execution_mode: Option<String>,
-    pub document_version: Option<i64>,
-    pub workspace_id: Option<String>,
-    pub state_revision: Option<i64>,
-    pub project_revision: Option<i64>,
-    pub media_type: String,
-    pub metadata_json: String,
-    pub provenance_complete: bool,
-    pub incomplete_reason: Option<String>,
-    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1602,7 +1534,7 @@ impl Store {
                 workspace_id,
                 limit.unwrap_or(DEFAULT_LIMIT) as i64
             ],
-            decode_artifact_record,
+            artifact::decode_artifact_record,
         )?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StoreError::from)
@@ -1623,7 +1555,7 @@ impl Store {
                  FROM artifact_records
                  WHERE project_root = ?1 AND artifact_id = ?2",
                 params![project_root, artifact_id],
-                decode_artifact_record,
+                artifact::decode_artifact_record,
             )
             .optional()
             .map_err(StoreError::from)
@@ -1748,27 +1680,6 @@ impl Store {
             .optional()
             .map_err(StoreError::from)
     }
-}
-
-fn decode_artifact_record(row: &Row<'_>) -> rusqlite::Result<ArtifactRecordSummary> {
-    Ok(ArtifactRecordSummary {
-        artifact_id: row.get(0)?,
-        artifact_kind: row.get(1)?,
-        run_id: row.get(2)?,
-        project_root: row.get(3)?,
-        output_path: row.get(4)?,
-        source_path: row.get(5)?,
-        execution_mode: row.get(6)?,
-        document_version: row.get(7)?,
-        workspace_id: row.get(8)?,
-        state_revision: row.get(9)?,
-        project_revision: row.get(10)?,
-        media_type: row.get(11)?,
-        metadata_json: row.get(12)?,
-        provenance_complete: row.get::<_, i64>(13)? != 0,
-        incomplete_reason: row.get(14)?,
-        created_at: row.get(15)?,
-    })
 }
 
 fn plot_payload_is_pruned(payload_json: &str) -> bool {
