@@ -489,7 +489,7 @@ body.resizing-vertical { cursor: col-resize; }
 
 .plot-panel { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 35px minmax(180px, 1fr) auto auto; min-width: 0; overflow: hidden; background: #fff; }
 .plot-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 5px 9px; border-bottom: 1px solid var(--border); background: #f7f9f9; }
-.plot-scope-control, .plot-clear-actions { display: flex; align-items: center; gap: 4px; }
+.plot-scope-control, .plot-clear-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .plot-scope-control button, .plot-clear-actions button { min-height: 24px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); background: #fff; cursor: pointer; font-size: 10px; }
 .plot-scope-control button.active { color: var(--ink); border-color: var(--accent); background: var(--accent-pale); }
 .plot-clear-actions button:hover, .plot-scope-control button:hover { color: var(--ink); background: #eef3f3; }

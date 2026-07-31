@@ -424,6 +424,12 @@ pub struct ProjectRetentionSummary {
     pub project: RetentionScopeSummary,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlotPayloadPruneResult {
+    pub pruned_count: i64,
+    pub reclaimed_bytes: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentTurnDraft {
     pub turn_id: String,
@@ -1761,6 +1767,57 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn prune_plot_artifact_payloads(
+        &mut self,
+        project_root: Option<&str>,
+        workspace_id: Option<&str>,
+        session_only: bool,
+    ) -> Result<PlotPayloadPruneResult, StoreError> {
+        let transaction = self.connection.transaction()?;
+        let updates = {
+            let mut statement = transaction.prepare(
+                "SELECT plot_id, media_type, payload_json
+                 FROM plot_artifacts
+                 WHERE project_root IS ?1
+                   AND (?2 = 0 OR workspace_id IS ?3)",
+            )?;
+            let rows = statement.query_map(
+                params![project_root, if session_only { 1 } else { 0 }, workspace_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?;
+            let mut updates = Vec::new();
+            for row in rows {
+                let (plot_id, media_type, payload_json) = row?;
+                if plot_payload_is_pruned(&payload_json) {
+                    continue;
+                }
+                let tombstone = build_plot_payload_tombstone(&media_type)?;
+                let reclaimed_bytes = (payload_json.len() as i64 - tombstone.len() as i64).max(0);
+                updates.push((plot_id, tombstone, reclaimed_bytes));
+            }
+            updates
+        };
+        for (plot_id, tombstone, _) in &updates {
+            transaction.execute(
+                "UPDATE plot_artifacts
+                 SET payload_json = ?1
+                 WHERE plot_id = ?2",
+                params![tombstone, plot_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(PlotPayloadPruneResult {
+            pruned_count: updates.len() as i64,
+            reclaimed_bytes: updates.iter().map(|(_, _, reclaimed)| reclaimed).sum(),
+        })
+    }
+
     pub fn get_plot_artifact(
         &self,
         project_root: &str,
@@ -2704,6 +2761,23 @@ fn decode_environment_operation_request(
     })
 }
 
+fn plot_payload_is_pruned(payload_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(payload_json)
+        .ok()
+        .and_then(|value| value.get("rho/pruned").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn build_plot_payload_tombstone(media_type: &str) -> Result<String, StoreError> {
+    serde_json::to_string(&serde_json::json!({
+        "rho/pruned": true,
+        "rho/pruned_at": Utc::now().to_rfc3339(),
+        "rho/original_media_type": media_type,
+        "rho/prune_reason": "manual_retention_prune"
+    }))
+    .map_err(StoreError::from)
+}
+
 fn decode_string_list(input: &str) -> Result<Vec<String>, serde_json::Error> {
     serde_json::from_str(input)
 }
@@ -3411,6 +3485,111 @@ mod tests {
             summary.project.artifact_metadata_bytes,
             (session_artifact_metadata.len() + project_artifact_metadata.len()) as i64
         );
+    }
+
+    #[test]
+    fn prunes_plot_payloads_with_project_and_session_tombstones() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        let session_payload = format!("{{\"image/png\":\"{}\"}}", "a".repeat(512));
+        let project_payload = format!("{{\"image/png\":\"{}\"}}", "b".repeat(768));
+        let other_project_payload = format!("{{\"image/png\":\"{}\"}}", "z".repeat(128));
+
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_session".to_string(),
+                run_id: "run_session".to_string(),
+                project_root: Some("D:/Rho/project-a".to_string()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: session_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_project".to_string(),
+                run_id: "run_project".to_string(),
+                project_root: Some("D:/Rho/project-a".to_string()),
+                source_path: Some("report.Rmd".to_string()),
+                execution_mode: Some("render".to_string()),
+                document_version: Some(2),
+                workspace_id: Some("ws_other".to_string()),
+                state_revision: Some(2),
+                project_revision: Some(2),
+                media_type: "image/png".to_string(),
+                payload_json: project_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_other_project".to_string(),
+                run_id: "run_other_project".to_string(),
+                project_root: Some("D:/Rho/project-b".to_string()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some("ws_session".to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: other_project_payload.clone(),
+                provenance_complete: true,
+            })
+            .unwrap();
+
+        let before = store
+            .project_retention_summary("D:/Rho/project-a", Some("ws_session"))
+            .unwrap();
+        let result = store
+            .prune_plot_artifact_payloads(Some("D:/Rho/project-a"), Some("ws_session"), true)
+            .unwrap();
+        assert_eq!(result.pruned_count, 1);
+        assert!(result.reclaimed_bytes > 0);
+
+        let session_plot = store
+            .get_plot_artifact("D:/Rho/project-a", "plot_session")
+            .unwrap()
+            .unwrap();
+        assert!(plot_payload_is_pruned(&session_plot.payload_json));
+
+        let project_plot = store
+            .get_plot_artifact("D:/Rho/project-a", "plot_project")
+            .unwrap()
+            .unwrap();
+        assert_eq!(project_plot.payload_json, project_payload);
+
+        let other_project_plot = store
+            .get_plot_artifact("D:/Rho/project-b", "plot_other_project")
+            .unwrap()
+            .unwrap();
+        assert_eq!(other_project_plot.payload_json, other_project_payload);
+
+        let after = store
+            .project_retention_summary("D:/Rho/project-a", Some("ws_session"))
+            .unwrap();
+        assert_eq!(
+            after.session.plot_history_count,
+            before.session.plot_history_count
+        );
+        assert!(after.session.plot_payload_bytes < before.session.plot_payload_bytes);
+        assert_eq!(
+            after.project.plot_history_count,
+            before.project.plot_history_count
+        );
+        assert!(after.project.plot_payload_bytes < before.project.plot_payload_bytes);
+
+        let second = store
+            .prune_plot_artifact_payloads(Some("D:/Rho/project-a"), Some("ws_session"), true)
+            .unwrap();
+        assert_eq!(second.pruned_count, 0);
+        assert_eq!(second.reclaimed_bytes, 0);
     }
 
     #[test]

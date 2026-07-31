@@ -712,7 +712,7 @@ function mockProjectRetentionSummary() {
     session: mockRetentionScopeSummary({ sessionOnly: true }),
     project: mockRetentionScopeSummary({ sessionOnly: false }),
     policy: {
-      plot_history: "Manual delete removes plot-history rows only.",
+      plot_history: "Delete removes plot-history rows; Free preview storage replaces payloads with tombstones.",
       artifact_records: "Manual delete removes artifact-record rows only.",
       agent_history: "Manual delete removes Agent turns, events, and approvals for this project.",
       output_files: "Output files stay on disk; current history/record deletion does not remove files.",
@@ -1236,6 +1236,26 @@ async function mockInvoke(command, args) {
   }
   if (command === "get_project_retention_summary") {
     return structuredClone(mockProjectRetentionSummary());
+  }
+  if (command === "prune_plot_payloads") {
+    let prunedCount = 0;
+    let reclaimedBytes = 0;
+    for (const plot of mockPlots) {
+      if (plot.project_root !== mockLastProject) continue;
+      if (args.session_only && plot.workspace_id !== "desktop_mock") continue;
+      const payload = parseJsonObject(plot.payload_json);
+      if (payload["rho/pruned"]) continue;
+      const nextPayload = JSON.stringify({
+        "rho/pruned": true,
+        "rho/pruned_at": new Date().toISOString(),
+        "rho/original_media_type": plot.media_type,
+        "rho/prune_reason": "manual_retention_prune",
+      });
+      reclaimedBytes += Math.max(String(plot.payload_json || "").length - nextPayload.length, 0);
+      plot.payload_json = nextPayload;
+      prunedCount += 1;
+    }
+    return { pruned_count: prunedCount, reclaimed_bytes: reclaimedBytes };
   }
   if (command === "clear_plot_artifacts") {
     const before = mockPlots.length;
@@ -4301,14 +4321,25 @@ function renderExecution(response, request, origin = "USER") {
 }
 
 function renderDisplay(data) {
+  const payload = data && typeof data === "object" ? data : {};
   let source = null;
-  if (data["image/png"]) source = `data:image/png;base64,${data["image/png"]}`;
-  if (data["image/svg+xml"]) source = `data:image/svg+xml;base64,${data["image/svg+xml"]}`;
-  if (data["rho/mock-image"]) source = data["rho/mock-image"];
-  if (!source) return;
+  if (payload["image/png"]) source = `data:image/png;base64,${payload["image/png"]}`;
+  if (payload["image/svg+xml"]) source = `data:image/svg+xml;base64,${payload["image/svg+xml"]}`;
+  if (payload["rho/mock-image"]) source = payload["rho/mock-image"];
+  if (!source) {
+    $("#plotImage").classList.add("hidden");
+    $("#plotEmpty").classList.remove("hidden");
+    const emptyLabel = $("#plotEmpty strong");
+    if (emptyLabel) {
+      emptyLabel.textContent = payload["rho/pruned"] ? "Preview pruned" : "Plot preview unavailable";
+    }
+    return;
+  }
   $("#plotImage").src = source;
   $("#plotImage").classList.remove("hidden");
   $("#plotEmpty").classList.add("hidden");
+  const emptyLabel = $("#plotEmpty strong");
+  if (emptyLabel) emptyLabel.textContent = "No plots yet";
 }
 
 function activePlotRecord() {
@@ -4348,6 +4379,24 @@ function defaultPlotExportPath(plot) {
 function defaultDataViewExportPath(page, view) {
   const extension = page?.view_kind === "col_data" ? "tsv" : "csv";
   return `artifacts/${page?.object_name || "view"}-${view?.key || page?.view_kind || "table"}.${extension}`;
+}
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function plotPayloadPruned(plot) {
+  return Boolean(parseJsonObject(plot?.payload_json)["rho/pruned"]);
+}
+
+function plotHasRenderablePayload(plot) {
+  const payload = parseJsonObject(plot?.payload_json);
+  return Boolean(payload["image/png"] || payload["image/svg+xml"] || payload["rho/mock-image"]);
 }
 
 function renderArtifactDetail() {
@@ -4499,8 +4548,10 @@ function renderPlots() {
   $$('[data-plot-scope]').forEach((button) => button.classList.toggle("active", button.dataset.plotScope === state.plotScope));
   $("#plotCount").textContent = String(plots.length);
   $("#plotOutputCount").textContent = String(plots.length);
-  $("#plotExportButton").disabled = !selectedPlot;
+  $("#plotExportButton").disabled = !(selectedPlot && plotHasRenderablePayload(selectedPlot));
   if (!plots.length) {
+    const emptyLabel = $("#plotEmpty strong");
+    if (emptyLabel) emptyLabel.textContent = "No plots yet";
     $("#plotEmpty").classList.remove("hidden");
     $("#plotImage").classList.add("hidden");
     renderArtifactRecords();
@@ -4508,29 +4559,34 @@ function renderPlots() {
   }
   $("#plotEmpty").classList.add("hidden");
   try {
-    const payload = JSON.parse((selectedPlot || plots[0]).payload_json || "{}");
+    const payload = parseJsonObject((selectedPlot || plots[0]).payload_json);
     renderDisplay(payload);
   } catch {
     $("#plotImage").classList.add("hidden");
   }
   for (const plot of plots) {
     const selected = plot.plot_id === selectedPlot?.plot_id;
+    const pruned = plotPayloadPruned(plot);
     const row = document.createElement("button");
     row.type = "button";
     row.className = `plot-history-row ${selected ? "active" : ""}`;
     const title = document.createElement("strong");
     title.textContent = plot.source_path || plot.run_id;
     const line1 = document.createElement("p");
-    line1.textContent = `${plot.execution_mode || "plot"} · run ${plot.run_id} · state ${plot.state_revision ?? "?"}`;
+    line1.textContent = `${plot.execution_mode || "plot"} · run ${plot.run_id} · ${pruned ? "preview pruned" : `state ${plot.state_revision ?? "?"}`}`;
     const line2 = document.createElement("p");
-    line2.textContent = plot.provenance_complete
-      ? `Source ${plot.source_path || "available"} · rev ${plot.document_version ?? "?"}`
-      : "Provenance incomplete";
+    if (pruned) {
+      line2.textContent = "Preview storage reclaimed; plot history row and exported files remain.";
+    } else {
+      line2.textContent = plot.provenance_complete
+        ? `Source ${plot.source_path || "available"} · rev ${plot.document_version ?? "?"}`
+        : "Provenance incomplete";
+    }
     row.append(title, line1, line2);
     row.addEventListener("click", () => {
       state.selectedPlotId = plot.plot_id;
       try {
-        renderDisplay(JSON.parse(plot.payload_json || "{}"));
+        renderDisplay(parseJsonObject(plot.payload_json));
       } catch {
         toast("Plot payload is unavailable.", true);
       }
@@ -4550,7 +4606,7 @@ function renderPlots() {
       switchDockTab("plots");
       state.selectedPlotId = plot.plot_id;
       try {
-        renderDisplay(JSON.parse(plot.payload_json || "{}"));
+        renderDisplay(parseJsonObject(plot.payload_json));
       } catch {
         toast("Plot payload is unavailable.", true);
       }
@@ -7167,6 +7223,17 @@ $("#renderShowPlotsButton").addEventListener("click", () => {
 $("#plotsShortcut").addEventListener("click", () => switchDockTab("plots"));
 $("#artifactsShortcut").addEventListener("click", () => switchDockTab("plots"));
 $("#plotExportButton").addEventListener("click", exportActivePlot);
+async function prunePlotPayloads(sessionOnly) {
+  const scope = sessionOnly ? "this session" : "this project";
+  if (!window.confirm(`Free preview storage for ${scope}? Plot history rows stay in place and exported files are not deleted.`)) return;
+  try {
+    const result = await invoke("prune_plot_payloads", { session_only: sessionOnly });
+    await loadRunData();
+    toast(`Freed preview storage for ${scope}. Pruned ${result?.pruned_count || 0} plot payloads and reclaimed ${formatBytes(result?.reclaimed_bytes || 0)}.`);
+  } catch (error) {
+    toast(`Could not free preview storage: ${error}`, true);
+  }
+}
 async function clearPlots(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
   if (!window.confirm(`Delete plot history from ${scope}? Exported files are not deleted.`)) return;
@@ -7178,6 +7245,8 @@ async function clearPlots(sessionOnly) {
     toast(`Could not delete plot history: ${error}`, true);
   }
 }
+$("#pruneSessionPlotsButton").addEventListener("click", () => prunePlotPayloads(true));
+$("#pruneProjectPlotsButton").addEventListener("click", () => prunePlotPayloads(false));
 $("#clearSessionPlotsButton").addEventListener("click", () => clearPlots(true));
 $("#clearProjectPlotsButton").addEventListener("click", () => clearPlots(false));
 $("#clearSessionArtifactsButton").addEventListener("click", () => clearArtifacts(true));

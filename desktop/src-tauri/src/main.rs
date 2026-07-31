@@ -37,8 +37,8 @@ use rho_server::coordinator::{
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
-    EnvironmentOperationRequestSummary, PlotArtifactSummary, ProblemSummary,
-    ProjectRetentionSummary, RunDetail, RunSummary, Store, normalize_project_root,
+    EnvironmentOperationRequestSummary, PlotArtifactSummary, PlotPayloadPruneResult,
+    ProblemSummary, ProjectRetentionSummary, RunDetail, RunSummary, Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1601,9 +1601,29 @@ async fn clear_plot_artifacts(
     Ok(json!({"deleted": deleted}))
 }
 
+#[tauri::command]
+async fn prune_plot_payloads(
+    session_only: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<PlotPayloadPruneResult, String> {
+    let root = state.project_root.read().await.clone();
+    let context = active_context(&state).await.map_err(display_error)?;
+    let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
+    let mut store = read_store(&state).map_err(display_error)?;
+    store
+        .prune_plot_artifact_payloads(
+            Some(root.to_string_lossy().as_ref()),
+            Some(&workspace_id),
+            session_only.unwrap_or(true),
+        )
+        .map_err(display_error)
+}
+
 fn current_retention_policy_snapshot() -> RetentionPolicySnapshot {
     RetentionPolicySnapshot {
-        plot_history: "Manual delete removes plot-history rows only.".to_string(),
+        plot_history:
+            "Delete removes plot-history rows; Free preview storage replaces payloads with tombstones."
+                .to_string(),
         artifact_records: "Manual delete removes artifact-record rows only.".to_string(),
         agent_history: "Manual delete removes Agent turns, events, and approvals for this project."
             .to_string(),
@@ -4635,6 +4655,7 @@ fn main() {
             export_data_view_artifact,
             list_artifact_records,
             get_artifact_record,
+            prune_plot_payloads,
             get_project_retention_summary,
             list_project_skills,
             clear_artifact_records,
