@@ -1,6 +1,6 @@
 # BH5 Incremental Module Boundaries Handoff
 
-Status: active
+Status: accepted
 Authorization date: 2026-07-31
 Authorized by: project owner
 Baseline for authorization: `09a6604`
