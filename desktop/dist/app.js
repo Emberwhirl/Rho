@@ -712,12 +712,12 @@ function mockProjectRetentionSummary() {
     session: mockRetentionScopeSummary({ sessionOnly: true }),
     project: mockRetentionScopeSummary({ sessionOnly: false }),
     policy: {
-      plot_history: "Delete removes plot-history rows; Free preview storage replaces payloads with tombstones.",
-      artifact_records: "Manual delete removes artifact-record rows only.",
-      agent_history: "Manual delete removes Agent turns, events, and approvals for this project.",
-      output_files: "Output files stay on disk; current history/record deletion does not remove files.",
-      automatic_pruning: false,
-      quota_enforced: false,
+      max_plot_history_rows: 200,
+      max_plot_payload_bytes: 52428800,
+      max_artifact_record_rows: 500,
+      max_artifact_metadata_bytes: 104857600,
+      prune_order: "oldest_first",
+      auto_prune_enabled: false,
     },
   };
 }
@@ -4459,12 +4459,12 @@ function renderRetentionSummary() {
     `${formatBytes(scope.artifact_metadata_bytes || 0)} artifact metadata`,
   ].join(" · ");
   [
-    ["Plots", summary.policy?.plot_history],
-    ["Artifacts", summary.policy?.artifact_records],
-    ["Agent", summary.policy?.agent_history],
-    ["Files", summary.policy?.output_files],
-    ["Auto prune", summary.policy?.automatic_pruning ? "Enabled" : "Not enabled"],
-    ["Quotas", summary.policy?.quota_enforced ? "Enforced" : "Not enforced"],
+    ["Plot rows (max)", summary.policy?.max_plot_history_rows != null ? String(summary.policy.max_plot_history_rows) : "no limit"],
+    ["Plot payload (max)", summary.policy?.max_plot_payload_bytes != null ? formatBytes(summary.policy.max_plot_payload_bytes) : "no limit"],
+    ["Artifact rows (max)", summary.policy?.max_artifact_record_rows != null ? String(summary.policy.max_artifact_record_rows) : "no limit"],
+    ["Artifact metadata (max)", summary.policy?.max_artifact_metadata_bytes != null ? formatBytes(summary.policy.max_artifact_metadata_bytes) : "no limit"],
+    ["Prune order", summary.policy?.prune_order || "oldest_first"],
+    ["Auto prune", summary.policy?.auto_prune_enabled ? "Enabled" : "Not enabled"],
   ].forEach(([label, value]) => {
     const row = document.createElement("div");
     row.className = "retention-policy-item";

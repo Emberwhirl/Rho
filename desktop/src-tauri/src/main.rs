@@ -38,7 +38,8 @@ use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
     EnvironmentOperationRequestSummary, PlotArtifactSummary, PlotPayloadPruneResult,
-    ProblemSummary, ProjectRetentionSummary, RunDetail, RunSummary, Store, normalize_project_root,
+    ProblemSummary, ProjectRetentionSummary, RetentionPolicy, RunDetail, RunSummary, Store,
+    normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -309,21 +310,11 @@ struct ArtifactRecordView {
     run: Option<RunDetail>,
 }
 
-#[derive(Clone, Serialize)]
-struct RetentionPolicySnapshot {
-    plot_history: String,
-    artifact_records: String,
-    agent_history: String,
-    output_files: String,
-    automatic_pruning: bool,
-    quota_enforced: bool,
-}
-
 #[derive(Serialize)]
 struct ProjectRetentionView {
     #[serde(flatten)]
     summary: ProjectRetentionSummary,
-    policy: RetentionPolicySnapshot,
+    policy: RetentionPolicy,
 }
 
 #[derive(Deserialize)]
@@ -1619,20 +1610,8 @@ async fn prune_plot_payloads(
         .map_err(display_error)
 }
 
-fn current_retention_policy_snapshot() -> RetentionPolicySnapshot {
-    RetentionPolicySnapshot {
-        plot_history:
-            "Delete removes plot-history rows; Free preview storage replaces payloads with tombstones."
-                .to_string(),
-        artifact_records: "Manual delete removes artifact-record rows only.".to_string(),
-        agent_history: "Manual delete removes Agent turns, events, and approvals for this project."
-            .to_string(),
-        output_files:
-            "Output files stay on disk; current history/record deletion does not remove files."
-                .to_string(),
-        automatic_pruning: false,
-        quota_enforced: false,
-    }
+fn current_retention_policy_snapshot() -> RetentionPolicy {
+    RetentionPolicy::default()
 }
 
 #[tauri::command]
