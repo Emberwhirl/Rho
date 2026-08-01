@@ -3452,6 +3452,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rho-cli"
+version = "0.3.0-dev.11"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rho-protocol",
+ "rho-store",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "rho-core"
 version = "0.3.0-dev.11"
 dependencies = [
@@ -3494,6 +3509,19 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "rho-mcp"
+version = "0.3.0-dev.11"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rho-protocol",
+ "rho-store",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
