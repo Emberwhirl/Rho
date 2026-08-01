@@ -192,9 +192,7 @@ evidence and next stop point, and update
 activate a whole multi-package proposal at once.
 
 Current program state: **Wave 2 BH5 incremental module boundaries is
-active; BH1-BH4 are accepted and no later Wave 2 package is active**. Wave 0
-automated review closed as `accept with follow-up`. BH5, UX1,
-modernization, and Waves 3-14 remain scheduled but not authorized.
+accepted. Wave 3 RA-RC1 deterministic run comparison is active.**
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
