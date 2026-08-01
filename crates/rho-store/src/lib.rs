@@ -18,6 +18,7 @@ mod artifact;
 mod compare;
 mod environment;
 mod project;
+mod workbench;
 
 pub use agent::{
     AgentConversationTurn, AgentTurnDetail, AgentTurnDraft, AgentTurnEvent,

@@ -1,3 +1,5 @@
+pub mod workbench;
+
 use std::io::{Read, Write};
 
 use chrono::Utc;
