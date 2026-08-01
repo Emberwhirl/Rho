@@ -65,6 +65,44 @@ this file records behavior that is already available in a released build.
 - All delete and prune actions are confined to the selected project;
   cross-project guard tests prevent accidental data loss.
 
+### BH5: Incremental module boundaries
+
+- `rho-store` is now split into focused domain modules: `migration.rs`,
+  `run.rs`, `agent.rs`, `artifact.rs`, `environment.rs`, `project.rs`,
+  and `compare.rs`. The public crate surface is unchanged; all existing
+  types and constructors remain available through the same `use`
+  declarations.
+- Each extraction has independent regression coverage and no
+  behavioral change to any test, command, or frontend state.
+
+### RA-RC1: Deterministic run comparison
+
+- Added `compare_runs(left_run_id, right_run_id)` store and Tauri
+  command. Two runs from the same project can be compared across five
+  sections: identity & execution, source & request, environment,
+  outcome & problems, and artifacts.
+- Every field reports `same`, `different`, `unknown`, or
+  `not_applicable`. Missing evidence is never treated as equal.
+- The Runs sidebar now has a Compare toggle with left/right run
+  selectors, a summary strip, and five expandable comparison sections.
+
+### UX: Interaction improvements
+
+- Empty-project states now read `Open an R project to begin` and
+  `Open a project to get started` instead of internal terminology.
+- Product dialogs replaced browser `prompt()` and `confirm()` for
+  new-file creation, export paths, destructive deletions, draft
+  restoration, and external-change detection. Each dialog names the
+  operation, scope, and consequence.
+- The Run button label now reflects the editor scope: `Run selected
+  code`, `Run current line`, or `Run file`.
+- Problems show plain-language titles such as `Analysis stopped at
+  path` with `Go to source`, `Explain this problem`, and `Run again`
+  actions instead of `Retry` and `Open Source`.
+- The complete interaction surface (250+ strings across 15 panels) was
+  inventoried and a terminology contract was defined mapping internal
+  terms to user-facing labels.
+
 ### Changed
 
 - Version scheme advances to `0.3.0`; every commit increments the
