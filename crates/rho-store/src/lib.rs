@@ -15,6 +15,7 @@ mod migration;
 mod run;
 mod agent;
 mod artifact;
+mod compare;
 mod environment;
 mod project;
 
@@ -25,6 +26,9 @@ pub use agent::{
 };
 pub use artifact::{
     ArtifactRecordDraft, ArtifactRecordSummary, PlotArtifactDraft, PlotArtifactSummary,
+};
+pub use compare::{
+    CompareField, CompareFieldEntry, CompareRunsResponse, CompareSection, CompareSummary,
 };
 pub use environment::{
     EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
@@ -1639,6 +1643,83 @@ impl Store {
             )
             .optional()
             .map_err(StoreError::from)
+    }
+
+    pub fn compare_runs(
+        &self,
+        project_root: &str,
+        left_run_id: &str,
+        right_run_id: &str,
+    ) -> Result<compare::CompareRunsResponse, StoreError> {
+        if left_run_id == right_run_id {
+            return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                "runs must be different".to_string(),
+            )));
+        }
+
+        let left = self
+            .get_run_detail(project_root, left_run_id)?
+            .ok_or_else(|| {
+                StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
+            })?;
+        let right = self
+            .get_run_detail(project_root, right_run_id)?
+            .ok_or_else(|| {
+                StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
+            })?;
+
+        if left.operation_class != "scientific" || right.operation_class != "scientific" {
+            return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                "only scientific execution runs can be compared".to_string(),
+            )));
+        }
+
+        let left_problems = self.list_problems(project_root, Some(100))?;
+        let left_problems: Vec<_> = left_problems
+            .into_iter()
+            .filter(|p| p.run_id == left_run_id)
+            .collect();
+        let right_problems = self.list_problems(project_root, Some(100))?;
+        let right_problems: Vec<_> = right_problems
+            .into_iter()
+            .filter(|p| p.run_id == right_run_id)
+            .collect();
+
+        let left_snapshot = match &left.environment_snapshot_id {
+            Some(sid) => self.get_environment_snapshot(sid)?,
+            None => None,
+        };
+        let right_snapshot = match &right.environment_snapshot_id {
+            Some(sid) => self.get_environment_snapshot(sid)?,
+            None => None,
+        };
+
+        let left_artifacts = self.list_artifact_records(
+            Some(100), project_root, None, false,
+        )?;
+        let left_artifacts: Vec<_> = left_artifacts
+            .into_iter()
+            .filter(|a| a.run_id.as_deref() == Some(left_run_id))
+            .collect();
+        let right_artifacts = self.list_artifact_records(
+            Some(100), project_root, None, false,
+        )?;
+        let right_artifacts: Vec<_> = right_artifacts
+            .into_iter()
+            .filter(|a| a.run_id.as_deref() == Some(right_run_id))
+            .collect();
+
+        Ok(compare::CompareRunsResponse::compute(
+            project_root.to_string(),
+            &left,
+            &right,
+            &left_problems,
+            &right_problems,
+            &left_snapshot,
+            &right_snapshot,
+            &left_artifacts,
+            &right_artifacts,
+        ))
     }
 }
 
