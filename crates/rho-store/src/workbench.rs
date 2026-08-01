@@ -21,6 +21,15 @@ fn clamp_page_size(size: usize) -> usize {
     size.clamp(1, MAX_PAGE_SIZE)
 }
 
+/// Truncate a string to at most `max_chars` characters, preserving grapheme boundaries.
+fn truncate_str(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        s.chars().take(max_chars).collect()
+    }
+}
+
 // ── Projections ──────────────────────────────────────────────────────────────
 
 impl Store {
@@ -104,11 +113,18 @@ impl Store {
 
     // ── Workspace Status ─────────────────────────────────────────────────────
 
-    /// Return the current Workspace R status for the given project.
+    /// Return the current Workspace R status. The workspace is global;
+    /// returns None if the requested project is not the active project.
     pub fn workbench_workspace_status(
         &self,
-        _project_root: &str,
+        project_root: &str,
     ) -> Result<Option<WorkspaceStatus>, StoreError> {
+        // Verify the requested project matches the active project.
+        let active = self.active_project_root()?;
+        if active.as_deref() != Some(project_root) {
+            return Ok(None);
+        }
+
         let identity = self.load_identity()?;
         let identity = match identity {
             Some(id) => id,
@@ -121,8 +137,8 @@ impl Store {
             execution_seq: identity.execution_seq,
             state_revision: identity.state_revision,
             project_revision: identity.project_revision,
-            running: true, // WorkspaceIdentity exists only when running
-            started_at: String::new(), // Not tracked in identity — use empty
+            running: true,
+            started_at: String::new(),
         }))
     }
 
@@ -189,9 +205,9 @@ impl Store {
                             request_type: row.get(7)?,
                             source_path: row.get(8)?,
                             has_error: row.get::<_, Option<String>>(9)?.is_some(),
-                            has_warnings: false,
-                            problem_count: 0,
-                            artifact_count: 0,
+                            has_warnings: None,
+                            problem_count: None,
+                            artifact_count: None,
                         })
                     },
                 )?
@@ -210,9 +226,9 @@ impl Store {
                         request_type: row.get(7)?,
                         source_path: row.get(8)?,
                         has_error: row.get::<_, Option<String>>(9)?.is_some(),
-                        has_warnings: false,
-                        problem_count: 0,
-                        artifact_count: 0,
+                        has_warnings: None,
+                        problem_count: None,
+                        artifact_count: None,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?
@@ -260,15 +276,15 @@ impl Store {
                         request_type: d.request_type.clone(),
                         source_path: d.source_path.clone(),
                         has_error: d.error_message.is_some(),
-                        has_warnings: !d.warnings.is_empty(),
-                        problem_count: if d.error_message.is_some() { 1 } else { 0 },
-                        artifact_count: 0,
+                        has_warnings: Some(!d.warnings.is_empty()),
+                        problem_count: Some(if d.error_message.is_some() { 1 } else { 0 }),
+                        artifact_count: Some(0),
                     },
-                    code_preview: Some(d.code.clone()),
+                    code_preview: Some(truncate_str(&d.code, 2000)),
                     code_truncated: d.code.len() > 2000,
-                    stdout_preview: d.stdout.clone(),
+                    stdout_preview: d.stdout.as_ref().map(|s| truncate_str(s, 2000)),
                     stdout_truncated: d.stdout.as_ref().map_or(false, |s| s.len() > 2000),
-                    value_preview: d.value_text.clone(),
+                    value_preview: d.value_text.as_ref().map(|s| truncate_str(s, 500)),
                     value_truncated: d.value_text.as_ref().map_or(false, |s| s.len() > 500),
                     error_message: d.error_message,
                     messages: d.messages,
@@ -283,6 +299,20 @@ impl Store {
 
     // ── Problems ─────────────────────────────────────────────────────────────
 
+    fn map_problem_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProblemSummary> {
+        let run_id: String = row.get(0)?;
+        let error_message: String = row.get(1)?;
+        Ok(ProblemSummary {
+            problem_id: format!("{}-{}", &run_id[..8.min(run_id.len())], "err"),
+            run_id,
+            severity: "error".into(),
+            title: truncate_str(&error_message, 120),
+            source_path: row.get(2)?,
+            source_line: None,
+            recorded_at: row.get(3)?,
+        })
+    }
+
     /// Paginated list of problems for the given project.
     pub fn workbench_problem_list(
         &self,
@@ -292,56 +322,43 @@ impl Store {
     ) -> Result<WorkbenchPage<ProblemSummary>, StoreError> {
         let page_size = clamp_page_size(page_size);
 
-        let cursor_clause = match after {
-            Some(_) => "AND started_at < ?3",
-            None => "",
+        // Cursor: "started_at|run_id" — compound cursor for deterministic pagination.
+        let (cursor_clause, cursor_params): (&str, Vec<String>) = match after {
+            Some(cursor) => {
+                let parts: Vec<&str> = cursor.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    ("AND (started_at < ?3 OR (started_at = ?3 AND run_id < ?4))",
+                     vec![parts[0].to_string(), parts[1].to_string()])
+                } else {
+                    return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                        "invalid cursor format".into(),
+                    )));
+                }
+            }
+            None => ("", vec![]),
         };
 
         let sql = format!(
             "SELECT run_id, error_message, source_path, started_at
              FROM runs
              WHERE project_root = ?1 AND error_message IS NOT NULL {}
-             ORDER BY started_at DESC
+             ORDER BY started_at DESC, run_id DESC
              LIMIT ?2",
             cursor_clause
         );
 
         let mut statement = self.connection.prepare(&sql)?;
 
-        let rows: Vec<ProblemSummary> = if let Some(cursor) = after {
+        let rows: Vec<ProblemSummary> = if cursor_params.len() == 2 {
             statement
                 .query_map(
-                    params![project_root, page_size as i64 + 1, cursor],
-                    |row| {
-                        let run_id: String = row.get(0)?;
-                        let error_message: String = row.get(1)?;
-                        Ok(ProblemSummary {
-                            problem_id: format!("{}-{}", &run_id[..8.min(run_id.len())], "err"),
-                            run_id,
-                            severity: "error".into(),
-                            title: error_message.chars().take(120).collect(),
-                            source_path: row.get(2)?,
-                            source_line: None,
-                            recorded_at: row.get(3)?,
-                        })
-                    },
+                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    |row| Self::map_problem_row(row),
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| {
-                    let run_id: String = row.get(0)?;
-                    let error_message: String = row.get(1)?;
-                    Ok(ProblemSummary {
-                        problem_id: format!("{}-{}", &run_id[..8.min(run_id.len())], "err"),
-                        run_id,
-                        severity: "error".into(),
-                        title: error_message.chars().take(120).collect(),
-                        source_path: row.get(2)?,
-                        source_line: None,
-                        recorded_at: row.get(3)?,
-                    })
-                })?
+                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_problem_row(row))?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -352,7 +369,7 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|p| p.recorded_at.clone());
+        let after_cursor = items.last().map(|p| format!("{}|{}", p.recorded_at, p.run_id));
 
         Ok(WorkbenchPage {
             items,
@@ -409,6 +426,20 @@ impl Store {
 
     // ── Outputs (Artifacts) ──────────────────────────────────────────────────
 
+    fn map_output_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutputSummary> {
+        Ok(OutputSummary {
+            artifact_id: row.get(0)?,
+            artifact_kind: row.get(1)?,
+            run_id: row.get(2)?,
+            output_path: row.get(3)?,
+            source_path: row.get(4)?,
+            media_type: row.get(5)?,
+            created_at: row.get(8)?,
+            provenance_complete: row.get(6)?,
+            incomplete_reason: row.get(7)?,
+        })
+    }
+
     /// Paginated list of output (artifact) records.
     pub fn workbench_output_list(
         &self,
@@ -418,9 +449,20 @@ impl Store {
     ) -> Result<WorkbenchPage<OutputSummary>, StoreError> {
         let page_size = clamp_page_size(page_size);
 
-        let cursor_clause = match after {
-            Some(_) => "AND created_at < ?3",
-            None => "",
+        // Cursor: "created_at|artifact_id" — compound cursor for deterministic pagination.
+        let (cursor_clause, cursor_params): (&str, Vec<String>) = match after {
+            Some(cursor) => {
+                let parts: Vec<&str> = cursor.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    ("AND (created_at < ?3 OR (created_at = ?3 AND artifact_id < ?4))",
+                     vec![parts[0].to_string(), parts[1].to_string()])
+                } else {
+                    return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                        "invalid cursor format".into(),
+                    )));
+                }
+            }
+            None => ("", vec![]),
         };
 
         let sql = format!(
@@ -428,44 +470,23 @@ impl Store {
                     media_type, provenance_complete, incomplete_reason, created_at
              FROM artifact_records
              WHERE project_root = ?1 {}
-             ORDER BY created_at DESC
+             ORDER BY created_at DESC, artifact_id DESC
              LIMIT ?2",
             cursor_clause
         );
 
         let mut statement = self.connection.prepare(&sql)?;
 
-        let rows: Vec<OutputSummary> = if let Some(cursor) = after {
+        let rows: Vec<OutputSummary> = if cursor_params.len() == 2 {
             statement
-                .query_map(params![project_root, page_size as i64 + 1, cursor], |row| {
-                    Ok(OutputSummary {
-                        artifact_id: row.get(0)?,
-                        artifact_kind: row.get(1)?,
-                        run_id: row.get(2)?,
-                        output_path: row.get(3)?,
-                        source_path: row.get(4)?,
-                        media_type: row.get(5)?,
-                        created_at: row.get(8)?,
-                        provenance_complete: row.get(6)?,
-                        incomplete_reason: row.get(7)?,
-                    })
-                })?
+                .query_map(
+                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    |row| Self::map_output_row(row),
+                )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| {
-                    Ok(OutputSummary {
-                        artifact_id: row.get(0)?,
-                        artifact_kind: row.get(1)?,
-                        run_id: row.get(2)?,
-                        output_path: row.get(3)?,
-                        source_path: row.get(4)?,
-                        media_type: row.get(5)?,
-                        created_at: row.get(8)?,
-                        provenance_complete: row.get(6)?,
-                        incomplete_reason: row.get(7)?,
-                    })
-                })?
+                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_output_row(row))?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -476,7 +497,7 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|o| o.created_at.clone());
+        let after_cursor = items.last().map(|o| format!("{}|{}", o.created_at, o.artifact_id));
 
         Ok(WorkbenchPage {
             items,
@@ -525,6 +546,17 @@ impl Store {
 
     // ── Environment Evidence ─────────────────────────────────────────────────
 
+    fn map_env_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<EnvironmentEvidence> {
+        Ok(EnvironmentEvidence {
+            evidence_id: row.get(0)?,
+            evidence_kind: row.get(1)?,
+            operation_name: row.get(2)?,
+            operation_status: row.get(3)?,
+            operation_decision: row.get(4)?,
+            captured_at: row.get(5)?,
+        })
+    }
+
     /// Paginated list of environment evidence (snapshots + operation requests).
     pub fn workbench_environment_evidence_list(
         &self,
@@ -534,10 +566,21 @@ impl Store {
     ) -> Result<WorkbenchPage<EnvironmentEvidence>, StoreError> {
         let page_size = clamp_page_size(page_size);
 
-        // Union snapshots and operation requests with timeline ordering.
-        let cursor_clause = match after {
-            Some(_) => "AND captured_at < ?3",
-            None => "",
+        // Cursor: "captured_at|evidence_kind|evidence_id" — compound cursor
+        // with kind prefix to disambiguate across UNION ALL.
+        let (cursor_clause, cursor_params): (&str, Vec<String>) = match after {
+            Some(cursor) => {
+                let parts: Vec<&str> = cursor.splitn(3, '|').collect();
+                if parts.len() == 3 {
+                    ("AND (captured_at < ?3 OR (captured_at = ?3 AND evidence_kind < ?4) OR (captured_at = ?3 AND evidence_kind = ?4 AND evidence_id < ?5))",
+                     vec![parts[0].to_string(), parts[1].to_string(), parts[2].to_string()])
+                } else {
+                    return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                        "invalid cursor format".into(),
+                    )));
+                }
+            }
+            None => ("", vec![]),
         };
 
         let sql = format!(
@@ -552,38 +595,24 @@ impl Store {
                     decision AS operation_decision, created_at AS captured_at
              FROM environment_operation_requests
              WHERE project_root = ?1 {}
-             ORDER BY captured_at DESC
+             ORDER BY captured_at DESC, evidence_kind DESC, evidence_id DESC
              LIMIT ?2",
             cursor_clause, cursor_clause
         );
 
         let mut statement = self.connection.prepare(&sql)?;
 
-        let rows: Vec<EnvironmentEvidence> = if let Some(cursor) = after {
+        let rows: Vec<EnvironmentEvidence> = if cursor_params.len() == 3 {
             statement
-                .query_map(params![project_root, page_size as i64 + 1, cursor], |row| {
-                    Ok(EnvironmentEvidence {
-                        evidence_id: row.get(0)?,
-                        evidence_kind: row.get(1)?,
-                        operation_name: row.get(2)?,
-                        operation_status: row.get(3)?,
-                        operation_decision: row.get(4)?,
-                        captured_at: row.get(5)?,
-                    })
-                })?
+                .query_map(
+                    params![project_root, page_size as i64 + 1,
+                            &cursor_params[0], &cursor_params[1], &cursor_params[2]],
+                    |row| Self::map_env_row(row),
+                )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| {
-                    Ok(EnvironmentEvidence {
-                        evidence_id: row.get(0)?,
-                        evidence_kind: row.get(1)?,
-                        operation_name: row.get(2)?,
-                        operation_status: row.get(3)?,
-                        operation_decision: row.get(4)?,
-                        captured_at: row.get(5)?,
-                    })
-                })?
+                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_env_row(row))?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -594,7 +623,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|e| e.captured_at.clone());
+        let after_cursor = items.last().map(|e| {
+            format!("{}|{}|{}", e.captured_at, e.evidence_kind, e.evidence_id)
+        });
 
         Ok(WorkbenchPage {
             items,
@@ -665,6 +696,20 @@ impl Store {
 
     // ── Approvals ────────────────────────────────────────────────────────────
 
+    fn map_approval_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApprovalSummary> {
+        Ok(ApprovalSummary {
+            request_id: row.get(0)?,
+            turn_id: row.get(1)?,
+            tool: row.get(2)?,
+            policy: row.get(3)?,
+            status: row.get(4)?,
+            decision: row.get(5)?,
+            reason: row.get(6)?,
+            requested_at: row.get(7)?,
+            responded_at: row.get(8)?,
+        })
+    }
+
     /// Paginated list of approval requests (inspection only — no decide/continue/cancel).
     pub fn workbench_approval_list(
         &self,
@@ -674,9 +719,20 @@ impl Store {
     ) -> Result<WorkbenchPage<ApprovalSummary>, StoreError> {
         let page_size = clamp_page_size(page_size);
 
-        let cursor_clause = match after {
-            Some(_) => "AND requested_at < ?3",
-            None => "",
+        // Cursor: "requested_at|request_id" — compound cursor for deterministic pagination.
+        let (cursor_clause, cursor_params): (&str, Vec<String>) = match after {
+            Some(cursor) => {
+                let parts: Vec<&str> = cursor.splitn(2, '|').collect();
+                if parts.len() == 2 {
+                    ("AND (requested_at < ?3 OR (requested_at = ?3 AND request_id < ?4))",
+                     vec![parts[0].to_string(), parts[1].to_string()])
+                } else {
+                    return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
+                        "invalid cursor format".into(),
+                    )));
+                }
+            }
+            None => ("", vec![]),
         };
 
         let sql = format!(
@@ -684,44 +740,23 @@ impl Store {
                     reason, requested_at, responded_at
              FROM approval_requests
              WHERE project_root = ?1 {}
-             ORDER BY requested_at DESC
+             ORDER BY requested_at DESC, request_id DESC
              LIMIT ?2",
             cursor_clause
         );
 
         let mut statement = self.connection.prepare(&sql)?;
 
-        let rows: Vec<ApprovalSummary> = if let Some(cursor) = after {
+        let rows: Vec<ApprovalSummary> = if cursor_params.len() == 2 {
             statement
-                .query_map(params![project_root, page_size as i64 + 1, cursor], |row| {
-                    Ok(ApprovalSummary {
-                        request_id: row.get(0)?,
-                        turn_id: row.get(1)?,
-                        tool: row.get(2)?,
-                        policy: row.get(3)?,
-                        status: row.get(4)?,
-                        decision: row.get(5)?,
-                        reason: row.get(6)?,
-                        requested_at: row.get(7)?,
-                        responded_at: row.get(8)?,
-                    })
-                })?
+                .query_map(
+                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    |row| Self::map_approval_row(row),
+                )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| {
-                    Ok(ApprovalSummary {
-                        request_id: row.get(0)?,
-                        turn_id: row.get(1)?,
-                        tool: row.get(2)?,
-                        policy: row.get(3)?,
-                        status: row.get(4)?,
-                        decision: row.get(5)?,
-                        reason: row.get(6)?,
-                        requested_at: row.get(7)?,
-                        responded_at: row.get(8)?,
-                    })
-                })?
+                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_approval_row(row))?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -732,7 +767,7 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|a| a.requested_at.clone());
+        let after_cursor = items.last().map(|a| format!("{}|{}", a.requested_at, a.request_id));
 
         Ok(WorkbenchPage {
             items,
@@ -1312,5 +1347,42 @@ mod tests {
         assert!(store.workbench_problem_list("/test/empty", None, 50).unwrap().items.is_empty());
         assert!(store.workbench_output_list("/test/empty", None, 50).unwrap().items.is_empty());
         assert!(store.workbench_approval_list("/test/empty", None, 50).unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn legacy_unscoped_records_excluded_from_all_projections() {
+        let (store, _dir) = setup_store();
+        let mut store = store;
+
+        // Create a run with legacy_unscoped project_root.
+        store
+            .create_run(&RunDraft {
+                run_id: "legacy_run".into(),
+                parent_run_id: None,
+                project_root: "legacy_unscoped".into(),
+                origin: "user".into(),
+                request_type: "execute_r".into(),
+                operation_class: "StateCapable".into(),
+                code: "1 + 1".into(),
+                arguments_json: "{}".into(),
+                source_path: None,
+                execution_mode: None,
+                document_version: None,
+                workspace_id: "ws_legacy".into(),
+                state_revision_before: 0,
+                project_revision_before: 0,
+                environment_snapshot_id: None,
+            })
+            .unwrap();
+
+        // Querying with a real project root must not return legacy records.
+        let page = store.workbench_run_list("/test/proj", None, 50).unwrap();
+        assert!(page.items.is_empty(), "legacy_unscoped runs must not appear under a real project");
+
+        // Querying with legacy_unscoped as project root should only work if
+        // the client explicitly passes that value (legacy_unscoped is a
+        // sentinel, not a real project).
+        let legacy_page = store.workbench_run_list("legacy_unscoped", None, 50).unwrap();
+        assert_eq!(legacy_page.items.len(), 1);
     }
 }

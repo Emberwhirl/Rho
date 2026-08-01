@@ -187,12 +187,15 @@ pub struct RunSummary {
     pub source_path: Option<String>,
     /// Whether there was an error.
     pub has_error: bool,
-    /// Whether there were warnings.
-    pub has_warnings: bool,
-    /// Number of problems associated with this run.
-    pub problem_count: usize,
-    /// Number of artifacts produced by this run.
-    pub artifact_count: usize,
+    /// Whether there were warnings (detail view only, omitted from list).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_warnings: Option<bool>,
+    /// Number of problems associated with this run (detail view only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub problem_count: Option<usize>,
+    /// Number of artifacts produced by this run (detail view only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_count: Option<usize>,
 }
 
 /// Detailed run information with bounded code and output previews.
@@ -439,9 +442,9 @@ mod tests {
             request_type: "execute_r".into(),
             source_path: Some("analysis.R".into()),
             has_error: false,
-            has_warnings: false,
-            problem_count: 0,
-            artifact_count: 2,
+            has_warnings: Some(false),
+            problem_count: Some(0),
+            artifact_count: Some(2),
         };
         let json = serde_json::to_string(&run).unwrap();
         let decoded: RunSummary = serde_json::from_str(&json).unwrap();
@@ -463,9 +466,9 @@ mod tests {
                 request_type: "execute_r".into(),
                 source_path: None,
                 has_error: false,
-                has_warnings: false,
-                problem_count: 0,
-                artifact_count: 0,
+                has_warnings: Some(false),
+                problem_count: Some(0),
+                artifact_count: Some(0),
             },
             code_preview: Some("summary(fit)".into()),
             code_truncated: false,
