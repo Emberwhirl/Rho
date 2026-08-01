@@ -1544,6 +1544,63 @@ async function mockInvoke(command, args) {
       truncation_reasons: []
     };
   }
+  if (command === "audit_reproducibility") {
+    const scopeStr = args.scope || "project";
+    return {
+      schema_version: 1,
+      rule_profile: "rho.repro.v1",
+      rule_profile_version: 1,
+      project_root: "D:/mock-project",
+      scope: scopeStr,
+      generated_at: new Date().toISOString(),
+      reference_snapshot_id: null,
+      status: "findings",
+      findings: [
+        {
+          rule_id: "rho.repro.v1.evidence.env.lockfile_missing",
+          rule_version: 1,
+          severity: "error",
+          category: "evidence",
+          summary: "No renv.lock found in project root.",
+          evidence: [{ kind: "file_path", path: "D:/mock-project/renv.lock", excerpt: "file not found" }],
+          limitations: []
+        },
+        {
+          rule_id: "rho.repro.v1.portability.absolute_path.windows",
+          rule_version: 1,
+          severity: "warning",
+          category: "portability",
+          summary: "Source contains a machine-specific absolute path.",
+          evidence: [{ kind: "source_range", path: "analysis.R", line: 18, column: 12, excerpt: 'readRDS("D:/data/input.rds")' }],
+          limitations: []
+        },
+        {
+          rule_id: "rho.repro.v1.randomness.rng_without_seed",
+          rule_version: 1,
+          severity: "info",
+          category: "randomness",
+          summary: "Uses rnorm without set.seed in this file.",
+          evidence: [{ kind: "source_range", path: "analysis.R", line: 5, column: 1, excerpt: "x <- rnorm(100)" }],
+          limitations: []
+        }
+      ],
+      summary: {
+        total_findings: 3,
+        info: 1, warning: 1, error: 1,
+        by_category: { evidence: 1, portability: 1, randomness: 1 },
+        files_scanned: 3,
+        runs_checked: 5
+      },
+      coverage: {
+        files_scanned: 3, files_skipped: 1,
+        skipped_reasons: ["file_too_large: data/large.csv"],
+        runs_considered: 5, artifacts_considered: 2,
+        snapshot_available: true
+      },
+      truncated: false,
+      truncation_reasons: []
+    };
+  }
   if (command === "retry_run") {
     const runId = args.runId ?? args.run_id;
     const detail = mockRuns.find((run) => run.run_id === runId);

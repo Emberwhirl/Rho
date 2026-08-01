@@ -36,10 +36,10 @@ use rho_server::coordinator::{
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
-    ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary, CompareRunsResponse,
-    EnvironmentOperationRequestSummary, PlotArtifactSummary, PlotPayloadPruneResult,
-    ProblemSummary, ProjectRetentionSummary, RetentionPolicy, RunDetail, RunSummary, Store,
-    normalize_project_root,
+    ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary, AuditLimits, AuditResponse,
+    AuditScope, CompareRunsResponse, EnvironmentOperationRequestSummary, PlotArtifactSummary,
+    PlotPayloadPruneResult, ProblemSummary, ProjectRetentionSummary, RetentionPolicy, RunDetail,
+    RunSummary, Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1278,6 +1278,34 @@ async fn compare_runs(
     read_store(&state)
         .map_err(display_error)?
         .compare_runs(&project_root, &left_run_id, &right_run_id)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn audit_reproducibility(
+    scope: String,
+    reference_snapshot_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AuditResponse, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let audit_scope = if scope == "project" {
+        AuditScope::Project
+    } else if let Some(rest) = scope.strip_prefix("run:") {
+        AuditScope::Run(rest.to_string())
+    } else if let Some(rest) = scope.strip_prefix("artifact:") {
+        AuditScope::Artifact(rest.to_string())
+    } else {
+        AuditScope::Project
+    };
+    read_store(&state)
+        .map_err(display_error)?
+        .audit_reproducibility(
+            audit_scope,
+            &project_root,
+            reference_snapshot_id.as_deref(),
+            &AuditLimits::default(),
+        )
         .map_err(display_error)
 }
 
@@ -4656,6 +4684,7 @@ fn main() {
             list_problems,
             get_run_detail,
             compare_runs,
+            audit_reproducibility,
             retry_run,
             run_agent,
             agent_llm_settings,
