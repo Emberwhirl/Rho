@@ -254,6 +254,23 @@ plot(
       <div id="rightResizeHandle" class="resize-handle vertical right-handle" role="separator" aria-label="Resize Agent panel" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="520" tabindex="0"></div>
 
       <aside class="context-panel">
+        <div id="agentSurfaceTabs" class="panel-tabs surface-tabs hidden" role="tablist">
+          <button class="active" data-agent-surface="direct" type="button">Direct</button>
+          <button data-agent-surface="monitor" type="button">Monitor</button>
+          <button data-agent-surface="review" type="button">Review</button>
+        </div>
+        <div id="agentMonitorPanel" class="context-content hidden">
+          <div class="monitor-header"><strong>Active Runs</strong></div>
+          <div id="monitorRunList" class="monitor-run-list"></div>
+          <div class="monitor-actions">
+            <button id="monitorInterrupt" class="danger" type="button">Interrupt R</button>
+            <button id="monitorRestart" type="button">Restart Workspace R</button>
+          </div>
+        </div>
+        <div id="agentReviewPanel" class="context-content hidden">
+          <div class="review-header"><strong id="reviewTitle">Inspect</strong></div>
+          <div id="reviewContent" class="review-content"></div>
+        </div>
         <div class="panel-tabs context-tabs" role="tablist">
           <button class="active" data-context-tab="agent" type="button">Agent</button>
           <button data-context-tab="environment" type="button">Environment <span id="objectCount" class="count">0</span></button>

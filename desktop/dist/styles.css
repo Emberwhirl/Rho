@@ -18,6 +18,13 @@
   --console-ink: #dce6e8;
   --danger: #bd4b45;
   --warning: #b27816;
+  --error: #bd4b45;
+  --success: #167a72;
+  --hover: #e8eded;
+  --text: #20282d;
+  --border-light: #e4e8e9;
+  --mono: "Cascadia Code", Consolas, monospace;
+  --code-bg: #f0f4f4;
   --left-pane-width: 214px;
   --right-pane-width: 362px;
   --dock-height: 260px;
@@ -142,6 +149,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   grid-column: 2;
   grid-row: 2;
   display: block;
+}
+
+/* Surface tabs */
+.surface-tabs { margin-bottom: 0; border-bottom: 1px solid var(--border); }
+.surface-tabs button { font-size: 12px; padding: 6px 12px; }
+
+/* Monitor panel */
+.monitor-header { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.monitor-run-list { padding: 8px 12px; overflow-y: auto; }
+.monitor-run-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--border-light);
+  font-size: 12px;
+}
+.monitor-actions {
+  display: flex; gap: 8px; padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Review panel */
+.review-header { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.review-content { padding: 10px 12px; font-size: 12px; overflow-y: auto; max-height: calc(100vh - 160px); }
+.review-section { margin-bottom: 12px; }
+.review-section strong { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.review-section pre {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--code-bg); padding: 6px 8px;
+  border-radius: 4px; overflow-x: auto; max-height: 200px;
 }
 
 .topbar {

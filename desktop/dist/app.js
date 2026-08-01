@@ -6570,11 +6570,14 @@ function applyPostureLayout() {
     $("#taskRail").classList.remove("hidden");
     $(".sidebar > .panel-tabs").classList.add("hidden");
     $(".sidebar > .side-content").classList.add("hidden");
+    $("#agentSurfaceTabs").classList.remove("hidden");
+    applyAgentSurface(state.agentSurface);
     renderTaskRail();
   } else {
     $("#taskRail").classList.add("hidden");
     $(".sidebar > .panel-tabs").classList.remove("hidden");
     $(".sidebar > .side-content").classList.remove("hidden");
+    $("#agentSurfaceTabs").classList.add("hidden");
     applyWorkbenchLayout(state.humanPreset);
   }
 
@@ -6584,6 +6587,97 @@ function applyPostureLayout() {
 }
 
 $("#postureSwitcher").addEventListener("click", togglePosture);
+
+function switchAgentSurface(name) {
+  state.agentSurface = name;
+  applyAgentSurface(name);
+  scheduleSessionSave();
+}
+
+function applyAgentSurface(name) {
+  $$("[data-agent-surface]").forEach((button) => button.classList.toggle("active", button.dataset.agentSurface === name));
+
+  // Show/hide panels based on surface
+  const isDirect = name === "direct";
+  const isMonitor = name === "monitor";
+  const isReview = name === "review";
+
+  $("#agentPanel").classList.toggle("hidden", !isDirect);
+  $(".context-tabs").classList.toggle("hidden", !isDirect);
+  $("#agentMonitorPanel").classList.toggle("hidden", !isMonitor);
+  $("#agentReviewPanel").classList.toggle("hidden", !isReview);
+
+  if (isMonitor) renderMonitorPanel();
+  if (isReview) renderReviewPanel();
+}
+
+$$("[data-agent-surface]").forEach((button) => button.addEventListener("click", () => {
+  switchAgentSurface(button.dataset.agentSurface);
+}));
+
+function renderMonitorPanel() {
+  const list = $("#monitorRunList");
+  list.replaceChildren();
+
+  const activeRuns = state.runs.filter((r) => ["running", "waiting"].includes(r.status));
+  const recentRuns = state.runs.filter((r) => !["running", "waiting"].includes(r.status)).slice(0, 5);
+
+  for (const run of [...activeRuns, ...recentRuns]) {
+    const item = document.createElement("div");
+    item.className = "monitor-run-item";
+    const icon = run.status === "running" ? "⟳" : run.status === "completed" ? "✓" : run.status === "failed" ? "✗" : "·";
+    item.innerHTML = `<span>${icon}</span><span>${run.origin}</span><span>${run.request_type}</span><span style="color:var(--muted);margin-left:auto;font-size:10px">${run.started_at?.slice(11, 19) || ""}</span>`;
+    list.append(item);
+  }
+
+  if (!activeRuns.length && !recentRuns.length) {
+    list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No runs yet.</div>';
+  }
+}
+
+function renderReviewPanel() {
+  const content = $("#reviewContent");
+  content.replaceChildren();
+
+  // Show selected run or artifact detail
+  const run = state.runs.find((r) => r.run_id === state.activeRunId);
+  if (run) {
+    $("#reviewTitle").textContent = `Run: ${run.run_id.slice(0, 12)}`;
+    addReviewSection(content, "Status", run.status);
+    addReviewSection(content, "Origin", run.origin);
+    addReviewSection(content, "Request", run.request_type);
+    if (run.source_path) addReviewSection(content, "Source", run.source_path);
+    return;
+  }
+
+  // Show selected artifact detail
+  if (state.selectedArtifactDetail) {
+    const a = state.selectedArtifactDetail;
+    $("#reviewTitle").textContent = `Artifact: ${a.artifact_id?.slice(0, 12) || "unknown"}`;
+    addReviewSection(content, "Kind", a.artifact_kind || "unknown");
+    if (a.run_id) addReviewSection(content, "Producing Run", a.run_id);
+    if (a.output_path) addReviewSection(content, "Path", a.output_path);
+    addReviewSection(content, "Provenance", a.provenance_complete ? "complete" : "incomplete");
+    if (a.incomplete_reason) addReviewSection(content, "Reason", a.incomplete_reason);
+    return;
+  }
+
+  content.innerHTML = '<div style="color:var(--muted);font-size:12px">Select a run or artifact to inspect.</div>';
+}
+
+function addReviewSection(container, label, value) {
+  const section = document.createElement("div");
+  section.className = "review-section";
+  const strong = document.createElement("strong");
+  strong.textContent = label;
+  const pre = document.createElement("pre");
+  pre.textContent = String(value);
+  section.append(strong, pre);
+  container.append(section);
+}
+
+$("#monitorInterrupt").addEventListener("click", () => invoke("interrupt_r"));
+$("#monitorRestart").addEventListener("click", () => invoke("restart_workspace_r"));
 
 function closeWorkbenchMenus(except = null) {
   $$('[data-menu-trigger]').forEach((trigger) => {
