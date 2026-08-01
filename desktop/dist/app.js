@@ -164,6 +164,128 @@ function mockProjectSkillsView(projectRoot = mockLastProject) {
     discovery_error: null,
   };
 }
+
+// ── Product dialogs (replaces window.prompt/confirm) ──
+
+function showProductDialog({ title, message, buttons, onClose }) {
+  const dialog = document.getElementById("genericDialog");
+  dialog.classList.remove("hidden");
+  document.getElementById("genericDialogTitle").textContent = title;
+  document.getElementById("genericDialogMessage").textContent = message || "";
+  document.getElementById("genericDialogInputRow").classList.add("hidden");
+  document.getElementById("genericDialogError").classList.add("hidden");
+  const actions = document.getElementById("genericDialogActions");
+  actions.replaceChildren();
+
+  return new Promise((resolve) => {
+    const cleanup = (result) => {
+      dialog.classList.add("hidden");
+      resolve(result);
+    };
+    document.getElementById("genericDialogClose").onclick = () => {
+      if (onClose) onClose();
+      cleanup(null);
+    };
+    document.querySelector("#genericDialog .product-dialog-scrim").onclick = () => {
+      cleanup(null);
+    };
+
+    for (const btn of buttons) {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = btn.label;
+      if (btn.primary) el.classList.add("primary");
+      if (btn.destructive) el.style.cssText = "color:#fff;border-color:var(--danger);background:var(--danger)";
+      el.addEventListener("click", () => cleanup(btn.key));
+      actions.append(el);
+    }
+  });
+}
+
+function showInputDialog({ title, message, label, defaultValue, placeholder, validate }) {
+  const dialog = document.getElementById("genericDialog");
+  dialog.classList.remove("hidden");
+  document.getElementById("genericDialogTitle").textContent = title;
+  document.getElementById("genericDialogMessage").textContent = message || "";
+  const inputRow = document.getElementById("genericDialogInputRow");
+  inputRow.classList.remove("hidden");
+  document.getElementById("genericDialogInputLabel").textContent = label || "";
+  const input = document.getElementById("genericDialogInput");
+  input.value = defaultValue || "";
+  input.placeholder = placeholder || "";
+  document.getElementById("genericDialogInputError").classList.add("hidden");
+  document.getElementById("genericDialogError").classList.add("hidden");
+  const actions = document.getElementById("genericDialogActions");
+  actions.replaceChildren();
+
+  return new Promise((resolve) => {
+    const cleanup = (result) => {
+      dialog.classList.add("hidden");
+      resolve(result);
+    };
+    document.getElementById("genericDialogClose").onclick = () => cleanup(null);
+    document.querySelector("#genericDialog .product-dialog-scrim").onclick = () => cleanup(null);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => cleanup(null));
+    actions.append(cancelBtn);
+
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.textContent = "OK";
+    okBtn.classList.add("primary");
+    okBtn.addEventListener("click", () => {
+      const value = input.value.trim();
+      if (validate && !validate(value)) return;
+      cleanup(value);
+    });
+    actions.append(okBtn);
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const value = input.value.trim();
+        if (validate && !validate(value)) return;
+        cleanup(value);
+      }
+    });
+
+    input.focus();
+  });
+}
+
+async function promptForPath({ title, message, defaultValue, validate, formatHint }) {
+  const value = await showInputDialog({
+    title: title || "Enter path",
+    message: message || `Project-relative path under ${state.project.root || "project"}/`,
+    label: "Project-relative path",
+    defaultValue,
+    placeholder: formatHint || "analysis.R",
+    validate: (v) => {
+      if (!v) { document.getElementById("genericDialogInputError").textContent = "Path is required."; document.getElementById("genericDialogInputError").classList.remove("hidden"); return false; }
+      if (v.includes("..")) { document.getElementById("genericDialogInputError").textContent = "Use a clean project-relative path without . or .. segments."; document.getElementById("genericDialogInputError").classList.remove("hidden"); return false; }
+      if (/^[A-Za-z]:[\\/]/.test(v)) { document.getElementById("genericDialogInputError").textContent = "Use a project-relative path, not an absolute path."; document.getElementById("genericDialogInputError").classList.remove("hidden"); return false; }
+      if (validate && !validate(v)) return false;
+      document.getElementById("genericDialogInputError").classList.add("hidden");
+      return true;
+    }
+  });
+  return value;
+}
+
+async function confirmAction({ title, message, confirmLabel, cancelLabel, destructive }) {
+  const result = await showProductDialog({
+    title: title || "Confirm",
+    message,
+    buttons: [
+      { key: false, label: cancelLabel || "Cancel" },
+      { key: true, label: confirmLabel || "Confirm", primary: true, destructive },
+    ],
+  });
+  return result === true;
+}
+
 let mockLastProject = "D:/Rho";
 const mockProjectSessions = {};
 let mockRunSequence = 0;
@@ -2136,6 +2258,25 @@ function currentSelectionLabel() {
   return `Line ${currentCursorPosition().line}`;
 }
 
+function updateRunButtonLabel() {
+  const label = runButtonLabel();
+  const span = document.querySelector("#runButton span:last-child");
+  if (span) span.textContent = label;
+  // Also update the editor Run button title
+  $("#editorRunButton").title = label;
+}
+
+function runButtonLabel() {
+  if (state.projectStatus !== "ready") return "Run";
+  const documentState = activeDocument();
+  if (!documentState) return "Run";
+  const { start, end } = currentEditorOffsets();
+  if (start !== end) return "Run selected code";
+  const position = currentCursorPosition();
+  if (position.line > 0) return "Run current line";
+  return "Run file";
+}
+
 function updateEditorChrome() {
   const position = currentCursorPosition();
   $("#cursorLine").textContent = String(position.line);
@@ -2146,6 +2287,8 @@ function updateEditorChrome() {
     const lines = editor.value.split("\n").length;
     $("#lineNumbers").textContent = Array.from({ length: lines }, (_, index) => index + 1).join("\n");
   }
+  // Dynamic Run button label
+  updateRunButtonLabel();
   const documentReadOnly = Boolean(activeDocument()?.readOnly);
   const documentActionsDisabled = state.projectStatus !== "ready" || state.busy || documentReadOnly;
   $("#runButton").disabled = documentActionsDisabled;
@@ -2366,15 +2509,15 @@ function setProjectStatus(status, unavailable = null) {
   $("#projectName").textContent = unavailable?.path?.split(/[\\/]/).filter(Boolean).at(-1) || activeProjectName();
   $("#projectTreeRoot").textContent = unavailable?.path || state.project.root || "No project";
   $("#projectBanner").classList.toggle("hidden", status === "ready");
-  $("#projectBannerTitle").textContent = status === "unavailable" ? "Project unavailable" : "No project loaded";
+  $("#projectBannerTitle").textContent = status === "unavailable" ? "Project unavailable" : "Open an R project to begin";
   $("#projectBannerMessage").textContent = unavailable
     ? `${unavailable.path} · ${unavailable.reason}`
-    : "Select a project to continue.";
+    : "Select a project directory to connect a workspace.";
   $("#projectFileList").classList.toggle("hidden", status !== "ready");
   $("#projectEmptyState").classList.toggle("hidden", status === "ready");
   $("#projectEmptyState").textContent = status === "unavailable"
     ? "Saved project is unavailable. Choose another directory."
-    : "Select a project to get started.";
+    : "Open a project to get started.";
   renderProjectSkills();
   updateEditorChrome();
 }
@@ -2625,9 +2768,12 @@ function renderActiveDocument() {
 
 async function restoreDraftChoice(path, savedContent, draftContent) {
   if (draftContent === null || draftContent === undefined || draftContent === savedContent) return savedContent;
-  const restore = window.confirm(
-    `Restore the unsaved draft for ${path}?\n\nOK restores the draft.\nCancel loads the on-disk file.`
-  );
+  const restore = await confirmAction({
+    title: "Restore unsaved draft",
+    message: `${path} has unsaved changes.`,
+    confirmLabel: "Restore draft",
+    cancelLabel: "Load disk version",
+  });
   return restore ? draftContent : savedContent;
 }
 
@@ -2754,7 +2900,11 @@ async function saveActiveDocument() {
 
 async function createDocument() {
   if (state.projectStatus !== "ready") return;
-  const name = window.prompt("New R file name", "analysis.R");
+  const name = await promptForPath({
+    title: "Create analysis script",
+    message: "Enter a project-relative path for the new R file.",
+    defaultValue: "analysis.R",
+  });
   if (!name) return;
   const path = name.replace(/^[\\/]+/, "");
   try {
@@ -3844,7 +3994,12 @@ async function deleteAgentProvider() {
     toast("Select a provider to delete.", true);
     return;
   }
-  if (!window.confirm(`Delete provider ${provider.display_name}?`)) return;
+  if (!await confirmAction({
+    title: "Delete provider",
+    message: `Delete provider ${provider.display_name}? This will also remove all its models.`,
+    confirmLabel: "Delete provider",
+    destructive: true,
+  })) return;
   try {
     const view = await invoke("agent_llm_delete_provider", { providerId: provider.id });
     state.agentLlm.selectedProviderId = view.providers[0]?.id || null;
@@ -3876,7 +4031,12 @@ async function deleteAgentModel() {
     toast("Select a model to delete.", true);
     return;
   }
-  if (!window.confirm(`Delete model ${model.display_name}?`)) return;
+  if (!await confirmAction({
+    title: "Delete model",
+    message: `Delete model ${model.display_name}?`,
+    confirmLabel: "Delete model",
+    destructive: true,
+  })) return;
   try {
     let replacementModelId = null;
     if (state.agentLlm.settings?.selected_model_id === model.id) {
@@ -4155,10 +4315,11 @@ function renderApprovalPanel() {
 async function submitApproval(decision, approval) {
   const reason = decision === "approve"
     ? null
-    : window.prompt(
-      decision === "cancel" ? "Provide a cancellation note (optional)." : "Provide a rejection reason (optional).",
-      "",
-    ) || null;
+    : (await promptForPath({
+      title: decision === "cancel" ? "Cancel approval" : "Reject approval",
+      message: decision === "cancel" ? "Provide a cancellation note (optional)." : "Provide a rejection reason (optional).",
+      defaultValue: "",
+    })) || null;
   for (const id of ["approvalApprove", "approvalReject", "approvalCancel"]) {
     $(["#", id].join("")).disabled = true;
   }
@@ -4398,19 +4559,36 @@ function renderProblems() {
     icon.textContent = "!";
     const content = document.createElement("div");
     const title = document.createElement("strong");
-    title.textContent = problem.message;
+    title.textContent = problem.source_path
+      ? `Analysis stopped at ${problem.source_path}`
+      : problem.message;
     const detail = document.createElement("p");
     detail.textContent = [
-      problem.call,
-      problem.source_path ? `Source: ${problem.source_path}` : null,
-      `${prettyOrigin(problem.origin)} · ${prettyStatus(problem.status)}`,
+      problem.message !== title.textContent ? problem.message : null,
+      problem.call ? `called ${problem.call}` : null,
     ].filter(Boolean).join(" · ");
     content.append(title, detail);
     const actions = document.createElement("div");
     actions.className = "problem-actions";
+
+    // Open source if available
+    if (problem.source_path) {
+      const openSource = document.createElement("button");
+      openSource.type = "button";
+      openSource.textContent = "Go to source";
+      openSource.addEventListener("click", async () => {
+        try {
+          await openDocument(problem.source_path);
+        } catch (error) {
+          toast(String(error), true);
+        }
+      });
+      actions.append(openSource);
+    }
+
     const explain = document.createElement("button");
     explain.type = "button";
-    explain.textContent = "Explain";
+    explain.textContent = "Explain this problem";
     explain.addEventListener("click", () => {
       applyWorkbenchLayout("agent");
       $("#agentInput").value = `请解释这个 R 错误并给出修复建议：${problem.message}`;
@@ -4420,7 +4598,7 @@ function renderProblems() {
     if (problem.run_id && !String(problem.run_id).startsWith("transient_")) {
       const retry = document.createElement("button");
       retry.type = "button";
-      retry.textContent = "Retry";
+      retry.textContent = "Run again";
       retry.addEventListener("click", async () => {
         try {
           const response = await invoke("retry_run", { runId: problem.run_id });
@@ -4437,15 +4615,6 @@ function renderProblems() {
         }
       });
       actions.append(retry);
-    }
-    if (problem.source_path) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.textContent = "Open Source";
-      open.addEventListener("click", async () => {
-        await openDocument(problem.source_path);
-      });
-      actions.append(open);
     }
     row.append(icon, content, actions);
     list.append(row);
@@ -5456,10 +5625,13 @@ async function exportVisibleDataView() {
   }
   const view = selectedDataView();
   const defaultPath = defaultDataViewExportPath(page, view);
-  const path = window.prompt(
-    "Export the current bounded page to a project-relative .csv or .tsv path.",
-    defaultPath,
-  );
+  const path = await promptForPath({
+    title: "Export table page",
+    message: "Export the current bounded page to a project-relative .csv or .tsv path.",
+    defaultValue: defaultPath,
+    validate: (v) => v.endsWith(".csv") || v.endsWith(".tsv"),
+    formatHint: "report.csv",
+  });
   if (!path) return;
   const normalized = String(path).trim().replace(/\\/g, "/");
   if (!normalized) return;
@@ -5506,10 +5678,13 @@ async function exportActivePlot() {
     toast("Run code that produces a plot before exporting.", true);
     return;
   }
-  const path = window.prompt(
-    "Export the selected plot to a project-relative .png path.",
-    defaultPlotExportPath(plot),
-  );
+  const path = await promptForPath({
+    title: "Export plot as PNG",
+    message: "Export the selected plot to a project-relative .png path.",
+    defaultValue: defaultPlotExportPath(plot),
+    validate: (v) => v.endsWith(".png"),
+    formatHint: "plot.png",
+  });
   if (!path) return;
   try {
     const normalized = validateProjectRelativePath(path);
@@ -5533,7 +5708,12 @@ async function exportActivePlot() {
 
 async function clearArtifacts(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
-  if (!window.confirm(`Delete output records from ${scope}? Output files are not deleted.`)) return;
+  if (!await confirmAction({
+    title: "Delete output records",
+    message: `Delete output records from ${scope}? Output files are not deleted.`,
+    confirmLabel: "Delete records",
+    destructive: true,
+  })) return;
   try {
     await invoke("clear_artifact_records", { session_only: sessionOnly });
     state.selectedArtifactId = null;
@@ -6833,9 +7013,12 @@ async function handleExternalDocumentChange(path) {
       return;
     }
     document.conflictDiskContent = diskContent;
-    const reload = window.confirm(
-      `${path} changed on disk while you have unsaved edits.\n\nOK reloads the disk version.\nCancel keeps your local draft.`
-    );
+    const reload = await confirmAction({
+      title: "File changed on disk",
+      message: `${path} changed on disk while you have unsaved edits.`,
+      confirmLabel: "Reload disk version",
+      cancelLabel: "Keep local draft",
+    });
     if (reload) {
       document.savedContent = diskContent;
       document.content = diskContent;
@@ -7263,7 +7446,12 @@ $("#agentCancelButton").addEventListener("click", async () => {
   }
 });
 $("#clearAgentHistoryButton").addEventListener("click", async () => {
-  if (!window.confirm("Delete all Agent history for this project?")) return;
+  if (!await confirmAction({
+    title: "Delete conversation history",
+    message: "Delete all Agent conversation history for this project? This cannot be undone.",
+    confirmLabel: "Delete history",
+    destructive: true,
+  })) return;
   try {
     await invoke("clear_agent_history");
     state.selectedTurnId = null;
@@ -7342,7 +7530,11 @@ $("#agentContextUseSelection").addEventListener("click", () => {
   closeAgentContextMenu();
 });
 $("#agentContextNewFile").addEventListener("click", () => {
-  const value = window.prompt("New project-relative path", "report.qmd");
+  const value = await promptForPath({
+    title: "New project file",
+    message: "Enter a project-relative path.",
+    defaultValue: "report.qmd",
+  });
   if (!value) {
     closeAgentContextMenu();
     return;
@@ -7408,7 +7600,11 @@ $("#artifactsShortcut").addEventListener("click", () => switchDockTab("plots"));
 $("#plotExportButton").addEventListener("click", exportActivePlot);
 async function prunePlotPayloads(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
-  if (!window.confirm(`Free preview storage for ${scope}? Plot history rows stay in place and exported files are not deleted.`)) return;
+  if (!await confirmAction({
+    title: "Free preview storage",
+    message: `Free preview storage for ${scope}? Plot history rows stay in place and exported files are not deleted.`,
+    confirmLabel: "Free preview storage",
+  })) return;
   try {
     const result = await invoke("prune_plot_payloads", { session_only: sessionOnly });
     await loadRunData();
@@ -7419,7 +7615,12 @@ async function prunePlotPayloads(sessionOnly) {
 }
 async function clearPlots(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
-  if (!window.confirm(`Delete plot history from ${scope}? Exported files are not deleted.`)) return;
+  if (!await confirmAction({
+    title: "Delete plot history",
+    message: `Delete plot history from ${scope}? Exported files are not deleted.`,
+    confirmLabel: "Delete plot history",
+    destructive: true,
+  })) return;
   try {
     await invoke("clear_plot_artifacts", { session_only: sessionOnly });
     await loadRunData();

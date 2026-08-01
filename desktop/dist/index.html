@@ -107,7 +107,7 @@
           <div id="projectFileList" class="project-file-list">
             <div class="empty-tree">Loading project files…</div>
           </div>
-          <div id="projectEmptyState" class="empty-tree hidden">Select a project to get started.</div>
+          <div id="projectEmptyState" class="empty-tree hidden">Open a project to get started.</div>
           <div class="tree-section">OUTPUTS</div>
           <button id="plotsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">▧</span><span>plots</span><span id="plotOutputCount" class="tree-count">0</span></button>
           <div id="plotOutputList" class="plot-output-list"></div>
@@ -549,6 +549,24 @@ plot(
             </div>
           </section>
         </div>
+      </div>
+    </div>
+    <!-- Generic product dialogs -->
+    <div id="genericDialog" class="product-dialog hidden" role="dialog" aria-modal="true">
+      <div class="product-dialog-scrim"></div>
+      <div class="product-dialog-surface" style="max-width:420px">
+        <div class="product-dialog-header">
+          <div><strong id="genericDialogTitle">Dialog</strong></div>
+          <button id="genericDialogClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <p id="genericDialogMessage" class="product-dialog-note"></p>
+        <div id="genericDialogInputRow" class="hidden" style="margin:12px 0">
+          <label id="genericDialogInputLabel" style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px"></label>
+          <input id="genericDialogInput" type="text" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+          <p id="genericDialogInputError" class="hidden" style="color:var(--danger);font-size:11px;margin:4px 0 0"></p>
+        </div>
+        <div id="genericDialogError" class="agent-llm-banner hidden"></div>
+        <div id="genericDialogActions" class="product-dialog-actions"></div>
       </div>
     </div>
     <div id="environmentOperationDialog" class="product-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="environmentOperationDialogTitle">
