@@ -18,6 +18,8 @@ const state = {
   posture: "human",
   agentSurface: "direct",
   humanPreset: "code",
+  auditResult: null,
+  auditLoading: false,
   agentBusy: false,
   activeAgentTurnId: null,
   agentRuntime: null,
@@ -6735,6 +6737,89 @@ function addReviewSection(container, label, value) {
 
 $("#monitorInterrupt").addEventListener("click", () => invoke("interrupt_r"));
 $("#monitorRestart").addEventListener("click", () => invoke("restart_workspace_r"));
+
+// ── Reproducibility Audit ──
+
+$("#auditProjectButton").addEventListener("click", async () => {
+  state.auditLoading = true;
+  state.auditResult = null;
+  renderAuditPanel();
+  $("#auditPanel").classList.remove("hidden");
+  try {
+    state.auditResult = await invoke("audit_reproducibility", { scope: "project" });
+  } catch (e) {
+    state.auditResult = { status: "error", findings: [], coverage: {}, truncated: true, truncation_reasons: [String(e)] };
+  }
+  state.auditLoading = false;
+  renderAuditPanel();
+});
+
+$("#auditCloseButton").addEventListener("click", () => {
+  $("#auditPanel").classList.add("hidden");
+});
+
+function renderAuditPanel() {
+  if (state.auditLoading) {
+    $("#auditStatus").textContent = "running";
+    $("#auditStatus").className = "audit-status-badge status-findings";
+    $("#auditCoverage").textContent = "Running audit...";
+    $("#auditFindings").innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Auditing project reproducibility...</div>';
+    $("#auditTruncated").classList.add("hidden");
+    return;
+  }
+  const r = state.auditResult;
+  if (!r) return;
+
+  const statusColors = { complete: "complete", findings: "findings", incomplete: "incomplete", unavailable: "unavailable", error: "error" };
+  $("#auditStatus").textContent = r.status;
+  $("#auditStatus").className = "audit-status-badge status-" + (statusColors[r.status] || "findings");
+  $("#auditScope").textContent = r.scope || "project";
+
+  const cov = r.coverage || {};
+  let covText = "Scanned " + (cov.files_scanned || 0) + " files, " + (cov.runs_considered || 0) + " runs, " + (cov.artifacts_considered || 0) + " artifacts";
+  if (cov.files_skipped) covText += " (" + cov.files_skipped + " skipped)";
+  $("#auditCoverage").textContent = covText;
+
+  const findings = r.findings || [];
+  if (findings.length === 0) {
+    $("#auditFindings").innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No findings. Project looks clean!</div>';
+  } else {
+    const groups = {};
+    for (const f of findings) {
+      const cat = f.category || "other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(f);
+    }
+    let html = "";
+    for (const [category, items] of Object.entries(groups)) {
+      html += '<div class="audit-category"><span>' + items.length + '</span>' + category + '</div>';
+      for (const f of items) {
+        html += '<div class="audit-finding severity-' + f.severity + '">';
+        html += '<div class="finding-rule">' + h(f.rule_id) + '</div>';
+        html += '<div class="finding-summary">' + h(f.summary) + '</div>';
+        if (f.evidence && f.evidence.length) {
+          html += '<div class="finding-evidence">';
+          for (const ev of f.evidence) {
+            html += '<span class="evidence-badge">' + h(ev.kind || "") + ': ' + h(ev.path || ev.excerpt || "") + '</span>';
+          }
+          html += '</div>';
+        }
+        if (f.limitations && f.limitations.length) {
+          html += '<div style="margin-top:3px;font-size:10px;color:var(--muted)">Limitations: ' + f.limitations.join(", ") + '</div>';
+        }
+        html += '</div>';
+      }
+    }
+    $("#auditFindings").innerHTML = html;
+  }
+
+  if (r.truncated) {
+    $("#auditTruncated").classList.remove("hidden");
+    $("#auditTruncated").textContent = "Results truncated: " + (r.truncation_reasons || []).join("; ");
+  } else {
+    $("#auditTruncated").classList.add("hidden");
+  }
+}
 
 function closeWorkbenchMenus(except = null) {
   $$('[data-menu-trigger]').forEach((trigger) => {

@@ -97,6 +97,7 @@
           <button id="runButton" class="run-button" type="button" title="Run selection or document">
             <span>▶</span><span>Run</span>
           </button>
+          <button id="auditProjectButton" class="audit-button" type="button" title="Audit project reproducibility">Audit</button>
         </div>
       </header>
 
@@ -369,6 +370,18 @@ plot(
               <button id="agentSendButton" class="send-button" type="button" title="Send" aria-label="Send">↑</button>
             </div>
           </div>
+        </section>
+
+        <section id="auditPanel" class="context-content hidden">
+          <div id="auditHeader" class="audit-header">
+            <strong>Reproducibility Audit</strong>
+            <span id="auditScope" class="audit-scope-badge">project</span>
+            <span id="auditStatus" class="audit-status-badge">--</span>
+            <button id="auditCloseButton" class="audit-close-button" type="button" title="Close audit panel">×</button>
+          </div>
+          <div id="auditCoverage" class="audit-coverage"></div>
+          <div id="auditFindings" class="audit-findings"></div>
+          <div id="auditTruncated" class="audit-truncated hidden"></div>
         </section>
 
         <section id="environmentPanel" class="context-content environment-panel hidden">
