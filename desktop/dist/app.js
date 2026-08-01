@@ -15,6 +15,9 @@ const state = {
   busy: false,
   agentMode: "ask",
   actAutoApprove: false,
+  posture: "human",
+  agentSurface: "direct",
+  humanPreset: "code",
   agentBusy: false,
   activeAgentTurnId: null,
   agentRuntime: null,
@@ -2551,6 +2554,9 @@ function buildSessionSnapshot() {
     })),
     active_document: activeDocument()?.transient ? null : state.activeDocument,
     panels: currentPanelSnapshot(),
+    posture: state.posture,
+    agent_surface: state.agentSurface,
+    human_preset: state.humanPreset,
   };
 }
 
@@ -6475,6 +6481,44 @@ function applyWorkbenchLayout(layout) {
   requestAnimationFrame(() => layoutEditor());
 }
 
+function togglePosture() {
+  const next = state.posture === "human" ? "agent" : "human";
+  state.posture = next;
+  applyPostureLayout();
+  scheduleSessionSave();
+}
+
+function applyPostureLayout() {
+  const shell = $(".app-shell");
+  const isAgent = state.posture === "agent";
+
+  shell.classList.toggle("agent-first", isAgent);
+  shell.classList.toggle("layout-code", !isAgent && state.humanPreset === "code");
+
+  $("#postureLabel").textContent = isAgent ? "Agent" : "Human";
+  $("#postureSwitcher").setAttribute("aria-pressed", String(isAgent));
+
+  // Human-first layout buttons are only active in human posture
+  $$("[data-layout]").forEach((button) => {
+    button.disabled = isAgent;
+    if (!isAgent) button.classList.toggle("active", button.dataset.layout === state.humanPreset);
+  });
+
+  // Rearrange panels for agent-first
+  if (isAgent) {
+    // Move Agent panel to the flow column
+    switchContextTab("agent");
+  } else {
+    applyWorkbenchLayout(state.humanPreset);
+  }
+
+  postMessage({ postureUpdated: { posture: state.posture, surface: state.agentSurface } });
+
+  requestAnimationFrame(() => layoutEditor());
+}
+
+$("#postureSwitcher").addEventListener("click", togglePosture);
+
 function closeWorkbenchMenus(except = null) {
   $$('[data-menu-trigger]').forEach((trigger) => {
     const name = trigger.dataset.menuTrigger;
@@ -7062,6 +7106,12 @@ async function hydrateProject(response) {
     };
   }
   applySessionPanels(session.panels || {});
+  if (session.posture) {
+    state.posture = session.posture;
+    state.agentSurface = session.agent_surface || "direct";
+    state.humanPreset = session.human_preset || "code";
+    applyPostureLayout();
+  }
   setProjectStatus("ready");
   await loadProjectSkills();
   const sessionDocuments = session.open_documents || [];

@@ -114,6 +114,36 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .app-shell.layout-code .context-panel,
 .app-shell.layout-code .right-handle { display: none; }
 
+/* Agent-first posture: 3-column task-rail + agent-flow + work-surface */
+.app-shell.agent-first {
+  grid-template-columns: 220px minmax(280px, 1fr) minmax(300px, 1fr);
+  grid-template-rows: 46px minmax(0, 1fr) auto;
+}
+.app-shell.agent-first .sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface);
+  overflow-y: auto;
+}
+.app-shell.agent-first .workspace {
+  grid-column: 3;
+  grid-row: 2;
+  overflow-y: auto;
+}
+.app-shell.agent-first .execution-dock {
+  grid-column: 2 / 4;
+  grid-row: 3;
+}
+.app-shell.agent-first .left-handle,
+.app-shell.agent-first .right-handle { display: none; }
+.app-shell.agent-first .dock-handle { display: block; }
+.app-shell.agent-first .context-panel {
+  grid-column: 2;
+  grid-row: 2;
+  display: block;
+}
+
 .topbar {
   grid-column: 1 / -1;
   display: flex;
