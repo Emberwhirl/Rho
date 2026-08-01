@@ -2247,6 +2247,24 @@ async fn git_diff(
     git::git_diff(Path::new(&root), staged.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn git_stage(
+    paths: Option<Vec<String>>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    git::git_stage(Path::new(&root), &paths.unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_commit(
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let root = state.project_root.read().await.clone();
+    git::git_commit(Path::new(&root), &message).map_err(|e| e.to_string())
+}
+
 async fn shutdown_application(state: &AppState) {
     write_startup_log("Rho desktop shutdown started");
     state.approvals.cancel_all("Rho is closing.").await;
@@ -4824,7 +4842,9 @@ fn main() {
             restart_workspace,
             git_status,
             git_log,
-            git_diff
+            git_diff,
+            git_stage,
+            git_commit
         ])
         .build(tauri::generate_context!());
     match run_result {

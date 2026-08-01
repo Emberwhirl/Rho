@@ -2078,6 +2078,8 @@ async function mockInvoke(command, args) {
   if (command === "git_diff") {
     return [];
   }
+  if (command === "git_stage") { return null; }
+  if (command === "git_commit") { return "abc123def456"; }
   return { status: "ok" };
 }
 

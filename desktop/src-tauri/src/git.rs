@@ -175,3 +175,22 @@ pub fn git_diff(project_root: &Path, staged: bool) -> Result<Vec<GitDiffFile>> {
         .collect();
     Ok(files)
 }
+
+pub fn git_stage(project_root: &Path, paths: &[String]) -> Result<()> {
+    if paths.is_empty() {
+        run_git(project_root, &["add", "."])?;
+    } else {
+        let args: Vec<&str> = std::iter::once(&"add")
+            .chain(paths.iter().map(|s| s.as_str()))
+            .collect();
+        run_git(project_root, &args)?;
+    }
+    Ok(())
+}
+
+/// Returns commit hash
+pub fn git_commit(project_root: &Path, message: &str) -> Result<String> {
+    run_git(project_root, &["commit", "-m", message])?;
+    let hash = run_git(project_root, &["rev-parse", "HEAD"])?;
+    Ok(hash.trim().to_string())
+}
