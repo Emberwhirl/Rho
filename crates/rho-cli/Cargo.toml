@@ -1,0 +1,20 @@
+[package]
+name = "rho-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rho"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+rho-protocol = { path = "../rho-protocol" }
+rho-store = { path = "../rho-store" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
