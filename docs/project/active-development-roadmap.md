@@ -191,8 +191,8 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 2 BH5 incremental module boundaries is
-accepted. Wave 3 RA-RC1 deterministic run comparison is active.**
+Current program state: **Wave 3 RA-RC1 deterministic run comparison is
+accepted.** Waves 4-14 remain scheduled but not authorized.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |

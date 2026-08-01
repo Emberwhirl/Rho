@@ -1,6 +1,6 @@
 # RA-RC1 Run Comparison Handoff
 
-Status: active
+Status: accepted
 Authorization date: 2026-07-31
 Authorized by: project owner
 Baseline for authorization: `bb31f16` (BH5 accepted)
