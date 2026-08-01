@@ -6894,6 +6894,42 @@ $("#auditCloseButton").addEventListener("click", () => {
   $("#auditPanel").classList.add("hidden");
 });
 
+$("#lintCurrentFileButton").addEventListener("click", async () => {
+  const doc = activeDocument();
+  if (!doc || !doc.path) return;
+  const button = $("#lintCurrentFileButton");
+  button.disabled = true;
+  button.textContent = "...";
+  try {
+    const result = await invoke("editor_lint_file", { path: doc.path });
+    // Remove previous lint problems
+    state.problems = state.problems.filter((p) => p.origin !== "lintr");
+    const lints = result.lints || [];
+    for (const lint of lints) {
+      addProblem(lint.message, lint.linter || "", {
+        origin: "lintr",
+        status: lint.type === "error" ? "failed" : "completed",
+        sourcePath: lint.filename || doc.path,
+        runId: `lint_${lint.line_number}_${Date.now()}`,
+      });
+    }
+    if (lints.length === 0) {
+      // No issues found — add an info entry
+      addProblem("No lint issues found.", "", {
+        origin: "lintr", status: "completed", sourcePath: doc.path,
+        runId: `lint_clean_${Date.now()}`,
+      });
+    }
+  } catch (e) {
+    addProblem(`lintr error: ${e}`, "", {
+      origin: "lintr", status: "failed", sourcePath: doc.path,
+      runId: `lint_err_${Date.now()}`,
+    });
+  }
+  button.disabled = false;
+  button.textContent = "Lint";
+});
+
 function renderAuditPanel() {
   if (state.auditLoading) {
     $("#auditStatus").textContent = "running";
