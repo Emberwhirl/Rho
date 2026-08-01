@@ -1898,6 +1898,7 @@ fn authorize_agent_workspace_request(
         | "workspace.inspect_data_object"
         | "workspace.list_package_functions"
         | "workspace.function_help"
+        | "workspace.lint_file"
         | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
         | "environment.initialize"
@@ -3294,6 +3295,15 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                     "{bridge}$rho_function_help({}, package = {pkg_arg})",
                     r_string(name)?,
                 ),
+            ))
+        }
+        "workspace.lint_file" => {
+            let path = arguments["path"]
+                .as_str()
+                .context("workspace.lint_file requires string argument `path`")?;
+            Ok((
+                OperationClass::Probe,
+                format!("{bridge}$rho_lint_file({})", r_string(path)?),
             ))
         }
         "workspace.read_data_view" => {

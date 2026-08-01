@@ -53,6 +53,7 @@ const BRIDGE_STATE: &str = include_str!("../../../r/rho.bridge/R/state.R");
 const BRIDGE_EXECUTE: &str = include_str!("../../../r/rho.bridge/R/execute.R");
 const BRIDGE_WORKSPACE: &str = include_str!("../../../r/rho.bridge/R/workspace.R");
 const BRIDGE_COMPLETION: &str = include_str!("../../../r/rho.bridge/R/completion.R");
+const BRIDGE_LINTR: &str = include_str!("../../../r/rho.bridge/R/lintr.R");
 const AGENT_STATE: &str = include_str!("../../../r/rho.agent/R/aaa-state.R");
 const AGENT_TRANSPORT: &str = include_str!("../../../r/rho.agent/R/transport.R");
 const AGENT_ADAPTER: &str = include_str!("../../../r/rho.agent/R/aisdk_adapter.R");
@@ -1358,6 +1359,31 @@ async fn editor_function_help(
     });
     dispatch_workspace_request(
         "workspace.function_help",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
+async fn editor_lint_file(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "path": path },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.lint_file",
         &payload,
         ExecutionOrigin::System,
         session.as_ref(),
@@ -2788,6 +2814,7 @@ fn prepare_runtime_files_with_rscript(
     write_source(&bridge_package.join("R/execute.R"), BRIDGE_EXECUTE)?;
     write_source(&bridge_package.join("R/workspace.R"), BRIDGE_WORKSPACE)?;
     write_source(&bridge_package.join("R/completion.R"), BRIDGE_COMPLETION)?;
+    write_source(&bridge_package.join("R/lintr.R"), BRIDGE_LINTR)?;
     write_source(&agent_package.join("R/aaa-state.R"), AGENT_STATE)?;
     write_source(&agent_package.join("R/transport.R"), AGENT_TRANSPORT)?;
     write_source(&agent_package.join("R/aisdk_adapter.R"), AGENT_ADAPTER)?;
@@ -4747,6 +4774,7 @@ fn main() {
             audit_reproducibility,
             editor_package_functions,
             editor_function_help,
+            editor_lint_file,
             retry_run,
             run_agent,
             agent_llm_settings,

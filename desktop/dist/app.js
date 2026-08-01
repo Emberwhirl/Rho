@@ -1590,6 +1590,14 @@ async function mockInvoke(command, args) {
     };
     return mockHelp[name] || { name, package: "base", signature: `function ${name}(...)`, help_title: null, help_text: null };
   }
+  if (command === "editor_lint_file") {
+    return {
+      lints: [
+        { filename: "analysis.R", line_number: 5, column_number: 1, type: "style", message: "Use <-, not =, for assignment.", linter: "assignment_linter" },
+        { filename: "analysis.R", line_number: 12, column_number: 23, type: "warning", message: "Avoid 1:length(...) expressions, use seq_len.", linter: "seq_linter" },
+      ]
+    };
+  }
   if (command === "audit_reproducibility") {
     const scopeStr = args.scope || "project";
     return {
