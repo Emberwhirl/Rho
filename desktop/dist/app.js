@@ -61,6 +61,10 @@ const state = {
   objectInspection: null,
   lastRender: null,
   runs: [],
+  compareMode: false,
+  compareLeft: null,
+  compareRight: null,
+  compareResult: null,
   problems: [],
   agentTurns: [],
   pendingApprovals: [],
@@ -4179,6 +4183,21 @@ async function submitApproval(decision, approval) {
 function renderRuns() {
   const panel = $("#runsPanel");
   panel.replaceChildren();
+
+  // compare toggle header
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:3px 7px;border-bottom:1px solid #e4e8e9;";
+  const label = document.createElement("span");
+  label.style.cssText = "font-size:11px;font-weight:600;color:var(--muted);";
+  label.textContent = `Runs (${state.runs.length})`;
+  const toggleBtn = document.createElement("button");
+  toggleBtn.type = "button";
+  toggleBtn.className = "compare-toggle" + (state.compareMode ? " active" : "");
+  toggleBtn.textContent = state.compareMode ? "Exit Compare" : "Compare";
+  toggleBtn.addEventListener("click", toggleCompareMode);
+  header.append(label, toggleBtn);
+  panel.append(header);
+
   if (!state.runs.length) {
     const empty = document.createElement("div");
     empty.className = "empty-tree";
@@ -4186,9 +4205,44 @@ function renderRuns() {
     panel.append(empty);
     return;
   }
+
+  // action row in compare mode
+  if (state.compareMode && state.compareLeft && state.compareRight) {
+    const actionRow = document.createElement("div");
+    actionRow.className = "compare-action-row";
+    const btn = document.createElement("button");
+    btn.textContent = `Compare ${state.compareLeft.slice(0,8)}... ↔ ${state.compareRight.slice(0,8)}...`;
+    btn.addEventListener("click", doCompareRuns);
+    actionRow.append(btn);
+    panel.append(actionRow);
+  }
+
   for (const run of state.runs) {
     const row = document.createElement("div");
     row.className = "run-row";
+
+    if (state.compareMode) {
+      const select = document.createElement("span");
+      select.className = "compare-select";
+      const leftRadio = document.createElement("input");
+      leftRadio.type = "radio";
+      leftRadio.name = "compareLeft_" + run.run_id;
+      leftRadio.checked = state.compareLeft === run.run_id;
+      leftRadio.addEventListener("change", () => selectCompareSide("left", run.run_id));
+      const rightRadio = document.createElement("input");
+      rightRadio.type = "radio";
+      rightRadio.name = "compareRight_" + run.run_id;
+      rightRadio.checked = state.compareRight === run.run_id;
+      rightRadio.addEventListener("change", () => selectCompareSide("right", run.run_id));
+      select.append(
+        Object.assign(document.createElement("label"), {textContent: "L", style: {cursor: "pointer"}}),
+        leftRadio,
+        Object.assign(document.createElement("label"), {textContent: "R", style: {cursor: "pointer"}}),
+        rightRadio
+      );
+      row.append(select);
+    }
+
     const marker = document.createElement("span");
     marker.className = `run-state ${runStatusTone(run.status)}`.trim();
     const content = document.createElement("span");
@@ -4216,6 +4270,99 @@ function renderRuns() {
     }
     panel.append(row);
   }
+
+  // render comparison result if available
+  if (state.compareResult) {
+    renderCompareResult();
+  }
+}
+
+function toggleCompareMode() {
+  state.compareMode = !state.compareMode;
+  state.compareLeft = null;
+  state.compareRight = null;
+  state.compareResult = null;
+  document.getElementById("runsPanel").classList.toggle("compare-mode", state.compareMode);
+  renderRuns();
+}
+
+function selectCompareSide(side, runId) {
+  if (side === "left") state.compareLeft = runId;
+  else state.compareRight = runId;
+  renderRuns();
+}
+
+async function doCompareRuns() {
+  if (!state.compareLeft || !state.compareRight) return;
+  try {
+    const result = await invoke("compare_runs", {
+      left_run_id: state.compareLeft,
+      right_run_id: state.compareRight,
+    });
+    state.compareResult = result;
+    renderRuns();
+  } catch (error) {
+    toast(String(error), true);
+  }
+}
+
+function renderCompareResult() {
+  const panel = document.getElementById("runsPanel");
+  const existing = panel.querySelector(".compare-result-card");
+  if (existing) existing.remove();
+  const result = state.compareResult;
+  if (!result) return;
+
+  const card = document.createElement("div");
+  card.className = "compare-result-card";
+
+  // close button
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "compare-close";
+  closeBtn.textContent = "\u00d7";
+  closeBtn.title = "Close comparison";
+  closeBtn.addEventListener("click", () => {
+    state.compareResult = null;
+    renderRuns();
+  });
+
+  // summary strip
+  const summary = document.createElement("div");
+  summary.className = "compare-summary";
+  summary.innerHTML =
+    `<div class="compare-summary-item"><span class="count" style="color:var(--accent)">${result.summary.same}</span><span class="label">Same</span></div>` +
+    `<div class="compare-summary-item"><span class="count" style="color:var(--warning)">${result.summary.different}</span><span class="label">Different</span></div>` +
+    `<div class="compare-summary-item"><span class="count" style="color:var(--muted)">${result.summary.unknown}</span><span class="label">Unknown</span></div>`;
+  summary.append(closeBtn);
+  card.append(summary);
+
+  for (const section of (result.sections || [])) {
+    const sec = document.createElement("div");
+    sec.className = "compare-section open";
+
+    const header = document.createElement("div");
+    header.className = "compare-section-header";
+    header.textContent = section.label;
+    header.addEventListener("click", () => sec.classList.toggle("open"));
+
+    const body = document.createElement("div");
+    body.className = "compare-section-body";
+
+    for (const field of (section.fields || [])) {
+      const row = document.createElement("div");
+      row.className = "compare-field";
+      row.innerHTML =
+        `<span class="compare-field-label">${field.field}</span>` +
+        `<span class="compare-field-state ${field.state}">${field.state}</span>` +
+        `<span class="compare-field-value">${[field.left_value, field.right_value].filter(v => v != null).join(" \u2194 ") || "-"}</span>`;
+      body.append(row);
+    }
+
+    sec.append(header, body);
+    card.append(sec);
+  }
+
+  panel.append(card);
 }
 
 function addProblem(message, call = "", options = {}) {
