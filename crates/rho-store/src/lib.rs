@@ -15,6 +15,7 @@ mod migration;
 mod run;
 mod agent;
 mod artifact;
+mod audit;
 mod compare;
 mod environment;
 mod project;
@@ -28,6 +29,7 @@ pub use agent::{
 pub use artifact::{
     ArtifactRecordDraft, ArtifactRecordSummary, PlotArtifactDraft, PlotArtifactSummary,
 };
+pub use audit::*;
 pub use compare::{
     CompareField, CompareFieldEntry, CompareRunsResponse, CompareSection, CompareSummary,
 };
