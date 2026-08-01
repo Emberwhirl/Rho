@@ -7,6 +7,7 @@ members = [
   "crates/rho-agent-transport",
   "crates/rho-core",
   "crates/rho-cli",
+  "crates/rho-mcp",
   "crates/rho-server",
   "desktop/src-tauri",
 ]

@@ -9,6 +9,7 @@ use rho_protocol::workbench::{
 use rho_store::Store;
 
 mod format;
+mod serve;
 
 /// Rho Workbench CLI — inspect a local Rho project through the WB1 protocol.
 #[derive(Debug, Parser)]
@@ -77,6 +78,9 @@ enum Commands {
         /// Resource ID (run_id, artifact_id, etc.).
         resource_id: String,
     },
+
+    /// Start a loopback HTTP server exposing WB1 endpoints.
+    Serve,
 }
 
 #[derive(Debug, Subcommand)]
@@ -390,6 +394,14 @@ fn main() -> Result<()> {
                 }
                 None => not_found("resource", &resource_id, cli.json, &project),
             }
+        }
+
+        Commands::Serve => {
+            let store_path = resolve_store_path(cli.store.as_ref())?;
+            serve::run_serve(
+                store_path.to_str().context("invalid store path")?,
+                &project,
+            )?;
         }
     }
 
