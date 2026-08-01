@@ -240,10 +240,9 @@ fn compare_identity(left: &RunDetail, right: &RunDetail) -> CompareSection {
         opt_string_value(&right.terminal_reason),
     ));
 
-    let left_dur = compute_duration(&left.started_at, &left.finished_at)
-        .map(|ms| ms.to_string());
-    let right_dur = compute_duration(&right.started_at, &right.finished_at)
-        .map(|ms| ms.to_string());
+    let left_dur = compute_duration(&left.started_at, &left.finished_at).map(|ms| ms.to_string());
+    let right_dur =
+        compute_duration(&right.started_at, &right.finished_at).map(|ms| ms.to_string());
     fields.push(field(
         "duration_ms",
         CompareField::NotApplicable,
@@ -252,11 +251,39 @@ fn compare_identity(left: &RunDetail, right: &RunDetail) -> CompareSection {
     ));
 
     for (name, lv, rv, state) in [
-        ("workspace_id", opt_string_value(&left.workspace_id), opt_string_value(&right.workspace_id), compare_opt_string(&left.workspace_id, &right.workspace_id)),
-        ("state_revision_before", opt_i64_value(&left.state_revision_before), opt_i64_value(&right.state_revision_before), compare_opt_i64(&left.state_revision_before, &right.state_revision_before)),
-        ("project_revision_before", opt_i64_value(&left.project_revision_before), opt_i64_value(&right.project_revision_before), compare_opt_i64(&left.project_revision_before, &right.project_revision_before)),
-        ("state_revision_after", opt_i64_value(&left.state_revision_after), opt_i64_value(&right.state_revision_after), compare_opt_i64(&left.state_revision_after, &right.state_revision_after)),
-        ("project_revision_after", opt_i64_value(&left.project_revision_after), opt_i64_value(&right.project_revision_after), compare_opt_i64(&left.project_revision_after, &right.project_revision_after)),
+        (
+            "workspace_id",
+            opt_string_value(&left.workspace_id),
+            opt_string_value(&right.workspace_id),
+            compare_opt_string(&left.workspace_id, &right.workspace_id),
+        ),
+        (
+            "state_revision_before",
+            opt_i64_value(&left.state_revision_before),
+            opt_i64_value(&right.state_revision_before),
+            compare_opt_i64(&left.state_revision_before, &right.state_revision_before),
+        ),
+        (
+            "project_revision_before",
+            opt_i64_value(&left.project_revision_before),
+            opt_i64_value(&right.project_revision_before),
+            compare_opt_i64(
+                &left.project_revision_before,
+                &right.project_revision_before,
+            ),
+        ),
+        (
+            "state_revision_after",
+            opt_i64_value(&left.state_revision_after),
+            opt_i64_value(&right.state_revision_after),
+            compare_opt_i64(&left.state_revision_after, &right.state_revision_after),
+        ),
+        (
+            "project_revision_after",
+            opt_i64_value(&left.project_revision_after),
+            opt_i64_value(&right.project_revision_after),
+            compare_opt_i64(&left.project_revision_after, &right.project_revision_after),
+        ),
     ] {
         fields.push(field(name, state, lv, rv));
     }
@@ -308,7 +335,11 @@ fn compare_source(left: &RunDetail, right: &RunDetail) -> CompareSection {
             ),
             field(
                 "arguments_json",
-                if left.arguments_json == right.arguments_json { CompareField::Same } else { CompareField::Different },
+                if left.arguments_json == right.arguments_json {
+                    CompareField::Same
+                } else {
+                    CompareField::Different
+                },
                 Some(left.arguments_json.clone()),
                 Some(right.arguments_json.clone()),
             ),
@@ -344,7 +375,10 @@ fn compare_environment(
 
     fields.push(field(
         "snapshot_id",
-        compare_opt_string(&left.environment_snapshot_id, &right.environment_snapshot_id),
+        compare_opt_string(
+            &left.environment_snapshot_id,
+            &right.environment_snapshot_id,
+        ),
         opt_string_value(&left.environment_snapshot_id),
         opt_string_value(&right.environment_snapshot_id),
     ));
@@ -352,16 +386,20 @@ fn compare_environment(
     // Parse canonical JSON from both snapshots for deeper comparison
     match (left_snapshot, right_snapshot) {
         (Some(ls), Some(rs)) => {
-            let left_json: Result<serde_json::Value, _> =
-                serde_json::from_str(&ls.canonical_json);
-            let right_json: Result<serde_json::Value, _> =
-                serde_json::from_str(&rs.canonical_json);
+            let left_json: Result<serde_json::Value, _> = serde_json::from_str(&ls.canonical_json);
+            let right_json: Result<serde_json::Value, _> = serde_json::from_str(&rs.canonical_json);
 
             match (left_json, right_json) {
                 (Ok(lj), Ok(rj)) => {
                     // R version
-                    let lr = lj.get("R").and_then(|v| v.get("version")).and_then(|v| v.as_str());
-                    let rr = rj.get("R").and_then(|v| v.get("version")).and_then(|v| v.as_str());
+                    let lr = lj
+                        .get("R")
+                        .and_then(|v| v.get("version"))
+                        .and_then(|v| v.as_str());
+                    let rr = rj
+                        .get("R")
+                        .and_then(|v| v.get("version"))
+                        .and_then(|v| v.as_str());
                     fields.push(field(
                         "r_version",
                         compare_opt_string(&lr.map(String::from), &rr.map(String::from)),
@@ -370,8 +408,14 @@ fn compare_environment(
                     ));
 
                     // R platform
-                    let lp = lj.get("R").and_then(|v| v.get("platform")).and_then(|v| v.as_str());
-                    let rp = rj.get("R").and_then(|v| v.get("platform")).and_then(|v| v.as_str());
+                    let lp = lj
+                        .get("R")
+                        .and_then(|v| v.get("platform"))
+                        .and_then(|v| v.as_str());
+                    let rp = rj
+                        .get("R")
+                        .and_then(|v| v.get("platform"))
+                        .and_then(|v| v.as_str());
                     fields.push(field(
                         "r_platform",
                         compare_opt_string(&lp.map(String::from), &rp.map(String::from)),
@@ -438,7 +482,10 @@ fn compare_environment(
 
 fn extract_packages(snapshot: &serde_json::Value) -> Vec<(String, String)> {
     let mut pkgs = Vec::new();
-    if let Some(installed) = snapshot.get("installed_packages").and_then(|v| v.as_array()) {
+    if let Some(installed) = snapshot
+        .get("installed_packages")
+        .and_then(|v| v.as_array())
+    {
         for pkg in installed.iter().take(200) {
             let name = pkg
                 .get("Package")
@@ -457,14 +504,13 @@ fn extract_packages(snapshot: &serde_json::Value) -> Vec<(String, String)> {
     pkgs
 }
 
-fn diff_packages(
-    left: &[(String, String)],
-    right: &[(String, String)],
-) -> Vec<serde_json::Value> {
+fn diff_packages(left: &[(String, String)], right: &[(String, String)]) -> Vec<serde_json::Value> {
     let left_map: std::collections::BTreeMap<&str, &str> =
         left.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
-    let right_map: std::collections::BTreeMap<&str, &str> =
-        right.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+    let right_map: std::collections::BTreeMap<&str, &str> = right
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .collect();
 
     let mut diffs = Vec::new();
 
@@ -599,10 +645,14 @@ fn compare_artifacts(
     left_artifacts: &[ArtifactRecordSummary],
     right_artifacts: &[ArtifactRecordSummary],
 ) -> CompareSection {
-    let left_paths: std::collections::BTreeSet<&str> =
-        left_artifacts.iter().map(|a| a.output_path.as_str()).collect();
-    let right_paths: std::collections::BTreeSet<&str> =
-        right_artifacts.iter().map(|a| a.output_path.as_str()).collect();
+    let left_paths: std::collections::BTreeSet<&str> = left_artifacts
+        .iter()
+        .map(|a| a.output_path.as_str())
+        .collect();
+    let right_paths: std::collections::BTreeSet<&str> = right_artifacts
+        .iter()
+        .map(|a| a.output_path.as_str())
+        .collect();
 
     let shared: Vec<_> = left_paths.intersection(&right_paths).collect();
     let left_only: Vec<_> = left_paths.difference(&right_paths).collect();
@@ -633,7 +683,10 @@ fn compare_artifacts(
             field(
                 "artifacts_comparison",
                 artifact_state,
-                Some(format!("left_only: {}, right_only: {}, shared: {}", left_only_count, right_only_count, shared_count)),
+                Some(format!(
+                    "left_only: {}, right_only: {}, shared: {}",
+                    left_only_count, right_only_count, shared_count
+                )),
                 None,
             ),
         ],
@@ -702,7 +755,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "script.R", "1+1");
         let right = make_run("run_a", "D:/proj", "completed", "script.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         assert_eq!(resp.sections.len(), 5);
         let id_section = &resp.sections[0];
@@ -719,7 +780,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "script.R", "1+1");
         let right = make_run("run_b", "D:/proj", "failed", "script.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let id_section = &resp.sections[0];
         let status_field = id_section
@@ -735,7 +804,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "b.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let src_section = &resp.sections[1];
         let path_field = src_section
@@ -751,7 +828,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "a.R", "2+2");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let src_section = &resp.sections[1];
         let digest_field = src_section
@@ -771,7 +856,15 @@ mod tests {
         right.source_path = None;
         right.environment_snapshot_id = None;
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let src_section = &resp.sections[1];
         let path_field = src_section
@@ -791,7 +884,15 @@ mod tests {
         right.error_message = Some("err_b".to_string());
         right.traceback = vec!["line 2".to_string()];
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let out_section = &resp.sections[3];
         let err_field = out_section
@@ -807,10 +908,26 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "a.R", "1+1");
         let resp1 = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let resp2 = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         assert_eq!(resp1.summary.same, resp2.summary.same);
         assert_eq!(resp1.summary.different, resp2.summary.different);
@@ -823,7 +940,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "a.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let ids: Vec<&str> = resp.sections.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(
@@ -837,7 +962,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "a.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         let mut actual_same = 0usize;
         let mut actual_diff = 0usize;
@@ -862,7 +995,15 @@ mod tests {
         let left = make_run("run_a", "D:/proj", "completed", "a.R", "1+1");
         let right = make_run("run_b", "D:/proj", "completed", "a.R", "1+1");
         let resp = CompareRunsResponse::compute(
-            "D:/proj".into(), &left, &right, &[], &[], &None, &None, &[], &[],
+            "D:/proj".into(),
+            &left,
+            &right,
+            &[],
+            &[],
+            &None,
+            &None,
+            &[],
+            &[],
         );
         assert_eq!(resp.schema_version, 1);
     }

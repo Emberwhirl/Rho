@@ -90,3 +90,21 @@ The implementation and evidence contract is defined in
 and an explicit decision about unsigned distribution. P1 failures require a
 documented workaround and owner; they do not automatically block an internal
 preview but should block a general public release when they affect data safety.
+
+## 2026-08-01 Verification Rerun
+
+Re-verified automated evidence against current `0.4.0-dev.0` baseline
+(post Waves 1-14 implementation sprint):
+
+| Check | Result |
+|-------|--------|
+| `cargo fmt --all -- --check` | PASS (auto-corrected, then verified clean) |
+| `cargo +stable-x86_64-pc-windows-gnu test --workspace` | PASS (all crates, 0 failures) |
+| `cargo +stable-x86_64-pc-windows-gnu check -p rho-desktop` | PASS (0 errors) |
+| `node --check desktop/dist/app.js` | PASS |
+| `git diff --check` | PASS (whitespace clean) |
+| Version consistency (`Cargo.toml` / `tauri.conf.json`) | PASS (`0.4.0-dev.0`) |
+
+R tests (`rho.bridge`, `rho.agent`) not rerun: require R + aisdk in test
+environment. Existing P0 manual gates and P1 daily-use items remain open and
+require the installed Tauri application.

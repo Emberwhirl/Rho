@@ -146,14 +146,31 @@ const RULE_PROFILE_VERSION: u32 = 1;
 const SCHEMA_VERSION: u32 = 1;
 
 const BINARY_EXTENSIONS: &[&str] = &[
-    "rds", "png", "jpg", "jpeg", "pdf", "xlsx", "RData", "rda", "feather", "parquet", "h5",
-    "hdf5",
+    "rds", "png", "jpg", "jpeg", "pdf", "xlsx", "RData", "rda", "feather", "parquet", "h5", "hdf5",
 ];
 
 const RNG_FUNCTIONS: &[&str] = &[
-    "rnorm(", "runif(", "rpois(", "rbinom(", "rexp(", "rgamma(", "rbeta(", "rt(", "rf(",
-    "rchisq(", "rwilcox(", "rsignrank(", "rmultinom(", "rgeom(", "rhyper(", "rlnorm(",
-    "rnbinom(", "rweibull(", "rcauchy(", "rlogis(", "sample(",
+    "rnorm(",
+    "runif(",
+    "rpois(",
+    "rbinom(",
+    "rexp(",
+    "rgamma(",
+    "rbeta(",
+    "rt(",
+    "rf(",
+    "rchisq(",
+    "rwilcox(",
+    "rsignrank(",
+    "rmultinom(",
+    "rgeom(",
+    "rhyper(",
+    "rlnorm(",
+    "rnbinom(",
+    "rweibull(",
+    "rcauchy(",
+    "rlogis(",
+    "sample(",
 ];
 
 /// Known source-code extensions we are willing to scan for R patterns.
@@ -177,9 +194,7 @@ pub fn scan_source_files(project_root: &str, limits: &AuditLimits) -> Vec<Source
             break;
         }
 
-        let relative = path
-            .strip_prefix(project_root)
-            .unwrap_or(path);
+        let relative = path.strip_prefix(project_root).unwrap_or(path);
         let rel_str = relative.to_string_lossy().replace('\\', "/");
 
         match fs::read_to_string(path) {
@@ -235,10 +250,7 @@ fn collect_source_paths(dir: &Path, paths: &mut Vec<PathBuf>) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         // Skip hidden files and directories
         if file_name.starts_with('.') {
@@ -257,10 +269,7 @@ fn collect_source_paths(dir: &Path, paths: &mut Vec<PathBuf>) {
             }
             collect_source_paths(&path, paths);
         } else if path.is_file() {
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let ext_lower = ext.to_lowercase();
 
             if BINARY_EXTENSIONS.contains(&ext_lower.as_str()) {
@@ -398,7 +407,11 @@ fn extract_first_arg(rest: &str) -> Option<String> {
         // Bare identifier
         let end = rest.find(|c: char| !c.is_alphanumeric() && c != '.' && c != '_')?;
         let name = &rest[..end];
-        if name.is_empty() { None } else { Some(name.to_string()) }
+        if name.is_empty() {
+            None
+        } else {
+            Some(name.to_string())
+        }
     }
 }
 
@@ -423,11 +436,11 @@ fn extract_identifier_before_colons(before: &str) -> Option<String> {
                 let quote = c;
                 let mut i = end - 1;
                 loop {
-                    if i == 0 { return None; }
+                    if i == 0 {
+                        return None;
+                    }
                     if chars[i] == quote {
-                        return Some(
-                            trimmed[i + 1..end - 1].to_string()
-                        );
+                        return Some(trimmed[i + 1..end - 1].to_string());
                     }
                     i -= 1;
                 }
@@ -442,7 +455,11 @@ fn extract_identifier_before_colons(before: &str) -> Option<String> {
         return None;
     }
     let name = &trimmed[end..];
-    if name.is_empty() { None } else { Some(name.to_string()) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -474,16 +491,13 @@ impl Store {
             .unwrap_or_default();
 
         // Resolve reference snapshot
-        let reference_snapshot = reference_snapshot_id
-            .and_then(|sid| self.get_environment_snapshot(sid).ok().flatten());
+        let reference_snapshot =
+            reference_snapshot_id.and_then(|sid| self.get_environment_snapshot(sid).ok().flatten());
 
         // Filter by scope
         let runs: Vec<_> = match &scope {
             AuditScope::Project => runs,
-            AuditScope::Run(target) => runs
-                .into_iter()
-                .filter(|r| &r.run_id == target)
-                .collect(),
+            AuditScope::Run(target) => runs.into_iter().filter(|r| &r.run_id == target).collect(),
             AuditScope::Artifact(target) => {
                 // For artifact scope, only check that artifact's run
                 let related_run_id = artifacts
@@ -491,10 +505,7 @@ impl Store {
                     .find(|a| &a.artifact_id == target)
                     .and_then(|a| a.run_id.clone());
                 match related_run_id {
-                    Some(rid) => runs
-                        .into_iter()
-                        .filter(|r| r.run_id == rid)
-                        .collect(),
+                    Some(rid) => runs.into_iter().filter(|r| r.run_id == rid).collect(),
                     None => Vec::new(),
                 }
             }
@@ -699,125 +710,152 @@ fn check_evidence(
     for run in runs {
         // evidence.run.env_snapshot_missing
         if run.environment_snapshot_id.is_none() {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.run.env_snapshot_missing".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Run {} has no environment snapshot recorded",
-                    run.run_id
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "run_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: Some(run.run_id.clone()),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.run.env_snapshot_missing".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Warning,
+                    category: "evidence".to_string(),
+                    summary: format!("Run {} has no environment snapshot recorded", run.run_id),
+                    evidence: vec![AuditEvidence {
+                        kind: "run_id".to_string(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: Some(run.run_id.clone()),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
 
         // evidence.run.source_revision_missing
         if run.source_path.is_none() || run.document_version.is_none() {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.run.source_revision_missing".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Run {} is missing source_path or document_version",
-                    run.run_id
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "run_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: Some(run.run_id.clone()),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.run.source_revision_missing".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Warning,
+                    category: "evidence".to_string(),
+                    summary: format!(
+                        "Run {} is missing source_path or document_version",
+                        run.run_id
+                    ),
+                    evidence: vec![AuditEvidence {
+                        kind: "run_id".to_string(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: Some(run.run_id.clone()),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
     }
 
     for artifact in artifacts {
         // evidence.artifact.producing_run_missing
         if artifact.run_id.is_none() {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.artifact.producing_run_missing".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Error,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Artifact {} has no producing run recorded",
-                    artifact.artifact_id
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "artifact_id".to_string(),
-                    path: Some(artifact.output_path.clone()),
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: artifact.run_id.clone(),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.artifact.producing_run_missing".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Error,
+                    category: "evidence".to_string(),
+                    summary: format!(
+                        "Artifact {} has no producing run recorded",
+                        artifact.artifact_id
+                    ),
+                    evidence: vec![AuditEvidence {
+                        kind: "artifact_id".to_string(),
+                        path: Some(artifact.output_path.clone()),
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: artifact.run_id.clone(),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
 
         // evidence.artifact.provenance_incomplete
         if !artifact.provenance_complete {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.artifact.provenance_incomplete".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Artifact {} has incomplete provenance",
-                    artifact.artifact_id
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "artifact_id".to_string(),
-                    path: Some(artifact.output_path.clone()),
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: artifact.run_id.clone(),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.artifact.provenance_incomplete".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Warning,
+                    category: "evidence".to_string(),
+                    summary: format!(
+                        "Artifact {} has incomplete provenance",
+                        artifact.artifact_id
+                    ),
+                    evidence: vec![AuditEvidence {
+                        kind: "artifact_id".to_string(),
+                        path: Some(artifact.output_path.clone()),
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: artifact.run_id.clone(),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
 
         // evidence.artifact.file_missing
         let full_path = Path::new(project_root).join(&artifact.output_path);
         if !full_path.exists() {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.artifact.file_missing".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Error,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Output file for artifact {} does not exist on disk: {}",
-                    artifact.artifact_id, artifact.output_path
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "file_path".to_string(),
-                    path: Some(artifact.output_path.clone()),
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: artifact.run_id.clone(),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.artifact.file_missing".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Error,
+                    category: "evidence".to_string(),
+                    summary: format!(
+                        "Output file for artifact {} does not exist on disk: {}",
+                        artifact.artifact_id, artifact.output_path
+                    ),
+                    evidence: vec![AuditEvidence {
+                        kind: "file_path".to_string(),
+                        path: Some(artifact.output_path.clone()),
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: artifact.run_id.clone(),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
     }
 
@@ -825,74 +863,92 @@ fn check_evidence(
     if let Some(snap) = reference_snapshot {
         if let Some(completeness) = snapshot_completeness(&snap.canonical_json) {
             if completeness != "complete" {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.evidence.env.snapshot_incomplete".to_string(),
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.evidence.env.snapshot_incomplete".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "evidence".to_string(),
+                        summary: format!(
+                            "Environment snapshot {} reports completeness as '{}'",
+                            snap.snapshot_id, completeness
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "snapshot_id".to_string(),
+                            path: None,
+                            line: None,
+                            column: None,
+                            excerpt: Some(format!("completeness: {completeness}")),
+                            run_id: None,
+                            snapshot_id: Some(snap.snapshot_id.clone()),
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        // evidence.env.lockfile_drift
+        if snapshot_has_lockfile_drift(&snap.canonical_json) {
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.evidence.env.lockfile_drift".to_string(),
                     rule_version: 1,
                     severity: AuditSeverity::Warning,
                     category: "evidence".to_string(),
                     summary: format!(
-                        "Environment snapshot {} reports completeness as '{}'",
-                        snap.snapshot_id, completeness
+                        "Environment snapshot {} reports lockfile drift",
+                        snap.snapshot_id
                     ),
                     evidence: vec![AuditEvidence {
                         kind: "snapshot_id".to_string(),
                         path: None,
                         line: None,
                         column: None,
-                        excerpt: Some(format!("completeness: {completeness}")),
+                        excerpt: None,
                         run_id: None,
                         snapshot_id: Some(snap.snapshot_id.clone()),
                     }],
                     limitations: Vec::new(),
-                });
-            }
-        }
-
-        // evidence.env.lockfile_drift
-        if snapshot_has_lockfile_drift(&snap.canonical_json) {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.evidence.env.lockfile_drift".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "evidence".to_string(),
-                summary: format!(
-                    "Environment snapshot {} reports lockfile drift",
-                    snap.snapshot_id
-                ),
-                evidence: vec![AuditEvidence {
-                    kind: "snapshot_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: None,
-                    snapshot_id: Some(snap.snapshot_id.clone()),
-                }],
-                limitations: Vec::new(),
-            });
+                },
+            );
         }
     }
 
     // evidence.env.lockfile_missing
     let lock_path = Path::new(project_root).join("renv.lock");
     if !lock_path.exists() {
-        push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-            rule_id: "rho.repro.v1.evidence.env.lockfile_missing".to_string(),
-            rule_version: 1,
-            severity: AuditSeverity::Error,
-            category: "evidence".to_string(),
-            summary: "No renv.lock found in project root".to_string(),
-            evidence: vec![AuditEvidence {
-                kind: "file_path".to_string(),
-                path: Some("renv.lock".to_string()),
-                line: None,
-                column: None,
-                excerpt: None,
-                run_id: None,
-                snapshot_id: None,
-            }],
-            limitations: Vec::new(),
-        });
+        push_finding(
+            findings,
+            limits,
+            truncation_reasons,
+            truncated,
+            AuditFinding {
+                rule_id: "rho.repro.v1.evidence.env.lockfile_missing".to_string(),
+                rule_version: 1,
+                severity: AuditSeverity::Error,
+                category: "evidence".to_string(),
+                summary: "No renv.lock found in project root".to_string(),
+                evidence: vec![AuditEvidence {
+                    kind: "file_path".to_string(),
+                    path: Some("renv.lock".to_string()),
+                    line: None,
+                    column: None,
+                    excerpt: None,
+                    run_id: None,
+                    snapshot_id: None,
+                }],
+                limitations: Vec::new(),
+            },
+        );
     }
 }
 
@@ -915,101 +971,121 @@ fn check_portability(
 
             // portability.absolute_path.windows  -- detect :\\ pattern
             if line.contains(":\\") {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.portability.absolute_path.windows".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "portability".to_string(),
-                    summary: format!(
-                        "Windows absolute path detected in {}:{}",
-                        file.path, line_num
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "source_range".to_string(),
-                        path: Some(file.path.clone()),
-                        line: Some(line_num),
-                        column: None,
-                        excerpt: Some(line.trim().to_string()),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.portability.absolute_path.windows".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "portability".to_string(),
+                        summary: format!(
+                            "Windows absolute path detected in {}:{}",
+                            file.path, line_num
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "source_range".to_string(),
+                            path: Some(file.path.clone()),
+                            line: Some(line_num),
+                            column: None,
+                            excerpt: Some(line.trim().to_string()),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
 
             // portability.absolute_path.posix
-            let has_posix_path = line.contains("/home/")
-                || line.contains("/Users/")
-                || line.contains("/tmp/");
+            let has_posix_path =
+                line.contains("/home/") || line.contains("/Users/") || line.contains("/tmp/");
             if has_posix_path {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.portability.absolute_path.posix".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "portability".to_string(),
-                    summary: format!(
-                        "POSIX absolute path detected in {}:{}",
-                        file.path, line_num
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "source_range".to_string(),
-                        path: Some(file.path.clone()),
-                        line: Some(line_num),
-                        column: None,
-                        excerpt: Some(line.trim().to_string()),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.portability.absolute_path.posix".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "portability".to_string(),
+                        summary: format!(
+                            "POSIX absolute path detected in {}:{}",
+                            file.path, line_num
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "source_range".to_string(),
+                            path: Some(file.path.clone()),
+                            line: Some(line_num),
+                            column: None,
+                            excerpt: Some(line.trim().to_string()),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
 
             // portability.home_path.literal
             if line.contains("~/") {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.portability.home_path.literal".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "portability".to_string(),
-                    summary: format!(
-                        "Home-relative path (~/) detected in {}:{}",
-                        file.path, line_num
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "source_range".to_string(),
-                        path: Some(file.path.clone()),
-                        line: Some(line_num),
-                        column: None,
-                        excerpt: Some(line.trim().to_string()),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.portability.home_path.literal".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "portability".to_string(),
+                        summary: format!(
+                            "Home-relative path (~/) detected in {}:{}",
+                            file.path, line_num
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "source_range".to_string(),
+                            path: Some(file.path.clone()),
+                            line: Some(line_num),
+                            column: None,
+                            excerpt: Some(line.trim().to_string()),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
 
             // portability.setwd.literal
             if line.contains("setwd(\"") || line.contains("setwd('") {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.portability.setwd.literal".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "portability".to_string(),
-                    summary: format!(
-                        "setwd() call detected in {}:{}",
-                        file.path, line_num
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "source_range".to_string(),
-                        path: Some(file.path.clone()),
-                        line: Some(line_num),
-                        column: None,
-                        excerpt: Some(line.trim().to_string()),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.portability.setwd.literal".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "portability".to_string(),
+                        summary: format!("setwd() call detected in {}:{}", file.path, line_num),
+                        evidence: vec![AuditEvidence {
+                            kind: "source_range".to_string(),
+                            path: Some(file.path.clone()),
+                            line: Some(line_num),
+                            column: None,
+                            excerpt: Some(line.trim().to_string()),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
         }
     }
@@ -1047,31 +1123,37 @@ fn check_randomness(
             // Check for RNG calls before set.seed()
             for rng_fn in RNG_FUNCTIONS {
                 if line.contains(rng_fn) {
-                    push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                        rule_id: "rho.repro.v1.randomness.rng_without_seed".to_string(),
-                        rule_version: 1,
-                        severity: AuditSeverity::Info,
-                        category: "randomness".to_string(),
-                        summary: format!(
-                            "RNG call {} without set.seed() in {}:{}",
-                            rng_fn.trim_end_matches('('),
-                            file.path,
-                            line_num
-                        ),
-                        evidence: vec![AuditEvidence {
-                            kind: "source_range".to_string(),
-                            path: Some(file.path.clone()),
-                            line: Some(line_num),
-                            column: None,
-                            excerpt: Some(line.trim().to_string()),
-                            run_id: None,
-                            snapshot_id: None,
-                        }],
-                        limitations: vec![
-                            "dynamic_rng_not_detected".to_string(),
-                            "dplyr_rng_not_detected".to_string(),
-                        ],
-                    });
+                    push_finding(
+                        findings,
+                        limits,
+                        truncation_reasons,
+                        truncated,
+                        AuditFinding {
+                            rule_id: "rho.repro.v1.randomness.rng_without_seed".to_string(),
+                            rule_version: 1,
+                            severity: AuditSeverity::Info,
+                            category: "randomness".to_string(),
+                            summary: format!(
+                                "RNG call {} without set.seed() in {}:{}",
+                                rng_fn.trim_end_matches('('),
+                                file.path,
+                                line_num
+                            ),
+                            evidence: vec![AuditEvidence {
+                                kind: "source_range".to_string(),
+                                path: Some(file.path.clone()),
+                                line: Some(line_num),
+                                column: None,
+                                excerpt: Some(line.trim().to_string()),
+                                run_id: None,
+                                snapshot_id: None,
+                            }],
+                            limitations: vec![
+                                "dynamic_rng_not_detected".to_string(),
+                                "dplyr_rng_not_detected".to_string(),
+                            ],
+                        },
+                    );
                     // Only report one RNG finding per line
                     break;
                 }
@@ -1113,29 +1195,35 @@ fn check_packages(
     if let Some(snapshot) = snapshot_packages {
         for pkg_name in &used_packages {
             if !snapshot.iter().any(|p| p.name == *pkg_name) {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.packages.not_recorded".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "packages".to_string(),
-                    summary: format!(
-                        "Package '{}' used in source but not found in environment snapshot",
-                        pkg_name
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "source_range".to_string(),
-                        path: None,
-                        line: None,
-                        column: None,
-                        excerpt: Some(format!("package: {pkg_name}")),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: vec![
-                        "dynamic_library_detection_limited".to_string(),
-                        "string_interpolation_not_parsed".to_string(),
-                    ],
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.packages.not_recorded".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "packages".to_string(),
+                        summary: format!(
+                            "Package '{}' used in source but not found in environment snapshot",
+                            pkg_name
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "source_range".to_string(),
+                            path: None,
+                            line: None,
+                            column: None,
+                            excerpt: Some(format!("package: {pkg_name}")),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: vec![
+                            "dynamic_library_detection_limited".to_string(),
+                            "string_interpolation_not_parsed".to_string(),
+                        ],
+                    },
+                );
             }
         }
     }
@@ -1144,26 +1232,32 @@ fn check_packages(
     if let (Some(snapshot), Some(lockfile)) = (snapshot_packages, lockfile_packages) {
         for pkg in snapshot {
             if !lockfile.iter().any(|lp| lp.name == pkg.name) {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.packages.installed_not_locked".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Info,
-                    category: "packages".to_string(),
-                    summary: format!(
-                        "Package '{}' {} is installed but not in lockfile",
-                        pkg.name, pkg.version
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "snapshot_id".to_string(),
-                        path: None,
-                        line: None,
-                        column: None,
-                        excerpt: Some(format!("{}@{}", pkg.name, pkg.version)),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.packages.installed_not_locked".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Info,
+                        category: "packages".to_string(),
+                        summary: format!(
+                            "Package '{}' {} is installed but not in lockfile",
+                            pkg.name, pkg.version
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "snapshot_id".to_string(),
+                            path: None,
+                            line: None,
+                            column: None,
+                            excerpt: Some(format!("{}@{}", pkg.name, pkg.version)),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
         }
     }
@@ -1172,26 +1266,32 @@ fn check_packages(
     if let (Some(snapshot), Some(lockfile)) = (snapshot_packages, lockfile_packages) {
         for pkg in lockfile {
             if !snapshot.iter().any(|sp| sp.name == pkg.name) {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.packages.locked_not_installed".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "packages".to_string(),
-                    summary: format!(
-                        "Package '{}' {} is locked but not installed",
-                        pkg.name, pkg.version
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "file_path".to_string(),
-                        path: Some("renv.lock".to_string()),
-                        line: None,
-                        column: None,
-                        excerpt: Some(format!("{}@{}", pkg.name, pkg.version)),
-                        run_id: None,
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.packages.locked_not_installed".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "packages".to_string(),
+                        summary: format!(
+                            "Package '{}' {} is locked but not installed",
+                            pkg.name, pkg.version
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "file_path".to_string(),
+                            path: Some("renv.lock".to_string()),
+                            line: None,
+                            column: None,
+                            excerpt: Some(format!("{}@{}", pkg.name, pkg.version)),
+                            run_id: None,
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
         }
     }
@@ -1201,29 +1301,35 @@ fn check_packages(
         for sp in snapshot {
             if let Some(lp) = lockfile.iter().find(|lp| lp.name == sp.name) {
                 if sp.version != lp.version {
-                    push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                        rule_id: "rho.repro.v1.packages.version_drift".to_string(),
-                        rule_version: 1,
-                        severity: AuditSeverity::Warning,
-                        category: "packages".to_string(),
-                        summary: format!(
-                            "Package '{}' version drift: snapshot={}, lockfile={}",
-                            sp.name, sp.version, lp.version
-                        ),
-                        evidence: vec![AuditEvidence {
-                            kind: "snapshot_id".to_string(),
-                            path: None,
-                            line: None,
-                            column: None,
-                            excerpt: Some(format!(
-                                "snapshot: {}@{}, lockfile: {}@{}",
-                                sp.name, sp.version, lp.name, lp.version
-                            )),
-                            run_id: None,
-                            snapshot_id: None,
-                        }],
-                        limitations: Vec::new(),
-                    });
+                    push_finding(
+                        findings,
+                        limits,
+                        truncation_reasons,
+                        truncated,
+                        AuditFinding {
+                            rule_id: "rho.repro.v1.packages.version_drift".to_string(),
+                            rule_version: 1,
+                            severity: AuditSeverity::Warning,
+                            category: "packages".to_string(),
+                            summary: format!(
+                                "Package '{}' version drift: snapshot={}, lockfile={}",
+                                sp.name, sp.version, lp.version
+                            ),
+                            evidence: vec![AuditEvidence {
+                                kind: "snapshot_id".to_string(),
+                                path: None,
+                                line: None,
+                                column: None,
+                                excerpt: Some(format!(
+                                    "snapshot: {}@{}, lockfile: {}@{}",
+                                    sp.name, sp.version, lp.name, lp.version
+                                )),
+                                run_id: None,
+                                snapshot_id: None,
+                            }],
+                            limitations: Vec::new(),
+                        },
+                    );
                 }
             }
         }
@@ -1245,65 +1351,83 @@ fn check_runs(
     for run in runs {
         // runs.failed
         if run.status == "failed" {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.runs.failed".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Error,
-                category: "runs".to_string(),
-                summary: format!("Run {} failed", run.run_id),
-                evidence: vec![AuditEvidence {
-                    kind: "run_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: run.error_message.clone(),
-                    run_id: Some(run.run_id.clone()),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.runs.failed".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Error,
+                    category: "runs".to_string(),
+                    summary: format!("Run {} failed", run.run_id),
+                    evidence: vec![AuditEvidence {
+                        kind: "run_id".to_string(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        excerpt: run.error_message.clone(),
+                        run_id: Some(run.run_id.clone()),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
 
         // runs.cancelled
         if run.status == "cancelled" {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.runs.cancelled".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "runs".to_string(),
-                summary: format!("Run {} was cancelled", run.run_id),
-                evidence: vec![AuditEvidence {
-                    kind: "run_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: Some(run.run_id.clone()),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.runs.cancelled".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Warning,
+                    category: "runs".to_string(),
+                    summary: format!("Run {} was cancelled", run.run_id),
+                    evidence: vec![AuditEvidence {
+                        kind: "run_id".to_string(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: Some(run.run_id.clone()),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
 
         // runs.interrupted
         if run.status == "interrupted" {
-            push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                rule_id: "rho.repro.v1.runs.interrupted".to_string(),
-                rule_version: 1,
-                severity: AuditSeverity::Warning,
-                category: "runs".to_string(),
-                summary: format!("Run {} was interrupted", run.run_id),
-                evidence: vec![AuditEvidence {
-                    kind: "run_id".to_string(),
-                    path: None,
-                    line: None,
-                    column: None,
-                    excerpt: None,
-                    run_id: Some(run.run_id.clone()),
-                    snapshot_id: None,
-                }],
-                limitations: Vec::new(),
-            });
+            push_finding(
+                findings,
+                limits,
+                truncation_reasons,
+                truncated,
+                AuditFinding {
+                    rule_id: "rho.repro.v1.runs.interrupted".to_string(),
+                    rule_version: 1,
+                    severity: AuditSeverity::Warning,
+                    category: "runs".to_string(),
+                    summary: format!("Run {} was interrupted", run.run_id),
+                    evidence: vec![AuditEvidence {
+                        kind: "run_id".to_string(),
+                        path: None,
+                        line: None,
+                        column: None,
+                        excerpt: None,
+                        run_id: Some(run.run_id.clone()),
+                        snapshot_id: None,
+                    }],
+                    limitations: Vec::new(),
+                },
+            );
         }
     }
 
@@ -1318,26 +1442,32 @@ fn check_runs(
                 .unwrap_or(true); // unknown run is also incomplete
 
             if is_incomplete {
-                push_finding(findings, limits, truncation_reasons, truncated, AuditFinding {
-                    rule_id: "rho.repro.v1.runs.artifact_incomplete_run".to_string(),
-                    rule_version: 1,
-                    severity: AuditSeverity::Warning,
-                    category: "runs".to_string(),
-                    summary: format!(
-                        "Artifact {} from run {} that did not complete successfully",
-                        artifact.artifact_id, run_id
-                    ),
-                    evidence: vec![AuditEvidence {
-                        kind: "artifact_id".to_string(),
-                        path: Some(artifact.output_path.clone()),
-                        line: None,
-                        column: None,
-                        excerpt: None,
-                        run_id: Some(run_id.clone()),
-                        snapshot_id: None,
-                    }],
-                    limitations: Vec::new(),
-                });
+                push_finding(
+                    findings,
+                    limits,
+                    truncation_reasons,
+                    truncated,
+                    AuditFinding {
+                        rule_id: "rho.repro.v1.runs.artifact_incomplete_run".to_string(),
+                        rule_version: 1,
+                        severity: AuditSeverity::Warning,
+                        category: "runs".to_string(),
+                        summary: format!(
+                            "Artifact {} from run {} that did not complete successfully",
+                            artifact.artifact_id, run_id
+                        ),
+                        evidence: vec![AuditEvidence {
+                            kind: "artifact_id".to_string(),
+                            path: Some(artifact.output_path.clone()),
+                            line: None,
+                            column: None,
+                            excerpt: None,
+                            run_id: Some(run_id.clone()),
+                            snapshot_id: None,
+                        }],
+                        limitations: Vec::new(),
+                    },
+                );
             }
         }
     }
@@ -1444,7 +1574,12 @@ mod tests {
             .unwrap();
     }
 
-    fn make_snapshot(store: &mut Store, snapshot_id: &str, project_root: &str, canonical_json: &str) {
+    fn make_snapshot(
+        store: &mut Store,
+        snapshot_id: &str,
+        project_root: &str,
+        canonical_json: &str,
+    ) {
         store
             .record_environment_snapshot(&EnvironmentSnapshotDraft {
                 snapshot_id: snapshot_id.to_string(),
@@ -1658,11 +1793,7 @@ mod tests {
 
         // File with set.seed() BEFORE rnorm()
         let r_file = dir.path().join("analysis.R");
-        std::fs::write(
-            &r_file,
-            "set.seed(42)\nx <- rnorm(100)\nprint(mean(x))\n",
-        )
-        .unwrap();
+        std::fs::write(&r_file, "set.seed(42)\nx <- rnorm(100)\nprint(mean(x))\n").unwrap();
 
         let limits = AuditLimits::default();
         let response =
@@ -1707,12 +1838,8 @@ mod tests {
         make_snapshot(&mut store, "snap_1", project_root, &snap_json);
 
         let limits = AuditLimits::default();
-        let response = store.audit_reproducibility(
-            AuditScope::Project,
-            project_root,
-            Some("snap_1"),
-            &limits,
-        );
+        let response =
+            store.audit_reproducibility(AuditScope::Project, project_root, Some("snap_1"), &limits);
 
         // dplyr is used but not in snapshot -> packages.not_recorded
         let not_recorded = response
@@ -1894,13 +2021,12 @@ mod tests {
 
         assert!(response.truncated, "should be truncated");
         assert!(
-            response.truncation_reasons.contains(&"max_findings".to_string()),
+            response
+                .truncation_reasons
+                .contains(&"max_findings".to_string()),
             "should report max_findings truncation"
         );
-        assert!(
-            response.findings.len() <= 5,
-            "should cap at 5 findings"
-        );
+        assert!(response.findings.len() <= 5, "should cap at 5 findings");
     }
 
     #[test]
@@ -1925,14 +2051,15 @@ mod tests {
         std::fs::write(&r_file, "x <- rnorm(100)\n").unwrap();
 
         let limits = AuditLimits::default();
-        let resp1 =
-            store.audit_reproducibility(AuditScope::Project, project_root, None, &limits);
-        let resp2 =
-            store.audit_reproducibility(AuditScope::Project, project_root, None, &limits);
+        let resp1 = store.audit_reproducibility(AuditScope::Project, project_root, None, &limits);
+        let resp2 = store.audit_reproducibility(AuditScope::Project, project_root, None, &limits);
 
         // Same input -> same output (findings, summary counts, and coverage
         // must be identical even though generated_at timestamps differ).
-        assert_eq!(resp1.findings, resp2.findings, "findings must be deterministic");
+        assert_eq!(
+            resp1.findings, resp2.findings,
+            "findings must be deterministic"
+        );
         assert_eq!(resp1.status, resp2.status);
         assert_eq!(resp1.summary.total_findings, resp2.summary.total_findings);
         assert_eq!(resp1.summary.info, resp2.summary.info);
@@ -1990,12 +2117,24 @@ mod tests {
         let response =
             store.audit_reproducibility(AuditScope::Project, project_root, None, &limits);
 
-        let has_error = response.findings.iter().any(|f| f.severity == AuditSeverity::Error);
-        let has_warning = response.findings.iter().any(|f| f.severity == AuditSeverity::Warning);
-        let has_info = response.findings.iter().any(|f| f.severity == AuditSeverity::Info);
+        let has_error = response
+            .findings
+            .iter()
+            .any(|f| f.severity == AuditSeverity::Error);
+        let has_warning = response
+            .findings
+            .iter()
+            .any(|f| f.severity == AuditSeverity::Warning);
+        let has_info = response
+            .findings
+            .iter()
+            .any(|f| f.severity == AuditSeverity::Info);
 
         assert!(has_error, "should have at least one Error (failed run)");
-        assert!(has_warning, "should have at least one Warning (cancelled run)");
+        assert!(
+            has_warning,
+            "should have at least one Warning (cancelled run)"
+        );
         assert!(has_info, "should have at least one Info (RNG without seed)");
     }
 
@@ -2062,10 +2201,7 @@ mod tests {
             .findings
             .iter()
             .find(|f| f.rule_id == "rho.repro.v1.portability.setwd.literal");
-        assert!(
-            setwd_finding.is_some(),
-            "should detect setwd() call"
-        );
+        assert!(setwd_finding.is_some(), "should detect setwd() call");
     }
 
     #[test]
@@ -2304,17 +2440,16 @@ mod tests {
 
         let files = scan_source_files(project_root, &AuditLimits::default());
 
-        let r_files: Vec<_> = files
-            .iter()
-            .filter(|f| !f.skipped)
-            .collect();
+        let r_files: Vec<_> = files.iter().filter(|f| !f.skipped).collect();
         assert_eq!(r_files.len(), 1, "only analysis.R should be scanned");
         assert_eq!(r_files[0].path, "analysis.R");
 
         // Binary files (.png, .rds) should be excluded entirely (not in the list)
         let binary_names: Vec<_> = files.iter().map(|f| f.path.as_str()).collect();
         assert!(
-            !binary_names.iter().any(|name| name.contains(".png") || name.contains(".rds")),
+            !binary_names
+                .iter()
+                .any(|name| name.contains(".png") || name.contains(".rds")),
             "binary files should be excluded from the file list"
         );
     }

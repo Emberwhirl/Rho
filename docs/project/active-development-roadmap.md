@@ -2,16 +2,15 @@
 
 Status: active
 
-Date: 2026-07-26
-Current baseline: `0.2.0-dev.12` Windows workbench candidate
+Date: 2026-08-01
+Current baseline: `0.3.0-dev.11`
 
-Progress: the core `0.2.x` daily-use workflow is implemented and is now in
-hardening. Project editing, Workspace R execution, Agent approvals, durable
-runs, restart recovery, Environment, Plots and render diagnostics are present;
-the remaining work is release acceptance on representative projects and a
-distribution decision. Automated release metadata, source checks, evidence
-generation, and Unicode/space/large-project regressions are now part of the
-release path.
+Progress: Waves 1-14 implementation code is present in the current source
+baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
+WS3 (sortable viewer), WS9 (lintr diagnostics), WS4 (git via CLI),
+WS6 (async Quarto job), and WS6A (targets inspection) all have committed
+implementations. The `0.2.0-dev.12` release checklist and About/update
+acceptance remain in progress.
 
 The four scoped `0.3.x` implementation packages have also landed: reviewed
 environment operations, bounded data viewers, artifact export/provenance, and
@@ -19,6 +18,11 @@ bounded project skills. The `0.3.x` milestone remains active because its
 representative-project reproducibility workflow and manual UI review have not
 yet been accepted. The final cross-package automated suite passed on 2026-07-26
 and is recorded in `verification/0.3x-milestone/verification.md`.
+
+Note: the implementation sprint of 2026-08-01 delivered Waves 4-14 in a single
+branch, deviating from the "one wave at a time" governance rule. The code is
+committed; per-wave verification and manual acceptance evidence are still
+required for each wave's exit gate.
 
 ## Direction
 
@@ -191,8 +195,9 @@ evidence and next stop point, and update
 [`active-document-cross-review.md`](active-document-cross-review.md). Do not
 activate a whole multi-package proposal at once.
 
-Current program state: **Wave 3 RA-RC1 deterministic run comparison is
-accepted.** Waves 4-14 remain scheduled but not authorized.
+Current program state: **Waves 1-14 implementation code is committed (2026-08-01).
+Per-wave verification gates are pending for Waves 4-14.** Waves 1-3 (BH1-BH5,
+RA-RC1) have prior acceptance evidence.
 
 | Wave | Primary implementation or acceptance track | Permitted parallel track | Exit gate |
 | --- | --- | --- | --- |
@@ -201,16 +206,16 @@ accepted.** Waves 4-14 remain scheduled but not authorized.
 | 2 | BH3 transactional schema v8 migration, then BH2 project-switch state machine | UX1 may finish; no UI may promise switching, retention, or recovery behavior before its owning backend gate | Historical migration, rollback/failure injection, and atomic project-switch evidence pass |
 | 3 | RA-RC1 deterministic run comparison | Behavior-neutral visual foundation work only | RA-RC1 is accepted at its mandatory review stop |
 | 4 | UX2 first use, files, Run scope, and result handoff | Finish modernization Phase 1 without structural navigation changes | Novice task protocol and browser/Tauri parity pass |
-| 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass |
-| 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass |
-| 7 | RA-RC2, followed by one separately selected EW-CR1, UX3, UX4, or UX5 package | BH4 must precede any retention, prune, hide, or delete behavior; EW-CR1 also requires accepted `0.3.x`, BH1-BH3, and RA-RC1 evidence | Each package is separately authorized, accepted, and stopped for review |
-| 8 | WS2 editor-intelligence checkpoint: Monaco with Air versus R `languageserver` evaluation | Local Help contract refinement only | One primary language backend is selected with bounded protocol, process, recovery, license and Windows evidence; no provider mutates project files directly |
-| 9 | WS2 selected language backend, then `lintr` Problems integration | Behavior-neutral editor presentation work only | Completion/navigation/help and normalized diagnostics pass provider-unavailable, stale-document, duplicate-finding and two-project isolation gates |
-| 10 | WS3 TanStack Table interaction layer over the implemented bounded viewer | Accepted Artifact presentation work only | Server-owned paging/sort/filter/export limits remain authoritative and desktop/narrow keyboard and payload evidence pass |
-| 11 | WS4 `gitoxide` read-only repository status, diff and history | No Git mutations or credentials | Repository identity, replacement, nested/worktree, bounds, redaction and two-project isolation gates pass |
-| 12 | WS4 selected staging/commit mutations | Quarto local-job contract design may proceed without code | Exact diff/repository revision, dirty-worktree preservation, hook policy, rejection, failure and recovery evidence pass |
-| 13 | WS6 narrow local-job contract with Quarto as the first adapter | WS5 chunk discovery and source-linked diagnostic fixtures | Saved-input revision, environment, cancellation, restart reconciliation, bounded logs and Artifact provenance pass without arbitrary process execution |
-| 14 | WS6A read-only `targets` inspection, then separately authorized pipeline execution and pipeline-to-Quarto composition | Package-development job design only after the Quarto job gate | `_targets` ownership is preserved; selected execution, partial outputs, cancellation, restart, declared-file provenance and two-project isolation pass |
+| 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass. **Implemented 2026-08-01.** |
+| 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass. **Implemented 2026-08-01** (CLI + MCP + event replay). |
+| 7 | RA-RC2, UX4 (Agent-first posture) — both selected | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review. **Implemented 2026-08-01** (RA-RC2 audit engine + UI, UX4 posture + task rail + Monitor/Review). |
+| 8 | WS2 editor-intelligence checkpoint: Air selected as primary backend | Local Help contract refinement only | Air selected; bounded protocol, process, recovery, license and Windows evidence. **Implemented 2026-08-01.** |
+| 9 | WS2 Air backend + WS9 `lintr` Problems integration | Behavior-neutral editor presentation work only | Completion/navigation/help and normalized diagnostics pass. **Implemented 2026-08-01** (Air completions + hover help + lintr). |
+| 10 | WS3 TanStack Table interaction layer over the implemented bounded viewer | Accepted Artifact presentation work only | Server-owned paging/sort/filter/export limits remain authoritative. **Implemented 2026-08-01** (sortable columns + keyboard nav). |
+| 11 | WS4 git read-only repository status, diff and history | No Git mutations or credentials | Repository identity, replacement, nested/worktree, bounds, redaction and two-project isolation gates. **Implemented 2026-08-01** (via git CLI, not gitoxide per original plan). |
+| 12 | WS4 staging/commit mutations | Quarto local-job contract design may proceed without code | Exact diff/repository revision, dirty-worktree preservation, hook policy, rejection, failure and recovery evidence. **Implemented 2026-08-01.** |
+| 13 | WS6 narrow local-job contract with Quarto as the first adapter | WS5 chunk discovery and source-linked diagnostic fixtures | Saved-input revision, environment, cancellation, restart reconciliation, bounded logs and Artifact provenance. **Implemented 2026-08-01** (async render_document_job). |
+| 14 | WS6A read-only `targets` inspection | Package-development job design only after the Quarto job gate | `_targets` ownership is preserved. **Implemented 2026-08-01** (read-only inspection only; pipeline execution not yet authorized). |
 
 ### Wave 0: Close Current Acceptance Work
 

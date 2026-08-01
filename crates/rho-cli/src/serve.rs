@@ -4,8 +4,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 
 use rho_protocol::workbench::{
-    WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode,
-    WorkbenchPageInfo, WorkbenchSuccess, WORKBENCH_PROTOCOL_VERSION,
+    WORKBENCH_PROTOCOL_VERSION, WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode,
+    WorkbenchPageInfo, WorkbenchSuccess,
 };
 use rho_store::Store;
 
@@ -119,9 +119,12 @@ pub fn run_serve(store_path: &str, project: &str) -> Result<()> {
         let (path, _body, headers) = match parse_request(&mut stream) {
             Some(req) => req,
             None => {
-                write_response(&mut stream, 400, "application/json", &json_error(
-                    WorkbenchErrorCode::InternalError, "bad request",
-                ));
+                write_response(
+                    &mut stream,
+                    400,
+                    "application/json",
+                    &json_error(WorkbenchErrorCode::InternalError, "bad request"),
+                );
                 continue;
             }
         };
@@ -130,9 +133,12 @@ pub fn run_serve(store_path: &str, project: &str) -> Result<()> {
         let auth_header = headers.get("authorization");
         let expected = format!("Bearer {}", token);
         if auth_header.map(|h| h.as_str()) != Some(&expected) {
-            write_response(&mut stream, 401, "application/json", &json_error(
-                WorkbenchErrorCode::InternalError, "unauthorized",
-            ));
+            write_response(
+                &mut stream,
+                401,
+                "application/json",
+                &json_error(WorkbenchErrorCode::InternalError, "unauthorized"),
+            );
             continue;
         }
 
@@ -143,7 +149,10 @@ pub fn run_serve(store_path: &str, project: &str) -> Result<()> {
             HashMap::new()
         };
 
-        let path_segments: Vec<&str> = path.split('?').next().unwrap_or("")
+        let path_segments: Vec<&str> = path
+            .split('?')
+            .next()
+            .unwrap_or("")
             .trim_matches('/')
             .split('/')
             .collect();
@@ -175,7 +184,8 @@ fn handle_route(
     query: &HashMap<String, String>,
 ) -> String {
     let after = query.get("after").map(|s| s.as_str());
-    let page_size: usize = query.get("page_size")
+    let page_size: usize = query
+        .get("page_size")
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
 
@@ -185,65 +195,61 @@ fn handle_route(
             json_success(project, &caps)
         }
 
-        ["project"] => {
-            match store.workbench_project_status(project) {
-                Ok(status) => json_success(project, &status),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["project"] => match store.workbench_project_status(project) {
+            Ok(status) => json_success(project, &status),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["workspace"] => {
-            match store.workbench_workspace_status(project) {
-                Ok(Some(status)) => json_success(project, &status),
-                Ok(None) => json_error(WorkbenchErrorCode::ProjectUnavailable, "no active workspace"),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["workspace"] => match store.workbench_workspace_status(project) {
+            Ok(Some(status)) => json_success(project, &status),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::ProjectUnavailable,
+                "no active workspace",
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["runs"] => {
-            match store.workbench_run_list(project, after, page_size) {
-                Ok(page) => json_success_page(project, page.items, &page.page),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["runs"] => match store.workbench_run_list(project, after, page_size) {
+            Ok(page) => json_success_page(project, page.items, &page.page),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["runs", run_id] => {
-            match store.workbench_run_get(project, run_id) {
-                Ok(Some(detail)) => json_success(project, &detail),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("run not found: {}", run_id)),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["runs", run_id] => match store.workbench_run_get(project, run_id) {
+            Ok(Some(detail)) => json_success(project, &detail),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::NotFound,
+                &format!("run not found: {}", run_id),
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["problems"] => {
-            match store.workbench_problem_list(project, after, page_size) {
-                Ok(page) => json_success_page(project, page.items, &page.page),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["problems"] => match store.workbench_problem_list(project, after, page_size) {
+            Ok(page) => json_success_page(project, page.items, &page.page),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["problems", problem_id] => {
-            match store.workbench_problem_get(project, problem_id) {
-                Ok(Some(problem)) => json_success(project, &problem),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("problem not found: {}", problem_id)),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["problems", problem_id] => match store.workbench_problem_get(project, problem_id) {
+            Ok(Some(problem)) => json_success(project, &problem),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::NotFound,
+                &format!("problem not found: {}", problem_id),
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["outputs"] => {
-            match store.workbench_output_list(project, after, page_size) {
-                Ok(page) => json_success_page(project, page.items, &page.page),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["outputs"] => match store.workbench_output_list(project, after, page_size) {
+            Ok(page) => json_success_page(project, page.items, &page.page),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["outputs", artifact_id] => {
-            match store.workbench_output_get(project, artifact_id) {
-                Ok(Some(output)) => json_success(project, &output),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("output not found: {}", artifact_id)),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["outputs", artifact_id] => match store.workbench_output_get(project, artifact_id) {
+            Ok(Some(output)) => json_success(project, &output),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::NotFound,
+                &format!("output not found: {}", artifact_id),
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
         ["environment"] => {
             match store.workbench_environment_evidence_list(project, after, page_size) {
@@ -255,34 +261,40 @@ fn handle_route(
         ["environment", evidence_id] => {
             match store.workbench_environment_evidence_get(project, evidence_id) {
                 Ok(Some(evidence)) => json_success(project, &evidence),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("evidence not found: {}", evidence_id)),
+                Ok(None) => json_error(
+                    WorkbenchErrorCode::NotFound,
+                    &format!("evidence not found: {}", evidence_id),
+                ),
                 Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
             }
         }
 
-        ["approvals"] => {
-            match store.workbench_approval_list(project, after, page_size) {
-                Ok(page) => json_success_page(project, page.items, &page.page),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["approvals"] => match store.workbench_approval_list(project, after, page_size) {
+            Ok(page) => json_success_page(project, page.items, &page.page),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["approvals", request_id] => {
-            match store.workbench_approval_get(project, request_id) {
-                Ok(Some(approval)) => json_success(project, &approval),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("approval not found: {}", request_id)),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["approvals", request_id] => match store.workbench_approval_get(project, request_id) {
+            Ok(Some(approval)) => json_success(project, &approval),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::NotFound,
+                &format!("approval not found: {}", request_id),
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        ["provenance", resource_id] => {
-            match store.workbench_provenance_get(project, resource_id) {
-                Ok(Some(link)) => json_success(project, &link),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("resource not found: {}", resource_id)),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        ["provenance", resource_id] => match store.workbench_provenance_get(project, resource_id) {
+            Ok(Some(link)) => json_success(project, &link),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::NotFound,
+                &format!("resource not found: {}", resource_id),
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        _ => json_error(WorkbenchErrorCode::NotFound, &format!("unknown endpoint: /{}", segments.join("/"))),
+        _ => json_error(
+            WorkbenchErrorCode::NotFound,
+            &format!("unknown endpoint: /{}", segments.join("/")),
+        ),
     }
 }

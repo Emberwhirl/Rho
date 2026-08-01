@@ -1,7 +1,7 @@
 use rho_protocol::workbench::{
-    ApprovalSummary, EnvironmentEvidence, OutputSummary, ProblemSummary,
-    ProjectSummary, ProvenanceLink, RunDetail, RunSummary, WorkbenchCapabilities,
-    WorkbenchPageInfo, WorkspaceStatus,
+    ApprovalSummary, EnvironmentEvidence, OutputSummary, ProblemSummary, ProjectSummary,
+    ProvenanceLink, RunDetail, RunSummary, WorkbenchCapabilities, WorkbenchPageInfo,
+    WorkspaceStatus,
 };
 
 // ── Capabilities ─────────────────────────────────────────────────────────────
@@ -174,7 +174,14 @@ pub fn print_output(o: &OutputSummary) {
     }
     println!("  Media:      {}", o.media_type);
     println!("  Created:    {}", o.created_at);
-    println!("  Provenance: {}", if o.provenance_complete { "complete" } else { "incomplete" });
+    println!(
+        "  Provenance: {}",
+        if o.provenance_complete {
+            "complete"
+        } else {
+            "incomplete"
+        }
+    );
     if let Some(ref reason) = o.incomplete_reason {
         println!("  Reason:     {}", reason);
     }

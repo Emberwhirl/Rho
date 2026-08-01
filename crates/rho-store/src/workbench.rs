@@ -5,12 +5,11 @@
 //! or internal transport fields are exposed.
 
 use rho_protocol::workbench::{
-    ApprovalSummary, EnvironmentEvidence, OutputSummary, ProblemSummary,
-    ProjectSummary, ProvenanceLink, RunDetail, RunSummary, WorkbenchCapabilities,
-    WorkbenchPage, WorkbenchPageInfo, WorkspaceStatus, MAX_PAGE_SIZE,
-    WORKBENCH_PROTOCOL_VERSION,
+    ApprovalSummary, EnvironmentEvidence, MAX_PAGE_SIZE, OutputSummary, ProblemSummary,
+    ProjectSummary, ProvenanceLink, RunDetail, RunSummary, WORKBENCH_PROTOCOL_VERSION,
+    WorkbenchCapabilities, WorkbenchPage, WorkbenchPageInfo, WorkspaceStatus,
 };
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use super::{Store, StoreError};
 
@@ -241,7 +240,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|r| format!("{}|{}", r.started_at, r.run_id));
+        let after_cursor = items
+            .last()
+            .map(|r| format!("{}|{}", r.started_at, r.run_id));
 
         Ok(WorkbenchPage {
             items,
@@ -263,36 +264,34 @@ impl Store {
     ) -> Result<Option<RunDetail>, StoreError> {
         let detail = self.get_run_detail(project_root, run_id)?;
         match detail {
-            Some(d) => {
-                Ok(Some(RunDetail {
-                    summary: RunSummary {
-                        run_id: d.run_id.clone(),
-                        parent_run_id: d.parent_run_id.clone(),
-                        origin: d.origin.clone(),
-                        status: d.status.clone(),
-                        started_at: d.started_at.clone(),
-                        finished_at: d.finished_at.clone(),
-                        terminal_reason: d.terminal_reason.clone(),
-                        request_type: d.request_type.clone(),
-                        source_path: d.source_path.clone(),
-                        has_error: d.error_message.is_some(),
-                        has_warnings: Some(!d.warnings.is_empty()),
-                        problem_count: Some(if d.error_message.is_some() { 1 } else { 0 }),
-                        artifact_count: Some(0),
-                    },
-                    code_preview: Some(truncate_str(&d.code, 2000)),
-                    code_truncated: d.code.len() > 2000,
-                    stdout_preview: d.stdout.as_ref().map(|s| truncate_str(s, 2000)),
-                    stdout_truncated: d.stdout.as_ref().map_or(false, |s| s.len() > 2000),
-                    value_preview: d.value_text.as_ref().map(|s| truncate_str(s, 500)),
-                    value_truncated: d.value_text.as_ref().map_or(false, |s| s.len() > 500),
-                    error_message: d.error_message,
-                    messages: d.messages,
-                    warnings: d.warnings,
-                    environment_snapshot_id: d.environment_snapshot_id,
-                    artifact_ids: vec![],
-                }))
-            }
+            Some(d) => Ok(Some(RunDetail {
+                summary: RunSummary {
+                    run_id: d.run_id.clone(),
+                    parent_run_id: d.parent_run_id.clone(),
+                    origin: d.origin.clone(),
+                    status: d.status.clone(),
+                    started_at: d.started_at.clone(),
+                    finished_at: d.finished_at.clone(),
+                    terminal_reason: d.terminal_reason.clone(),
+                    request_type: d.request_type.clone(),
+                    source_path: d.source_path.clone(),
+                    has_error: d.error_message.is_some(),
+                    has_warnings: Some(!d.warnings.is_empty()),
+                    problem_count: Some(if d.error_message.is_some() { 1 } else { 0 }),
+                    artifact_count: Some(0),
+                },
+                code_preview: Some(truncate_str(&d.code, 2000)),
+                code_truncated: d.code.len() > 2000,
+                stdout_preview: d.stdout.as_ref().map(|s| truncate_str(s, 2000)),
+                stdout_truncated: d.stdout.as_ref().map_or(false, |s| s.len() > 2000),
+                value_preview: d.value_text.as_ref().map(|s| truncate_str(s, 500)),
+                value_truncated: d.value_text.as_ref().map_or(false, |s| s.len() > 500),
+                error_message: d.error_message,
+                messages: d.messages,
+                warnings: d.warnings,
+                environment_snapshot_id: d.environment_snapshot_id,
+                artifact_ids: vec![],
+            })),
             None => Ok(None),
         }
     }
@@ -327,8 +326,10 @@ impl Store {
             Some(cursor) => {
                 let parts: Vec<&str> = cursor.splitn(2, '|').collect();
                 if parts.len() == 2 {
-                    ("AND (started_at < ?3 OR (started_at = ?3 AND run_id < ?4))",
-                     vec![parts[0].to_string(), parts[1].to_string()])
+                    (
+                        "AND (started_at < ?3 OR (started_at = ?3 AND run_id < ?4))",
+                        vec![parts[0].to_string(), parts[1].to_string()],
+                    )
                 } else {
                     return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
                         "invalid cursor format".into(),
@@ -352,13 +353,20 @@ impl Store {
         let rows: Vec<ProblemSummary> = if cursor_params.len() == 2 {
             statement
                 .query_map(
-                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    params![
+                        project_root,
+                        page_size as i64 + 1,
+                        &cursor_params[0],
+                        &cursor_params[1]
+                    ],
                     |row| Self::map_problem_row(row),
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_problem_row(row))?
+                .query_map(params![project_root, page_size as i64 + 1], |row| {
+                    Self::map_problem_row(row)
+                })?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -369,7 +377,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|p| format!("{}|{}", p.recorded_at, p.run_id));
+        let after_cursor = items
+            .last()
+            .map(|p| format!("{}|{}", p.recorded_at, p.run_id));
 
         Ok(WorkbenchPage {
             items,
@@ -454,8 +464,10 @@ impl Store {
             Some(cursor) => {
                 let parts: Vec<&str> = cursor.splitn(2, '|').collect();
                 if parts.len() == 2 {
-                    ("AND (created_at < ?3 OR (created_at = ?3 AND artifact_id < ?4))",
-                     vec![parts[0].to_string(), parts[1].to_string()])
+                    (
+                        "AND (created_at < ?3 OR (created_at = ?3 AND artifact_id < ?4))",
+                        vec![parts[0].to_string(), parts[1].to_string()],
+                    )
                 } else {
                     return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
                         "invalid cursor format".into(),
@@ -480,13 +492,20 @@ impl Store {
         let rows: Vec<OutputSummary> = if cursor_params.len() == 2 {
             statement
                 .query_map(
-                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    params![
+                        project_root,
+                        page_size as i64 + 1,
+                        &cursor_params[0],
+                        &cursor_params[1]
+                    ],
                     |row| Self::map_output_row(row),
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_output_row(row))?
+                .query_map(params![project_root, page_size as i64 + 1], |row| {
+                    Self::map_output_row(row)
+                })?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -497,7 +516,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|o| format!("{}|{}", o.created_at, o.artifact_id));
+        let after_cursor = items
+            .last()
+            .map(|o| format!("{}|{}", o.created_at, o.artifact_id));
 
         Ok(WorkbenchPage {
             items,
@@ -572,8 +593,14 @@ impl Store {
             Some(cursor) => {
                 let parts: Vec<&str> = cursor.splitn(3, '|').collect();
                 if parts.len() == 3 {
-                    ("AND (captured_at < ?3 OR (captured_at = ?3 AND evidence_kind < ?4) OR (captured_at = ?3 AND evidence_kind = ?4 AND evidence_id < ?5))",
-                     vec![parts[0].to_string(), parts[1].to_string(), parts[2].to_string()])
+                    (
+                        "AND (captured_at < ?3 OR (captured_at = ?3 AND evidence_kind < ?4) OR (captured_at = ?3 AND evidence_kind = ?4 AND evidence_id < ?5))",
+                        vec![
+                            parts[0].to_string(),
+                            parts[1].to_string(),
+                            parts[2].to_string(),
+                        ],
+                    )
                 } else {
                     return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
                         "invalid cursor format".into(),
@@ -605,14 +632,21 @@ impl Store {
         let rows: Vec<EnvironmentEvidence> = if cursor_params.len() == 3 {
             statement
                 .query_map(
-                    params![project_root, page_size as i64 + 1,
-                            &cursor_params[0], &cursor_params[1], &cursor_params[2]],
+                    params![
+                        project_root,
+                        page_size as i64 + 1,
+                        &cursor_params[0],
+                        &cursor_params[1],
+                        &cursor_params[2]
+                    ],
                     |row| Self::map_env_row(row),
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_env_row(row))?
+                .query_map(params![project_root, page_size as i64 + 1], |row| {
+                    Self::map_env_row(row)
+                })?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -623,9 +657,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|e| {
-            format!("{}|{}|{}", e.captured_at, e.evidence_kind, e.evidence_id)
-        });
+        let after_cursor = items
+            .last()
+            .map(|e| format!("{}|{}|{}", e.captured_at, e.evidence_kind, e.evidence_id));
 
         Ok(WorkbenchPage {
             items,
@@ -724,8 +758,10 @@ impl Store {
             Some(cursor) => {
                 let parts: Vec<&str> = cursor.splitn(2, '|').collect();
                 if parts.len() == 2 {
-                    ("AND (requested_at < ?3 OR (requested_at = ?3 AND request_id < ?4))",
-                     vec![parts[0].to_string(), parts[1].to_string()])
+                    (
+                        "AND (requested_at < ?3 OR (requested_at = ?3 AND request_id < ?4))",
+                        vec![parts[0].to_string(), parts[1].to_string()],
+                    )
                 } else {
                     return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
                         "invalid cursor format".into(),
@@ -750,13 +786,20 @@ impl Store {
         let rows: Vec<ApprovalSummary> = if cursor_params.len() == 2 {
             statement
                 .query_map(
-                    params![project_root, page_size as i64 + 1, &cursor_params[0], &cursor_params[1]],
+                    params![
+                        project_root,
+                        page_size as i64 + 1,
+                        &cursor_params[0],
+                        &cursor_params[1]
+                    ],
                     |row| Self::map_approval_row(row),
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             statement
-                .query_map(params![project_root, page_size as i64 + 1], |row| Self::map_approval_row(row))?
+                .query_map(params![project_root, page_size as i64 + 1], |row| {
+                    Self::map_approval_row(row)
+                })?
                 .collect::<Result<Vec<_>, _>>()?
         };
 
@@ -767,7 +810,9 @@ impl Store {
             rows
         };
 
-        let after_cursor = items.last().map(|a| format!("{}|{}", a.requested_at, a.request_id));
+        let after_cursor = items
+            .last()
+            .map(|a| format!("{}|{}", a.requested_at, a.request_id));
 
         Ok(WorkbenchPage {
             items,
@@ -1059,7 +1104,9 @@ mod tests {
     #[test]
     fn run_get_missing_run() {
         let (store, _dir) = setup_store();
-        let result = store.workbench_run_get("/test/proj", "nonexistent").unwrap();
+        let result = store
+            .workbench_run_get("/test/proj", "nonexistent")
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -1069,7 +1116,10 @@ mod tests {
         let mut store = store;
         create_test_run(&mut store, "/test/proj", "run_01", "user");
 
-        let detail = store.workbench_run_get("/test/proj", "run_01").unwrap().unwrap();
+        let detail = store
+            .workbench_run_get("/test/proj", "run_01")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.code_preview.as_deref(), Some("1 + 1"));
         assert!(!detail.code_truncated);
     }
@@ -1118,7 +1168,9 @@ mod tests {
             })
             .unwrap();
 
-        let page = store.workbench_problem_list("/test/proj", None, 50).unwrap();
+        let page = store
+            .workbench_problem_list("/test/proj", None, 50)
+            .unwrap();
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].severity, "error");
         assert!(page.items[0].title.contains("bad"));
@@ -1127,7 +1179,9 @@ mod tests {
     #[test]
     fn problem_list_no_errors_for_clean_project() {
         let (store, _dir) = setup_store();
-        let page = store.workbench_problem_list("/test/proj", None, 50).unwrap();
+        let page = store
+            .workbench_problem_list("/test/proj", None, 50)
+            .unwrap();
         assert_eq!(page.items.len(), 0);
     }
 
@@ -1189,11 +1243,15 @@ mod tests {
             })
             .unwrap();
 
-        let page_a = store.workbench_output_list("/test/proj_a", None, 50).unwrap();
+        let page_a = store
+            .workbench_output_list("/test/proj_a", None, 50)
+            .unwrap();
         assert_eq!(page_a.items.len(), 1);
         assert_eq!(page_a.items[0].artifact_id, "art_a");
 
-        let page_b = store.workbench_output_list("/test/proj_b", None, 50).unwrap();
+        let page_b = store
+            .workbench_output_list("/test/proj_b", None, 50)
+            .unwrap();
         assert_eq!(page_b.items.len(), 1);
         assert_eq!(page_b.items[0].artifact_id, "art_b");
     }
@@ -1270,7 +1328,10 @@ mod tests {
 
         // Asking for run_a under proj_b should return None (not projected).
         let result = store.workbench_run_get("/test/proj_b", "run_a").unwrap();
-        assert!(result.is_none(), "foreign run must not be visible under project B");
+        assert!(
+            result.is_none(),
+            "foreign run must not be visible under project B"
+        );
     }
 
     #[test]
@@ -1285,7 +1346,10 @@ mod tests {
         assert_eq!(list.items[0].run_id, "run_01");
 
         // Detail view must match
-        let detail = store.workbench_run_get("/test/proj", "run_01").unwrap().unwrap();
+        let detail = store
+            .workbench_run_get("/test/proj", "run_01")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.summary.run_id, "run_01");
     }
 
@@ -1325,7 +1389,10 @@ mod tests {
         let mut store = store;
         create_test_run(&mut store, "/test/proj", "run_01", "user");
 
-        let link = store.workbench_provenance_get("/test/proj", "run_01").unwrap().unwrap();
+        let link = store
+            .workbench_provenance_get("/test/proj", "run_01")
+            .unwrap()
+            .unwrap();
         assert_eq!(link.resource_id, "run_01");
         // No environment snapshot was recorded, so provenance is incomplete.
         assert!(!link.provenance_complete);
@@ -1335,7 +1402,9 @@ mod tests {
     #[test]
     fn provenance_missing_resource_returns_none() {
         let (store, _dir) = setup_store();
-        let link = store.workbench_provenance_get("/test/proj", "nonexistent").unwrap();
+        let link = store
+            .workbench_provenance_get("/test/proj", "nonexistent")
+            .unwrap();
         assert!(link.is_none());
     }
 
@@ -1343,10 +1412,34 @@ mod tests {
     fn empty_project_all_lists_return_empty() {
         let (store, _dir) = setup_store();
 
-        assert!(store.workbench_run_list("/test/empty", None, 50).unwrap().items.is_empty());
-        assert!(store.workbench_problem_list("/test/empty", None, 50).unwrap().items.is_empty());
-        assert!(store.workbench_output_list("/test/empty", None, 50).unwrap().items.is_empty());
-        assert!(store.workbench_approval_list("/test/empty", None, 50).unwrap().items.is_empty());
+        assert!(
+            store
+                .workbench_run_list("/test/empty", None, 50)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        assert!(
+            store
+                .workbench_problem_list("/test/empty", None, 50)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        assert!(
+            store
+                .workbench_output_list("/test/empty", None, 50)
+                .unwrap()
+                .items
+                .is_empty()
+        );
+        assert!(
+            store
+                .workbench_approval_list("/test/empty", None, 50)
+                .unwrap()
+                .items
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1377,12 +1470,17 @@ mod tests {
 
         // Querying with a real project root must not return legacy records.
         let page = store.workbench_run_list("/test/proj", None, 50).unwrap();
-        assert!(page.items.is_empty(), "legacy_unscoped runs must not appear under a real project");
+        assert!(
+            page.items.is_empty(),
+            "legacy_unscoped runs must not appear under a real project"
+        );
 
         // Querying with legacy_unscoped as project root should only work if
         // the client explicitly passes that value (legacy_unscoped is a
         // sentinel, not a real project).
-        let legacy_page = store.workbench_run_list("legacy_unscoped", None, 50).unwrap();
+        let legacy_page = store
+            .workbench_run_list("legacy_unscoped", None, 50)
+            .unwrap();
         assert_eq!(legacy_page.items.len(), 1);
     }
 }

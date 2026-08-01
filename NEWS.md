@@ -4,6 +4,73 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.0 - 2026-08-01
+
+### Added
+
+#### WB1: Read-only public Workbench Protocol
+
+- Defined a versioned, paginated, project-scoped public protocol with typed
+  entities (RunSummary, RunDetail, ProblemSummary, ObjectSummary, OutputSummary,
+  EnvironmentEvidence, ApprovalSummary, ProvenanceLink) and bounded error
+  envelopes.
+- Server-owned cursors, field-level redaction, and size/page limits prevent
+  accidental data exposure.
+
+#### WB2: CLI binary, MCP server, and event replay
+
+- Added `rho-cli` binary with `format` and `serve` subcommands.
+- Added `rho-mcp` MCP server exposing the Workbench Protocol.
+- Added cursor-based public event projection with replay.
+
+#### UX4: Agent-first posture
+
+- Added Agent-first layout switching with a three-column task-rail +
+  agent-flow + work-surface posture.
+- Task rail with mode badges (Ask/Plan/Act), status dots, and preview text.
+- Direct surface with Agent flow, Monitor (run list), and Review (findings)
+  panels.
+
+#### RA-RC2: Reproducibility audit
+
+- Added `audit_reproducibility` store engine scanning runs, snapshots, problems,
+  and artifacts with configurable scope (project/run/artifact) and limits.
+- Added `audit_reproducibility` Tauri command and reproducibility audit UI panel.
+
+#### WS2: Editor intelligence (Air backend)
+
+- Added Air-backed R function index, dynamic Monaco completions, and hover help.
+- Selected Air as the primary language backend after evaluation checkpoint.
+
+#### WS9: lintr diagnostics
+
+- Added lintr bridge producing normalized diagnostics from R source files.
+- Integrated lintr findings into the existing Problems panel.
+
+#### WS3: Data viewer interaction
+
+- Added sortable columns and keyboard navigation to the data viewer.
+
+#### WS4: Git integration
+
+- Added Git status, log, diff, staging, and commit via the system git CLI.
+- File counts (untracked/modified/staged), ahead/behind tracking, and
+  porcelain status parsing with full M/A/D/R/C/U/T coverage.
+
+#### WS6: Async Quarto render job
+
+- Added `render_document_job` Tauri command with async job submission.
+- Render jobs return a job ID immediately; the render runs in a background task.
+
+#### WS6A: targets pipeline inspection
+
+- Added read-only `targets` pipeline inspection via the workspace bridge.
+- `_targets` ownership is preserved; pipeline execution is not yet authorized.
+
+### Changed
+
+- Version advances to `0.4.0-dev.0` to reflect Waves 4-14 implementation scope.
+
 ## 0.3.0-dev.0 - 2026-07-31
 
 ### Added

@@ -92,7 +92,10 @@ mod tests {
         let mut store = store;
         create_run(&mut store, "/test/proj", "r1", "summary(fit)");
 
-        let detail = store.workbench_run_get("/test/proj", "r1").unwrap().unwrap();
+        let detail = store
+            .workbench_run_get("/test/proj", "r1")
+            .unwrap()
+            .unwrap();
         assert_eq!(detail.code_preview.as_deref(), Some("summary(fit)"));
         assert!(!detail.code_truncated);
     }

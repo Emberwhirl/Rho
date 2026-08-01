@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use rho_protocol::workbench::{
-    WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode,
-    WorkbenchPageInfo, WorkbenchSuccess, WORKBENCH_PROTOCOL_VERSION,
+    WORKBENCH_PROTOCOL_VERSION, WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode,
+    WorkbenchPageInfo, WorkbenchSuccess,
 };
 use rho_store::Store;
 
@@ -95,9 +95,7 @@ enum RunAction {
         after: Option<String>,
     },
     /// Show a single run with code and output previews.
-    Show {
-        run_id: String,
-    },
+    Show { run_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -110,9 +108,7 @@ enum ProblemAction {
         after: Option<String>,
     },
     /// Show a single problem.
-    Show {
-        problem_id: String,
-    },
+    Show { problem_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -125,9 +121,7 @@ enum OutputAction {
         after: Option<String>,
     },
     /// Show a single output artifact.
-    Show {
-        artifact_id: String,
-    },
+    Show { artifact_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -140,9 +134,7 @@ enum EnvironmentAction {
         after: Option<String>,
     },
     /// Show a single environment evidence record.
-    Show {
-        evidence_id: String,
-    },
+    Show { evidence_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -155,9 +147,7 @@ enum ApprovalAction {
         after: Option<String>,
     },
     /// Show a single approval request.
-    Show {
-        request_id: String,
-    },
+    Show { request_id: String },
 }
 
 fn resolve_store_path(explicit: Option<&PathBuf>) -> Result<PathBuf> {
@@ -216,42 +206,46 @@ fn main() -> Result<()> {
                 .workbench_project_status(&project)
                 .context("querying project status")?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &status))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &status))?
+                );
             } else {
                 format::print_project(&status);
             }
         }
 
-        Commands::Workspace => {
-            match store.workbench_workspace_status(&project)? {
-                Some(status) => {
-                    if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &status))?);
-                    } else {
-                        format::print_workspace(&status);
-                    }
-                }
-                None => {
-                    if cli.json {
-                        let err = WorkbenchError {
-                            ok: false,
-                            workbench_protocol_version: WORKBENCH_PROTOCOL_VERSION.to_string(),
-                            request_id: None,
-                            project_id: Some(project.clone()),
-                            error: WorkbenchErrorBody {
-                                code: WorkbenchErrorCode::ProjectUnavailable,
-                                message: "no active workspace for this project".into(),
-                                retryable: true,
-                                details: serde_json::Value::Null,
-                            },
-                        };
-                        println!("{}", serde_json::to_string_pretty(&err)?);
-                    } else {
-                        println!("No active workspace for this project.");
-                    }
+        Commands::Workspace => match store.workbench_workspace_status(&project)? {
+            Some(status) => {
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &status))?
+                    );
+                } else {
+                    format::print_workspace(&status);
                 }
             }
-        }
+            None => {
+                if cli.json {
+                    let err = WorkbenchError {
+                        ok: false,
+                        workbench_protocol_version: WORKBENCH_PROTOCOL_VERSION.to_string(),
+                        request_id: None,
+                        project_id: Some(project.clone()),
+                        error: WorkbenchErrorBody {
+                            code: WorkbenchErrorCode::ProjectUnavailable,
+                            message: "no active workspace for this project".into(),
+                            retryable: true,
+                            details: serde_json::Value::Null,
+                        },
+                    };
+                    println!("{}", serde_json::to_string_pretty(&err)?);
+                } else {
+                    println!("No active workspace for this project.");
+                }
+            }
+        },
 
         Commands::Runs { action } => match action {
             RunAction::List { page_size, after } => {
@@ -265,18 +259,21 @@ fn main() -> Result<()> {
                     format::print_run_list(&page.items, &page.page);
                 }
             }
-            RunAction::Show { run_id } => {
-                match store.workbench_run_get(&project, &run_id)? {
-                    Some(detail) => {
-                        if cli.json {
-                            println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &detail))?);
-                        } else {
-                            format::print_run_detail(&detail);
-                        }
+            RunAction::Show { run_id } => match store.workbench_run_get(&project, &run_id)? {
+                Some(detail) => {
+                    if cli.json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&WorkbenchSuccess::new(
+                                &project, &detail
+                            ))?
+                        );
+                    } else {
+                        format::print_run_detail(&detail);
                     }
-                    None => not_found("run", &run_id, cli.json, &project),
                 }
-            }
+                None => not_found("run", &run_id, cli.json, &project),
+            },
         },
 
         Commands::Problems { action } => match action {
@@ -295,7 +292,12 @@ fn main() -> Result<()> {
                 match store.workbench_problem_get(&project, &problem_id)? {
                     Some(problem) => {
                         if cli.json {
-                            println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &problem))?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&WorkbenchSuccess::new(
+                                    &project, &problem
+                                ))?
+                            );
                         } else {
                             format::print_problem(&problem);
                         }
@@ -321,7 +323,12 @@ fn main() -> Result<()> {
                 match store.workbench_output_get(&project, &artifact_id)? {
                     Some(output) => {
                         if cli.json {
-                            println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &output))?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&WorkbenchSuccess::new(
+                                    &project, &output
+                                ))?
+                            );
                         } else {
                             format::print_output(&output);
                         }
@@ -347,7 +354,12 @@ fn main() -> Result<()> {
                 match store.workbench_environment_evidence_get(&project, &evidence_id)? {
                     Some(evidence) => {
                         if cli.json {
-                            println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &evidence))?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&WorkbenchSuccess::new(
+                                    &project, &evidence
+                                ))?
+                            );
                         } else {
                             format::print_env(&evidence);
                         }
@@ -373,7 +385,12 @@ fn main() -> Result<()> {
                 match store.workbench_approval_get(&project, &request_id)? {
                     Some(approval) => {
                         if cli.json {
-                            println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &approval))?);
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&WorkbenchSuccess::new(
+                                    &project, &approval
+                                ))?
+                            );
                         } else {
                             format::print_approval(&approval);
                         }
@@ -387,7 +404,10 @@ fn main() -> Result<()> {
             match store.workbench_provenance_get(&project, &resource_id)? {
                 Some(link) => {
                     if cli.json {
-                        println!("{}", serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &link))?);
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&WorkbenchSuccess::new(&project, &link))?
+                        );
                     } else {
                         format::print_provenance(&link);
                     }
@@ -398,10 +418,7 @@ fn main() -> Result<()> {
 
         Commands::Serve => {
             let store_path = resolve_store_path(cli.store.as_ref())?;
-            serve::run_serve(
-                store_path.to_str().context("invalid store path")?,
-                &project,
-            )?;
+            serve::run_serve(store_path.to_str().context("invalid store path")?, &project)?;
         }
     }
 

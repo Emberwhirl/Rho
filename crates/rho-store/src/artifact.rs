@@ -73,9 +73,7 @@ pub struct ArtifactRecordSummary {
     pub created_at: String,
 }
 
-pub(crate) fn decode_artifact_record(
-    row: &Row<'_>,
-) -> rusqlite::Result<ArtifactRecordSummary> {
+pub(crate) fn decode_artifact_record(row: &Row<'_>) -> rusqlite::Result<ArtifactRecordSummary> {
     Ok(ArtifactRecordSummary {
         artifact_id: row.get(0)?,
         artifact_kind: row.get(1)?,

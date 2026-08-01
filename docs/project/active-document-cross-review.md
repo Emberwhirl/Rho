@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-07-26
+Review date: 2026-08-01
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 ## Purpose
@@ -54,6 +54,7 @@ semantics.
 | `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed; open-source component boundaries cross-reviewed | post-`0.3.x` scientific capability direction; Monaco plus one Air/R `languageserver` backend, `lintr`, TanStack Table, `gitoxide`, Quarto jobs, and `targets` adapters | Waves 8-14 schedule bounded packages after earlier gates; each still requires separate authorization and an active handoff |
 | `plans/proposed-2026-07-20-human-agent-workbench-posture-design.md` | proposed | Human/Agent posture and Direct/Monitor/Review information architecture | open decisions close and a separate posture package is approved |
 | `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed | visual tokens, icons, component presentation, responsive behavior, themes | Phase 1 may be separately approved; structural phases wait for posture coordination |
+| `plans/proposed-2026-08-01-next-phase-task-plan.md` | proposed; cross-referenced against roadmap and proposals | decomposition of remaining acceptance gates, implementation gaps, and new capabilities into sequenced work packages | each work package separately authorized with a focused handoff; P1 gates are blocking |
 | `architecture/proposed-aisdk-family-change-proposals.md` | proposed and deferred | catalog of possible upstream seams | a concrete current gap and separate cross-repository approval exist |
 
 ## Implemented Status Corrections
@@ -261,12 +262,14 @@ The cross-proposal schedule is the Wave 0-14 Implementation Program in
 [`active-development-roadmap.md`](active-development-roadmap.md). This record
 defines the coordination constraints that apply to that schedule:
 
-The current program state is Wave 2 BH5 active, with BH1-BH4 accepted and no
-later Wave 2 package active. BH1-A through BH1-C are implemented, their automated
-matrix passed, and independent review found no unresolved BH1-scope P0/P1
-finding. Wave 0 automated review closed as `accept with follow-up`, while
-`0.3.x` manual milestone acceptance remains open. BH5 and Waves 3-14 still
-require separate authorization and a focused handoff.
+The current program state is **Waves 1-14 implementation code committed (2026-08-01)**.
+BH1-BH5 are accepted with verification evidence. RA-RC1, WB1, WB2, UX4, RA-RC2,
+WS2 (Air selected), WS3 (basic table), WS4 (git CLI), WS6 (async Quarto job),
+WS6A (targets read-only inspection), and WS9 (lintr) are committed. Per-wave
+verification and manual acceptance evidence are pending for Waves 4-14; each
+exit gate must be independently closed. The next-phase task plan
+(`proposed-2026-08-01-next-phase-task-plan.md`) decomposes the remaining work
+into sequenced work packages.
 
 | Wave | Coordination result |
 | --- | --- |
@@ -314,10 +317,11 @@ demonstrated gap and separate approval; `aisdk.bioc` remains deferred beyond
 
 ## Remaining Open Gates
 
-- record the complete `0.3.x` representative-project reproducibility workflow
+- complete the `0.3.x` representative-project reproducibility workflow
   and manual three-viewport UI acceptance;
 - retain the passing 2026-07-26 final cross-package validation evidence and
-  rerun it after any affected repair;
+  rerun it after any affected repair (BH1-BH5 and Waves 4-14 may have shifted
+  storage, query, migration, or switching behavior);
 - retain the accepted WP3 runtime DOM evidence; fresh `1024 x 768` and narrow
   captures remain part of manual acceptance;
 - retain the current WP4 package-check result of zero errors, warnings, and
@@ -325,14 +329,10 @@ demonstrated gap and separate approval; `aisdk.bioc` remains deferred beyond
 - complete `0.2.0-dev.12` P0 installed-application acceptance and distribution
   decision;
 - complete About/update live endpoint and exact installed-candidate acceptance;
-- close posture open decisions before structural navigation implementation;
+- close per-wave verification and manual acceptance evidence for Waves 4-14;
 - define additive artifact acceptance semantics before posture Phase C;
-- resolve durable run-to-project identity before RA-RC1 implementation;
-- approve and complete baseline-hardening BH1-BH3 before any feature aggregates
-  or executes historical project records;
-- accept WB1 before CLI/MCP/event work, and accept read-only WB2 before any WB3
-  external execution work;
-- approve only one post-`0.3.x` capability workstream at a time.
+- approve only one Phase-3 capability workstream at a time per the next-phase
+  task plan.
 
 ## Implementation Start Checklist
 

@@ -134,3 +134,19 @@ BH1 was separately authorized on 2026-07-26 because project-scoped durable
 identity is required to make historical-project evidence, retry, continuation,
 and the remaining representative workflow truthful. That authorization does
 not close the manual gates above or authorize any other post-`0.3.x` feature.
+
+## 2026-08-01 Rerun (post Waves 1-14)
+
+Re-verified automated evidence against current `0.4.0-dev.0` baseline
+(`2c3a8c7` + working-tree fixes):
+
+| Check | Result |
+|-------|--------|
+| `cargo fmt --all -- --check` | PASS (auto-corrected) |
+| `cargo test --workspace` | PASS (all crates, 0 failures) |
+| `cargo check -p rho-desktop` | PASS (0 errors) |
+| `node --check desktop/dist/app.js` | PASS |
+| `git diff --check` | PASS |
+
+R tests (`rho.bridge`, `rho.agent`) and desktop smoke not rerun.
+Manual acceptance gates remain unchanged.

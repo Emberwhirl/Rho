@@ -403,7 +403,10 @@ mod tests {
         let json = serde_json::to_string(&err).unwrap();
         let decoded: WorkbenchError = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.ok, false);
-        assert_eq!(decoded.error.code, WorkbenchErrorCode::RecordProjectMismatch);
+        assert_eq!(
+            decoded.error.code,
+            WorkbenchErrorCode::RecordProjectMismatch
+        );
         assert!(!decoded.error.retryable);
     }
 

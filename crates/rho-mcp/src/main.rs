@@ -3,8 +3,8 @@ use std::io::{BufRead, BufReader, Write};
 use anyhow::Result;
 use clap::Parser;
 use rho_protocol::workbench::{
-    WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode, WorkbenchSuccess,
-    WORKBENCH_PROTOCOL_VERSION,
+    WORKBENCH_PROTOCOL_VERSION, WorkbenchError, WorkbenchErrorBody, WorkbenchErrorCode,
+    WorkbenchSuccess,
 };
 use rho_store::Store;
 use serde::{Deserialize, Serialize};
@@ -87,7 +87,8 @@ fn tool_list() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "rho_capabilities".into(),
-            description: "List available WB1 protocol operations and entity types. Read-only.".into(),
+            description: "List available WB1 protocol operations and entity types. Read-only."
+                .into(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -96,7 +97,8 @@ fn tool_list() -> Vec<McpTool> {
         },
         McpTool {
             name: "rho_project_status".into(),
-            description: "Show project-level counts (runs, artifacts, plots, problems). Read-only.".into(),
+            description: "Show project-level counts (runs, artifacts, plots, problems). Read-only."
+                .into(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -237,81 +239,87 @@ fn json_error(code: WorkbenchErrorCode, message: &str) -> Value {
 
 fn call_tool(store: &Store, project: &str, name: &str, args: &Value) -> Value {
     let after = args.get("after").and_then(|v| v.as_str());
-    let page_size = args.get("page_size")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(50) as usize;
+    let page_size = args.get("page_size").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
     match name {
         "rho_capabilities" => json_success(project, &store.workbench_capabilities()),
 
-        "rho_project_status" => {
-            match store.workbench_project_status(project) {
-                Ok(s) => json_success(project, &s),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_project_status" => match store.workbench_project_status(project) {
+            Ok(s) => json_success(project, &s),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        "rho_workspace_status" => {
-            match store.workbench_workspace_status(project) {
-                Ok(Some(s)) => json_success(project, &s),
-                Ok(None) => json_error(WorkbenchErrorCode::ProjectUnavailable, "no active workspace"),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_workspace_status" => match store.workbench_workspace_status(project) {
+            Ok(Some(s)) => json_success(project, &s),
+            Ok(None) => json_error(
+                WorkbenchErrorCode::ProjectUnavailable,
+                "no active workspace",
+            ),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
-        "rho_run_list" => {
-            match store.workbench_run_list(project, after, page_size) {
-                Ok(page) => json!({
-                    "items": page.items,
-                    "page": page.page,
-                }),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_run_list" => match store.workbench_run_list(project, after, page_size) {
+            Ok(page) => json!({
+                "items": page.items,
+                "page": page.page,
+            }),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
         "rho_run_get" => {
             let run_id = args.get("run_id").and_then(|v| v.as_str()).unwrap_or("");
             match store.workbench_run_get(project, run_id) {
                 Ok(Some(d)) => json_success(project, &d),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("run not found: {}", run_id)),
+                Ok(None) => json_error(
+                    WorkbenchErrorCode::NotFound,
+                    &format!("run not found: {}", run_id),
+                ),
                 Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
             }
         }
 
-        "rho_problem_list" => {
-            match store.workbench_problem_list(project, after, page_size) {
-                Ok(page) => json!({
-                    "items": page.items,
-                    "page": page.page,
-                }),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_problem_list" => match store.workbench_problem_list(project, after, page_size) {
+            Ok(page) => json!({
+                "items": page.items,
+                "page": page.page,
+            }),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
         "rho_problem_get" => {
-            let problem_id = args.get("problem_id").and_then(|v| v.as_str()).unwrap_or("");
+            let problem_id = args
+                .get("problem_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match store.workbench_problem_get(project, problem_id) {
                 Ok(Some(p)) => json_success(project, &p),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("problem not found: {}", problem_id)),
+                Ok(None) => json_error(
+                    WorkbenchErrorCode::NotFound,
+                    &format!("problem not found: {}", problem_id),
+                ),
                 Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
             }
         }
 
-        "rho_output_list" => {
-            match store.workbench_output_list(project, after, page_size) {
-                Ok(page) => json!({
-                    "items": page.items,
-                    "page": page.page,
-                }),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_output_list" => match store.workbench_output_list(project, after, page_size) {
+            Ok(page) => json!({
+                "items": page.items,
+                "page": page.page,
+            }),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
         "rho_output_get" => {
-            let artifact_id = args.get("artifact_id").and_then(|v| v.as_str()).unwrap_or("");
+            let artifact_id = args
+                .get("artifact_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match store.workbench_output_get(project, artifact_id) {
                 Ok(Some(o)) => json_success(project, &o),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("output not found: {}", artifact_id)),
+                Ok(None) => json_error(
+                    WorkbenchErrorCode::NotFound,
+                    &format!("output not found: {}", artifact_id),
+                ),
                 Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
             }
         }
@@ -326,26 +334,33 @@ fn call_tool(store: &Store, project: &str, name: &str, args: &Value) -> Value {
             }
         }
 
-        "rho_approval_list" => {
-            match store.workbench_approval_list(project, after, page_size) {
-                Ok(page) => json!({
-                    "items": page.items,
-                    "page": page.page,
-                }),
-                Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
-            }
-        }
+        "rho_approval_list" => match store.workbench_approval_list(project, after, page_size) {
+            Ok(page) => json!({
+                "items": page.items,
+                "page": page.page,
+            }),
+            Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
+        },
 
         "rho_provenance_get" => {
-            let resource_id = args.get("resource_id").and_then(|v| v.as_str()).unwrap_or("");
+            let resource_id = args
+                .get("resource_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             match store.workbench_provenance_get(project, resource_id) {
                 Ok(Some(l)) => json_success(project, &l),
-                Ok(None) => json_error(WorkbenchErrorCode::NotFound, &format!("resource not found: {}", resource_id)),
+                Ok(None) => json_error(
+                    WorkbenchErrorCode::NotFound,
+                    &format!("resource not found: {}", resource_id),
+                ),
                 Err(e) => json_error(WorkbenchErrorCode::InternalError, &e.to_string()),
             }
         }
 
-        _ => json_error(WorkbenchErrorCode::NotFound, &format!("unknown tool: {}", name)),
+        _ => json_error(
+            WorkbenchErrorCode::NotFound,
+            &format!("unknown tool: {}", name),
+        ),
     }
 }
 
@@ -393,16 +408,17 @@ fn main() -> Result<()> {
             "initialize" => JsonRpcResponse {
                 jsonrpc: "2.0".into(),
                 id: Some(request.id),
-                result: Some(serde_json::to_value(McpInitializeResult {
-                    protocol_version: "2024-11-05".into(),
-                    capabilities: McpCapabilities {
-                        tools: json!({}),
-                    },
-                    server_info: McpServerInfo {
-                        name: "rho-mcp".into(),
-                        version: WORKBENCH_PROTOCOL_VERSION.to_string(),
-                    },
-                }).unwrap()),
+                result: Some(
+                    serde_json::to_value(McpInitializeResult {
+                        protocol_version: "2024-11-05".into(),
+                        capabilities: McpCapabilities { tools: json!({}) },
+                        server_info: McpServerInfo {
+                            name: "rho-mcp".into(),
+                            version: WORKBENCH_PROTOCOL_VERSION.to_string(),
+                        },
+                    })
+                    .unwrap(),
+                ),
                 error: None,
             },
 
@@ -413,9 +429,12 @@ fn main() -> Result<()> {
             "tools/list" => JsonRpcResponse {
                 jsonrpc: "2.0".into(),
                 id: Some(request.id),
-                result: Some(serde_json::to_value(json!({
-                    "tools": tool_list(),
-                })).unwrap()),
+                result: Some(
+                    serde_json::to_value(json!({
+                        "tools": tool_list(),
+                    }))
+                    .unwrap(),
+                ),
                 error: None,
             },
 
@@ -438,7 +457,7 @@ fn main() -> Result<()> {
                     })),
                     error: None,
                 }
-            },
+            }
 
             _ => JsonRpcResponse {
                 jsonrpc: "2.0".into(),
@@ -451,7 +470,11 @@ fn main() -> Result<()> {
             },
         };
 
-        let _ = writeln!(stdout.lock(), "{}", serde_json::to_string(&response).unwrap());
+        let _ = writeln!(
+            stdout.lock(),
+            "{}",
+            serde_json::to_string(&response).unwrap()
+        );
     }
 
     Ok(())
