@@ -1379,6 +1379,42 @@ async function mockInvoke(command, args) {
     const runId = args.runId ?? args.run_id;
     return structuredClone(mockRuns.find((run) => run.run_id === runId) || null);
   }
+  if (command === "compare_runs") {
+    const leftId = args.left_run_id ?? args.leftRunId;
+    const rightId = args.right_run_id ?? args.rightRunId;
+    const leftRun = mockRuns.find(r => r.run_id === leftId);
+    const rightRun = mockRuns.find(r => r.run_id === rightId);
+    if (!leftRun || !rightRun) throw new Error("Run not found");
+    return {
+      schema_version: 1,
+      project_root: "D:/mock-project",
+      generated_at: new Date().toISOString(),
+      left_run_id: leftId,
+      right_run_id: rightId,
+      summary: { same: 8, different: 2, unknown: 2, limitations: 0 },
+      sections: [
+        {
+          id: "identity", label: "Identity & Execution", fields: [
+            { field: "status", state: leftRun.status === rightRun.status ? "same" : "different", left_value: leftRun.status, right_value: rightRun.status },
+            { field: "origin", state: "same", left_value: leftRun.origin, right_value: rightRun.origin },
+            { field: "request_type", state: "same", left_value: leftRun.request_type, right_value: rightRun.request_type },
+            { field: "parent_run_id", state: "same", left_value: leftRun.parent_run_id, right_value: rightRun.parent_run_id },
+          ]
+        },
+        {
+          id: "source", label: "Source & Request", fields: [
+            { field: "source_path", state: leftRun.source_path === rightRun.source_path ? "same" : "different", left_value: leftRun.source_path, right_value: rightRun.source_path },
+            { field: "code_digest", state: "same", left_value: "abc123", right_value: "abc123" },
+          ]
+        },
+        { id: "environment", label: "Environment", fields: [{ field: "snapshot_available", state: "unknown", left_value: "true", right_value: "true" }] },
+        { id: "outcome", label: "Outcome & Problems", fields: [{ field: "error_message", state: "same", left_value: leftRun.error_message, right_value: rightRun.error_message }] },
+        { id: "artifacts", label: "Artifacts", fields: [{ field: "artifact_count", state: "not_applicable", left_value: "0", right_value: "0" }] }
+      ],
+      truncated: false,
+      truncation_reasons: []
+    };
+  }
   if (command === "retry_run") {
     const runId = args.runId ?? args.run_id;
     const detail = mockRuns.find((run) => run.run_id === runId);

@@ -36,7 +36,7 @@ use rho_server::coordinator::{
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
-    ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary,
+    ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary, CompareRunsResponse,
     EnvironmentOperationRequestSummary, PlotArtifactSummary, PlotPayloadPruneResult,
     ProblemSummary, ProjectRetentionSummary, RetentionPolicy, RunDetail, RunSummary, Store,
     normalize_project_root,
@@ -1264,6 +1264,20 @@ async fn get_run_detail(
     read_store(&state)
         .map_err(display_error)?
         .get_run_detail(&project_root, &run_id)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn compare_runs(
+    left_run_id: String,
+    right_run_id: String,
+    state: State<'_, AppState>,
+) -> Result<CompareRunsResponse, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    read_store(&state)
+        .map_err(display_error)?
+        .compare_runs(&project_root, &left_run_id, &right_run_id)
         .map_err(display_error)
 }
 
@@ -4641,6 +4655,7 @@ fn main() {
             clear_plot_artifacts,
             list_problems,
             get_run_detail,
+            compare_runs,
             retry_run,
             run_agent,
             agent_llm_settings,
