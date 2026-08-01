@@ -1536,3 +1536,94 @@ rho_find_function_definition <- function(name, project_root) {
   NULL
 }
 
+#' Discover code chunks in .Rmd/.qmd documents for the Chunk panel.
+rho_discover_chunks <- function(path, limit = 200L) {
+  extension <- tolower(tools::file_ext(path))
+  if (!extension %in% c("rmd", "qmd")) {
+    return(list(
+      chunks = list(),
+      total_count = 0L,
+      truncated = FALSE,
+      unsupported = TRUE
+    ))
+  }
+
+  lines <- tryCatch(
+    suppressWarnings(readLines(path, warn = FALSE)),
+    error = function(e) NULL
+  )
+  if (is.null(lines)) {
+    return(list(
+      chunks = list(),
+      total_count = 0L,
+      truncated = FALSE,
+      error = "Could not read file"
+    ))
+  }
+
+  chunk_start_pattern <- "^[[:space:]]*```\\{([a-zA-Z0-9_]+)[[:space:]]*[,}]"
+
+  chunk_list <- list()
+  in_chunk <- FALSE
+  chunk_start <- 0L
+  chunk_header <- ""
+  chunk_lines <- character()
+
+  for (idx in seq_along(lines)) {
+    line <- lines[[idx]]
+    m <- regmatches(line, regexec(chunk_start_pattern, line))[[1]]
+    if (length(m) > 1 && !in_chunk) {
+      in_chunk <- TRUE
+      chunk_start <- idx
+      chunk_header <- line
+      chunk_lines <- character()
+    } else if (grepl("^[[:space:]]*```[[:space:]]*$", line) && in_chunk) {
+      in_chunk <- FALSE
+
+      header_clean <- sub("^[[:space:]]*```\\{", "", chunk_header)
+      header_clean <- sub("\\}[[:space:]]*$", "", header_clean)
+      parts <- strsplit(header_clean, "[[:space:],]+")[[1]]
+      parts <- parts[nzchar(parts)]
+      engine <- parts[[1]]
+      label <- NULL
+      opts <- character()
+      if (length(parts) > 1) {
+        if (!grepl("=", parts[[2]])) {
+          label <- parts[[2]]
+          if (length(parts) > 2) opts <- parts[-(1:2)]
+        } else {
+          opts <- parts[-1]
+        }
+      }
+
+      code_text <- paste(chunk_lines, collapse = "\n")
+      preview_lines <- head(chunk_lines, 4L)
+      preview <- paste(preview_lines, collapse = "\n")
+      if (nchar(preview) > 500) {
+        preview <- paste0(substr(preview, 1, 497), "...")
+      }
+
+      chunk_list[[length(chunk_list) + 1L]] <- list(
+        label = if (is.null(label)) paste0("unnamed-chunk-", length(chunk_list) + 1L) else label,
+        engine = engine,
+        options = if (length(opts)) paste(opts, collapse = ", ") else "",
+        start_line = chunk_start,
+        end_line = idx,
+        code = code_text,
+        code_preview = preview
+      )
+
+      if (length(chunk_list) >= as.integer(limit)) break
+    } else if (in_chunk) {
+      chunk_lines <- c(chunk_lines, line)
+    }
+  }
+
+  list(
+    chunks = chunk_list,
+    total_count = length(chunk_list),
+    truncated = length(chunk_list) >= as.integer(limit),
+    unsupported = FALSE
+  )
+}
+

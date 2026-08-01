@@ -157,6 +157,11 @@
             <div class="empty-state compact-empty"><strong>No evidence entries</strong></div>
           </div>
         </section>
+        <section id="chunksPanel" class="context-content chunks-panel hidden">
+          <div id="chunksList" class="chunks-list">
+            <div class="empty-state compact-empty"><strong>Open an .Rmd or .qmd document to discover code chunks</strong></div>
+          </div>
+        </section>
       </aside>
 
       <div id="leftResizeHandle" class="resize-handle vertical left-handle" role="separator" aria-label="Resize Files panel" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="380" tabindex="0"></div>
@@ -302,6 +307,7 @@ plot(
           <button class="active" data-context-tab="agent" type="button">Agent</button>
           <button data-context-tab="environment" type="button">Environment <span id="objectCount" class="count">0</span></button>
           <button data-context-tab="evidence" type="button">Evidence <span id="evidenceCount" class="count">0</span></button>
+          <button data-context-tab="chunks" type="button" id="chunksTab" class="hidden">Chunks <span id="chunkCount" class="count">0</span></button>
         </div>
 
         <section id="agentPanel" class="context-content agent-panel">

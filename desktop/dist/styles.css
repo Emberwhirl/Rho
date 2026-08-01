@@ -1633,3 +1633,18 @@ body.resizing-vertical { cursor: col-resize; }
 .evidence-item-actions button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; color: var(--muted); }
 .evidence-item-actions button.danger { color: var(--danger); border-color: var(--danger); }
 .evidence-item-citation { margin-top: 5px; padding: 5px 8px; border-radius: 4px; background: #f5f8f8; font-size: 10px; color: var(--muted); line-height: 1.3; }
+
+/* Chunk panel */
+.chunks-panel { display: flex; flex-direction: column; }
+.chunks-list { flex: 1; overflow-y: auto; }
+.chunk-item { padding: 8px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.chunk-item:hover { background: var(--hover); }
+.chunk-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.chunk-item-label { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent-strong); }
+.chunk-item-options { font-size: 10px; color: var(--subtle); background: var(--surface); padding: 1px 5px; border-radius: 3px; }
+.chunk-item-range { margin-left: auto; font-size: 10px; color: var(--subtle); white-space: nowrap; }
+.chunk-item-preview { font-family: var(--mono); font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chunk-item-actions { display: flex; gap: 4px; margin-top: 3px; }
+.chunk-item-actions button { padding: 1px 8px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; color: var(--accent); }
+.chunk-item-actions button:hover { background: var(--accent-pale); }
+.chunk-item-engine { font-size: 9px; color: var(--warning); background: none; border: 1px solid var(--warning); padding: 0 4px; border-radius: 3px; text-transform: uppercase; }

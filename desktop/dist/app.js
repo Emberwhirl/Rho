@@ -2102,6 +2102,19 @@ async function mockInvoke(command, args) {
     }
     return false;
   }
+  if (command === "editor_discover_chunks") {
+    return {
+      chunks: [
+        { label: "setup",     engine: "r", options: "include=FALSE", start_line: 3,  end_line: 8,  code: 'library(dplyr)\nlibrary(ggplot2)\ntheme_set(theme_minimal())', code_preview: 'library(dplyr)\nlibrary(ggplot2)\ntheme_set(theme_minimal())' },
+        { label: "load-data", engine: "r", options: "",               start_line: 10, end_line: 14, code: 'data <- read.csv("input.csv")\nsummary(data)',            code_preview: 'data <- read.csv("input.csv")\nsummary(data)' },
+        { label: "unnamed-chunk-3", engine: "r",    options: "fig.width=8",     start_line: 16, end_line: 21, code: 'ggplot(data, aes(x, y)) +\n  geom_point() +\n  labs(title = "Results")', code_preview: 'ggplot(data, aes(x, y)) +\n  geom_point() +\n  labs(title = "Results")' },
+        { label: "python-setup",    engine: "python", options: "", start_line: 23, end_line: 26, code: 'import pandas as pd\nimport numpy as np', code_preview: 'import pandas as pd\nimport numpy as np' },
+      ],
+      total_count: 4,
+      truncated: false,
+      unsupported: false,
+    };
+  }
   if (command === "get_environment_operation_request") {
     const requestId = args.requestId ?? args.request_id;
     return structuredClone(mockEnvironmentOperationRequests.find((item) => item.request_id === requestId) || null);
@@ -5757,6 +5770,122 @@ function renderEvidenceListFiltered(filtered) {
   }
 }
 
+// ── Chunk panel ─────────────────────────────────────────────
+
+async function loadChunks() {
+  const filePath = state.activeFilePath;
+  if (!filePath || !/\\.(Rmd|qmd)$/i.test(filePath)) return;
+  try {
+    state.chunks = await invoke("editor_discover_chunks", { path: filePath });
+  } catch {
+    state.chunks = null;
+  }
+  renderChunks();
+}
+
+function renderChunks() {
+  const list = $("#chunksList");
+  const count = $("#chunkCount");
+  const tab = $("#chunksTab");
+  const data = state.chunks;
+
+  if (!data || data.unsupported) {
+    count.textContent = "0";
+    tab.classList.add("hidden");
+    return;
+  }
+
+  const chunks = data.chunks || [];
+  count.textContent = chunks.length;
+  tab.classList.remove("hidden");
+  list.replaceChildren();
+
+  if (!chunks.length) {
+    list.append(emptyRow("No code chunks found"));
+    return;
+  }
+
+  for (const chunk of chunks) {
+    const item = document.createElement("div");
+    item.className = "chunk-item";
+
+    const header = document.createElement("div");
+    header.className = "chunk-item-header";
+    const label = document.createElement("span");
+    label.className = "chunk-item-label";
+    label.textContent = chunk.label;
+    header.append(label);
+
+    if (chunk.engine !== "r") {
+      const engine = document.createElement("span");
+      engine.className = "chunk-item-engine";
+      engine.textContent = chunk.engine;
+      header.append(engine);
+    }
+    if (chunk.options) {
+      const opts = document.createElement("span");
+      opts.className = "chunk-item-options";
+      opts.textContent = chunk.options;
+      header.append(opts);
+    }
+    const range = document.createElement("span");
+    range.className = "chunk-item-range";
+    range.textContent = `L${chunk.start_line}-L${chunk.end_line}`;
+    header.append(range);
+
+    const preview = document.createElement("div");
+    preview.className = "chunk-item-preview";
+    preview.textContent = chunk.code_preview || "";
+
+    const actions = document.createElement("div");
+    actions.className = "chunk-item-actions";
+    const runBtn = document.createElement("button");
+    runBtn.textContent = "\u25B6 Run";
+    runBtn.title = "Run this chunk in Workspace R";
+    runBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!chunk.code) return;
+      try {
+        await invoke("execute_r", {
+          code: chunk.code,
+          sourcePath: state.activeFilePath || null,
+          executionMode: "chunk",
+          operationClass: "scientific",
+        });
+        toast(`Ran chunk "${chunk.label}"`);
+      } catch (err) { toast(`Chunk error: ${err}`, "error"); }
+    });
+    actions.append(runBtn);
+
+    item.append(header, preview, actions);
+
+    // Click chunk to navigate to its start line in editor
+    item.addEventListener("click", () => {
+      if (state.editor?.editor) {
+        state.editor.editor.revealLineInCenter(chunk.start_line);
+        state.editor.editor.setPosition({
+          lineNumber: chunk.start_line,
+          column: 1,
+        });
+        state.editor.editor.focus();
+      }
+    });
+
+    list.append(item);
+  }
+}
+
+function initChunkPanel() {
+  // Hook into openDocument to refresh chunks on file open
+  const origOpenDocument = openDocument;
+  openDocument = async function(path, options) {
+    const result = await origOpenDocument(path, options);
+    state.activeFilePath = path;
+    loadChunks();
+    return result;
+  };
+}
+
 function renderEnvironmentSummary() {
   const environment = state.environment;
   renderEnvironmentOperationCard();
@@ -7221,6 +7350,7 @@ function switchContextTab(name) {
   $("#agentPanel").classList.toggle("hidden", name !== "agent");
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
   $("#evidencePanel").classList.toggle("hidden", name !== "evidence");
+  $("#chunksPanel").classList.toggle("hidden", name !== "chunks");
   if (name === "evidence") loadEvidenceEntries();
 }
 
@@ -8572,6 +8702,7 @@ $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
 $("#packageFilter").addEventListener("input", renderPackageList);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
 initEvidencePanel();
+initChunkPanel();
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
 $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));

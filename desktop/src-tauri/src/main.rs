@@ -978,6 +978,28 @@ async fn editor_goto_definition(name: String, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
+async fn editor_discover_chunks(path: String, state: State<'_, AppState>) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "path": path },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.discover_chunks",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn snapshot_workspace(state: State<'_, AppState>) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
@@ -5179,6 +5201,7 @@ fn main() {
             editor_function_help,
             editor_lint_file,
             editor_goto_definition,
+            editor_discover_chunks,
             retry_run,
             run_agent,
             agent_llm_settings,

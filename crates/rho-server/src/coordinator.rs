@@ -3342,6 +3342,23 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
+        "workspace.discover_chunks" => {
+            let path = arguments["path"]
+                .as_str()
+                .context("workspace.discover_chunks requires string argument `path`")?;
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200);
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_discover_chunks({}, limit = {})",
+                    r_string(path)?,
+                    limit,
+                ),
+            ))
+        }
         "workspace.read_data_view" => {
             let object_name = arguments["object_name"]
                 .as_str()
