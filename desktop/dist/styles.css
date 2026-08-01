@@ -1304,7 +1304,12 @@ body.resizing-vertical { cursor: col-resize; }
   z-index: 1;
   background: #f6f8f8;
   font-weight: 600;
+  cursor: pointer;
 }
+.data-viewer-table th:hover { background: var(--accent-pale); }
+.data-viewer-table th[aria-sort="ascending"],
+.data-viewer-table th[aria-sort="descending"] { color: var(--accent-strong); font-weight: 700; }
+.data-viewer-table td:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .data-viewer-table th:first-child,
 .data-viewer-table td:first-child {
   position: sticky;
@@ -1455,6 +1460,8 @@ body.resizing-vertical { cursor: col-resize; }
   .project-switcher { display: none; }
   .agent-llm-layout { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-grid { grid-template-columns: minmax(0, 1fr); }
+  .data-viewer-table th { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .data-viewer-table td { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* Audit panel */

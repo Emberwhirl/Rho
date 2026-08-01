@@ -63,6 +63,8 @@ const state = {
     columnOffset: 0,
     columnLimit: 20,
     workspace: null,
+    sortColumn: null,
+    sortDirection: null,
   },
   previewScenarioApplied: false,
   objectInspection: null,
@@ -5838,7 +5840,25 @@ function renderDataViewer() {
   headerRow.append(rowHeader);
   for (const column of page.columns || []) {
     const cell = document.createElement("th");
-    cell.textContent = column.label || column.name || "";
+    cell.textContent = (column.label || column.name || "") + (state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : "");
+    cell.setAttribute("aria-sort", state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? "ascending" : "descending") : "none");
+    cell.style.cursor = "pointer";
+    cell.title = "Click to sort";
+    cell.addEventListener("click", () => {
+      if (state.dataViewer.sortColumn === column.name) {
+        if (state.dataViewer.sortDirection === "asc") {
+          state.dataViewer.sortDirection = "desc";
+        } else if (state.dataViewer.sortDirection === "desc") {
+          state.dataViewer.sortColumn = null;
+          state.dataViewer.sortDirection = null;
+        }
+      } else {
+        state.dataViewer.sortColumn = column.name;
+        state.dataViewer.sortDirection = "asc";
+      }
+      state.dataViewer.rowOffset = 0;
+      fetchDataViewerPage(state.selectedDataObjectDetail, selectedDataView(state.selectedDataObjectDetail));
+    });
     headerRow.append(cell);
   }
   thead.append(headerRow);
@@ -6009,6 +6029,8 @@ async function loadDataViewPage(options = {}) {
         row_limit: state.dataViewer.rowLimit,
         column_offset: state.dataViewer.columnOffset,
         column_limit: state.dataViewer.columnLimit,
+        sort_column: state.dataViewer.sortColumn,
+        sort_direction: state.dataViewer.sortDirection,
         workspace: currentViewerWorkspace(),
       },
     });
@@ -8094,6 +8116,26 @@ $("#dataViewerColumnNext").addEventListener("click", () => {
   loadDataViewPage({ columnOffset: state.dataViewer.columnOffset + state.dataViewer.columnLimit });
 });
 $("#dataViewerExportButton").addEventListener("click", exportVisibleDataView);
+
+// Keyboard navigation for data viewer table
+$("#dataViewerTable").addEventListener("keydown", (event) => {
+  const table = $("#dataViewerTable");
+  const focusable = table.querySelectorAll("td, th");
+  if (!focusable.length || !table.closest(":not(.hidden)")) return;
+  const current = document.activeElement;
+  const index = Array.from(focusable).indexOf(current);
+  if (index < 0) return;
+  const cols = table.querySelector("tr")?.querySelectorAll("th, td")?.length || 1;
+  let next = index;
+  if (event.key === "ArrowRight") next = Math.min(index + 1, focusable.length - 1);
+  else if (event.key === "ArrowLeft") next = Math.max(index - 1, 0);
+  else if (event.key === "ArrowDown") next = Math.min(index + cols, focusable.length - 1);
+  else if (event.key === "ArrowUp") next = Math.max(index - cols, 0);
+  else return;
+  event.preventDefault();
+  focusable[next].focus();
+});
+
 $("#environmentOperationReviewButton").addEventListener("click", async () => {
   const request = latestEnvironmentOperation();
   if (!request) return;
