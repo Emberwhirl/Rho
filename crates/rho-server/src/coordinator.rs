@@ -3316,6 +3316,16 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 format!("{bridge}$rho_inspect_targets({})", r_string(root)?),
             ))
         }
+        "workspace.list_installed_packages" => {
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(500);
+            Ok((
+                OperationClass::Probe,
+                format!("{bridge}$rho_list_installed_packages(limit = {limit}L)",),
+            ))
+        }
         "workspace.read_data_view" => {
             let object_name = arguments["object_name"]
                 .as_str()

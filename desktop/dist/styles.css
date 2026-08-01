@@ -1229,6 +1229,51 @@ body.resizing-vertical { cursor: col-resize; }
 .environment-head, .environment-row { display: grid; grid-template-columns: minmax(0, 1fr) 82px 62px; gap: 7px; align-items: center; }
 .environment-head { padding: 7px 11px; border-bottom: 1px solid var(--border); color: var(--subtle); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .environment-list { flex: 1; min-height: 0; overflow: auto; }
+.package-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.package-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+.package-list-header strong { font-size: 12px; }
+#packageFilter {
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  background: #fff;
+}
+#packageFilter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.package-list {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+.package-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 80px;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 4px;
+  border-bottom: 1px solid #edf0f1;
+}
+.package-row:hover { background: #f2f6f6; }
+.package-row .pkg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; }
+.package-row .pkg-version { color: var(--muted); font-size: 10px; text-align: right; }
+.package-row .pkg-library { color: var(--subtle); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.package-row.loaded .pkg-name { font-weight: 700; color: var(--accent-strong); }
+.package-row.base { opacity: 0.55; }
 .environment-row { min-height: 38px; padding: 5px 11px; border-bottom: 1px solid #edf0f1; cursor: default; }
 .environment-row:hover { background: #f2f6f6; }
 .environment-row.active { background: #e1f1ef; }
@@ -1271,6 +1316,17 @@ body.resizing-vertical { cursor: col-resize; }
 .data-viewer-select select {
   min-width: 160px;
 }
+.data-viewer-filter {
+  min-width: 140px;
+  max-width: 200px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: #fff;
+}
+.data-viewer-filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .data-viewer-actions {
   display: flex;
   flex-wrap: wrap;

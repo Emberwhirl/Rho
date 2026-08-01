@@ -180,6 +180,18 @@ struct AppState {
     agent_llm_test_control: AgentModelTestControl,
     switch_test_control: SwitchTestControl,
     shutdown_started: AtomicBool,
+    render_jobs: Arc<Mutex<HashMap<String, RenderJobState>>>,
+}
+
+/// Tracked state of an async render job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RenderJobState {
+    pub job_id: String,
+    pub path: String,
+    pub status: String, // "submitted", "running", "completed", "failed"
+    pub message: Option<String>,
+    pub submitted_at: String,
+    pub completed_at: Option<String>,
 }
 
 static STARTUP_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -1113,37 +1125,117 @@ async fn render_document_job(
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     let job_id = format!("render_{}", chrono::Utc::now().timestamp_millis());
-    let state_clone = state.inner().clone();
+    let job_id_return = job_id.clone();
+    let render_jobs = state.render_jobs.clone();
+    {
+        let mut jobs = render_jobs.lock().await;
+        jobs.insert(
+            job_id.clone(),
+            RenderJobState {
+                job_id: job_id.clone(),
+                path: path.clone(),
+                status: "submitted".to_string(),
+                message: None,
+                submitted_at: chrono::Utc::now().to_rfc3339(),
+                completed_at: None,
+            },
+        );
+    }
+    let session_arc = state.session.read().await.clone();
+    let context_arc = state.context.lock().await.clone();
     let path_clone = path.clone();
     tokio::spawn(async move {
-        let session = match active_session(&state_clone).await {
-            Ok(s) => s,
-            Err(_) => return,
+        // Update status to running
+        {
+            let mut jobs = render_jobs.lock().await;
+            if let Some(job) = jobs.get_mut(&job_id) {
+                job.status = "running".to_string();
+            }
+        }
+        let session = match session_arc {
+            Some(s) => s,
+            None => {
+                eprintln!("render_document_job [{job_id}]: no active session");
+                let mut jobs = render_jobs.lock().await;
+                if let Some(job) = jobs.get_mut(&job_id) {
+                    job.status = "failed".to_string();
+                    job.message = Some("No active Workspace R session".to_string());
+                    job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                }
+                return;
+            }
         };
-        let context = match active_context(&state_clone).await {
-            Ok(c) => c,
-            Err(_) => return,
+        let context = match context_arc {
+            Some(c) => c,
+            None => {
+                eprintln!("render_document_job [{job_id}]: no active context");
+                let mut jobs = render_jobs.lock().await;
+                if let Some(job) = jobs.get_mut(&job_id) {
+                    job.status = "failed".to_string();
+                    job.message = Some("No active coordinator context".to_string());
+                    job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                }
+                return;
+            }
         };
         let mut context = context.lock().await;
         let CoordinatorRuntime { broker, store } = &mut *context;
+        let job_id_for_payload = job_id.clone();
         let payload = serde_json::json!({
             "arguments": {
                 "path": path_clone,
                 "document_version": document_version,
-                "job_id": job_id
+                "job_id": job_id_for_payload
             },
             "expected_workspace": broker.identity()
         });
-        let _ = dispatch_workspace_request(
+        if let Err(e) = dispatch_workspace_request(
             "workspace.render_document",
             &payload,
             ExecutionOrigin::User,
             session.as_ref(),
             broker,
             store,
-        ).await;
+        )
+        .await
+        {
+            eprintln!("render_document_job [{job_id}]: dispatch failed: {e:#}");
+            let mut jobs = render_jobs.lock().await;
+            if let Some(job) = jobs.get_mut(&job_id) {
+                job.status = "failed".to_string();
+                job.message = Some(format!("{e:#}"));
+                job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+            }
+        } else {
+            let mut jobs = render_jobs.lock().await;
+            if let Some(job) = jobs.get_mut(&job_id) {
+                job.status = "completed".to_string();
+                job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+            }
+        }
     });
-    Ok(serde_json::json!({ "job_id": job_id, "status": "submitted" }))
+    Ok(serde_json::json!({ "job_id": job_id_return, "status": "submitted" }))
+}
+
+#[tauri::command]
+async fn render_job_status(
+    job_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let mut jobs = state.render_jobs.lock().await;
+    // Clean up completed/failed jobs older than 5 minutes
+    let cutoff = chrono::Utc::now() - chrono::Duration::minutes(5);
+    jobs.retain(|_, job| {
+        job.completed_at
+            .as_ref()
+            .map_or(true, |at| at >= &cutoff.to_rfc3339())
+    });
+    if let Some(id) = job_id {
+        Ok(serde_json::json!(jobs.get(&id)))
+    } else {
+        let list: Vec<&RenderJobState> = jobs.values().collect();
+        Ok(serde_json::json!(list))
+    }
 }
 
 #[tauri::command]
@@ -1197,6 +1289,31 @@ async fn get_environment_operation_request(
         .map_err(display_error)?
         .get_environment_operation_request(&project_root, &request_id)
         .map_err(display_error)
+}
+
+#[tauri::command]
+async fn list_installed_packages(
+    limit: Option<u64>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "limit": limit.unwrap_or(500) },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.list_installed_packages",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
 }
 
 #[tauri::command]
@@ -1340,17 +1457,18 @@ async fn audit_reproducibility(
     } else if let Some(rest) = scope.strip_prefix("artifact:") {
         AuditScope::Artifact(rest.to_string())
     } else {
-        AuditScope::Project
+        return Err(format!(
+            "invalid audit scope: {scope} (expected 'project', 'run:<id>', or 'artifact:<id>')"
+        ));
     };
-    read_store(&state)
+    Ok(read_store(&state)
         .map_err(display_error)?
         .audit_reproducibility(
             audit_scope,
             &project_root,
             reference_snapshot_id.as_deref(),
             &AuditLimits::default(),
-        )
-        .map_err(display_error)
+        ))
 }
 
 #[tauri::command]
@@ -1412,10 +1530,7 @@ async fn editor_function_help(
 }
 
 #[tauri::command]
-async fn editor_lint_file(
-    path: String,
-    state: State<'_, AppState>,
-) -> Result<Value, String> {
+async fn editor_lint_file(path: String, state: State<'_, AppState>) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
@@ -2289,21 +2404,50 @@ async fn git_diff(
 }
 
 #[tauri::command]
-async fn git_stage(
-    paths: Option<Vec<String>>,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+async fn git_stage(paths: Option<Vec<String>>, state: State<'_, AppState>) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
     git::git_stage(Path::new(&root), &paths.unwrap_or_default()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_commit(
-    message: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+async fn git_commit(message: String, state: State<'_, AppState>) -> Result<String, String> {
     let root = state.project_root.read().await.clone();
     git::git_commit(Path::new(&root), &message).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_diff_unified(
+    file_path: String,
+    staged: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<git::GitUnifiedDiff, String> {
+    let root = state.project_root.read().await.clone();
+    git::git_diff_unified(Path::new(&root), &file_path, staged.unwrap_or(false))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_hunk_stage(hunk_content: String, state: State<'_, AppState>) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    git::git_hunk_stage(Path::new(&root), &hunk_content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_hunk_unstage(hunk_content: String, state: State<'_, AppState>) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    git::git_hunk_unstage(Path::new(&root), &hunk_content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_restore_file(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    git::git_restore_file(Path::new(&root), &file_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_unstage_file(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    git::git_unstage_file(Path::new(&root), &file_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2331,7 +2475,7 @@ async fn targets_status(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn shutdown_application(state: &AppState) {
+async fn shutdown_application(state: &AppState) -> Result<(), String> {
     write_startup_log("Rho desktop shutdown started");
     state.approvals.cancel_all("Rho is closing.").await;
 
@@ -2392,6 +2536,7 @@ async fn shutdown_application(state: &AppState) {
         }
     }
     write_startup_log("Rho desktop shutdown completed");
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -3760,6 +3905,7 @@ mod tests {
             agent_llm_test_control: AgentModelTestControl::default(),
             switch_test_control: SwitchTestControl::default(),
             shutdown_started: AtomicBool::new(false),
+            render_jobs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -4832,6 +4978,7 @@ fn main() {
                 agent_llm_test_control: AgentModelTestControl::default(),
                 switch_test_control: SwitchTestControl::default(),
                 shutdown_started: AtomicBool::new(false),
+                render_jobs: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -4864,10 +5011,12 @@ fn main() {
             read_data_view,
             render_document,
             render_document_job,
+            render_job_status,
             request_environment_operation_preview,
             list_environment_operation_requests,
             get_environment_operation_request,
             respond_environment_operation,
+            list_installed_packages,
             list_runs,
             list_plot_artifacts,
             export_plot_artifact,
@@ -4913,6 +5062,11 @@ fn main() {
             git_diff,
             git_stage,
             git_commit,
+            git_diff_unified,
+            git_hunk_stage,
+            git_hunk_unstage,
+            git_restore_file,
+            git_unstage_file,
             targets_status
         ])
         .build(tauri::generate_context!());
@@ -4931,7 +5085,7 @@ fn main() {
                     let app_handle = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
                         let state = app_handle.state::<AppState>();
-                        shutdown_application(&state).await;
+                        let _ = shutdown_application(&state).await;
                         app_handle.exit(0);
                     });
                 }

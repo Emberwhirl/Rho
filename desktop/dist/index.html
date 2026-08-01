@@ -433,6 +433,16 @@ plot(
               </div>
             </div>
           </div>
+          <div class="package-list-section">
+            <div class="package-list-header">
+              <strong>Installed Packages</strong>
+              <span id="packageListMeta" class="environment-hint"></span>
+            </div>
+            <input id="packageFilter" type="search" placeholder="Filter packages…" aria-label="Filter installed packages" />
+            <div id="packageList" class="package-list">
+              <div class="empty-state compact-empty"><strong>Loading packages…</strong></div>
+            </div>
+          </div>
           <div class="environment-head"><span>Name</span><span>Type</span><span>Size</span></div>
           <div id="environmentList" class="environment-list">
             <div class="empty-state compact-empty"><strong>Workspace is empty</strong></div>
@@ -448,6 +458,7 @@ plot(
                   <span>View</span>
                   <select id="dataViewerViewSelect" aria-label="Choose data view"></select>
                 </label>
+                <input id="dataViewerFilter" class="data-viewer-filter" type="search" placeholder="Filter rows…" aria-label="Filter table rows" />
                 <div class="data-viewer-actions">
                   <button id="dataViewerRowPrev" type="button" aria-label="Previous rows">Rows ←</button>
                   <button id="dataViewerRowNext" type="button" aria-label="Next rows">Rows →</button>

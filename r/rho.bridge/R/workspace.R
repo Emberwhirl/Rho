@@ -285,8 +285,57 @@ rho_installed_packages <- function(limit = 10000L) {
 
   list(
     values = head(packages, as.integer(limit)),
+    total_count = length(packages),
     truncated = length(packages) > as.integer(limit),
     incomplete_reason = NULL
+  )
+}
+
+#' Return a browsable installed-package list for the Environment panel.
+#' Includes priority ("base" / "recommended") and build version.
+rho_list_installed_packages <- function(limit = 500L) {
+  rows <- tryCatch(
+    utils::installed.packages(
+      lib.loc = .libPaths(),
+      fields = c("Package", "Version", "LibPath", "Priority", "Built")
+    ),
+    error = function(e) e
+  )
+
+  if (inherits(rows, "error")) {
+    return(list(
+      packages = list(),
+      total_count = 0L,
+      truncated = FALSE,
+      error = conditionMessage(rows)
+    ))
+  }
+
+  all <- lapply(seq_len(nrow(rows)), function(index) {
+    list(
+      name = as.character(rows[index, "Package"]),
+      version = as.character(rows[index, "Version"]),
+      library = normalizePath(
+        as.character(rows[index, "LibPath"]),
+        winslash = "/",
+        mustWork = FALSE
+      ),
+      priority = if (!is.na(rows[index, "Priority"]))
+        as.character(rows[index, "Priority"]) else NULL,
+      built = if (!is.na(rows[index, "Built"]))
+        as.character(rows[index, "Built"]) else NULL
+    )
+  })
+
+  all <- all[order(
+    vapply(all, function(item) item$name, character(1)),
+    vapply(all, function(item) item$library, character(1))
+  )]
+
+  list(
+    packages = head(all, as.integer(limit)),
+    total_count = length(all),
+    truncated = length(all) > as.integer(limit)
   )
 }
 

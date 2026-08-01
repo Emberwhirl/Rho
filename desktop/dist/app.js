@@ -50,6 +50,7 @@ const state = {
   selectedArtifactDetail: null,
   gitStatus: null,
   environment: null,
+  installedPackages: null,
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   selectedObjectName: null,
@@ -312,6 +313,28 @@ const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
 const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
+
+const MOCK_BASE_PACKAGES = [
+  { name: "base",     version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "datasets", version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "graphics", version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "grDevices",version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "methods",  version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "stats",    version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "utils",    version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
+  { name: "MASS",     version: "7.3-65",library: "C:/R/R-4.6.1/library",     priority: "recommended", built: "4.6.0" },
+  { name: "Matrix",   version: "1.7-3", library: "C:/R/R-4.6.1/library",     priority: "recommended", built: "4.6.0" },
+  { name: "nlme",     version: "3.1-168",library: "C:/R/R-4.6.1/library",    priority: "recommended", built: "4.6.0" },
+];
+
+const MOCK_BIOC_PACKAGES = [
+  { name: "BiocManager",  version: "1.30.27",library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+  { name: "DESeq2",       version: "1.48.0", library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+  { name: "GenomicRanges",version: "1.60.0", library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+  { name: "ggplot2",      version: "3.5.2",  library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+  { name: "renv",         version: "1.2.3",  library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+  { name: "SummarizedExperiment", version: "1.38.0", library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
+];
 
 function slugifyAgentId(value, fallback = "item") {
   const slug = String(value || "")
@@ -2017,6 +2040,13 @@ async function mockInvoke(command, args) {
   if (command === "list_environment_operation_requests") {
     const filtered = mockEnvironmentOperationRequests.filter((item) => !args.status || item.status === args.status);
     return structuredClone(filtered.slice(0, args.limit || 50));
+  }
+  if (command === "list_installed_packages") {
+    return {
+      packages: MOCK_BASE_PACKAGES.concat(MOCK_BIOC_PACKAGES),
+      total_count: MOCK_BASE_PACKAGES.length + MOCK_BIOC_PACKAGES.length,
+      truncated: false,
+    };
   }
   if (command === "get_environment_operation_request") {
     const requestId = args.requestId ?? args.request_id;
@@ -5349,9 +5379,102 @@ async function refreshEnvironment() {
     state.objects = response.execution?.objects || [];
     state.environment = response.execution?.environment || null;
     renderEnvironment();
+    loadInstalledPackages();
   } catch (error) {
     toast(String(error), true);
   }
+}
+
+async function loadInstalledPackages() {
+  try {
+    const result = await invoke("list_installed_packages", { limit: 500 });
+    state.installedPackages = result;
+    renderPackageList();
+  } catch (error) {
+    state.installedPackages = null;
+    renderPackageList();
+  }
+}
+
+function renderPackageList() {
+  const list = $("#packageList");
+  const meta = $("#packageListMeta");
+  const data = state.installedPackages;
+  const filter = ($("#packageFilter").value || "").trim().toLowerCase();
+
+  if (!data || data.error) {
+    meta.textContent = data?.error || "Could not load packages.";
+    list.replaceChildren(emptyRow("Package list unavailable"));
+    return;
+  }
+
+  const packages = data.packages || [];
+  const total = data.total_count || packages.length;
+  const truncated = data.truncated;
+  meta.textContent = truncated
+    ? `Showing ${packages.length} of ${total} packages`
+    : `${total} packages`;
+
+  // Get set of attached package names for highlighting
+  const attachedNames = new Set(
+    (state.environment?.attached_packages || []).map((p) => p.name)
+  );
+
+  let visible = filter
+    ? packages.filter((p) => p.name.toLowerCase().includes(filter))
+    : packages;
+
+  list.replaceChildren();
+  if (!visible.length) {
+    list.append(emptyRow(filter ? "No packages match the filter" : "No packages installed"));
+    return;
+  }
+
+  for (const pkg of visible) {
+    const row = document.createElement("div");
+    row.className = "package-row";
+    if (pkg.priority === "base" || pkg.priority === "recommended") {
+      row.classList.add("base");
+    }
+    if (attachedNames.has(pkg.name)) {
+      row.classList.add("loaded");
+    }
+
+    const name = document.createElement("span");
+    name.className = "pkg-name";
+    name.textContent = pkg.name;
+    name.title = `${pkg.name} ${pkg.version} — ${abbreviateLibrary(pkg.library)}`;
+
+    const version = document.createElement("span");
+    version.className = "pkg-version";
+    version.textContent = pkg.version || "";
+
+    const lib = document.createElement("span");
+    lib.className = "pkg-library";
+    lib.textContent = abbreviateLibrary(pkg.library);
+
+    row.append(name, version, lib);
+    list.append(row);
+  }
+}
+
+function abbreviateLibrary(path) {
+  if (!path) return "";
+  const parts = path.replace(/\\/g, "/").split("/");
+  // Return last meaningful segment: e.g. "4.6" from "C:/.../R/win-library/4.6"
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i] && parts[i] !== "library" && parts[i] !== "win-library") {
+      return parts[i];
+    }
+  }
+  return parts[parts.length - 1] || path;
+}
+
+function emptyRow(text) {
+  const div = document.createElement("div");
+  div.className = "empty-state compact-empty";
+  div.innerHTML = `<strong>${text}</strong>`;
+  return div;
 }
 
 function renderEnvironmentSummary() {
@@ -5928,6 +6051,12 @@ function renderDataViewer() {
   thead.append(headerRow);
 
   for (const row of page.rows || []) {
+    // Apply filter: check if any cell or row name contains the filter text
+    const filterText = ($("#dataViewerFilter").value || "").trim().toLowerCase();
+    if (filterText) {
+      const rowText = (row.row_name || "") + " " + (row.cells || []).map(c => c === null || c === undefined ? "" : String(c)).join(" ");
+      if (!rowText.toLowerCase().includes(filterText)) continue;
+    }
     const tr = document.createElement("tr");
     const label = document.createElement("th");
     label.scope = "row";
@@ -8158,6 +8287,7 @@ $("#agentContextNewFile").addEventListener("click", async () => {
   }
 });
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
+$("#packageFilter").addEventListener("input", renderPackageList);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
@@ -8166,6 +8296,9 @@ $("#dataViewerViewSelect").addEventListener("change", () => {
   state.dataViewer.rowOffset = 0;
   state.dataViewer.columnOffset = 0;
   loadDataViewPage({ rowOffset: 0, columnOffset: 0 });
+});
+$("#dataViewerFilter").addEventListener("input", () => {
+  renderDataViewer();
 });
 $("#dataViewerRowPrev").addEventListener("click", () => {
   loadDataViewPage({ rowOffset: Math.max(0, state.dataViewer.rowOffset - state.dataViewer.rowLimit) });
@@ -8195,6 +8328,8 @@ $("#dataViewerTable").addEventListener("keydown", (event) => {
   else if (event.key === "ArrowLeft") next = Math.max(index - 1, 0);
   else if (event.key === "ArrowDown") next = Math.min(index + cols, focusable.length - 1);
   else if (event.key === "ArrowUp") next = Math.max(index - cols, 0);
+  else if (event.key === "Home") next = index - (index % cols);
+  else if (event.key === "End") next = Math.min(index - (index % cols) + cols - 1, focusable.length - 1);
   else return;
   event.preventDefault();
   focusable[next].focus();
