@@ -48,6 +48,7 @@ const state = {
   selectedPlotId: null,
   selectedArtifactId: null,
   selectedArtifactDetail: null,
+  gitStatus: null,
   environment: null,
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
@@ -2056,6 +2057,27 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "restart_workspace") return mockInvoke("workspace_start", {});
+  if (command === "git_status") {
+    return {
+      is_repo: true,
+      branch: "main",
+      dirty: false,
+      ahead: 0,
+      behind: 0,
+      untracked: 0,
+      modified: 0,
+      staged: 0,
+    };
+  }
+  if (command === "git_log") {
+    return [
+      { hash: "abc12345", author: "Alice", date: "2026-07-30", message: "fix: correct typo in README" },
+      { hash: "def67890", author: "Bob", date: "2026-07-29", message: "feat: add initial project scaffold" },
+    ];
+  }
+  if (command === "git_diff") {
+    return [];
+  }
   return { status: "ok" };
 }
 
@@ -3211,6 +3233,7 @@ async function loadRunData() {
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
       invoke("get_project_retention_summary"),
     ]);
+    loadGitStatus();
     state.runs = runs || [];
     state.problems = problems || [];
     state.plots = plots || [];
@@ -3233,6 +3256,31 @@ async function loadRunData() {
     renderPlots();
   } catch (error) {
     toast(`Run history is unavailable: ${error}`, true);
+  }
+}
+
+async function loadGitStatus() {
+  try {
+    state.gitStatus = await invoke("git_status");
+  } catch {
+    state.gitStatus = null;
+  }
+  renderGitStatus();
+}
+
+function renderGitStatus() {
+  const s = state.gitStatus;
+  if (!s || !s.is_repo) {
+    $("#gitBranch").textContent = "";
+    $("#gitDirty").classList.add("hidden");
+    return;
+  }
+  $("#gitBranch").textContent = s.branch || "HEAD";
+  if (s.dirty) {
+    $("#gitDirty").classList.remove("hidden");
+    $("#gitDirty").textContent = `${s.modified}*`;
+  } else {
+    $("#gitDirty").classList.add("hidden");
   }
 }
 

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent_llm;
+mod git;
 mod project;
 mod update;
 
@@ -2220,6 +2221,30 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
         .await
         .map_err(display_error)?;
     Ok(status)
+}
+
+#[tauri::command]
+async fn git_status(state: State<'_, AppState>) -> Result<git::GitStatus, String> {
+    let root = state.project_root.read().await.clone();
+    git::git_status(Path::new(&root)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_log(
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<git::GitLogEntry>, String> {
+    let root = state.project_root.read().await.clone();
+    git::git_log(Path::new(&root), limit.unwrap_or(20)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_diff(
+    staged: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<Vec<git::GitDiffFile>, String> {
+    let root = state.project_root.read().await.clone();
+    git::git_diff(Path::new(&root), staged.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
 async fn shutdown_application(state: &AppState) {
@@ -4796,7 +4821,10 @@ fn main() {
             interrupt_r,
             cancel_run,
             cancel_agent_turn,
-            restart_workspace
+            restart_workspace,
+            git_status,
+            git_log,
+            git_diff
         ])
         .build(tauri::generate_context!());
     match run_result {
