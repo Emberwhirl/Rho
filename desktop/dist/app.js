@@ -1546,6 +1546,37 @@ async function mockInvoke(command, args) {
       truncation_reasons: []
     };
   }
+  if (command === "editor_package_functions") {
+    return {
+      functions: [
+        { name: "c", package: "base", signature: "function (..., recursive = FALSE, use.names = TRUE)" },
+        { name: "list", package: "base", signature: "function (...)" },
+        { name: "data.frame", package: "base", signature: "function (..., row.names = NULL, check.rows = FALSE, ...)" },
+        { name: "matrix", package: "base", signature: "function (data = NA, nrow = 1, ncol = 1, byrow = FALSE, dimnames = NULL)" },
+        { name: "factor", package: "base", signature: "function (x = character(), levels, labels = levels, ...)" },
+        { name: "lm", package: "stats", signature: "function (formula, data, subset, weights, na.action, ...)" },
+        { name: "glm", package: "stats", signature: "function (formula, family = gaussian, data, weights, subset, ...)" },
+        { name: "mean", package: "base", signature: "function (x, ...)" },
+        { name: "median", package: "stats", signature: "function (x, na.rm = FALSE, ...)" },
+        { name: "sd", package: "stats", signature: "function (x, na.rm = FALSE)" },
+        { name: "summary", package: "base", signature: "function (object, ...)" },
+        { name: "head", package: "utils", signature: "function (x, ...)" },
+        { name: "tail", package: "utils", signature: "function (x, ...)" },
+        { name: "str", package: "utils", signature: "function (object, ...)" },
+        { name: "plot", package: "graphics", signature: "function (x, y, ...)" },
+        { name: "hist", package: "graphics", signature: "function (x, ...)" },
+        { name: "boxplot", package: "graphics", signature: "function (x, ...)" },
+        { name: "read.csv", package: "utils", signature: "function (file, header = TRUE, sep = \",\", quote = \"\\\"\", ...)" },
+        { name: "write.csv", package: "utils", signature: "function (...)" },
+        { name: "readRDS", package: "base", signature: "function (file, refhook = NULL)" },
+        { name: "saveRDS", package: "base", signature: "function (object, file = \"\", ascii = FALSE, ...)" },
+        { name: "library", package: "base", signature: "function (package, help, pos = 2, lib.loc = NULL, ...)" },
+        { name: "require", package: "base", signature: "function (package, lib.loc = NULL, quietly = FALSE, ...)" },
+        { name: "subset", package: "base", signature: "function (x, ...)" },
+        { name: "merge", package: "base", signature: "function (x, y, ...)" },
+      ]
+    };
+  }
   if (command === "audit_reproducibility") {
     const scopeStr = args.scope || "project";
     return {

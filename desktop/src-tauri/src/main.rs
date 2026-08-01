@@ -52,6 +52,7 @@ use update::{ReleaseChannel, SOURCE_URL, UpdateCheckResult, WEBSITE_URL};
 const BRIDGE_STATE: &str = include_str!("../../../r/rho.bridge/R/state.R");
 const BRIDGE_EXECUTE: &str = include_str!("../../../r/rho.bridge/R/execute.R");
 const BRIDGE_WORKSPACE: &str = include_str!("../../../r/rho.bridge/R/workspace.R");
+const BRIDGE_COMPLETION: &str = include_str!("../../../r/rho.bridge/R/completion.R");
 const AGENT_STATE: &str = include_str!("../../../r/rho.agent/R/aaa-state.R");
 const AGENT_TRANSPORT: &str = include_str!("../../../r/rho.agent/R/transport.R");
 const AGENT_ADAPTER: &str = include_str!("../../../r/rho.agent/R/aisdk_adapter.R");
@@ -1307,6 +1308,35 @@ async fn audit_reproducibility(
             &AuditLimits::default(),
         )
         .map_err(display_error)
+}
+
+#[tauri::command]
+async fn editor_package_functions(
+    packages: Option<Vec<String>>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "packages": packages,
+            "limit": limit.unwrap_or(500)
+        },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.list_package_functions",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
 }
 
 #[tauri::command]
@@ -2728,6 +2758,7 @@ fn prepare_runtime_files_with_rscript(
     write_source(&bridge_package.join("R/state.R"), BRIDGE_STATE)?;
     write_source(&bridge_package.join("R/execute.R"), BRIDGE_EXECUTE)?;
     write_source(&bridge_package.join("R/workspace.R"), BRIDGE_WORKSPACE)?;
+    write_source(&bridge_package.join("R/completion.R"), BRIDGE_COMPLETION)?;
     write_source(&agent_package.join("R/aaa-state.R"), AGENT_STATE)?;
     write_source(&agent_package.join("R/transport.R"), AGENT_TRANSPORT)?;
     write_source(&agent_package.join("R/aisdk_adapter.R"), AGENT_ADAPTER)?;
@@ -4685,6 +4716,7 @@ fn main() {
             get_run_detail,
             compare_runs,
             audit_reproducibility,
+            editor_package_functions,
             retry_run,
             run_agent,
             agent_llm_settings,

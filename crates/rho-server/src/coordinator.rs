@@ -1896,6 +1896,7 @@ fn authorize_agent_workspace_request(
         "workspace.snapshot"
         | "workspace.inspect_object"
         | "workspace.inspect_data_object"
+        | "workspace.list_package_functions"
         | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
         | "environment.initialize"
@@ -3249,6 +3250,28 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 format!(
                     "{bridge}$rho_inspect_data_object({}, envir = .GlobalEnv)",
                     r_string(object_name)?
+                ),
+            ))
+        }
+        "workspace.list_package_functions" => {
+            let packages_arg = arguments
+                .get("packages")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\", \"")
+                })
+                .unwrap_or_default();
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(500);
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_list_package_functions(packages = c(\"{packages_arg}\"), limit = {limit})",
                 ),
             ))
         }
