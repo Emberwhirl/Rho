@@ -7529,7 +7529,7 @@ $("#agentContextUseSelection").addEventListener("click", () => {
   insertAgentReference(documentState.path, { source: "selection" });
   closeAgentContextMenu();
 });
-$("#agentContextNewFile").addEventListener("click", () => {
+$("#agentContextNewFile").addEventListener("click", async () => {
   const value = await promptForPath({
     title: "New project file",
     message: "Enter a project-relative path.",
