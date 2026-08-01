@@ -311,6 +311,7 @@ let mockEnvironmentOperationSequence = 0;
 const mockAgentTurns = [];
 const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
+const mockEvidenceEntries = [];
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
 const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
 
@@ -2050,6 +2051,56 @@ async function mockInvoke(command, args) {
       total_count: MOCK_BASE_PACKAGES.length + MOCK_BIOC_PACKAGES.length,
       truncated: false,
     };
+  }
+  if (command === "resolve_doi") {
+    return {
+      title: "Example Research Article",
+      authors: "Smith, J and Doe, A",
+      year: 2024,
+      journal: "Nature Methods",
+    };
+  }
+  if (command === "create_evidence_entry") {
+    const entry = {
+      id: Date.now(),
+      project_root: "D:/Rho/project",
+      title: args.title,
+      notes: args.notes || "",
+      doi: args.doi || null,
+      run_id: args.run_id || null,
+      artifact_id: args.artifact_id || null,
+      citation_json: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockEvidenceEntries.push(entry);
+    return structuredClone(entry);
+  }
+  if (command === "list_evidence_entries") {
+    const limit = args.limit || 50;
+    let results = structuredClone(mockEvidenceEntries);
+    if (args.search) {
+      const term = args.search.toLowerCase();
+      results = results.filter(
+        (e) =>
+          e.title.toLowerCase().includes(term) ||
+          e.notes.toLowerCase().includes(term)
+      );
+    }
+    return results.slice(0, limit);
+  }
+  if (command === "get_evidence_entry") {
+    return structuredClone(
+      mockEvidenceEntries.find((e) => e.id === args.id) || null
+    );
+  }
+  if (command === "delete_evidence_entry") {
+    const idx = mockEvidenceEntries.findIndex((e) => e.id === args.id);
+    if (idx >= 0) {
+      mockEvidenceEntries.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
   if (command === "get_environment_operation_request") {
     const requestId = args.requestId ?? args.request_id;
@@ -5521,6 +5572,191 @@ function emptyRow(text) {
   return div;
 }
 
+// ── Evidence panel ───────────────────────────────────────────
+
+async function loadEvidenceEntries() {
+  try {
+    state.evidenceEntries = await invoke("list_evidence_entries", { limit: 100 });
+  } catch {
+    state.evidenceEntries = [];
+  }
+  renderEvidenceList();
+}
+
+function renderEvidenceList() {
+  const list = $("#evidenceList");
+  const count = $("#evidenceCount");
+  const data = state.evidenceEntries || [];
+  count.textContent = data.length;
+  list.replaceChildren();
+  if (!data.length) {
+    list.append(emptyRow("No evidence entries"));
+    return;
+  }
+  for (const entry of data) {
+    const item = document.createElement("div");
+    item.className = "evidence-item";
+    item.dataset.id = entry.id;
+
+    const header = document.createElement("div");
+    header.className = "evidence-item-header";
+    const title = document.createElement("span");
+    title.className = "evidence-item-title";
+    title.textContent = entry.title;
+    const date = document.createElement("span");
+    date.className = "evidence-item-date";
+    date.textContent = new Date(entry.created_at).toLocaleDateString();
+    header.append(title, date);
+
+    const notes = document.createElement("div");
+    notes.className = "evidence-item-notes";
+    notes.textContent = entry.notes || "";
+
+    const meta = document.createElement("div");
+    meta.className = "evidence-item-meta";
+    if (entry.doi) {
+      const tag = document.createElement("span");
+      tag.className = "evidence-tag";
+      tag.textContent = `DOI: ${entry.doi}`;
+      meta.append(tag);
+    }
+    if (entry.run_id) {
+      const tag = document.createElement("span");
+      tag.className = "evidence-tag";
+      tag.textContent = `Run: ${entry.run_id}`;
+      meta.append(tag);
+    }
+    if (entry.artifact_id) {
+      const tag = document.createElement("span");
+      tag.className = "evidence-tag";
+      tag.textContent = `Artifact: ${entry.artifact_id}`;
+      meta.append(tag);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "evidence-item-actions";
+    const delBtn = document.createElement("button");
+    delBtn.className = "danger";
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Delete this evidence entry?")) return;
+      try {
+        await invoke("delete_evidence_entry", { id: entry.id });
+        await loadEvidenceEntries();
+      } catch (err) { toast(`Delete failed: ${err}`, "error"); }
+    });
+    actions.append(delBtn);
+
+    item.append(header, notes, meta, actions);
+
+    if (entry.citation_json) {
+      try {
+        const cit = JSON.parse(entry.citation_json);
+        const citDiv = document.createElement("div");
+        citDiv.className = "evidence-item-citation";
+        const parts = [cit.authors, `(${cit.year})`, cit.title, cit.journal].filter(Boolean);
+        citDiv.textContent = parts.join(". ");
+        item.append(citDiv);
+      } catch { /* citation parse failure is best-effort */ }
+    }
+
+    item.addEventListener("click", () => {
+      item.classList.toggle("expanded");
+    });
+    list.append(item);
+  }
+}
+
+function initEvidencePanel() {
+  $("#evidenceNewButton").addEventListener("click", () => {
+    $("#evidenceNewForm").classList.toggle("hidden");
+  });
+  $("#evidenceCancelButton").addEventListener("click", () => {
+    $("#evidenceNewForm").classList.add("hidden");
+    $("#evidenceNewTitle").value = "";
+    $("#evidenceNewNotes").value = "";
+    $("#evidenceNewDoi").value = "";
+    $("#evidenceCitationPreview").classList.add("hidden");
+  });
+  $("#evidenceResolveDoi").addEventListener("click", async () => {
+    const doi = $("#evidenceNewDoi").value.trim();
+    if (!doi) return;
+    try {
+      const citation = await invoke("resolve_doi", { doi });
+      if (citation) {
+        const preview = $("#evidenceCitationPreview");
+        const parts = [citation.authors, `(${citation.year})`, citation.title, citation.journal].filter(Boolean);
+        preview.textContent = parts.join(". ");
+        preview.classList.remove("hidden");
+      }
+    } catch { toast("DOI resolution failed", "error"); }
+  });
+  $("#evidenceCreateButton").addEventListener("click", async () => {
+    const title = $("#evidenceNewTitle").value.trim();
+    if (!title) { toast("Title is required"); return; }
+    try {
+      await invoke("create_evidence_entry", {
+        title,
+        notes: $("#evidenceNewNotes").value,
+        doi: $("#evidenceNewDoi").value.trim() || null,
+        run_id: null,
+        artifact_id: null,
+      });
+      $("#evidenceNewForm").classList.add("hidden");
+      $("#evidenceNewTitle").value = "";
+      $("#evidenceNewNotes").value = "";
+      $("#evidenceNewDoi").value = "";
+      $("#evidenceCitationPreview").classList.add("hidden");
+      await loadEvidenceEntries();
+    } catch (err) { toast(`Create failed: ${err}`, "error"); }
+  });
+  $("#evidenceSearch").addEventListener("input", () => {
+    if (!state.evidenceEntries) return;
+    const term = $("#evidenceSearch").value.trim().toLowerCase();
+    if (term) {
+      const filtered = state.evidenceEntries.filter(
+        (e) => e.title.toLowerCase().includes(term) || e.notes.toLowerCase().includes(term)
+      );
+      state.evidenceEntriesFiltered = filtered;
+      renderEvidenceListFiltered(filtered);
+    } else {
+      delete state.evidenceEntriesFiltered;
+      renderEvidenceList();
+    }
+  });
+  $("#refreshEvidence").addEventListener("click", loadEvidenceEntries);
+}
+
+function renderEvidenceListFiltered(filtered) {
+  // Same as renderEvidenceList but uses filtered array
+  const list = $("#evidenceList");
+  list.replaceChildren();
+  if (!filtered.length) {
+    list.append(emptyRow("No matching entries"));
+    return;
+  }
+  for (const entry of filtered) {
+    const item = document.createElement("div");
+    item.className = "evidence-item";
+    const header = document.createElement("div");
+    header.className = "evidence-item-header";
+    const title = document.createElement("span");
+    title.className = "evidence-item-title";
+    title.textContent = entry.title;
+    const date = document.createElement("span");
+    date.className = "evidence-item-date";
+    date.textContent = new Date(entry.created_at).toLocaleDateString();
+    header.append(title, date);
+    const notes = document.createElement("div");
+    notes.className = "evidence-item-notes";
+    notes.textContent = entry.notes || "";
+    item.append(header, notes);
+    item.addEventListener("click", () => item.classList.toggle("expanded"));
+    list.append(item);
+  }
+}
+
 function renderEnvironmentSummary() {
   const environment = state.environment;
   renderEnvironmentOperationCard();
@@ -6984,6 +7220,8 @@ function switchContextTab(name) {
   $$("[data-context-tab]").forEach((button) => button.classList.toggle("active", button.dataset.contextTab === name));
   $("#agentPanel").classList.toggle("hidden", name !== "agent");
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
+  $("#evidencePanel").classList.toggle("hidden", name !== "evidence");
+  if (name === "evidence") loadEvidenceEntries();
 }
 
 function applyWorkbenchLayout(layout) {
@@ -8333,6 +8571,7 @@ $("#agentContextNewFile").addEventListener("click", async () => {
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
 $("#packageFilter").addEventListener("input", renderPackageList);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
+initEvidencePanel();
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
 $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));

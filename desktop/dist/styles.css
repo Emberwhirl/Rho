@@ -1599,3 +1599,37 @@ body.resizing-vertical { cursor: col-resize; }
 /* Git indicators */
 .git-branch { font-size: 11px; color: var(--muted); margin-left: 8px; padding: 1px 6px; border-radius: 3px; background: var(--surface); }
 .git-dirty { color: var(--warning); font-size: 10px; margin-left: 4px; }
+
+/* Evidence panel */
+.evidence-panel { display: flex; flex-direction: column; }
+.evidence-toolbar { display: grid; grid-template-columns: 1fr 30px; gap: 5px; padding: 9px; border-bottom: 1px solid var(--border); }
+.evidence-toolbar input { min-width: 0; height: 29px; padding: 0 9px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.evidence-toolbar button { height: 29px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; color: var(--muted); }
+.evidence-toolbar button:hover { background: var(--hover); }
+.evidence-new-button { display: block; width: calc(100% - 18px); margin: 9px; padding: 8px 0; border: 1px dashed var(--border-strong); border-radius: 5px; background: transparent; color: var(--accent); font-size: 12px; cursor: pointer; }
+.evidence-new-button:hover { background: var(--accent-pale); }
+.evidence-form { display: grid; gap: 8px; padding: 9px; border-bottom: 1px solid var(--border); background: #fafcfc; }
+.evidence-form input, .evidence-form textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: #fff; }
+.evidence-form textarea { resize: vertical; min-height: 50px; }
+.evidence-doi-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.evidence-doi-row button { min-height: 30px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 4px; color: var(--accent-strong); background: #fff; cursor: pointer; font-size: 12px; }
+.evidence-doi-row button:hover { background: var(--accent-pale); }
+.evidence-citation-preview { padding: 6px 8px; border-radius: 4px; background: #f0f4f4; font-size: 11px; color: var(--muted); line-height: 1.4; }
+.evidence-form-actions { display: flex; gap: 6px; }
+.evidence-form-actions button { min-height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; }
+.evidence-form-actions button:first-child { border-color: var(--accent); color: #fff; background: var(--accent); }
+.evidence-form-actions button:first-child:hover { background: var(--accent-strong); }
+.evidence-list { flex: 1; overflow-y: auto; }
+.evidence-item { padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.evidence-item:hover { background: var(--hover); }
+.evidence-item-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.evidence-item-title { font-weight: 600; font-size: 12px; }
+.evidence-item-date { color: var(--subtle); font-size: 10px; white-space: nowrap; }
+.evidence-item-notes { color: var(--muted); font-size: 11px; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.evidence-item.expanded .evidence-item-notes { -webkit-line-clamp: unset; }
+.evidence-item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.evidence-tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; background: var(--surface); color: var(--muted); }
+.evidence-item-actions { display: flex; gap: 6px; margin-top: 6px; }
+.evidence-item-actions button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; color: var(--muted); }
+.evidence-item-actions button.danger { color: var(--danger); border-color: var(--danger); }
+.evidence-item-citation { margin-top: 5px; padding: 5px 8px; border-radius: 4px; background: #f5f8f8; font-size: 10px; color: var(--muted); line-height: 1.3; }

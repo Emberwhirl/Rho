@@ -11,20 +11,21 @@ const DEFAULT_LIMIT: usize = 50;
 #[cfg(test)]
 pub(crate) const LEGACY_UNSCOPED: &str = "legacy_unscoped";
 
-mod migration;
-mod run;
 mod agent;
 mod artifact;
 mod audit;
 mod compare;
 mod environment;
+mod evidence;
+mod migration;
 mod project;
+mod run;
 mod workbench;
 
 pub use agent::{
-    AgentConversationTurn, AgentTurnDetail, AgentTurnDraft, AgentTurnEvent,
-    AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary, ApprovalDecisionRecord,
-    ApprovalRequestDraft, ApprovalRequestSummary,
+    AgentConversationTurn, AgentTurnDetail, AgentTurnDraft, AgentTurnEvent, AgentTurnEventDraft,
+    AgentTurnFinish, AgentTurnSummary, ApprovalDecisionRecord, ApprovalRequestDraft,
+    ApprovalRequestSummary,
 };
 pub use artifact::{
     ArtifactRecordDraft, ArtifactRecordSummary, PlotArtifactDraft, PlotArtifactSummary,
@@ -35,9 +36,10 @@ pub use compare::{
 };
 pub use environment::{
     EnvironmentOperationDecisionRecord, EnvironmentOperationFinish,
-    EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary,
-    EnvironmentSnapshotDraft, EnvironmentSnapshotRecord,
+    EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft,
+    EnvironmentSnapshotRecord,
 };
+pub use evidence::{EvidenceEntry, EvidenceEntryDraft};
 pub use project::{
     PlotPayloadPruneResult, ProjectRetentionSummary, RetentionPolicy, RetentionScopeSummary,
 };
@@ -223,7 +225,8 @@ impl Store {
                 self.migration_outcome = MigrationOutcome::opened_current();
             }
             Some(7) => {
-                let backup_path = migration::create_pre_migration_backup(&self.connection, path, 7)?;
+                let backup_path =
+                    migration::create_pre_migration_backup(&self.connection, path, 7)?;
                 let outcome = self.migrate_v7_to_v8(backup_path, options)?;
                 self.migration_outcome = outcome;
             }
@@ -944,8 +947,10 @@ impl Store {
              WHERE project_root = ?1 AND turn_id = ?2
              ORDER BY requested_at DESC",
         )?;
-        let approval_rows = approval_statement
-            .query_map(params![project_root, turn_id], agent::decode_approval_request)?;
+        let approval_rows = approval_statement.query_map(
+            params![project_root, turn_id],
+            agent::decode_approval_request,
+        )?;
         let approvals = approval_rows.collect::<Result<Vec<_>, _>>()?;
 
         Ok(Some(AgentTurnDetail {
@@ -1662,14 +1667,10 @@ impl Store {
 
         let left = self
             .get_run_detail(project_root, left_run_id)?
-            .ok_or_else(|| {
-                StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
-            })?;
+            .ok_or_else(|| StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows))?;
         let right = self
             .get_run_detail(project_root, right_run_id)?
-            .ok_or_else(|| {
-                StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
-            })?;
+            .ok_or_else(|| StoreError::Sqlite(rusqlite::Error::QueryReturnedNoRows))?;
 
         if left.operation_class != "scientific" || right.operation_class != "scientific" {
             return Err(StoreError::Sqlite(rusqlite::Error::InvalidParameterName(
@@ -1697,16 +1698,12 @@ impl Store {
             None => None,
         };
 
-        let left_artifacts = self.list_artifact_records(
-            Some(100), project_root, None, false,
-        )?;
+        let left_artifacts = self.list_artifact_records(Some(100), project_root, None, false)?;
         let left_artifacts: Vec<_> = left_artifacts
             .into_iter()
             .filter(|a| a.run_id.as_deref() == Some(left_run_id))
             .collect();
-        let right_artifacts = self.list_artifact_records(
-            Some(100), project_root, None, false,
-        )?;
+        let right_artifacts = self.list_artifact_records(Some(100), project_root, None, false)?;
         let right_artifacts: Vec<_> = right_artifacts
             .into_iter()
             .filter(|a| a.run_id.as_deref() == Some(right_run_id))
@@ -1786,8 +1783,8 @@ fn text_preview(text: &str, limit: usize) -> String {
 mod tests {
     use super::*;
     use crate::migration::{
-        read_schema_version, set_schema_version, assert_not_null_project_identity,
-        assert_index_exists,
+        assert_index_exists, assert_not_null_project_identity, read_schema_version,
+        set_schema_version,
     };
     use rho_protocol::{MessageKind, WorkspaceIdentity};
     use serde_json::json;

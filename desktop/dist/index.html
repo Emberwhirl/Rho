@@ -134,6 +134,29 @@
           </div>
           <div id="taskRailList" class="task-rail-list"></div>
         </div>
+        <section id="evidencePanel" class="context-content evidence-panel hidden">
+          <div class="evidence-toolbar">
+            <input id="evidenceSearch" type="search" placeholder="Search evidence…" aria-label="Search evidence entries" />
+            <button id="refreshEvidence" type="button" title="Refresh Evidence" aria-label="Refresh Evidence">↻</button>
+          </div>
+          <div id="evidenceNewForm" class="evidence-form hidden">
+            <input id="evidenceNewTitle" type="text" placeholder="Entry title" aria-label="Evidence title" />
+            <textarea id="evidenceNewNotes" rows="2" placeholder="Notes…" aria-label="Evidence notes"></textarea>
+            <div class="evidence-doi-row">
+              <input id="evidenceNewDoi" type="text" placeholder="DOI (optional)" aria-label="DOI" />
+              <button id="evidenceResolveDoi" type="button" title="Resolve DOI citation">Resolve</button>
+            </div>
+            <div id="evidenceCitationPreview" class="evidence-citation-preview hidden"></div>
+            <div class="evidence-form-actions">
+              <button id="evidenceCreateButton" type="button">Create Entry</button>
+              <button id="evidenceCancelButton" type="button">Cancel</button>
+            </div>
+          </div>
+          <button id="evidenceNewButton" class="evidence-new-button" type="button">+ New Evidence Entry</button>
+          <div id="evidenceList" class="evidence-list">
+            <div class="empty-state compact-empty"><strong>No evidence entries</strong></div>
+          </div>
+        </section>
       </aside>
 
       <div id="leftResizeHandle" class="resize-handle vertical left-handle" role="separator" aria-label="Resize Files panel" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="380" tabindex="0"></div>
@@ -278,6 +301,7 @@ plot(
         <div class="panel-tabs context-tabs" role="tablist">
           <button class="active" data-context-tab="agent" type="button">Agent</button>
           <button data-context-tab="environment" type="button">Environment <span id="objectCount" class="count">0</span></button>
+          <button data-context-tab="evidence" type="button">Evidence <span id="evidenceCount" class="count">0</span></button>
         </div>
 
         <section id="agentPanel" class="context-content agent-panel">

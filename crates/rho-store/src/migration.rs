@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension};
 
-use super::{MigrationOutcome, MigrationRecordCounts, StoreError, SCHEMA_VERSION};
+use super::{MigrationOutcome, MigrationRecordCounts, SCHEMA_VERSION, StoreError};
 
 pub(crate) fn database_is_empty(connection: &Connection) -> Result<bool, StoreError> {
     let count: i64 = connection.query_row(
@@ -243,6 +243,20 @@ pub(crate) fn v8_schema_sql() -> &'static str {
         ON agent_turns(project_root, started_at DESC);
     CREATE INDEX idx_approval_requests_project_status
         ON approval_requests(project_root, status, requested_at DESC);
+    CREATE TABLE evidence_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        title TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        doi TEXT,
+        run_id TEXT,
+        artifact_id TEXT,
+        citation_json TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX idx_evidence_entries_project
+        ON evidence_entries(project_root, created_at DESC);
     "
 }
 
@@ -383,7 +397,9 @@ pub(crate) fn rebuild_runs_v8(transaction: &rusqlite::Transaction<'_>) -> Result
     Ok(())
 }
 
-pub(crate) fn rebuild_agent_turns_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+pub(crate) fn rebuild_agent_turns_v8(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
     transaction.execute_batch(
         "
         ALTER TABLE agent_turns RENAME TO agent_turns_v7;
@@ -436,7 +452,9 @@ pub(crate) fn rebuild_agent_turns_v8(transaction: &rusqlite::Transaction<'_>) ->
     Ok(())
 }
 
-pub(crate) fn rebuild_approval_requests_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+pub(crate) fn rebuild_approval_requests_v8(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
     transaction.execute_batch(
         "
         ALTER TABLE approval_requests RENAME TO approval_requests_v7;
@@ -489,7 +507,9 @@ pub(crate) fn rebuild_approval_requests_v8(transaction: &rusqlite::Transaction<'
     Ok(())
 }
 
-pub(crate) fn rebuild_plot_artifacts_v8(transaction: &rusqlite::Transaction<'_>) -> Result<(), StoreError> {
+pub(crate) fn rebuild_plot_artifacts_v8(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
     transaction.execute_batch(
         "
         ALTER TABLE plot_artifacts RENAME TO plot_artifacts_v7;
@@ -575,7 +595,10 @@ pub(crate) fn assert_not_null_project_identity(
     })
 }
 
-pub(crate) fn assert_index_exists(connection: &Connection, index_name: &str) -> Result<(), StoreError> {
+pub(crate) fn assert_index_exists(
+    connection: &Connection,
+    index_name: &str,
+) -> Result<(), StoreError> {
     let exists = connection
         .query_row(
             "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1",

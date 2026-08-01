@@ -38,9 +38,9 @@ use rho_server::coordinator::{
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary, AuditLimits, AuditResponse,
-    AuditScope, CompareRunsResponse, EnvironmentOperationRequestSummary, PlotArtifactSummary,
-    PlotPayloadPruneResult, ProblemSummary, ProjectRetentionSummary, RetentionPolicy, RunDetail,
-    RunSummary, Store, normalize_project_root,
+    AuditScope, CompareRunsResponse, EnvironmentOperationRequestSummary, EvidenceEntry,
+    EvidenceEntryDraft, PlotArtifactSummary, PlotPayloadPruneResult, ProblemSummary,
+    ProjectRetentionSummary, RetentionPolicy, RunDetail, RunSummary, Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1898,6 +1898,125 @@ async fn clear_plot_artifacts(
         )
         .map_err(display_error)?;
     Ok(json!({"deleted": deleted}))
+}
+
+// ── Evidence workspace commands ──────────────────────────────
+
+fn resolve_doi_citation(doi: &str) -> Option<Value> {
+    let url = format!("https://api.crossref.org/works/{doi}");
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .ok()?;
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .send()
+        .ok()?;
+    let body: Value = resp.json().ok()?;
+    let message = body.get("message")?;
+    let title = message.get("title")?.as_array()?.first()?.as_str()?;
+    let authors = message
+        .get("author")
+        .and_then(|v| v.as_array())
+        .map(|authors| {
+            authors
+                .iter()
+                .filter_map(|a| a.get("family").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let year = message
+        .get("published-print")
+        .or_else(|| message.get("published-online"))
+        .or_else(|| message.get("issued"))
+        .and_then(|v| v.get("date-parts"))
+        .and_then(|v| v.as_array())
+        .and_then(|parts| parts.first())
+        .and_then(|p| p.as_array())
+        .and_then(|p| p.first())
+        .and_then(|y| y.as_i64());
+    let journal = message
+        .get("container-title")
+        .and_then(|v| v.as_array())
+        .and_then(|titles| titles.first())
+        .and_then(|t| t.as_str());
+    Some(json!({
+        "title": title,
+        "authors": authors,
+        "year": year,
+        "journal": journal,
+    }))
+}
+
+#[tauri::command]
+async fn resolve_doi(doi: String, _state: State<'_, AppState>) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || resolve_doi_citation(&doi))
+        .await
+        .map_err(|e| format!("DOI resolution failed: {e}"))
+        .map(|v| v.unwrap_or(Value::Null))
+}
+
+#[tauri::command]
+async fn create_evidence_entry(
+    title: String,
+    notes: Option<String>,
+    doi: Option<String>,
+    run_id: Option<String>,
+    artifact_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<EvidenceEntry, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let mut store = read_store(&state).map_err(display_error)?;
+    store
+        .create_evidence_entry(&EvidenceEntryDraft {
+            project_root,
+            title,
+            notes: notes.unwrap_or_default(),
+            doi,
+            run_id,
+            artifact_id,
+        })
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn list_evidence_entries(
+    limit: Option<usize>,
+    search: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<EvidenceEntry>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let store = read_store(&state).map_err(display_error)?;
+    store
+        .list_evidence_entries(&project_root, limit, search.as_deref())
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn get_evidence_entry(
+    id: i64,
+    state: State<'_, AppState>,
+) -> Result<Option<EvidenceEntry>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let store = read_store(&state).map_err(display_error)?;
+    store
+        .get_evidence_entry(&project_root, id)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn delete_evidence_entry(id: i64, state: State<'_, AppState>) -> Result<bool, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let mut store = read_store(&state).map_err(display_error)?;
+    store
+        .delete_evidence_entry(&project_root, id)
+        .map_err(display_error)
 }
 
 #[tauri::command]
@@ -5092,7 +5211,12 @@ fn main() {
             git_hunk_unstage,
             git_restore_file,
             git_unstage_file,
-            targets_status
+            targets_status,
+            resolve_doi,
+            create_evidence_entry,
+            list_evidence_entries,
+            get_evidence_entry,
+            delete_evidence_entry,
         ])
         .build(tauri::generate_context!());
     match run_result {
