@@ -20,6 +20,8 @@ const state = {
   humanPreset: "code",
   auditResult: null,
   auditLoading: false,
+  editorFunctions: null,
+  editorFunctionsLoaded: false,
   agentBusy: false,
   activeAgentTurnId: null,
   agentRuntime: null,
@@ -2120,6 +2122,17 @@ importScripts("./vendor/monaco/vs/base/worker/workerMain.js");
   return state.editor.workerUrl;
 }
 
+async function loadEditorFunctions() {
+  if (state.editorFunctionsLoaded) return;
+  try {
+    const result = await invoke("editor_package_functions", { limit: 500 });
+    state.editorFunctions = result.functions || [];
+  } catch {
+    state.editorFunctions = [];
+  }
+  state.editorFunctionsLoaded = true;
+}
+
 function registerRLanguage(monaco) {
   if (monaco.languages.getLanguages().some((language) => language.id === "r")) return;
   monaco.languages.register({
@@ -2188,36 +2201,90 @@ function registerRLanguage(monaco) {
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
       const range = new monaco.Range(
-        position.lineNumber,
-        word.startColumn,
-        position.lineNumber,
-        word.endColumn,
+        position.lineNumber, word.startColumn, position.lineNumber, word.endColumn,
       );
       const keywordSuggestions = keywords.map((label) => ({
-        label,
-        kind: monaco.languages.CompletionItemKind.Keyword,
-        insertText: label,
-        range,
-        sortText: `1-${label}`,
+        label, kind: monaco.languages.CompletionItemKind.Keyword,
+        insertText: label, range, sortText: `1-${label}`,
       }));
-      const functionSuggestions = functions.map((label) => ({
-        label,
+      // Dynamic functions from Air, fall back to hardcoded list
+      const funcList = (state.editorFunctions && state.editorFunctions.length > 0)
+        ? state.editorFunctions : functions.map((name) => ({ name, package: "base", signature: `${name}()` }));
+      const functionSuggestions = funcList.map((f) => ({
+        label: f.name,
         kind: monaco.languages.CompletionItemKind.Function,
-        insertText: `${label}($0)`,
+        insertText: `${f.name}($0)`,
         insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        range,
-        sortText: `2-${label}`,
-        detail: "R function",
+        range, sortText: `2-${f.name}`,
+        detail: f.package ? `${f.package}::${f.name}` : "R function",
       }));
       const objectSuggestions = state.objects.slice(0, 200).map((object) => ({
         label: object.name,
         kind: monaco.languages.CompletionItemKind.Variable,
-        insertText: object.name,
-        range,
-        sortText: `0-${object.name}`,
+        insertText: object.name, range, sortText: `0-${object.name}`,
         detail: stringValues(object.classes).join("/") || object.typeof || "Workspace object",
       }));
       return { suggestions: [...objectSuggestions, ...keywordSuggestions, ...functionSuggestions] };
+    },
+  });
+  // Signature help
+  monaco.languages.registerSignatureHelpProvider("r", {
+    signatureHelpTriggerCharacters: ["(", ","],
+    provideSignatureHelp(model, position) {
+      const funcs = state.editorFunctions;
+      if (!funcs || !funcs.length) return null;
+      // Find the function name before the opening paren
+      const textUntilPos = model.getValueInRange(
+        new monaco.Range(1, 1, position.lineNumber, position.column)
+      );
+      const lastOpen = textUntilPos.lastIndexOf("(");
+      if (lastOpen < 0) return null;
+      const beforeParen = textUntilPos.substring(0, lastOpen).trim();
+      const wordMatch = beforeParen.match(/([\w.]+)$/);
+      if (!wordMatch) return null;
+      const funcName = wordMatch[1];
+      const func = funcs.find((f) => f.name === funcName);
+      if (!func) return null;
+      const params = (func.signature || "").replace(/^function\s*\(/, "").replace(/\)\s*$/, "")
+        .split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+      // Count commas up to cursor within current paren depth
+      let depth = 0, commas = 0;
+      for (let i = lastOpen; i < textUntilPos.length; i++) {
+        const ch = textUntilPos[i];
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+        else if (ch === "," && depth === 1) commas++;
+      }
+      return {
+        activeSignature: 0,
+        activeParameter: Math.min(commas, params.length - 1),
+        signatures: [{
+          label: func.signature || `${funcName}()`,
+          documentation: `${func.package || "R"}::${funcName}`,
+          parameters: params.map((p) => ({ label: p, documentation: "" })),
+        }],
+      };
+    },
+  });
+  // Hover provider
+  monaco.languages.registerHoverProvider("r", {
+    provideHover(model, position) {
+      const funcs = state.editorFunctions;
+      if (!funcs || !funcs.length) return null;
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const func = funcs.find((f) => f.name === word.word);
+      if (!func) return null;
+      return {
+        range: new monaco.Range(
+          position.lineNumber, word.startColumn,
+          position.lineNumber, word.endColumn,
+        ),
+        contents: [
+          { value: `**${func.package || "R"}::${func.name}**` },
+          { value: "```r\n" + (func.signature || `${func.name}()`) + "\n```" },
+        ],
+      };
     },
   });
   monaco.languages.registerDocumentSymbolProvider("r", {
@@ -2439,6 +2506,7 @@ async function initializeEditor() {
     });
     state.editor.monaco = window.monaco;
     registerRLanguage(state.editor.monaco);
+    loadEditorFunctions();
     state.editor.monaco.editor.defineTheme("rho", {
       base: "vs",
       inherit: true,
