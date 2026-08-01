@@ -2084,6 +2084,16 @@ async function mockInvoke(command, args) {
   }
   if (command === "git_stage") { return null; }
   if (command === "git_commit") { return "abc123def456"; }
+  if (command === "targets_status") {
+    return {
+      has_targets: true,
+      pipeline_name: "qc_analysis, model_fit, report",
+      targets_count: 12,
+      outdated_count: 2,
+      errored_count: 0,
+      error: null
+    };
+  }
   return { status: "ok" };
 }
 

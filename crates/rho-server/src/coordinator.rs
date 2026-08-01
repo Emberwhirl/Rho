@@ -1899,6 +1899,7 @@ fn authorize_agent_workspace_request(
         | "workspace.list_package_functions"
         | "workspace.function_help"
         | "workspace.lint_file"
+        | "workspace.inspect_targets"
         | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
         | "environment.initialize"
@@ -3304,6 +3305,15 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
             Ok((
                 OperationClass::Probe,
                 format!("{bridge}$rho_lint_file({})", r_string(path)?),
+            ))
+        }
+        "workspace.inspect_targets" => {
+            let root = arguments["project_root"]
+                .as_str()
+                .context("workspace.inspect_targets requires string argument `project_root`")?;
+            Ok((
+                OperationClass::Probe,
+                format!("{bridge}$rho_inspect_targets({})", r_string(root)?),
             ))
         }
         "workspace.read_data_view" => {

@@ -55,6 +55,7 @@ const BRIDGE_EXECUTE: &str = include_str!("../../../r/rho.bridge/R/execute.R");
 const BRIDGE_WORKSPACE: &str = include_str!("../../../r/rho.bridge/R/workspace.R");
 const BRIDGE_COMPLETION: &str = include_str!("../../../r/rho.bridge/R/completion.R");
 const BRIDGE_LINTR: &str = include_str!("../../../r/rho.bridge/R/lintr.R");
+const BRIDGE_TARGETS: &str = include_str!("../../../r/rho.bridge/R/targets.R");
 const AGENT_STATE: &str = include_str!("../../../r/rho.agent/R/aaa-state.R");
 const AGENT_TRANSPORT: &str = include_str!("../../../r/rho.agent/R/transport.R");
 const AGENT_ADAPTER: &str = include_str!("../../../r/rho.agent/R/aisdk_adapter.R");
@@ -2305,6 +2306,31 @@ async fn git_commit(
     git::git_commit(Path::new(&root), &message).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn targets_status(state: State<'_, AppState>) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "project_root": project_root },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.inspect_targets",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn shutdown_application(state: &AppState) {
     write_startup_log("Rho desktop shutdown started");
     state.approvals.cancel_all("Rho is closing.").await;
@@ -2898,6 +2924,7 @@ fn prepare_runtime_files_with_rscript(
     write_source(&bridge_package.join("R/workspace.R"), BRIDGE_WORKSPACE)?;
     write_source(&bridge_package.join("R/completion.R"), BRIDGE_COMPLETION)?;
     write_source(&bridge_package.join("R/lintr.R"), BRIDGE_LINTR)?;
+    write_source(&bridge_package.join("R/targets.R"), BRIDGE_TARGETS)?;
     write_source(&agent_package.join("R/aaa-state.R"), AGENT_STATE)?;
     write_source(&agent_package.join("R/transport.R"), AGENT_TRANSPORT)?;
     write_source(&agent_package.join("R/aisdk_adapter.R"), AGENT_ADAPTER)?;
@@ -4885,7 +4912,8 @@ fn main() {
             git_log,
             git_diff,
             git_stage,
-            git_commit
+            git_commit,
+            targets_status
         ])
         .build(tauri::generate_context!());
     match run_result {
