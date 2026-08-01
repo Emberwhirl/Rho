@@ -1579,6 +1579,17 @@ async function mockInvoke(command, args) {
       ]
     };
   }
+  if (command === "editor_function_help") {
+    const name = args.name || "";
+    const mockHelp = {
+      "mean": { name: "mean", package: "base", signature: "function (x, ...)", help_title: "Arithmetic Mean", help_text: "Generic function for the (trimmed) arithmetic mean." },
+      "lm": { name: "lm", package: "stats", signature: "function (formula, data, subset, weights, na.action, method = \"qr\", model = TRUE, ...)", help_title: "Fitting Linear Models", help_text: "lm is used to fit linear models. It can be used to carry out regression, single stratum analysis of variance and analysis of covariance." },
+      "plot": { name: "plot", package: "graphics", signature: "function (x, y, ...)", help_title: "Generic X-Y Plotting", help_text: "Generic function for plotting of R objects." },
+      "summary": { name: "summary", package: "base", signature: "function (object, ...)", help_title: "Object Summaries", help_text: "summary is a generic function used to produce result summaries of the results of various model fitting functions." },
+      "read.csv": { name: "read.csv", package: "utils", signature: "function (file, header = TRUE, sep = \",\", quote = \"\\\"\", dec = \".\", fill = TRUE, comment.char = \"\", ...)", help_title: "Data Input", help_text: "Reads a file in table format and creates a data frame from it, with cases corresponding to lines and variables to fields in the file." },
+    };
+    return mockHelp[name] || { name, package: "base", signature: `function ${name}(...)`, help_title: null, help_text: null };
+  }
   if (command === "audit_reproducibility") {
     const scopeStr = args.scope || "project";
     return {
@@ -2266,20 +2277,38 @@ function registerRLanguage(monaco) {
       };
     },
   });
-  // Hover provider
+  // Hover provider (async — queries Air for help text)
   monaco.languages.registerHoverProvider("r", {
-    provideHover(model, position) {
-      const funcs = state.editorFunctions;
-      if (!funcs || !funcs.length) return null;
+    async provideHover(model, position) {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
+      // Try Air-backed help
+      if (state.editorFunctionsLoaded) {
+        try {
+          const help = await invoke("editor_function_help", { name: word.word });
+          if (help && help.signature) {
+            const contents = [
+              { value: `**${help.package || "R"}::${help.name}**` },
+              { value: "```r\n" + help.signature + "\n```" },
+            ];
+            if (help.help_title) contents.push({ value: `*${help.help_title}*` });
+            if (help.help_text) contents.push({ value: help.help_text });
+            return {
+              range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+              contents,
+            };
+          }
+        } catch {
+          // Fall back to cached signature
+        }
+      }
+      // Fallback: cached function list
+      const funcs = state.editorFunctions;
+      if (!funcs || !funcs.length) return null;
       const func = funcs.find((f) => f.name === word.word);
       if (!func) return null;
       return {
-        range: new monaco.Range(
-          position.lineNumber, word.startColumn,
-          position.lineNumber, word.endColumn,
-        ),
+        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
         contents: [
           { value: `**${func.package || "R"}::${func.name}**` },
           { value: "```r\n" + (func.signature || `${func.name}()`) + "\n```" },

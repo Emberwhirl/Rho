@@ -1340,6 +1340,35 @@ async fn editor_package_functions(
 }
 
 #[tauri::command]
+async fn editor_function_help(
+    name: String,
+    package: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "name": name,
+            "package": package
+        },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.function_help",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn list_plot_artifacts(
     limit: Option<usize>,
     session_only: Option<bool>,
@@ -4717,6 +4746,7 @@ fn main() {
             compare_runs,
             audit_reproducibility,
             editor_package_functions,
+            editor_function_help,
             retry_run,
             run_agent,
             agent_llm_settings,

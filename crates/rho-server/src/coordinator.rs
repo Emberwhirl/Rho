@@ -1897,6 +1897,7 @@ fn authorize_agent_workspace_request(
         | "workspace.inspect_object"
         | "workspace.inspect_data_object"
         | "workspace.list_package_functions"
+        | "workspace.function_help"
         | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
         | "environment.initialize"
@@ -3272,6 +3273,26 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 OperationClass::Probe,
                 format!(
                     "{bridge}$rho_list_package_functions(packages = c(\"{packages_arg}\"), limit = {limit})",
+                ),
+            ))
+        }
+        "workspace.function_help" => {
+            let name = arguments["name"]
+                .as_str()
+                .context("workspace.function_help requires string argument `name`")?;
+            let package = arguments
+                .get("package")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
+            let pkg_arg = match package {
+                Some(p) => r_string(p)?,
+                None => "NULL".to_string(),
+            };
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_function_help({}, package = {pkg_arg})",
+                    r_string(name)?,
                 ),
             ))
         }
