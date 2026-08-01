@@ -3433,6 +3433,7 @@ async function loadAgentData() {
     renderAgentTimeline();
     renderApprovalPanel();
     renderFileEditPanel();
+    renderTaskRail();
     updateAgentHeader();
     syncAgentPolling();
   } catch (error) {
@@ -4284,6 +4285,65 @@ function renderAgentTimeline() {
     }
   }
 }
+
+function renderTaskRail() {
+  const list = $("#taskRailList");
+  list.replaceChildren();
+
+  const turns = state.agentTurns.slice(0, 12);
+  if (!turns.length) {
+    const empty = document.createElement("div");
+    empty.className = "task-rail-item";
+    empty.innerHTML = '<span style="color:var(--muted);font-size:11px">No tasks yet. Start by asking Rho.</span>';
+    list.append(empty);
+    return;
+  }
+
+  for (const turn of turns) {
+    const item = document.createElement("div");
+    item.className = `task-rail-item${state.selectedTurnId === turn.turn_id ? " active" : ""}`;
+    item.dataset.turnId = turn.turn_id;
+
+    const status = document.createElement("span");
+    status.className = `status-dot ${turn.status}`;
+
+    const badge = document.createElement("span");
+    badge.className = `mode-badge${turn.mode === "act" ? " act" : ""}`;
+    badge.textContent = turn.mode;
+
+    const preview = document.createElement("span");
+    preview.className = "task-rail-preview";
+    preview.textContent = turn.prompt_preview || turn.final_message || turn.error_message || "(empty)";
+
+    item.append(status, badge, preview);
+    item.addEventListener("click", async () => selectTaskTurn(turn.turn_id));
+    list.append(item);
+  }
+
+  const header = document.querySelector(".task-rail-header span");
+  if (header) header.textContent = `Tasks (${state.agentTurns.length})`;
+}
+
+async function selectTaskTurn(turnId) {
+  state.selectedTurnId = turnId;
+  state.selectedTurnDetail = await invoke("get_agent_turn_detail", { turnId });
+  renderTaskRail();
+  renderAgentTimeline();
+  renderApprovalPanel();
+  renderFileEditPanel();
+  updateAgentHeader();
+}
+
+$("#taskRailNew").addEventListener("click", () => {
+  state.selectedTurnId = null;
+  state.selectedTurnDetail = null;
+  renderTaskRail();
+  renderAgentTimeline();
+  renderApprovalPanel();
+  renderFileEditPanel();
+  updateAgentHeader();
+  $("#agentComposer").focus();
+});
 
 function renderApprovalPanel() {
   const approval = state.pendingApprovals.find((item) => item.turn_id === state.selectedTurnId) || state.pendingApprovals[0] || null;
@@ -6506,9 +6566,15 @@ function applyPostureLayout() {
 
   // Rearrange panels for agent-first
   if (isAgent) {
-    // Move Agent panel to the flow column
     switchContextTab("agent");
+    $("#taskRail").classList.remove("hidden");
+    $(".sidebar > .panel-tabs").classList.add("hidden");
+    $(".sidebar > .side-content").classList.add("hidden");
+    renderTaskRail();
   } else {
+    $("#taskRail").classList.add("hidden");
+    $(".sidebar > .panel-tabs").classList.remove("hidden");
+    $(".sidebar > .side-content").classList.remove("hidden");
     applyWorkbenchLayout(state.humanPreset);
   }
 
