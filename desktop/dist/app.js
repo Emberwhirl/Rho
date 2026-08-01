@@ -70,6 +70,7 @@ const state = {
   previewScenarioApplied: false,
   objectInspection: null,
   lastRender: null,
+  renderJob: null,
   runs: [],
   compareMode: false,
   compareLeft: null,
@@ -1510,6 +1511,9 @@ async function mockInvoke(command, args) {
       events: [],
       workspace: state.revision,
     };
+  }
+  if (command === "render_document_job") {
+    return { job_id: "render_mock_001", status: "submitted" };
   }
   if (command === "get_run_detail") {
     const runId = args.runId ?? args.run_id;

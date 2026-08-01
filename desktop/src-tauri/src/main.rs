@@ -1106,6 +1106,46 @@ async fn render_document(
 }
 
 #[tauri::command]
+async fn render_document_job(
+    path: String,
+    document_version: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let job_id = format!("render_{}", chrono::Utc::now().timestamp_millis());
+    let state_clone = state.inner().clone();
+    let path_clone = path.clone();
+    tokio::spawn(async move {
+        let session = match active_session(&state_clone).await {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let context = match active_context(&state_clone).await {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let mut context = context.lock().await;
+        let CoordinatorRuntime { broker, store } = &mut *context;
+        let payload = serde_json::json!({
+            "arguments": {
+                "path": path_clone,
+                "document_version": document_version,
+                "job_id": job_id
+            },
+            "expected_workspace": broker.identity()
+        });
+        let _ = dispatch_workspace_request(
+            "workspace.render_document",
+            &payload,
+            ExecutionOrigin::User,
+            session.as_ref(),
+            broker,
+            store,
+        ).await;
+    });
+    Ok(serde_json::json!({ "job_id": job_id, "status": "submitted" }))
+}
+
+#[tauri::command]
 async fn request_environment_operation_preview(
     request: EnvironmentOperationRequestInput,
     state: State<'_, AppState>,
@@ -4796,6 +4836,7 @@ fn main() {
             inspect_data_object,
             read_data_view,
             render_document,
+            render_document_job,
             request_environment_operation_preview,
             list_environment_operation_requests,
             get_environment_operation_request,

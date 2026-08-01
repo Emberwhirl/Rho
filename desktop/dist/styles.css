@@ -335,6 +335,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .run-button { display: flex; align-items: center; gap: 7px; padding: 0 13px; border-color: var(--accent); color: #fff; background: var(--accent); font-weight: 600; }
 .run-button:hover { background: var(--accent-strong); }
 
+.render-job-status { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: var(--accent-pale); color: var(--accent-strong); }
+
 .sidebar, .context-panel, .workspace { min-width: 0; min-height: 0; }
 .sidebar {
   grid-row: 2;
