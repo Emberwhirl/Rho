@@ -1491,3 +1491,48 @@ rho_render_document <- function(path,
   )
 }
 
+#' Find the definition of an R function in project source files.
+#' Returns list(file, line) or NULL if not found.
+rho_find_function_definition <- function(name, project_root) {
+  if (is.null(name) || nchar(name) == 0) return(NULL)
+
+  # Find .R and .Rmd/.qmd files in the project
+  project_files <- list.files(
+    project_root,
+    pattern = "\\.(R|Rmd|qmd)$",
+    recursive = TRUE,
+    full.names = TRUE,
+    ignore.case = TRUE
+  )
+
+  # Limit scan to avoid unbounded search
+  if (length(project_files) > 500) {
+    project_files <- head(project_files, 500)
+  }
+
+  pattern <- sprintf(
+    "^\\s*%s\\s*(<-|<<-|=)\\s*function\\s*\\(",
+    name
+  )
+
+  for (f in project_files) {
+    lines <- tryCatch(
+      suppressWarnings(readLines(f, warn = FALSE)),
+      error = function(e) NULL
+    )
+    if (is.null(lines)) next
+
+    for (i in seq_along(lines)) {
+      if (grepl(pattern, lines[[i]], perl = TRUE)) {
+        return(list(
+          file = normalizePath(f, winslash = "/", mustWork = FALSE),
+          line = i,
+          column = regexpr("function", lines[[i]])[[1]]
+        ))
+      }
+    }
+  }
+
+  NULL
+}
+

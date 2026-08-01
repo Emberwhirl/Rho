@@ -3326,6 +3326,22 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 format!("{bridge}$rho_list_installed_packages(limit = {limit}L)",),
             ))
         }
+        "workspace.find_function_definition" => {
+            let name = arguments["name"]
+                .as_str()
+                .context("workspace.find_function_definition requires string argument `name`")?;
+            let root = arguments["project_root"].as_str().context(
+                "workspace.find_function_definition requires string argument `project_root`",
+            )?;
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_find_function_definition({}, {})",
+                    r_string(name)?,
+                    r_string(root)?
+                ),
+            ))
+        }
         "workspace.read_data_view" => {
             let object_name = arguments["object_name"]
                 .as_str()

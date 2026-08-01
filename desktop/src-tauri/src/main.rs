@@ -954,6 +954,30 @@ async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
+async fn editor_goto_definition(name: String, state: State<'_, AppState>) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "name": name, "project_root": project_root },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.find_function_definition",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn snapshot_workspace(state: State<'_, AppState>) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
@@ -5035,6 +5059,7 @@ fn main() {
             editor_package_functions,
             editor_function_help,
             editor_lint_file,
+            editor_goto_definition,
             retry_run,
             run_agent,
             agent_llm_settings,

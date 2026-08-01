@@ -2041,6 +2041,9 @@ async function mockInvoke(command, args) {
     const filtered = mockEnvironmentOperationRequests.filter((item) => !args.status || item.status === args.status);
     return structuredClone(filtered.slice(0, args.limit || 50));
   }
+  if (command === "editor_goto_definition") {
+    return { file: "analysis.R", line: 42, column: 1 };
+  }
   if (command === "list_installed_packages") {
     return {
       packages: MOCK_BASE_PACKAGES.concat(MOCK_BIOC_PACKAGES),
@@ -2657,6 +2660,13 @@ async function initializeEditor() {
     const KeyCode = state.editor.monaco.KeyCode;
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => runSelectionOrCurrentLine());
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, () => runActiveFile());
+    state.editor.editor.addCommand(KeyCode.F12, () => gotoDefinitionAtCursor());
+    // Ctrl+Click on a word
+    state.editor.editor.onMouseDown((e) => {
+      if (e.event.ctrlKey && e.target.type === 6 /* CONTENT_WORD */) {
+        gotoDefinitionAtCursor();
+      }
+    });
     setEditorMode("monaco");
     if (activeDocument()) applyDocumentSelection(activeDocument());
   } catch (error) {
@@ -5351,6 +5361,40 @@ async function executeCode(request, origin = "USER") {
   } finally {
     await loadRunData();
     setBusy(false);
+  }
+}
+
+async function gotoDefinitionAtCursor() {
+  const editor = state.editor?.editor;
+  if (!editor) return;
+  const pos = editor.getPosition();
+  if (!pos) return;
+  const model = editor.getModel();
+  if (!model) return;
+  const word = model.getWordAtPosition(pos);
+  if (!word) return;
+  const name = word.word;
+
+  try {
+    const result = await invoke("editor_goto_definition", { name });
+    if (result?.file) {
+      // Open the file and jump to the definition line
+      await openDocument(result.file);
+      if (state.editor?.editor && result.line) {
+        state.editor.editor.revealLineInCenter(result.line);
+        state.editor.editor.setPosition({
+          lineNumber: result.line,
+          column: result.column || 1,
+        });
+        state.editor.editor.focus();
+      }
+    } else {
+      // Fall back to help
+      await invoke("editor_function_help", { name, package: null });
+      toast(`No project definition for '${name}' — opening help`);
+    }
+  } catch (error) {
+    toast(`Go to definition failed: ${error}`, true);
   }
 }
 
