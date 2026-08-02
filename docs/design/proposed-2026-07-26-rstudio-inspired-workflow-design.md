@@ -1,8 +1,9 @@
 # RStudio-Inspired Scientific Workflow Proposal
 
-Status: proposed product and capability design
+Status: proposed umbrella direction; partially implemented through separately accepted focused packages
 
 Date: 2026-07-26
+Last reconciled: 2026-08-02
 Scope: post-`0.2.x` workflow quality and capability sequencing
 Related milestones: `0.3.x` scientific workflow foundation and later releases
 
@@ -112,7 +113,7 @@ The current repository already provides:
 
 New work must extend these surfaces and stores instead of creating parallel
 subsystems. The
-[active `0.3.x` implementation handoff](../plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
+[accepted `0.3.x` implementation handoff](../plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md)
 remains authoritative for environment operations, paged viewers, artifact
 export/provenance, and project-scoped skills. Milestone placement remains
 governed by the [development roadmap](../project/active-development-roadmap.md).
@@ -123,6 +124,28 @@ packages have landed. Reviewed environment operations, the first bounded
 export/provenance, and bounded project skills are implemented baselines. Their
 milestone-level integration and representative-project acceptance remain open;
 this proposal must not reimplement them.
+
+## Implementation Progress
+
+This proposal remains `proposed` because it is an umbrella direction rather
+than one implementation contract. The user authorized and the repository
+implemented several bounded packages under separate focused specifications.
+Their completion does not authorize the unimplemented remainder.
+
+| Workstream | Reconciled state on 2026-08-02 | Remaining proposal scope |
+| --- | --- | --- |
+| WS1 packages and environments | Partial: reviewed environment operations and a searchable installed-package inventory are implemented | searchable lockfile inventory; direct/transitive dependency and package-source presentation; package install/remove/update remain outside the accepted inventory package |
+| WS2 editor and local Help | Partial: Air was selected; dynamic completion, signatures, hover help, project-local go-to-definition, and `lintr` projection are implemented | bounded find-references; package source/help navigation beyond the current fallback; full installed-version help/examples/vignettes and recorded example execution; diagnostic grouping/quick fixes; reviewable formatting and refactors; Agent citations to local Help |
+| WS3 object and artifact inspection | Partial: bounded viewers, server-owned paging/sort, page-size control, frozen identifier column, keyboard navigation, exports, and Artifact provenance are implemented | filter/search; bounded tree navigation; richer type/missing-value presentation; broader plot zoom/format review; complete common inspection/provenance navigation; TanStack Table remains deferred rather than required for the current vanilla-table slice |
+| WS4 Git | Partial: status, log, diff, file staging/commit backend, hunk/restore/unstage backend commands, and conflict resolution are present | reviewable frontend flows for hunk stage/unstage and destructive restore; complete staging/commit UI; repository replacement and adversarial Windows fixtures; current V1 retains the supervised Git CLI instead of `gitoxide` |
+| WS5 Quarto and R Markdown | Partial: chunk discovery/navigation, current/preceding/below/all chunk execution, and asynchronous render polling are implemented | render cancellation and restart reconciliation; render-to-Artifact provenance closure; HTML/PDF inspection and source-linked diagnostic/review loop |
+| WS6 jobs and Monitor | Partial prototype: Quarto has an in-memory asynchronous job/status adapter | durable typed job records, bounded logs/progress, cancellation, restart/reconnect reconciliation, duplicate prevention, Artifact registration, and a general Monitor job surface |
+| WS6A `targets` | Partial: read-only capability and pipeline inspection are implemented | separately authorized pipeline run/cancel, durable job admission, Artifact registration, selected-result import, and pipeline-to-document orchestration |
+| WS7 debugging and package development | Not started | Ark debugger contract and typed package document/test/build/check jobs |
+
+Acceptance remains separate from implementation. The `0.3.x` representative
+project/manual gate and Waves 4-14 per-package/manual gates remain open in the
+active roadmap and acceptance records.
 
 ## Capability Decisions
 
@@ -490,6 +513,9 @@ Candidate package workflows:
 
 ### Phase A: Complete The `0.3.x` Scientific Foundation
 
+Reconciled status: implementation and automated milestone evidence are present;
+representative-project and installed/manual acceptance remain open.
+
 The scoped implementation packages for WS1 and the `0.3.x` portions of WS3
 have landed. Complete their representative-project integration workflow,
 cross-package validation, manual review, and documentation/release integration.
@@ -503,6 +529,10 @@ Gate:
 > chat text.
 
 ### Phase B: Daily Editing Intelligence
+
+Reconciled status: partially implemented. RA-RC1 is accepted; RA-RC2, Air
+completion/navigation/hover help, and `lintr` have implementation packages.
+The broader WS2 Help, references, quick-fix, and refactor contract remains open.
 
 Deliver RA-RC1 and later RA-RC2 according to the authoritative Wave program in
 the active roadmap. After the Wave 7 selection gate, deliver the initial WS2
@@ -524,10 +554,16 @@ Gate:
 
 ### Phase C: Change And Document Review
 
-First deliver the TanStack Table interaction layer over the accepted viewer
-contract, then initial `gitoxide`-backed WS4 read behavior and separately
-reviewed mutations. Deliver WS5 only after the local job entry contract is
-reviewed; richer artifact review may proceed with it without redefining WP3.
+Reconciled status: partially implemented. The vanilla bounded viewer, Git CLI
+backend/conflict flow, chunk surface, and render polling exist. The full
+reviewable Git mutation UI and end-to-end render/Artifact review gate remain
+open.
+
+First extend the accepted viewer contract without changing its data authority.
+The current focused package retained the vanilla table and deferred TanStack
+Table. Current WS4 uses the supervised Git CLI rather than `gitoxide`; its
+remaining mutations still require separately reviewed frontend flows and
+hardening evidence. Deliver richer WS5 artifact review without redefining WP3.
 
 Gate:
 
@@ -536,6 +572,10 @@ Gate:
 > provenance before committing.
 
 ### Phase D: Managed Long-Running Work
+
+Reconciled status: partially implemented as an in-memory Quarto job prototype
+and read-only `targets` inspection. Durable job lifecycle, cancellation,
+restart recovery, and pipeline execution remain open.
 
 Deliver WS6 using typed local operations before any remote execution adapter.
 
@@ -550,6 +590,8 @@ a read-only package, stop for review, and only then authorize pipeline
 execution and composed pipeline-to-document production.
 
 ### Phase E: Advanced Developer Workflow
+
+Reconciled status: not started.
 
 Deliver the feasible Ark-backed portion of WS7, followed by package workflows.
 
@@ -601,21 +643,15 @@ exists.
 
 ## Open Decisions
 
-The following require focused designs before implementation:
-
-1. whether Air or R `languageserver` is the primary broker-managed language
-   backend after the compatibility checkpoint;
-2. any bioinformatics classes or views beyond the implemented
-   `SummarizedExperiment` and `SingleCellExperiment` V1 contract;
-3. whether the focused `gitoxide` evaluation supports every accepted V1
-   repository operation without a separately supervised Git CLI fallback;
-4. the narrow schema boundary between the first Quarto job adapter and the
-   later general local-job contract;
-5. the minimum Ark debugger contract that remains stable across supported R
-   versions;
-6. the first accepted `targets` API/version range and the evidence required to
-   treat a file target as a declared document input;
-7. the release milestone names for Phases B-E after `0.3.x` acceptance.
+| Decision | State on 2026-08-02 |
+| --- | --- |
+| Primary language backend | Resolved: Air is the selected primary backend; Monaco remains the editor |
+| Bioinformatics classes beyond implemented V1 | Open; requires one focused class/view contract at a time |
+| `gitoxide` versus supervised Git CLI | Resolved for current V1: retain the supervised Git CLI; a future migration requires separate evidence and must not change Rho's command contract |
+| Quarto adapter versus general job schema | Partially resolved for the prototype; durable lifecycle, cancellation, restart reconciliation, and Artifact linkage remain open |
+| Minimum stable Ark debugger contract | Open |
+| Accepted `targets` API/version and declared-input evidence | Open; read-only inspection does not resolve execution semantics |
+| Release milestone names for Phases B-E | Open pending earlier acceptance gates |
 
 These decisions should be resolved one workstream at a time. Approval of this
 proposal establishes direction and sequencing; it is not permission to

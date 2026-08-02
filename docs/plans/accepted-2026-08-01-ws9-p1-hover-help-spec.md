@@ -1,6 +1,6 @@
 # WS2-P1: Enhanced Hover Help
 
-Status: active
+Status: accepted focused implementation; broader WS2 Help contract remains open
 Parent: Wave 9
 
 ## Scope

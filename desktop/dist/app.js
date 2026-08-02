@@ -79,6 +79,7 @@ const state = {
   compareResult: null,
   problems: [],
   agentTurns: [],
+  agentActivityExpanded: new Set(),
   pendingApprovals: [],
   selectedTurnId: null,
   selectedTurnDetail: null,
@@ -2220,6 +2221,8 @@ function setBusy(busy, label = "R is busy") {
   $("#runButton").disabled = busy || state.projectStatus !== "ready";
   $("#editorRunButton").disabled = busy || state.projectStatus !== "ready";
   $("#editorRunFileButton").disabled = busy || state.projectStatus !== "ready";
+  $("#consoleInput").disabled = busy;
+  $("#consoleRunButton").disabled = busy;
   setKernelStatus(busy ? "starting" : "idle", busy ? label : "R idle");
 }
 
@@ -3250,7 +3253,7 @@ async function saveActiveDocument() {
     renderProjectFiles();
     renderDocumentTabs();
     renderEnvironmentSummary();
-    addConsole("SYSTEM", `Saved ${documentState.path}`);
+    addLog("SYSTEM", `Saved ${documentState.path}`);
     scheduleSessionSave();
   } catch (error) {
     state.internalProjectWrites.delete(documentState.path);
@@ -3278,18 +3281,38 @@ async function createDocument() {
   }
 }
 
-function addConsole(origin, text, kind = "") {
+function scrollConsoleToPrompt() {
+  const terminal = $("#consoleTerminal");
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function addTerminalOutput(text, kind = "") {
   if (text === null || text === undefined || text === "") return;
   const entry = document.createElement("div");
-  entry.className = `console-entry ${origin.toLowerCase()} ${kind}`.trim();
+  entry.className = `terminal-entry ${kind}`.trim();
+  entry.textContent = String(text);
+  $("#consoleOutput").append(entry);
+  scrollConsoleToPrompt();
+}
+
+function addTerminalCommand(code) {
+  const value = String(code || "");
+  if (!value.trim()) return;
+  addTerminalOutput(`> ${value.replace(/\n/g, "\n+ ")}`, "command");
+}
+
+function addLog(origin, text, kind = "") {
+  if (text === null || text === undefined || text === "") return;
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${origin.toLowerCase()} ${kind}`.trim();
   const badge = document.createElement("span");
   badge.className = "origin";
   badge.textContent = origin.toUpperCase();
   const content = document.createElement("span");
   content.textContent = String(text);
   entry.append(badge, content);
-  $("#consoleOutput").append(entry);
-  $("#consoleOutput").scrollTop = $("#consoleOutput").scrollHeight;
+  $("#logsOutput").append(entry);
+  $("#logsOutput").scrollTop = $("#logsOutput").scrollHeight;
 }
 
 function addTimeline(title, body, status = "completed", code = null) {
@@ -3846,6 +3869,10 @@ async function loadAgentData() {
       invoke("list_approval_requests", { limit: 20 }),
     ]);
     state.agentTurns = turns || [];
+    const turnIds = new Set(state.agentTurns.map((turn) => turn.turn_id));
+    state.agentActivityExpanded = new Set(
+      Array.from(state.agentActivityExpanded).filter((turnId) => turnIds.has(turnId)),
+    );
     state.pendingApprovals = (approvals || []).filter((item) => item.status === "waiting");
     const selectedTurnStillExists = state.selectedTurnId
       && state.agentTurns.some((turn) => turn.turn_id === state.selectedTurnId);
@@ -3926,6 +3953,7 @@ function syncAgentComposerState() {
   if (state.agentMode === "act" && actBlocked) {
     state.agentMode = "ask";
   }
+  syncAgentModeControl();
   $("#agentSendButton").disabled = state.agentBusy || Boolean(reason);
   $("#agentInput").disabled = state.agentBusy || Boolean(reason);
   $$("[data-agent-mode]").forEach((button) => {
@@ -3955,6 +3983,13 @@ function syncAgentComposerState() {
     return;
   }
   note.classList.add("hidden");
+}
+
+function syncAgentModeControl() {
+  const label = prettyAgentMode(state.agentMode);
+  $("#agentModeLabel").textContent = label;
+  $("#agentModeSummary").setAttribute("aria-label", `Agent mode: ${label}`);
+  $(".act-authorization").classList.toggle("hidden", state.agentMode !== "act");
 }
 
 function updateAgentModelLabel() {
@@ -4004,14 +4039,14 @@ async function syncAgentRunsToConsole(runs) {
     try {
       const detail = await invoke("get_run_detail", { runId: run.run_id });
       if (!detail) continue;
-      addConsole("AGENT", `run_r > ${detail.code || run.code_preview || ""}`);
-      if (detail.stdout) addConsole("AGENT", detail.stdout);
-      asMessageList(detail.messages).forEach((message) => addConsole("AGENT", message));
-      asMessageList(detail.warnings).forEach((warning) => addConsole("AGENT", warning, "warning"));
-      if (detail.value_text) addConsole("AGENT", detail.value_text);
-      if (detail.error_message) addConsole("AGENT", detail.error_message, "error");
+      addLog("AGENT", `run_r > ${detail.code || run.code_preview || ""}`);
+      if (detail.stdout) addLog("AGENT", detail.stdout);
+      asMessageList(detail.messages).forEach((message) => addLog("AGENT", message));
+      asMessageList(detail.warnings).forEach((warning) => addLog("AGENT", warning, "warning"));
+      if (detail.value_text) addLog("AGENT", detail.value_text);
+      if (detail.error_message) addLog("AGENT", detail.error_message, "error");
     } catch (error) {
-      addConsole("SYSTEM", `Could not display Agent run ${run.run_id}: ${error}`, "error");
+      addLog("SYSTEM", `Could not display Agent run ${run.run_id}: ${error}`, "error");
     }
   }
 }
@@ -4658,7 +4693,7 @@ function renderAgentTimeline() {
     paragraph.textContent = `${prettyAgentStatus(turn.status)} · ${turn.model || "model?"}${turn.pending_request_id ? ` · ${turn.pending_request_id}` : ""}`;
     content.append(heading, paragraph);
     const detail = truncateText(turn.error_message || turn.final_message || "", 140);
-    if (detail) {
+    if (detail && !selected) {
       const detailLine = document.createElement("p");
       detailLine.textContent = detail;
       content.append(detailLine);
@@ -4668,6 +4703,24 @@ function renderAgentTimeline() {
       fullMessage.className = "timeline-final-message";
       fullMessage.textContent = turn.final_message;
       content.append(fullMessage);
+    }
+    const events = selected && state.selectedTurnDetail?.events?.length
+      ? state.selectedTurnDetail.events
+      : [];
+    if (events.length) {
+      const activityExpanded = state.agentActivityExpanded.has(turn.turn_id);
+      const activityButton = document.createElement("button");
+      activityButton.type = "button";
+      activityButton.className = "timeline-activity-toggle";
+      activityButton.setAttribute("aria-expanded", String(activityExpanded));
+      activityButton.textContent = `${activityExpanded ? "Hide" : "Show"} activity · ${events.length}`;
+      activityButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (activityExpanded) state.agentActivityExpanded.delete(turn.turn_id);
+        else state.agentActivityExpanded.add(turn.turn_id);
+        renderAgentTimeline();
+      });
+      content.append(activityButton);
     }
     row.append(marker, content);
     row.addEventListener("click", async () => {
@@ -4679,8 +4732,8 @@ function renderAgentTimeline() {
       updateAgentHeader();
     });
     panel.append(row);
-    if (state.selectedTurnId === turn.turn_id && state.selectedTurnDetail?.events?.length) {
-      for (const event of state.selectedTurnDetail.events) {
+    if (state.agentActivityExpanded.has(turn.turn_id) && events.length) {
+      for (const event of events) {
         const child = document.createElement("div");
         child.className = `timeline-item ${agentStatusTone(event.status)} timeline-child`;
         const childMarker = document.createElement("span");
@@ -4725,14 +4778,23 @@ function renderTaskRail() {
   const turns = state.agentTurns.slice(0, 12);
   if (!turns.length) {
     const empty = document.createElement("div");
-    empty.className = "task-rail-item";
-    empty.innerHTML = '<span style="color:var(--muted);font-size:11px">No tasks yet. Start by asking Rho.</span>';
+    empty.className = "task-rail-empty";
+    const heading = document.createElement("strong");
+    heading.textContent = "Start a task";
+    const description = document.createElement("p");
+    description.textContent = "Describe the scientific goal, then review the work beside your source.";
+    const start = document.createElement("button");
+    start.type = "button";
+    start.textContent = "Ask Rho";
+    start.addEventListener("click", startNewAgentTask);
+    empty.append(heading, description, start);
     list.append(empty);
     return;
   }
 
   for (const turn of turns) {
-    const item = document.createElement("div");
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = `task-rail-item${state.selectedTurnId === turn.turn_id ? " active" : ""}`;
     item.dataset.turnId = turn.turn_id;
 
@@ -4756,6 +4818,17 @@ function renderTaskRail() {
   if (header) header.textContent = `Tasks (${state.agentTurns.length})`;
 }
 
+function startNewAgentTask() {
+  state.selectedTurnId = null;
+  state.selectedTurnDetail = null;
+  renderTaskRail();
+  renderAgentTimeline();
+  renderApprovalPanel();
+  renderFileEditPanel();
+  updateAgentHeader();
+  $("#agentInput").focus();
+}
+
 async function selectTaskTurn(turnId) {
   state.selectedTurnId = turnId;
   state.selectedTurnDetail = await invoke("get_agent_turn_detail", { turnId });
@@ -4766,16 +4839,7 @@ async function selectTaskTurn(turnId) {
   updateAgentHeader();
 }
 
-$("#taskRailNew").addEventListener("click", () => {
-  state.selectedTurnId = null;
-  state.selectedTurnDetail = null;
-  renderTaskRail();
-  renderAgentTimeline();
-  renderApprovalPanel();
-  renderFileEditPanel();
-  updateAgentHeader();
-  $("#agentComposer").focus();
-});
+$("#taskRailNew").addEventListener("click", startNewAgentTask);
 
 function renderApprovalPanel() {
   const approval = state.pendingApprovals.find((item) => item.turn_id === state.selectedTurnId) || state.pendingApprovals[0] || null;
@@ -4919,7 +4983,7 @@ function renderRuns() {
       cancel.addEventListener("click", async () => {
         try {
           await invoke("cancel_run", { runId: run.run_id });
-          addConsole("SYSTEM", `Interrupt requested for ${run.run_id}`);
+          addLog("SYSTEM", `Interrupt requested for ${run.run_id}`);
           await loadRunData();
         } catch (error) {
           toast(String(error), true);
@@ -5119,26 +5183,15 @@ function renderProblems() {
   }
 }
 
-function describeExecution(request) {
-  if (!request) return "Code";
-  if (request.type === "console") return "Console";
-  if (request.type === "selection") return `Selection · ${request.sourcePath}`;
-  if (request.type === "line") return `Line ${request.line} · ${request.sourcePath}`;
-  return `File · ${request.sourcePath} · rev ${request.documentVersion ?? 0}`;
-}
-
-function renderExecution(response, request, origin = "USER") {
+function renderExecution(response, request) {
   const execution = response.execution || {};
   updateIdentity(response.workspace);
-  if (request?.sourcePath) {
-    addConsole("SOURCE", describeExecution(request));
-  }
-  addConsole(origin, execution.stdout);
-  asMessageList(execution.messages).forEach((message) => addConsole(origin, message));
-  asMessageList(execution.warnings).forEach((warning) => addConsole(origin, warning, "warning"));
-  if (execution.value) addConsole(origin, execution.value);
+  addTerminalOutput(execution.stdout);
+  asMessageList(execution.messages).forEach((message) => addTerminalOutput(message));
+  asMessageList(execution.warnings).forEach((warning) => addTerminalOutput(warning, "warning"));
+  if (execution.value) addTerminalOutput(execution.value);
   if (execution.error) {
-    addConsole(origin, execution.error.message, "error");
+    addTerminalOutput(execution.error.message, "error");
   }
   if (execution.kind === "render") {
     updateLastRender({
@@ -5150,7 +5203,7 @@ function renderExecution(response, request, origin = "USER") {
       message: execution.error?.message || execution.stdout || null,
     });
     if (execution.ok) {
-      addConsole("SYSTEM", `Render completed · ${execution.output_path || execution.source_path || "output"}`);
+      addLog("SYSTEM", `Render completed · ${execution.output_path || execution.source_path || "output"}`);
     } else if (execution.error?.message) {
       addProblem(execution.error.message, "", {
         origin: "user",
@@ -5164,8 +5217,8 @@ function renderExecution(response, request, origin = "USER") {
   }
   for (const wrapped of asMessageList(response.events)) {
     const event = wrapped.event || wrapped;
-    if (event.type === "stream") addConsole(origin, event.text, event.name === "stderr" ? "error" : "");
-    if (event.type === "error") addConsole(origin, event.traceback || "R execution failed", "error");
+    if (event.type === "stream") addTerminalOutput(event.text, event.name === "stderr" ? "error" : "");
+    if (event.type === "error") addTerminalOutput(event.traceback || "R execution failed", "error");
     if (event.type === "display_data") renderDisplay(event.data || {});
   }
 }
@@ -5467,10 +5520,10 @@ function renderPlots() {
   renderArtifactRecords();
 }
 
-async function executeCode(request, origin = "USER") {
+async function executeCode(request) {
   if (state.busy || !request?.code?.trim()) return;
   setBusy(true);
-  addConsole(origin, `> ${request.code}`);
+  addTerminalCommand(request.code);
   try {
     const response = await invoke("execute_r", {
       request: {
@@ -5482,16 +5535,17 @@ async function executeCode(request, origin = "USER") {
     });
     const documentState = activeDocument();
     if (documentState && request.type !== "console") documentState.lastExecutedRange = request.range || null;
-    renderExecution(response, request, origin);
+    renderExecution(response, request);
     await refreshEnvironment();
   } catch (error) {
     const message = String(error);
-    addConsole("SYSTEM", message, "error");
+    addTerminalOutput(message, "error");
     addProblem(message);
     toast(message, true);
   } finally {
     await loadRunData();
     setBusy(false);
+    if (!$("#consolePanel").classList.contains("hidden")) $("#consoleInput").focus();
   }
 }
 
@@ -6108,9 +6162,37 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   state.previewScenarioApplied = true;
+  if (scenario === "agent-first-direct") {
+    state.posture = "agent";
+    state.agentSurface = "direct";
+    if (previewParams.get("state") !== "empty") {
+      await invoke("run_agent", {
+        prompt: "Review the current QC analysis and identify the next decision.",
+        mode: "ask",
+      });
+      await loadAgentData();
+    }
+    applyPostureLayout();
+    $("#agentInput").value = previewParams.get("state") === "empty"
+      ? ""
+      : "Compare the flagged samples with the current thresholds";
+    setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
   applyWorkbenchLayout("analyze");
+  if (scenario === "console-logs") {
+    addTerminalCommand("summary(iris$Sepal.Length)");
+    addTerminalOutput("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.\n  4.300   5.100   5.800   5.843   6.400   7.900");
+    addTerminalCommand("mean(iris$Sepal.Length)");
+    addTerminalOutput("[1] 5.843333");
+    addLog("SYSTEM", "R version 4.6.1 · Ark PID 22988");
+    addLog("AGENT", "run_r completed in Agent R");
+    switchDockTab("console");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   if (scenario === "wp2-data-viewer") {
     await inspectEnvironmentObject(previewParams.get("object") || "qc");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
@@ -6191,13 +6273,70 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
     target.id = "previewEvidence";
     target.hidden = true;
     document.body.append(target);
+  }
+  if (scenario === "console-logs") {
+    const lastEntry = $("#consoleOutput .terminal-entry:last-child");
+    const transcript = rectEvidence($("#consoleOutput"));
+    const prompt = rectEvidence($(".console-input"));
+    const tabs = rectEvidence($(".dock-tabs"));
+    const evidence = {
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+      active_dock_tab: document.querySelector("[data-dock-tab].active")?.dataset.dockTab || null,
+      counts: {
+        terminal_entries: $$("#consoleOutput .terminal-entry").length,
+        log_entries: $$("#logsOutput .log-entry").length,
+      },
+      panels: {
+        console_hidden: $("#consolePanel").classList.contains("hidden"),
+        logs_hidden: $("#logsPanel").classList.contains("hidden"),
+      },
+      overlaps: {
+        last_entry_with_prompt: rectsOverlap(rectEvidence(lastEntry), prompt),
+      },
+      ordering: {
+        prompt_after_transcript: Boolean(transcript && prompt && prompt.top >= transcript.bottom),
+      },
+      rects: { transcript, prompt, tabs },
+    };
+    target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "agent-first-direct") {
+    const taskRail = rectEvidence($("#taskRail"));
+    const agentFlow = rectEvidence($("#agentPanel"));
+    const workSurface = rectEvidence($(".workspace"));
+    const composer = rectEvidence($(".agent-composer"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      posture: state.posture,
+      surface: state.agentSurface,
+      mode: state.agentMode,
+      counts: { tasks: state.agentTurns.length },
+      visible: {
+        task_rail: Boolean(taskRail && taskRail.width > 0 && taskRail.height > 0),
+        human_layout_presets: getComputedStyle($(".work-modes")).display !== "none",
+        act_authorization: !$(".act-authorization").classList.contains("hidden"),
+      },
+      widths: {
+        task_rail: taskRail?.width || 0,
+        agent_flow: agentFlow?.width || 0,
+        work_surface: workSurface?.width || 0,
+      },
+      overlaps: {
+        composer_with_work_surface: rectsOverlap(composer, workSurface),
+      },
+    });
+    return;
   }
   if (scenario === "wp3-artifacts") {
     const history = rectEvidence($("#plotHistory"));
@@ -7534,7 +7673,7 @@ async function sendAgentPrompt() {
 
 function switchDockTab(name) {
   $$("[data-dock-tab]").forEach((button) => button.classList.toggle("active", button.dataset.dockTab === name));
-  ["console", "plots", "problems"].forEach((tab) => $(`#${tab}Panel`).classList.toggle("hidden", tab !== name));
+  ["console", "logs", "plots", "problems"].forEach((tab) => $(`#${tab}Panel`).classList.toggle("hidden", tab !== name));
 }
 
 function switchContextTab(name) {
@@ -7555,22 +7694,19 @@ function applyWorkbenchLayout(layout) {
   requestAnimationFrame(() => layoutEditor());
 }
 
-function togglePosture() {
-  const next = state.posture === "human" ? "agent" : "human";
-  state.posture = next;
-  applyPostureLayout();
-  scheduleSessionSave();
-}
-
 function applyPostureLayout() {
   const shell = $(".app-shell");
   const isAgent = state.posture === "agent";
 
   shell.classList.toggle("agent-first", isAgent);
+  document.body.classList.toggle("agent-posture", isAgent);
   shell.classList.toggle("layout-code", !isAgent && state.humanPreset === "code");
 
-  $("#postureLabel").textContent = isAgent ? "Agent" : "Human";
-  $("#postureSwitcher").setAttribute("aria-pressed", String(isAgent));
+  $$('[data-posture]').forEach((button) => {
+    const selected = button.dataset.posture === state.posture;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
 
   // Human-first layout buttons are only active in human posture
   $$("[data-layout]").forEach((button) => {
@@ -7600,7 +7736,12 @@ function applyPostureLayout() {
   requestAnimationFrame(() => layoutEditor());
 }
 
-$("#postureSwitcher").addEventListener("click", togglePosture);
+$$('[data-posture]').forEach((button) => button.addEventListener("click", () => {
+  if (button.dataset.posture === state.posture) return;
+  state.posture = button.dataset.posture;
+  applyPostureLayout();
+  scheduleSessionSave();
+}));
 
 function switchAgentSurface(name) {
   state.agentSurface = name;
@@ -8019,12 +8160,12 @@ const panelDefaults = {
 
 function agentComposerLimits() {
   const height = $("#agentPanel").getBoundingClientRect().height;
-  return [140, Math.max(140, height > 0 ? height - 180 : 480)];
+  return [118, Math.max(118, height > 0 ? height - 180 : 480)];
 }
 
 function setAgentComposerHeight(requested, persist = true) {
   const limits = agentComposerLimits();
-  const value = Math.round(clamp(Number(requested) || 190, limits[0], limits[1]));
+  const value = Math.round(clamp(Number(requested) || 154, limits[0], limits[1]));
   $("#agentPanel").style.setProperty("--agent-composer-height", `${value}px`);
   $("#agentComposerResizeHandle").setAttribute("aria-valuenow", String(value));
   if (persist) localStorage.setItem("rho.agentComposerHeight", String(value));
@@ -8040,7 +8181,7 @@ function setupAgentComposerResizer() {
     if (event.button !== 0) return;
     active = true;
     startingPointer = event.clientY;
-    startingHeight = Number(handle.getAttribute("aria-valuenow")) || 190;
+    startingHeight = Number(handle.getAttribute("aria-valuenow")) || 154;
     handle.setPointerCapture(event.pointerId);
     handle.classList.add("active");
     document.body.classList.add("resizing", "resizing-horizontal");
@@ -8059,17 +8200,17 @@ function setupAgentComposerResizer() {
   };
   handle.addEventListener("pointerup", stop);
   handle.addEventListener("pointercancel", stop);
-  handle.addEventListener("dblclick", () => setAgentComposerHeight(190));
+  handle.addEventListener("dblclick", () => setAgentComposerHeight(154));
   handle.addEventListener("keydown", (event) => {
     const amount = event.shiftKey ? 40 : 12;
     if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
     event.preventDefault();
-    const current = Number(handle.getAttribute("aria-valuenow")) || 190;
+    const current = Number(handle.getAttribute("aria-valuenow")) || 154;
     setAgentComposerHeight(current + (event.key === "ArrowUp" ? amount : -amount));
   });
   const stored = Number(localStorage.getItem("rho.agentComposerHeight"));
-  $("#agentPanel").style.setProperty("--agent-composer-height", `${Number.isFinite(stored) && stored > 0 ? stored : 190}px`);
-  handle.setAttribute("aria-valuenow", String(Number.isFinite(stored) && stored > 0 ? stored : 190));
+  $("#agentPanel").style.setProperty("--agent-composer-height", `${Number.isFinite(stored) && stored > 0 ? stored : 154}px`);
+  handle.setAttribute("aria-valuenow", String(Number.isFinite(stored) && stored > 0 ? stored : 154));
 }
 
 function clamp(value, minimum, maximum) {
@@ -8487,7 +8628,7 @@ async function finishWorkbenchStartup(startupView) {
     updateIdentity(status.workspace);
     $("#rVersion").textContent = status.r_version || "R";
     setKernelStatus("idle", "R idle");
-    addConsole("SYSTEM", `${status.r_version} · Ark PID ${status.kernel_pid}`);
+    addLog("SYSTEM", `${status.r_version} · Ark PID ${status.kernel_pid}`);
     revealWorkbench();
     maybeCheckForUpdates();
     await loadAgentLlmSettings();
@@ -8522,7 +8663,7 @@ async function finishWorkbenchStartup(startupView) {
   } catch (error) {
     if ($("#startupGate").classList.contains("hidden")) {
       setKernelStatus("error", "R unavailable");
-      addConsole("SYSTEM", String(error), "error");
+      addLog("SYSTEM", String(error), "error");
       addProblem(String(error));
       toast(String(error), true);
       return;
@@ -8615,6 +8756,11 @@ $("#projectSwitcher").addEventListener("click", async () => {
   }
 });
 $("#projectBannerAction").addEventListener("click", () => $("#projectSwitcher").click());
+$("#consoleTerminal").addEventListener("click", (event) => {
+  if (event.target === $("#consoleTerminal") || event.target === $("#consoleOutput")) {
+    $("#consoleInput").focus();
+  }
+});
 $("#consoleRunButton").addEventListener("click", () => {
   const value = $("#consoleInput").value;
   $("#consoleInput").value = "";
@@ -8684,6 +8830,8 @@ $$("[data-side-tab]").forEach((button) => button.addEventListener("click", () =>
 $$("[data-agent-mode]").forEach((button) => button.addEventListener("click", () => {
   state.agentMode = button.dataset.agentMode;
   $$("[data-agent-mode]").forEach((value) => value.classList.toggle("active", value === button));
+  syncAgentModeControl();
+  $("#agentModeControl").removeAttribute("open");
 }));
 $("#actAutoApprove").addEventListener("change", (event) => {
   state.actAutoApprove = Boolean(event.target.checked);
@@ -8799,6 +8947,7 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     await invoke("clear_agent_history");
     state.selectedTurnId = null;
     state.selectedTurnDetail = null;
+    state.agentActivityExpanded.clear();
     state.fileEditProposal = null;
     state.fileEditUndo = null;
     state.fileEditDecisions = new Map();
@@ -9054,6 +9203,9 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#agentModelSelector") && !event.target.closest("#agentModelSelectorMenu")) {
     closeAgentModelSelector();
   }
+  if (!event.target.closest("#agentModeControl")) {
+    $("#agentModeControl").removeAttribute("open");
+  }
   if (!event.target.closest("#agentInput") && !event.target.closest("#agentFileMentions")) {
     hideAgentFileMentions();
   }
@@ -9100,7 +9252,7 @@ $("#interruptButton").addEventListener("click", async () => {
     const response = state.activeRunId
       ? await invoke("cancel_run", { runId: state.activeRunId })
       : await invoke("interrupt_r");
-    addConsole("SYSTEM", "Interrupt requested");
+    addLog("SYSTEM", "Interrupt requested");
     if (response?.run_id) state.activeRunId = response.run_id;
     await loadRunData();
   } catch (error) {
@@ -9119,7 +9271,7 @@ $("#restartButton").addEventListener("click", async () => {
     state.selectedObjectName = null;
     state.selectedObjectDetail = null;
     renderEnvironment();
-    addConsole("SYSTEM", `Workspace restarted · Ark PID ${status.kernel_pid}`);
+    addLog("SYSTEM", `Workspace restarted · Ark PID ${status.kernel_pid}`);
     await loadRunData();
   } catch (error) {
     setKernelStatus("error", "R unavailable");

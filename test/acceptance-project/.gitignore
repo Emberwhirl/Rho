@@ -6,3 +6,5 @@
 reports/*.html
 reports/*_files/
 reports/*.pdf
+data/cell-qc.csv
+output/

@@ -30,6 +30,17 @@ this file records behavior that is already available in a released build.
 - Task rail with mode badges (Ask/Plan/Act), status dots, and preview text.
 - Direct surface with Agent flow, Monitor (run list), and Review (findings)
   panels.
+- Simplified the Agent composer to one primary `Ask Rho` entry with
+  progressively disclosed Ask/Plan/Act controls and Act-only authorization.
+- Improved the Agent-first Direct surface with a compact task rail, collapsed
+  project guidance, a wider scientific work surface, and narrow-window
+  fallbacks that avoid horizontal overflow.
+- Replaced the changing posture button with an explicit Human/Agent selector
+  and renamed Agent-first navigation to the task-oriented Task, Runs, and
+  Review surfaces.
+- Reduced Agent-first noise by showing each completed answer once, collapsing
+  raw tool activity on demand, compacting the composer, and simplifying the
+  Agent-posture topbar.
 
 #### RA-RC2: Reproducibility audit
 
@@ -69,6 +80,9 @@ this file records behavior that is already available in a released build.
 
 ### Changed
 
+- Reworked the execution dock so Console is a continuous Workspace R transcript
+  and prompt, while startup, Agent R, render, interrupt, and restart status is
+  presented in a separate Logs tab.
 - Version advances to `0.4.0-dev.0` to reflect Waves 4-14 implementation scope.
 
 ## 0.3.0-dev.0 - 2026-07-31

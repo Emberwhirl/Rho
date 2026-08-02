@@ -1,6 +1,6 @@
 # WS2-P1: Air-backed R Function Index
 
-Status: active
+Status: accepted focused implementation; broader WS2 acceptance remains open
 Parent: Wave 8 WS2 editor-intelligence checkpoint
 
 ## Scope

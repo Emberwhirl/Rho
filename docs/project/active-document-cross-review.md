@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-01
+Review date: 2026-08-02
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 ## Purpose
@@ -46,15 +46,18 @@ semantics.
 | `plans/active-2026-07-31-bh5-incremental-module-boundaries-handoff.md` | accepted | behavior-neutral extraction of store and command modules by durable domain (runs, Agent, Artifacts, environment, project/session) | BH5 extraction and regression evidence complete per domain |
 | `plans/active-2026-07-31-ra-rc1-run-comparison-handoff.md` | accepted | read-only deterministic two-run comparison over existing durable records | RA-RC1 is accepted; UX1 active |
 | `plans/active-2026-07-31-ux1-interaction-foundation-handoff.md` | accepted | interaction inventory, terminology contract, state presentation contract, mock fixtures, usability protocol | UX1 accepted; UX2 may proceed |
+| `plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | simplified Agent entry and current Agent-first Direct presentation only | policy and authority boundaries preserved; installed-app acceptance remains open; broader UX4 work still requires separate authorization |
+| `plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | second-round Agent-first navigation, progressive activity disclosure, and presentation density | internal posture/surface values and all authority boundaries preserved; installed-app acceptance remains open |
+| `plans/active-2026-08-02-console-logs-separation-spec.md` | active; CL1 implemented and automated/browser evidence passed | frontend-only separation of the Workspace R Console transcript from operational and Agent Logs | installed-app/manual acceptance remains open and separate |
 | `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed broader direction; BH1-BH5 accepted, RA-RC1 authorized, and Waves 4-14 not authorized | BH1-BH5 baseline-hardening direction beyond the focused active handoffs | BH5 acceptance; RA-RC1 active |
 | `design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md` | proposed; independently cross-reviewed | task-level interaction, intent entry, consequence-based decisions, guided recovery, progressive disclosure, and user-facing terminology | UX1 may define contracts; behavioral packages wait for their owning hardening, posture, or feature entry gates |
 | `design/proposed-2026-07-26-public-workbench-protocol-cli-mcp-design.md` | proposed; independently cross-reviewed | WB1 public read-only semantic contract, WB2 authenticated local CLI/MCP/events, and WB3 broker-admitted external R execution | `0.3.x` and BH1-BH3 accepted; each WB package separately authorized and stopped for review |
 | `design/proposed-2026-07-26-reproducibility-audit-and-run-comparison-design.md` | proposed; independently cross-reviewed; RA-RC1 authorized under `active-2026-07-31-ra-rc1-run-comparison-handoff.md` | read-only deterministic audit and two-run comparison semantics | `0.3.x` milestone acceptance plus an approved RA-RC1 interface checkpoint and durable run-project identity contract |
 | `design/proposed-2026-07-26-evidence-workspace-and-claim-review-design.md` | proposed; independently cross-reviewed | project-scoped scholarly evidence entries, citation normalization, claim-to-evidence linkage, and bounded claim-review semantics | `0.3.x` milestone acceptance, BH1-BH3 acceptance, RA-RC1 acceptance, and a separately authorized EW-CR1 handoff |
-| `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed; open-source component boundaries cross-reviewed | post-`0.3.x` scientific capability direction; Monaco plus one Air/R `languageserver` backend, `lintr`, TanStack Table, `gitoxide`, Quarto jobs, and `targets` adapters | Waves 8-14 schedule bounded packages after earlier gates; each still requires separate authorization and an active handoff |
+| `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed umbrella direction; partially implemented through separately accepted packages; reconciled 2026-08-02 | post-`0.3.x` scientific capability direction across WS1-WS7 | remaining WS1/WS2/WS3/WS4/WS5/WS6/WS6A scope and all WS7 work require separate focused authorization; implementation and manual acceptance remain distinct |
 | `plans/proposed-2026-07-20-human-agent-workbench-posture-design.md` | proposed | Human/Agent posture and Direct/Monitor/Review information architecture | open decisions close and a separate posture package is approved |
 | `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed | visual tokens, icons, component presentation, responsive behavior, themes | Phase 1 may be separately approved; structural phases wait for posture coordination |
-| `plans/proposed-2026-08-01-next-phase-task-plan.md` | proposed; cross-referenced against roadmap and proposals | decomposition of remaining acceptance gates, implementation gaps, and new capabilities into sequenced work packages | each work package separately authorized with a focused handoff; P1 gates are blocking |
+| `plans/proposed-2026-08-01-next-phase-task-plan.md` | proposed coordination plan; focused P2/P3 packages reconciled 2026-08-02 | current decomposition of remaining acceptance gates and proposal gaps | each unchecked work package requires a focused handoff; P1 gates remain blocking |
 | `architecture/proposed-aisdk-family-change-proposals.md` | proposed and deferred | catalog of possible upstream seams | a concrete current gap and separate cross-repository approval exist |
 
 ## Implemented Status Corrections

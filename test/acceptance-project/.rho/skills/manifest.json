@@ -5,6 +5,12 @@
       "name": "Iris Analyzer",
       "description": "Guide for exploratory analysis of the iris dataset. Helps with R code for summary statistics, clustering, and visualization.",
       "version": "1.0.0"
+    },
+    {
+      "id": "qc-reviewer",
+      "name": "Single-cell QC Reviewer",
+      "description": "Review the bundled single-cell QC workflow, diagnose the deliberate column-name failure, and propose a minimal correction.",
+      "version": "1.0.0"
     }
   ]
 }

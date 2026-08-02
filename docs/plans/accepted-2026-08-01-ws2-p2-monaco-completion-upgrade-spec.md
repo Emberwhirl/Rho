@@ -1,7 +1,7 @@
 # WS2-P2: Monaco Completion Upgrade
 
-Status: active
-Parent: [`active-2026-08-01-ws2-p1-air-function-index-spec.md`](active-2026-08-01-ws2-p1-air-function-index-spec.md)
+Status: accepted focused implementation; broader WS2 acceptance remains open
+Parent: [`accepted-2026-08-01-ws2-p1-air-function-index-spec.md`](accepted-2026-08-01-ws2-p1-air-function-index-spec.md)
 
 ## Scope
 

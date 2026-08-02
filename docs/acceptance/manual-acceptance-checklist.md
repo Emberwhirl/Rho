@@ -4,16 +4,19 @@
 > **SHA-256**: `08D92BD42DCB1C40A29B3AE9266E984D18CC4D820DC76C8320DD9F358568C837`
 > **日期**: 2026-08-02
 > **前提**: Windows 10/11 x64, R 4.4+, WebView2 Runtime
+> **状态**: 该安装包早于本轮 Console/Logs 和 Agent 界面修改，不是当前集成状态的最终验收候选。重建候选后必须同步更新版本、路径和 SHA-256，再开始记录人工证据。
 
 每个检查项标记: 通过 / 失败 / 跳过（附原因）
 
 ## 配套测试项目
 
-验收使用 `test/acceptance-project/` 目录下的 iris 分析小项目。安装并启动 Rho 后：
+验收使用 `test/acceptance-project/` 提供的单细胞 QC、iris、编辑器、Git 和文档渲染实例。安装并启动 Rho 后：
 
-1. **File > Open Project** → 选择 `test/acceptance-project/`
-2. 按以下顺序操作，每个 Gate 标注了对应的测试文件
+1. 运行 `test/acceptance-project/tools/prepare-manual-fixtures.ps1`
+2. **File > Open Project** → 选择 `test/generated-manual-fixtures/working-project/`
+3. 先按项目内 `MANUAL-ACCEPTANCE.md` 完成实际工作流，再用本清单逐 Gate 记录结果
 
+> 先阅读项目内的 `MANUAL-ACCEPTANCE.md`；它包含候选包前提、边界夹具生成方式和证据记录入口。
 > 项目的 `README.md` 有完整的文件清单和使用说明。
 > `scripts/02-modeling.R` 末尾有故意错误；`reports/iris-analysis.Rmd` 有故意未闭合 chunk。
 
@@ -36,7 +39,7 @@
 - [ ] **G1.1** 从开始菜单启动 Rho，确认主窗口在 5 秒内出现（先出现 shell 框架，再加载 R）
 - [ ] **G1.2** 确认顶部栏显示 Rho 品牌标记、菜单（File / Edit / Session / Tools / Help）
 - [ ] **G1.3** 确认项目名称区域显示"Open an R project to begin"
-- [ ] **G1.4** 确认 Console 面板出现 R 版本信息和启动消息
+- [ ] **G1.4** 确认 Logs 面板出现 R 版本信息和启动消息，Console 保持为 Workspace R 输入输出
 - [ ] **G1.5** （仅首次或清除数据后）确认出现 Onboarding 欢迎面板
 - [ ] **G1.6** 确认 Environment 面板显示 R 运行时信息、库路径、renv 状态、Bioconductor、已挂载包
 - [ ] **G1.7** 如果 aisdk 不可用，确认 Agent 面板显示"Unavailable"且有"Retry Agent"按钮
@@ -54,7 +57,7 @@
 - [ ] **G2.4** 切换到 Environment 面板，确认 `iris` 出现在对象列表中（类型 data.frame，预览 150 x 5）
 - [ ] **G2.5** 输入 `plot(iris$Sepal.Length, iris$Petal.Length)` 回车，确认 Plots 面板显示散点图
 - [ ] **G2.6** 输入 `library(ggplot2)` 回车，确认能正常加载（如已安装）
-- [ ] **G2.7** Console 中按上箭头，确认恢复上一条命令历史
+- [ ] **G2.7** 确认提交的命令和 R 结果保留在 Console，启动/运行状态保留在 Logs，切换标签不丢失内容
 
 ---
 
@@ -76,7 +79,7 @@
 
 ## G4: Files 面板 & 项目操作
 
-> 测试项目: `test/acceptance-project/`
+> 测试项目: `test/generated-manual-fixtures/working-project/`
 
 - [ ] **G4.1** 通过 File > Open Project 选择 `test/acceptance-project/`
 - [ ] **G4.2** 确认 Files 面板以树形结构显示 `scripts/`, `reports/`, `.rho/`, `README.md` 等
@@ -92,13 +95,13 @@
 
 ## G5: Git 集成
 
-> 测试项目: `test/acceptance-project/` (自带 `.gitignore`，在 Rho 项目仓库内自动有 Git)
+> 测试项目: `test/generated-manual-fixtures/working-project/`（独立 Git 仓库，不会修改 Rho 源仓库）
 
 - [ ] **G5.1** 确认 Files 面板底部显示 Git 分支名和状态
-- [ ] **G5.2** 确认显示 `test/acceptance-project/` 下新增文件的统计
-- [ ] **G5.3** 修改 `README.md` 某行，确认显示为 modified
-- [ ] **G5.4** 点击 Stage 暂存文件，确认计数变化
-- [ ] **G5.5** 输入 commit message 并 Commit，确认提交成功
+- [ ] **G5.2** 修改 `examples/git-review-demo.txt` 中相隔较远的两处文字，并新增 `notes/manual-review.md`，确认 modified/untracked 统计
+- [ ] **G5.3** 打开 diff，确认两处修改显示为两个可独立审查的 hunk
+- [ ] **G5.4** 只 Stage 第一个 hunk，再 Unstage，确认 staged/unstaged 内容和计数准确变化
+- [ ] **G5.5** 再次 Stage 第一个 hunk；对另一处选择 Restore，先取消再确认，确认只有明确目标被丢弃；最后提交预期内容
 - [ ] **G5.6** （可选）在外部运行 `git checkout` 切换分支制造冲突，确认 conflict banner 出现
 - [ ] **G5.7** （可选）在 banner 中选择 ours/theirs，确认文件更新
 
@@ -109,7 +112,7 @@
 > 测试文件: `reports/iris-analysis.Rmd`
 
 - [ ] **G6.1** 双击 `reports/iris-analysis.Rmd` 在编辑器中打开
-- [ ] **G6.2** 确认 Chunks 面板列出 6 个 chunk（setup, overview, species-counts, sepal-boxplot, petal-boxplot, model, unclosed-demo）
+- [ ] **G6.2** 确认 Chunks 面板列出 7 个 chunk（setup, overview, species-counts, sepal-boxplot, petal-boxplot, model, unclosed-demo）
 - [ ] **G6.3** 切换到另一个 `.R` 文件，确认 Chunks 面板清空；切回 Rmd，确认 chunk 列表恢复
 - [ ] **G6.4** 点击 "unclosed-demo" chunk，确认编辑器跳转到对应行
 - [ ] **G6.5** 确认 "model" chunk 的选项 `fig.width=8, fig.height=5` 正确解析（空格分隔的选项）
@@ -119,7 +122,7 @@
 
 ## G7: Evidence 面板 (Environment Snapshot)
 
-> 测试项目: `test/acceptance-project/`
+> 测试项目: `test/generated-manual-fixtures/working-project/`
 > 在 Console 中执行 `source("scripts/01-load-explore.R")` 确保有活跃环境
 
 - [ ] **G7.1** 切换到 Evidence 标签，确认显示项目环境快照（R 版本、库路径、已安装包列表、renv、Bioconductor）
@@ -162,13 +165,13 @@
 
 ## G10: Agent (Ask / Plan / Act) — 需要 aisdk + 模型凭据
 
-> 测试项目: `test/acceptance-project/` (含 `.rho/skills/iris-analyzer` skill)
+> 测试项目: `test/generated-manual-fixtures/working-project/`（含 `qc-reviewer` 和 `iris-analyzer` skills）
 > 前提: aisdk + 至少一个有效模型凭据
 
-- [ ] **G10.1** 在 Agent 输入框输入 "Analyze the iris dataset"（使用 iris-analyzer skill），选择 Ask 模式，点击 Send
+- [ ] **G10.1** 运行 `examples/single-cell-qc/04-fix-me.R` 产生错误后，在 Ask 输入“Explain the error in examples/single-cell-qc/04-fix-me.R. Do not edit or run anything.”
 - [ ] **G10.2** 确认 Agent 返回文本回答（不产生 R 代码执行）
-- [ ] **G10.3** 切换到 Plan 模式，输入 "Plan an iris analysis"，确认 Agent 给出分析计划
-- [ ] **G10.4** 切换到 Act 模式，输入 "Run k-means clustering on iris with k=3"
+- [ ] **G10.3** 从模式菜单切换到 Plan，请它规划最小修正和验证步骤，确认不会直接执行或改文件
+- [ ] **G10.4** 从模式菜单切换到 Act，确认会话级 R 执行授权选项持续可见，再要求运行相关检查并提出最小文件修改
 - [ ] **G10.5** 确认 Act 模式生成 `run_r` 代码提案，出现 Approve / Reject 按钮
 - [ ] **G10.6** 点击 Approve，确认代码在 Workspace R 中执行
 - [ ] **G10.7** 确认执行结果、输出显示在 Agent 时间线中
@@ -192,11 +195,14 @@
 
 ## G12: Agent-First Posture（三栏布局）
 
-- [ ] **G12.1** 点击顶部 "Agent-First" 开关按钮，确认布局变为三栏（task-rail + agent-flow + work-surface）
+- [ ] **G12.1** 在顶部 Human / Agent 双选控件中选择 Agent，确认 Agent 被明确选中且宽屏布局为 task-rail + agent-flow + work-surface
 - [ ] **G12.2** 确认左侧 task rail 显示 Agent 任务列表，含模式徽章（Ask/Plan/Act）、状态圆点、预览文本
-- [ ] **G12.3** 确认中间 agent-flow 面板有 Monitor（运行列表）和 Review（发现）子面板
+- [ ] **G12.3** 确认中间 agent-flow 使用 Task / Runs / Review 导航，三者可切换且返回 Task 后输入内容仍保留
 - [ ] **G12.4** 在 Agent-First 模式下运行一个 Agent 回合，确认任务列表中新增条目
-- [ ] **G12.5** 点击切换回标准布局，确认恢复正常两栏/三栏
+- [ ] **G12.5** 在输入框保留未发送内容，切换回 Human 再回到 Agent，确认输入、活动文件和所选任务均保留
+- [ ] **G12.6** 确认 Project Skills 默认收起，Human-only 布局按钮不在 Agent 姿态中占位
+- [ ] **G12.7** 将窗口缩小到 900 x 700，确认 task rail 自动退出、Git 冲突条收成提示、无元素重叠或水平滚动
+- [ ] **G12.8** 选择已完成任务，确认最终回答只显示一次；点击 Show activity / Hide activity 可展开和收起工具事件
 
 ---
 
@@ -237,7 +243,7 @@
 
 ## G16: 项目切换
 
-> 测试项目: `test/acceptance-project/`
+> 测试项目: `test/generated-manual-fixtures/working-project/`
 
 - [ ] **G16.1** 在 acceptance-project 中打开 `README.md` 并编辑一行（不保存）
 - [ ] **G16.2** 通过 File > Open Project 切换到另一个项目
@@ -270,7 +276,8 @@
 
 ## G19: 边界情况
 
-> 测试项目: `test/acceptance-project/`
+> 主要测试项目: `test/generated-manual-fixtures/working-project/`
+> 边界夹具: `test/generated-manual-fixtures/` 下的 Unicode/空格、2100 文件和 9 MiB 文件项目
 
 - [ ] **G19.1** 在 Console 执行 `rm(iris)` 清空 `iris`，确认 Environment 面板移除该对象
 - [ ] **G19.2** File > Open Project → 输入一个不存在的路径，确认显示"项目不可用"而不是静默回退
@@ -297,7 +304,7 @@
 | G9: Plots & Render | /8 | | | |
 | G10: Agent | /11 | | | |
 | G11: Manage LLMs | /6 | | | |
-| G12: Agent-First | /5 | | | |
+| G12: Agent-First | /8 | | | |
 | G13: Audit | /4 | | | |
 | G14: Runs & Problems | /6 | | | |
 | G15: 面板布局 | /8 | | | |

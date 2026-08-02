@@ -1,6 +1,6 @@
 # WS3-P1: Sortable Data Viewer Columns
 
-Status: active
+Status: accepted focused implementation; broader WS3 inspection scope remains open
 Parent: Wave 10 WS3 table interaction
 
 ## Scope

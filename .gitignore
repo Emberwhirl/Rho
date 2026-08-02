@@ -13,4 +13,5 @@
 /desktop/resources/runtime/NOTICE
 /desktop/src-tauri/gen/
 .worktrees/
+/test/generated-manual-fixtures/
 

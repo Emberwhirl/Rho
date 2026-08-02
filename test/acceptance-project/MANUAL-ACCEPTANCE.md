@@ -1,0 +1,197 @@
+# Rho Example-driven Manual Acceptance
+
+Status: queued for user execution against an exact installed candidate
+
+This guide turns the full acceptance checklist into one realistic scientific
+workflow. Run it against an exact installed candidate and record evidence in
+`acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`. Fixture preparation does not
+pass a gate.
+
+## 0. Prepare The Candidate And Projects
+
+1. Confirm the version, installer path, and SHA-256 in
+   `../../docs/acceptance/manual-acceptance-checklist.md` match the installer.
+2. Install and launch that candidate. Record SmartScreen, install-path,
+   WebView2, Ark, startup, and recovery observations under G0-G1.
+3. From this directory, generate isolated projects:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\prepare-manual-fixtures.ps1
+   ```
+
+4. Open `../generated-manual-fixtures/working-project` in Rho. This is an
+   independent Git repository, so edits and commits cannot change the Rho
+   source repository.
+
+Expected first view: the project name is `working-project`; Logs contains
+startup/runtime messages; Console is an empty Workspace R transcript with a
+prompt; Files shows `examples/`, `reports/`, and `.rho/skills/`.
+
+## 1. Run A Real Single-cell QC Workflow
+
+Open and run these files in order:
+
+For a one-command smoke of the successful path, run
+`source("examples/single-cell-qc/run-complete-workflow.R")`. For full UI
+acceptance, still open and run the individual files below.
+
+1. `examples/single-cell-qc/01-generate-qc-data.R`
+   - Expected: 240 cells across four samples and `data/cell-qc.csv` is created.
+   - Inspect submitted code and output together in Console, then confirm
+     operational messages remain in Logs.
+2. `examples/single-cell-qc/02-analyze-qc.R`
+   - Expected: `cell_qc`, `qc_thresholds`, and `sample_summary` appear in
+     Environment; `output/qc-summary.csv` is created.
+   - Expected result: 217 of 240 cells pass the declared thresholds.
+   - Run the final `cell_qc` expression by itself. In Data Viewer, verify
+     240 rows, sort `mito_percent`, navigate with Tab, and inspect value
+     formatting.
+3. `examples/single-cell-qc/03-visualize-qc.R`
+   - Expected: a library-complexity scatter plot followed by a mitochondrial
+     percentage boxplot.
+   - Use Plots Session/History, reopen the first plot, and inspect source
+     provenance back to this script.
+
+This flow exercises G2-G4, G7-G9, and G14 with actual project output rather
+than placeholder commands.
+
+## 2. Diagnose And Correct A QC Failure With Agent
+
+Run `examples/single-cell-qc/04-fix-me.R`. It deliberately refers to a missing
+column and should create a source-linked Problem.
+
+1. Open Problems, inspect the error, use Go to source, and try Run again.
+2. In Agent Task, use Ask:
+
+   `Explain the error in examples/single-cell-qc/04-fix-me.R. Do not edit or run anything.`
+
+3. Use Plan:
+
+   `Plan the smallest correction and how to verify it. Keep the QC threshold unchanged.`
+
+4. Use Act:
+
+   `Run the relevant checks and propose the smallest file edit that fixes 04-fix-me.R.`
+
+5. Inspect the exact diff. Reject it once and confirm the file is unchanged;
+   request it again, accept it, and confirm only `mitochondrial_percent` changes
+   to `mito_percent`.
+6. Rerun the file. Expected: it completes and displays the cells requiring
+   mitochondrial review (5 cells in the deterministic fixture). Inspect the
+   final answer once and expand Show activity to review tool events.
+
+This covers G10, G12, G14, the reviewable-edit contract, rejection, acceptance,
+and rerun recovery. Valid model credentials and `aisdk` are prerequisites;
+record an explicit skip if they are unavailable.
+
+Open Tools > Manage LLMs during this scenario. Inspect provider/model status,
+open `.Renviron`, refresh credentials, test the selected connection, close the
+dialog, and verify the updated availability without restarting Rho (G11).
+
+## 3. Experience Editor Intelligence
+
+Open `examples/editor-intelligence.R`:
+
+1. Type after `stats::` and inspect completion.
+2. Hover `median` and open installed Help.
+3. Go to the definition of `flag_low_quality`, then find its project reference.
+4. Confirm the intentionally tight assignment `example_value<-...` appears in
+   Problems when `lintr` is available.
+5. Add a comment, save with Ctrl+S, close the tab, and reopen it.
+6. Modify the same saved file in an external editor and verify Rho detects the
+   change. Then create an unsaved Rho draft, overwrite the file externally, and
+   verify the draft is preserved for review rather than silently replaced.
+
+Also run selected lines, the current line, and the complete file to verify that
+the visible Run action matches its scope. These examples cover G3 and the
+available WS2/WS9 editor capabilities.
+
+## 4. Navigate Chunks And Render Documents
+
+1. Open `reports/cell-qc-report.Rmd`; inspect its four labelled chunks, run one
+   chunk, then Render. Confirm an HTML result and render run are visible.
+2. Open `reports/iris-analysis.Rmd`; confirm `unclosed-demo` is warned as an
+   unclosed chunk and that `model` options are parsed.
+3. Open `reports/iris-summary.qmd`; Render it when Quarto is installed.
+4. Follow any render diagnostic back to source and inspect Plots/Artifacts,
+   Runs, and Audit after completion.
+
+This covers G6, G9, G13, and the render portion of G14. Record missing external
+R Markdown or Quarto prerequisites as skips rather than passes.
+
+## 5. Inspect Environment, Evidence, Runs, And Audit
+
+With the QC workflow still loaded:
+
+1. Search the Environment package inventory for `stats` and `ggplot2`.
+2. Inspect R version, library paths, Bioconductor, `renv` presence/state, and
+   installed package paging under Evidence.
+3. Select the successful analysis run and the deliberate failed run. Confirm
+   their status, source, timing, project, and revision remain distinguishable.
+4. Open Audit with project scope, then inspect run, snapshot, problem, and
+   artifact categories. Change to a run or artifact scope when available.
+
+This is the representative reproducibility check for G7, G13, and G14: the QC
+result must be understandable from files, environment evidence, runs, and
+artifacts without relying on Agent chat alone.
+
+## 6. Review And Commit Selected Git Changes
+
+Stay in the generated `working-project` repository.
+
+1. Edit both widely separated sentences in `examples/git-review-demo.txt` to
+   create two hunks. Create a new file `notes/manual-review.md`.
+2. Open Git review. Confirm branch `main`, modified/untracked counts, and both
+   working-tree diffs.
+3. Stage only the first hunk, inspect the staged/unstaged split, unstage it, and
+   stage it again.
+4. Select the second hunk or file and choose Restore. Cancel once and confirm
+   nothing changes; repeat and explicitly confirm the visible target.
+5. Stage only the intended files, enter `test: record manual QC review`, and
+   commit. Confirm the working tree and history update.
+6. Open the generated `conflict-project`. It contains a real unresolved merge.
+   Confirm the conflict banner names `examples/git-review-demo.txt`; exercise
+   Ours/Theirs or Mark Resolved only after inspecting the file.
+
+Do not run this scenario in the Rho source repository. This covers G5 and the
+WS4 reviewable mutation flow, including rejection and destructive confirmation.
+
+## 7. Verify Persistence, Switching, And Boundaries
+
+1. Leave an unsaved comment in the editor, resize all panel separators, switch
+   Human/Agent, and leave text in Ask Rho. Restart Rho and verify project,
+   document, cursor/draft, panel sizes, and relevant task context recover.
+2. Switch to the generated Unicode/space project at
+   `../generated-manual-fixtures/路径 含 空格/acceptance-project`, run the QC
+   generator, then switch back and verify project isolation.
+3. Open `large-project-2100` and confirm Files applies its documented bound and
+   warning. Open `oversized-file-project/over-8MiB.txt` and confirm a truthful
+   refusal.
+4. At 900 x 700 and 1024 x 680, verify no overlap or page-level horizontal
+   scrolling. At 1920 x 1080, verify the work surface remains primary.
+5. In Console run `for (i in 1:500) print(paste("line", i))` and verify the
+   transcript remains scrollable and responsive.
+6. Open Help > About and verify candidate/build/runtime information. Run Check
+   for Updates and record the reachable, unavailable, or update-available state
+   truthfully. Exercise menu transitions, focus rings, confirmation dialogs,
+   toasts, hover/active states, and Code/Analyze/Agent workspace switching while
+   completing the scenarios above.
+
+This covers G4, G12, G15-G17, and G19. Project switching must not mix files,
+runs, Evidence, Agent state, or Workspace R working directories.
+
+## 8. Record The Result
+
+Use `../../docs/acceptance/manual-acceptance-checklist.md` as the gate-level
+source of truth. Record pass, fail, or justified skip for every applicable
+item, plus screenshots/log paths and the first failing step. Keep these facts
+separate:
+
+- browser or automated verification;
+- representative manual workflow acceptance;
+- exact installed-candidate acceptance;
+- unsigned-internal versus signed-public distribution decision;
+- release GO/NO-GO.
+
+The separate affected cross-package suite rerun is automated evidence and is
+not replaced by this guide.
