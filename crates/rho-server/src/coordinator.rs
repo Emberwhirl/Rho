@@ -1106,6 +1106,8 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     .is_some(),
         })?;
     }
+    let mut artifact_id = None;
+    let mut artifact_media_type = None;
     if !failed && request_type == "workspace.render_document" {
         if let Some(output_path) = result.get("output_path").and_then(Value::as_str) {
             if let Some(project_root) = store.active_project_root()? {
@@ -1119,8 +1121,10 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     source_path.as_deref(),
                     document_version,
                 );
+                let created_artifact_id = render_artifact_id(&request.execution_id);
+                let created_media_type = infer_output_media_type(output_path);
                 store.create_artifact_record(&ArtifactRecordDraft {
-                    artifact_id: format!("artifact_{}_render", request.execution_id),
+                    artifact_id: created_artifact_id.clone(),
                     artifact_kind: "render_output".to_string(),
                     run_id: Some(request.execution_id.clone()),
                     project_root: project_root.clone(),
@@ -1134,7 +1138,7 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     workspace_id: Some(after.workspace_id.clone()),
                     state_revision: Some(after.state_revision as i64),
                     project_revision: Some(after.project_revision as i64),
-                    media_type: infer_output_media_type(output_path),
+                    media_type: created_media_type.clone(),
                     metadata_json: serde_json::to_string(&json!({
                         "tool": result.get("tool").and_then(Value::as_str),
                         "source_path": arguments.get("source_path").and_then(Value::as_str),
@@ -1142,15 +1146,23 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     provenance_complete,
                     incomplete_reason,
                 })?;
+                artifact_id = Some(created_artifact_id);
+                artifact_media_type = Some(created_media_type);
             }
         }
     }
     Ok(json!({
         "execution_id": request.execution_id,
+        "artifact_id": artifact_id,
+        "artifact_media_type": artifact_media_type,
         "execution": result,
         "events": kernel_events,
         "workspace": broker.identity()
     }))
+}
+
+fn render_artifact_id(execution_id: &str) -> String {
+    format!("artifact_{execution_id}_render")
 }
 
 fn valid_caller_execution_id(execution_id: &str) -> bool {
@@ -3910,6 +3922,18 @@ mod tests {
         assert!(!valid_caller_execution_id("render-with-dashes"));
         assert!(!valid_caller_execution_id("render/path"));
         assert!(!valid_caller_execution_id(&"x".repeat(129)));
+    }
+
+    #[test]
+    fn render_artifact_identity_is_bound_to_the_exact_execution() {
+        assert_eq!(
+            render_artifact_id("render_15f0f1b2d4d64e1688a5f8725bc23e7a"),
+            "artifact_render_15f0f1b2d4d64e1688a5f8725bc23e7a_render"
+        );
+        assert_ne!(
+            render_artifact_id("render_a"),
+            render_artifact_id("render_b")
+        );
     }
 
     #[test]

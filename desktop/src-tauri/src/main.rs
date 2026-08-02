@@ -193,10 +193,22 @@ struct RenderJobState {
     pub path: String,
     pub document_version: Option<i64>,
     pub status: String,
+    pub artifact_id: Option<String>,
+    pub output_path: Option<String>,
+    pub tool: Option<String>,
+    pub media_type: Option<String>,
+    pub provenance_complete: Option<bool>,
     pub message: Option<String>,
     pub terminal_reason: Option<String>,
     pub submitted_at: String,
     pub completed_at: Option<String>,
+}
+
+fn attach_render_artifact(job: &mut RenderJobState, artifact: &ArtifactRecordSummary) {
+    job.artifact_id = Some(artifact.artifact_id.clone());
+    job.output_path = Some(artifact.output_path.clone());
+    job.media_type = Some(artifact.media_type.clone());
+    job.provenance_complete = Some(artifact.provenance_complete);
 }
 
 fn render_job_is_terminal(status: &str) -> bool {
@@ -1269,6 +1281,7 @@ async fn render_document_job(
 
     let job_id = format!("render_{}", Uuid::new_v4().simple());
     let job_id_return = job_id.clone();
+    let job_project_root = project_root.clone();
     let render_jobs = state.render_jobs.clone();
     let render_tasks = state.render_tasks.clone();
     {
@@ -1281,6 +1294,11 @@ async fn render_document_job(
                 path: path.clone(),
                 document_version,
                 status: "submitted".to_string(),
+                artifact_id: None,
+                output_path: None,
+                tool: None,
+                media_type: None,
+                provenance_complete: None,
                 message: None,
                 terminal_reason: None,
                 submitted_at: chrono::Utc::now().to_rfc3339(),
@@ -1374,10 +1392,30 @@ async fn render_document_job(
             Some(&job_id),
         )
         .await;
+        let artifact = outcome
+            .as_ref()
+            .ok()
+            .filter(|response| response["execution"]["ok"].as_bool().unwrap_or(false))
+            .and_then(|response| response["artifact_id"].as_str())
+            .and_then(|artifact_id| {
+                store
+                    .get_artifact_record(&job_project_root, artifact_id)
+                    .ok()
+                    .flatten()
+            });
         let mut jobs = render_jobs.lock().await;
         if let Some(job) = jobs.get_mut(&job_id) {
             match outcome {
                 Ok(response) if response["execution"]["ok"].as_bool().unwrap_or(false) => {
+                    job.artifact_id = response["artifact_id"].as_str().map(str::to_string);
+                    job.output_path = response["execution"]["output_path"]
+                        .as_str()
+                        .map(str::to_string);
+                    job.tool = response["execution"]["tool"].as_str().map(str::to_string);
+                    job.media_type = response["artifact_media_type"].as_str().map(str::to_string);
+                    if let Some(artifact) = artifact.as_ref() {
+                        attach_render_artifact(job, artifact);
+                    }
                     finish_render_job(job, "completed", None, Some("completed"));
                 }
                 Ok(response) => {
@@ -2782,19 +2820,26 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
     if !render_job_ids.is_empty() {
         let reconciled = {
             let store = read_store(&state).map_err(display_error)?;
-            render_job_ids
-                .iter()
-                .map(|job_id| {
-                    store
-                        .get_run_detail(&current_project_root, job_id)
-                        .map(|run| (job_id.clone(), run))
-                        .map_err(display_error)
-                })
-                .collect::<Result<Vec<_>, _>>()?
+            let mut reconciled = Vec::with_capacity(render_job_ids.len());
+            for job_id in &render_job_ids {
+                let run = store
+                    .get_run_detail(&current_project_root, job_id)
+                    .map_err(display_error)?;
+                let artifact = store
+                    .get_artifact_record_for_run(&current_project_root, job_id, "render_output")
+                    .map_err(display_error)?;
+                reconciled.push((job_id.clone(), run, artifact));
+            }
+            reconciled
         };
         let mut jobs = state.render_jobs.lock().await;
-        for (job_id, run) in reconciled {
+        for (job_id, run, artifact) in reconciled {
             if let Some(job) = jobs.get_mut(&job_id) {
+                if run.as_ref().is_some_and(|run| run.status == "completed") {
+                    if let Some(artifact) = artifact.as_ref() {
+                        attach_render_artifact(job, artifact);
+                    }
+                }
                 reconcile_render_job(
                     job,
                     run.as_ref().map(|run| run.status.as_str()),
@@ -4360,12 +4405,13 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 mod tests {
     use super::{
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RenderJobState,
-        RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic,
-        classify_startup_error, configure_user_startup, data_view_artifact_metadata,
-        data_view_delimited_text, ensure_artifact_export_target, ensure_supported_r_version,
-        existing_startup_file, finish_render_job, has_png_signature, parse_r_runtime_probe,
-        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
-        safe_delete_project_file, switch_project_with_watcher_factory, write_r_probe_script,
+        RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
+        bounded_diagnostic, classify_startup_error, configure_user_startup,
+        data_view_artifact_metadata, data_view_delimited_text, ensure_artifact_export_target,
+        ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
+        parse_r_runtime_probe, project_switch_blocker, reconcile_render_job,
+        render_job_is_terminal, run_is_retryable, safe_delete_project_file,
+        switch_project_with_watcher_factory, write_r_probe_script,
     };
 
     use crate::project::{
@@ -4374,8 +4420,8 @@ mod tests {
     };
     use rho_server::coordinator::PendingApprovalRegistry;
     use rho_store::{
-        AgentTurnDraft, ApprovalRequestDraft, EnvironmentOperationRequestDraft, RunDraft, Store,
-        normalize_project_root,
+        AgentTurnDraft, ApprovalRequestDraft, ArtifactRecordSummary,
+        EnvironmentOperationRequestDraft, RunDraft, Store, normalize_project_root,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -5210,6 +5256,11 @@ mod tests {
             path: "report.Rmd".to_string(),
             document_version: Some(3),
             status: status.to_string(),
+            artifact_id: None,
+            output_path: None,
+            tool: None,
+            media_type: None,
+            provenance_complete: None,
             message: None,
             terminal_reason: None,
             submitted_at: "2026-08-03T00:00:00Z".to_string(),
@@ -5280,6 +5331,37 @@ mod tests {
         assert_eq!(value["path"], "report.Rmd");
         assert_eq!(value["document_version"], 3);
         assert_eq!(value["status"], "submitted");
+        assert!(value["artifact_id"].is_null());
+    }
+
+    #[test]
+    fn render_job_attaches_only_the_exact_artifact_projection() {
+        let mut job = render_job_fixture("render_1", "D:/project-a", "running");
+        let artifact = ArtifactRecordSummary {
+            artifact_id: "artifact_render_1_render".to_string(),
+            artifact_kind: "render_output".to_string(),
+            run_id: Some("render_1".to_string()),
+            project_root: "D:/project-a".to_string(),
+            output_path: "report.html".to_string(),
+            source_path: Some("report.Rmd".to_string()),
+            execution_mode: Some("render".to_string()),
+            document_version: Some(3),
+            workspace_id: Some("ws-1".to_string()),
+            state_revision: Some(2),
+            project_revision: Some(4),
+            media_type: "text/html".to_string(),
+            metadata_json: "{}".to_string(),
+            provenance_complete: true,
+            incomplete_reason: None,
+            created_at: "2026-08-03T00:00:00Z".to_string(),
+        };
+
+        attach_render_artifact(&mut job, &artifact);
+
+        assert_eq!(job.artifact_id.as_deref(), Some("artifact_render_1_render"));
+        assert_eq!(job.output_path.as_deref(), Some("report.html"));
+        assert_eq!(job.media_type.as_deref(), Some("text/html"));
+        assert_eq!(job.provenance_complete, Some(true));
     }
 }
 

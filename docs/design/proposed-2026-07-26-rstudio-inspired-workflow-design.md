@@ -138,7 +138,7 @@ Their completion does not authorize the unimplemented remainder.
 | WS2 editor and local Help | Partial: Air was selected; dynamic completion, signatures, hover help, project-local go-to-definition, and `lintr` projection are implemented | bounded find-references; package source/help navigation beyond the current fallback; full installed-version help/examples/vignettes and recorded example execution; diagnostic grouping/quick fixes; reviewable formatting and refactors; Agent citations to local Help |
 | WS3 object and artifact inspection | Partial: bounded viewers, Workspace-owned literal search, stable absolute-column sort, matched paging, page-size control, frozen identifier column, keyboard navigation, exact visible-page exports, column type/class/page-missing metadata, distinct special-value rendering, and Artifact provenance are implemented | bounded tree navigation; broader plot zoom/format review; complete common inspection/provenance navigation; TanStack Table remains deferred rather than required for the current vanilla-table slice |
 | WS4 Git | Capability implementation complete: supervised CLI review, guarded file/hunk mutations, restore/commit UI, adversarial repository hardening, and repository-bound replacement guards are verified | installed-app acceptance remains open; current V1 retains the supervised Git CLI instead of `gitoxide` |
-| WS5 Quarto and R Markdown | Partial: chunk discovery/navigation, current/preceding/below/all chunk execution, and asynchronous render polling are implemented | render cancellation and restart reconciliation; render-to-Artifact provenance closure; HTML/PDF inspection and source-linked diagnostic/review loop |
+| WS5 Quarto and R Markdown | Partial: chunk discovery/navigation, current/preceding/below/all chunk execution, asynchronous render polling, exact cancellation/restart reconciliation, and render-to-Artifact provenance review are implemented | HTML/PDF inspection and source-linked diagnostic/review loop |
 | WS6 jobs and Monitor | Partial prototype: Quarto has an in-memory asynchronous job/status adapter | durable typed job records, bounded logs/progress, cancellation, restart/reconnect reconciliation, duplicate prevention, Artifact registration, and a general Monitor job surface |
 | WS6A `targets` | Partial: read-only capability and pipeline inspection are implemented | separately authorized pipeline run/cancel, durable job admission, Artifact registration, selected-result import, and pipeline-to-document orchestration |
 | WS7 debugging and package development | Not started | Ark debugger contract and typed package document/test/build/check jobs |
@@ -556,8 +556,9 @@ Gate:
 
 Reconciled status: partially implemented overall. The vanilla bounded viewer,
 complete supervised-CLI Git review/mutation/hardening workflow, chunk surface,
-and render polling exist. The end-to-end render/Artifact review gate remains
-open; Git installed-app acceptance remains separate.
+render polling, cancellation/restart reconciliation, and exact Artifact review
+exist. Richer HTML/PDF inspection remains open; Git installed-app acceptance
+remains separate.
 
 First extend the accepted viewer contract without changing its data authority.
 The current focused package retained the vanilla table and deferred TanStack

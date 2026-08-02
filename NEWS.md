@@ -14,6 +14,9 @@ this file records behavior that is already available in a released build.
   distinct cancelled/failed/completed feedback, project isolation, and
   truthful Workspace R restart reconciliation. A missing ephemeral job is no
   longer reported as successful completion.
+- Completed background renders now populate Last Render with the exact output,
+  producing run, and provenance state, plus a Review Artifact action bound to
+  the durable `render_output` record actually created by the coordinator.
 
 #### WB1: Read-only public Workbench Protocol
 

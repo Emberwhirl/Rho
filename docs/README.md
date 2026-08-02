@@ -64,6 +64,7 @@ changes.
 - Active broker-owned Data Viewer query: [`plans/active-2026-08-03-ws3-broker-data-query-spec.md`](plans/active-2026-08-03-ws3-broker-data-query-spec.md)
 - Active Data Viewer type and missing-value presentation: [`plans/active-2026-08-03-ws3-type-missing-presentation-spec.md`](plans/active-2026-08-03-ws3-type-missing-presentation-spec.md)
 - Active render cancellation and restart reconciliation: [`plans/active-2026-08-03-render-cancellation-reconciliation-spec.md`](plans/active-2026-08-03-render-cancellation-reconciliation-spec.md)
+- Active render result to Artifact linkage: [`plans/active-2026-08-03-render-artifact-linkage-spec.md`](plans/active-2026-08-03-render-artifact-linkage-spec.md)
 - Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
 - Current `0.3.x` milestone verification: [`verification/0.3x-milestone/verification.md`](verification/0.3x-milestone/verification.md)

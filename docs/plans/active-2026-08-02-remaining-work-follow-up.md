@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **20 open items** and **29 completed
-items**. The 20 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **19 open items** and **30 completed
+items**. The 19 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -18,13 +18,13 @@ included in that checklist count.
 | M1 and `0.3.x` acceptance | 8 | Record representative manual and installed-candidate evidence |
 | WS4 Git completion | 0 | Capability complete; installed-app acceptance remains separate |
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
-| Render job robustness | 1 | Link completed render results to Artifact provenance in the UI |
+| Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 3 | Select lockfile comparison or package mutation as a bounded package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **20** | |
+| **Total** | **19** | |
 
-For near-term planning, this is **12 product implementation items** plus **8
+For near-term planning, this is **11 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -112,6 +112,15 @@ affected automated/browser matrix on 2026-08-03. This closes cancellation and
 restart reconciliation without closing render Artifact UI linkage or
 installed-app acceptance. The checklist is now **20 open / 29 completed**.
 
+The authorized P2-3B package,
+[`active-2026-08-03-render-artifact-linkage-spec.md`](active-2026-08-03-render-artifact-linkage-spec.md),
+completed exact coordinator response identity, job projection, project-scoped
+run-to-Artifact restart lookup, Last Render provenance presentation, exact
+Review Artifact navigation, idempotent browser/mock completion, contract
+review, and the complete affected automated/browser matrix on 2026-08-03.
+This closes the last Render robustness capability item without closing
+installed-app acceptance. The checklist is now **19 open / 30 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
@@ -125,7 +134,7 @@ installed-app acceptance. The checklist is now **20 open / 29 completed**.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 20-item checklist and require separate
+These six directions remain outside the 19-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

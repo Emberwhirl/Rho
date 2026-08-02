@@ -762,6 +762,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
 }
 
 function recordMockRun({
+  runId = null,
   origin = "user",
   status = "completed",
   requestType = "workspace.execute",
@@ -775,10 +776,10 @@ function recordMockRun({
   traceback = [],
   parentRunId = null,
 }) {
-  const runId = nextMockRunId();
+  const resolvedRunId = runId || nextMockRunId();
   const startedAt = new Date().toISOString();
   const entry = {
-    run_id: runId,
+    run_id: resolvedRunId,
     parent_run_id: parentRunId,
     origin,
     status,
@@ -1696,7 +1697,47 @@ async function mockInvoke(command, args) {
       } else if (["submitted", "running"].includes(job.status)) {
         job.poll_count += 1;
         job.status = job.poll_count > 3 ? "completed" : "running";
-        if (job.status === "completed") job.completed_at = new Date().toISOString();
+        if (job.status === "completed") {
+          const run = recordMockRun({
+            runId: job.job_id,
+            origin: "user",
+            status: "completed",
+            requestType: "workspace.render_document",
+            operationClass: "project_mutation",
+            code: `render ${job.path}`,
+            sourcePath: job.path,
+            executionMode: "render",
+            documentVersion: job.document_version,
+          });
+          const outputPath = job.path.replace(/\.(Rmd|qmd)$/i, ".html");
+          mockUpsertProjectFile(mockLastProject, outputPath, "<html><body>Mock render output</body></html>", { trackInTree: false, kind: "artifact" });
+          state.revision.project_revision += 1;
+          updateIdentity(state.revision);
+          run.project_revision_after = state.revision.project_revision;
+          const artifact = createMockArtifactRecord({
+            artifactKind: "render_output",
+            runId: run.run_id,
+            outputPath,
+            sourcePath: job.path,
+            executionMode: "render",
+            documentVersion: job.document_version,
+            workspaceId: run.workspace_id,
+            stateRevision: run.state_revision_after,
+            projectRevision: run.project_revision_after,
+            mediaType: "text/html",
+            metadata: { tool: "rmarkdown", source_path: job.path },
+            provenanceComplete: job.document_version !== null && job.document_version !== undefined,
+            incompleteReason: job.document_version !== null && job.document_version !== undefined
+              ? null
+              : "Source path or document version is unavailable.",
+          });
+          job.artifact_id = artifact.artifact_id;
+          job.output_path = artifact.output_path;
+          job.tool = "rmarkdown";
+          job.media_type = artifact.media_type;
+          job.provenance_complete = artifact.provenance_complete;
+          job.completed_at = new Date().toISOString();
+        }
       }
       const { poll_count: _pollCount, ...view } = job;
       return structuredClone(view);
@@ -6612,7 +6653,7 @@ function renderLastRenderCard() {
     $("#renderResultState").textContent = "idle";
     $("#renderResultSummary").textContent = "No render has been run yet.";
     $("#renderResultPath").textContent = "";
-    for (const id of ["renderOpenSourceButton", "renderShowProblemsButton", "renderShowPlotsButton"]) {
+    for (const id of ["renderOpenSourceButton", "renderReviewArtifactButton", "renderShowProblemsButton", "renderShowPlotsButton"]) {
       $(`#${id}`).disabled = true;
     }
     return;
@@ -6622,12 +6663,17 @@ function renderLastRenderCard() {
   $("#renderResultTitle").textContent = render.tool ? `Last Render · ${render.tool}` : "Last Render";
   $("#renderResultState").textContent = render.ok ? "completed" : (render.phase || "failed");
   $("#renderResultSummary").textContent = render.ok
-    ? `Rendered ${render.sourcePath || "document"} successfully.`
+    ? render.artifactAvailable
+      ? render.fileAvailable === false
+        ? `Rendered ${render.sourcePath || "document"}; the Artifact file is missing.`
+        : `Rendered ${render.sourcePath || "document"}; Artifact provenance is ${render.provenanceComplete ? "complete" : "incomplete"}.`
+      : `Rendered ${render.sourcePath || "document"}; Artifact detail is unavailable.`
     : `${render.message || "Render failed."}`;
   $("#renderResultPath").textContent = render.ok
-    ? `Output: ${render.outputPath || "unavailable"}`
+    ? `Output: ${render.outputPath || "unavailable"}${render.runId ? ` · run ${render.runId}` : ""}`
     : `Source: ${render.sourcePath || "unknown"}${render.phase ? ` · phase ${render.phase}` : ""}`;
   $("#renderOpenSourceButton").disabled = !render.sourcePath;
+  $("#renderReviewArtifactButton").disabled = !render.artifactAvailable;
   $("#renderShowProblemsButton").disabled = !latestRenderProblem();
   $("#renderShowPlotsButton").disabled = !state.plots.some((plot) => plot.source_path === render.sourcePath);
 }
@@ -7828,8 +7874,32 @@ function startRenderPoll(jobId, path) {
         statusEl.style.color = "#155724";
         renderBtn.disabled = false;
         cancelBtn.classList.add("hidden");
-        toast("Render completed");
         await Promise.all([loadRunData(), refreshEnvironment()]);
+        let artifactDetail = null;
+        if (job.artifact_id) {
+          try {
+            artifactDetail = await invoke("get_artifact_record", { artifact_id: job.artifact_id });
+          } catch (error) {
+            addLog("SYSTEM", `Render Artifact detail is unavailable: ${error}`);
+          }
+        }
+        if (artifactDetail?.artifact) {
+          state.selectedArtifactId = artifactDetail.artifact.artifact_id;
+          state.selectedArtifactDetail = artifactDetail;
+        }
+        updateLastRender({
+          ok: true,
+          tool: job.tool || null,
+          sourcePath: path,
+          outputPath: artifactDetail?.artifact?.output_path || job.output_path || null,
+          runId: job.job_id,
+          artifactId: job.artifact_id || null,
+          artifactAvailable: Boolean(artifactDetail?.artifact),
+          provenanceComplete: Boolean(artifactDetail?.artifact?.provenance_complete),
+          fileAvailable: artifactDetail?.file_available ?? null,
+          mediaType: artifactDetail?.artifact?.media_type || job.media_type || null,
+        });
+        toast(artifactDetail?.artifact ? "Render completed · Artifact ready" : "Render completed");
         renderEnvironmentSummary();
         setTimeout(() => statusEl.classList.add("hidden"), 3000);
         return;
@@ -10114,6 +10184,23 @@ $("#renderCancelButton").addEventListener("click", async () => {
 $("#renderOpenSourceButton").addEventListener("click", async () => {
   if (!state.lastRender?.sourcePath) return;
   await openDocument(state.lastRender.sourcePath);
+});
+$("#renderReviewArtifactButton").addEventListener("click", async () => {
+  const artifactId = state.lastRender?.artifactId;
+  if (!state.lastRender?.artifactAvailable || !artifactId) return;
+  try {
+    const detail = await invoke("get_artifact_record", { artifact_id: artifactId });
+    if (!detail?.artifact) throw new Error("Render Artifact is unavailable");
+    state.selectedArtifactId = detail.artifact.artifact_id;
+    state.selectedArtifactDetail = detail;
+    switchDockTab("plots");
+    renderArtifactRecords();
+    if (state.posture === "agent") openAgentWorkSurface("artifact");
+  } catch (error) {
+    state.lastRender.artifactAvailable = false;
+    renderLastRenderCard();
+    toast(`Render Artifact is unavailable: ${error}`, true);
+  }
 });
 $("#renderShowProblemsButton").addEventListener("click", () => {
   if (!latestRenderProblem()) return;

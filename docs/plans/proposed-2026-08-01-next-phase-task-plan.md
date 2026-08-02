@@ -93,12 +93,13 @@ implemented in the existing vanilla table.
 
 ### P2-3: render_document_job Robustness
 
-Current state: asynchronous submission, frontend polling, completion/failure
-feedback, and browser mock polling are implemented.
+Current state: asynchronous submission, frontend polling, exact cancellation,
+restart reconciliation, completion/failure feedback, and render Artifact
+linkage are implemented.
 
 - [x] Frontend job-status polling and completion/failure feedback
 - [x] Cancellation and restart reconciliation
-- [ ] Render result to Artifact provenance link
+- [x] Render result to Artifact provenance link
 
 ## Phase 3: New Capability Implementation
 

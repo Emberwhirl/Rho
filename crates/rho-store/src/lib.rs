@@ -1533,6 +1533,30 @@ impl Store {
             .map_err(StoreError::from)
     }
 
+    pub fn get_artifact_record_for_run(
+        &self,
+        project_root: &str,
+        run_id: &str,
+        artifact_kind: &str,
+    ) -> Result<Option<ArtifactRecordSummary>, StoreError> {
+        self.connection
+            .query_row(
+                "SELECT
+                    artifact_id, artifact_kind, run_id, project_root, output_path, source_path,
+                    execution_mode, document_version, workspace_id, state_revision,
+                    project_revision, media_type, metadata_json, provenance_complete,
+                    incomplete_reason, created_at
+                 FROM artifact_records
+                 WHERE project_root = ?1 AND run_id = ?2 AND artifact_kind = ?3
+                 ORDER BY created_at DESC
+                 LIMIT 1",
+                params![project_root, run_id, artifact_kind],
+                artifact::decode_artifact_record,
+            )
+            .optional()
+            .map_err(StoreError::from)
+    }
+
     pub fn clear_artifact_records(
         &mut self,
         project_root: &str,
@@ -2302,6 +2326,21 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(detail.output_path, "reports/qc.html");
+        let producing_artifact = store
+            .get_artifact_record_for_run("D:/Rho/project", "run_render_1", "render_output")
+            .unwrap()
+            .unwrap();
+        assert_eq!(producing_artifact.artifact_id, "artifact_1");
+        assert!(
+            store
+                .get_artifact_record_for_run(
+                    "D:/Rho/other-project",
+                    "run_render_1",
+                    "render_output",
+                )
+                .unwrap()
+                .is_none()
+        );
         let run = store
             .find_run_detail_for_workspace_state("D:/Rho/project", "ws_test", 11, 5)
             .unwrap()
