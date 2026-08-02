@@ -88,3 +88,51 @@ Stop and amend/review the contract before continuing when:
 
 - For project skill discovery, validate the `.rho/skills` root itself, not just manifest and referenced files.
   Checking only `manifest.json` and relative entries still leaves a hole if `.rho` or `.rho/skills` is a symlink into content outside the project root.
+
+## Windows installer packaging
+
+Trigger phrases: "打包一下安装包", "打包安装包", "build installer", "package the installer"
+
+When the user asks to package the installer, follow this workflow without asking questions:
+
+### 1. Pre-flight checks
+
+```powershell
+# Verify JS syntax
+node --check desktop\dist\app.js
+
+# Verify Ark runtime is bootstrapped
+Test-Path .rho\runtime\ark-0.1.252\ark.exe
+```
+
+If Ark is missing, run `powershell -ExecutionPolicy Bypass -File scripts\bootstrap-ark-windows.ps1` first.
+Do not run R tests or Rust tests during packaging — the build script handles its own compilation and these tests are for development, not packaging.
+
+### 2. Build
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-windows-installer.ps1
+```
+
+This script:
+- selects the GNU Rust toolchain (`stable-x86_64-pc-windows-gnu`) and Rtools45 linker
+- copies Ark runtime resources into the Tauri resource tree
+- runs `npx -y "@tauri-apps/cli@2.11.4" build` from `desktop\src-tauri`
+- produces the NSIS installer
+
+### 3. Report
+
+After the build succeeds, report the two output files with path, size (MB), and SHA-256:
+
+```powershell
+Get-ChildItem target\release\rho-desktop.exe, target\release\bundle\nsis\Rho_*.exe |
+    Select-Object Name, @{N='SizeMB';E={[math]::Round($_.Length/1MB,2)}}
+Get-FileHash target\release\rho-desktop.exe -Algorithm SHA256
+Get-FileHash target\release\bundle\nsis\Rho_*.exe -Algorithm SHA256
+```
+
+### Notes
+
+- The installer is unsigned. Windows SmartScreen will show a warning.
+- Do NOT auto-install the built package. Just produce it and report the paths.
+- Do NOT push the built artifacts. They are in `.gitignore`.
