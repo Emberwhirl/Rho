@@ -25,8 +25,8 @@ this file records behavior that is already available in a released build.
 
 #### UX4: Agent-first posture
 
-- Added Agent-first layout switching with a three-column task-rail +
-  agent-flow + work-surface posture.
+- Added an Agent-first posture centered on task interaction, with contextual
+  file, run, Artifact, and audit work surfaces opened only when requested.
 - Task rail with mode badges (Ask/Plan/Act), status dots, and preview text.
 - Direct surface with Agent flow, Monitor (run list), and Review (findings)
   panels.
@@ -41,6 +41,9 @@ this file records behavior that is already available in a released build.
 - Reduced Agent-first noise by showing each completed answer once, collapsing
   raw tool activity on demand, compacting the composer, and simplifying the
   Agent-posture topbar.
+- Removed the permanently visible editor and execution dock from the default
+  Agent-first Task surface while preserving active files, drafts, audit context,
+  and the existing Human-first editor layout.
 
 #### RA-RC2: Reproducibility audit
 

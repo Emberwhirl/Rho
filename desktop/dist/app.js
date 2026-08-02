@@ -17,6 +17,7 @@ const state = {
   actAutoApprove: false,
   posture: "human",
   agentSurface: "direct",
+  agentWorkSurface: "none",
   humanPreset: "code",
   auditResult: null,
   auditLoading: false,
@@ -102,6 +103,7 @@ const state = {
   agentContextPath: null,
   agentPollTimer: null,
   activeRunId: null,
+  agentReviewRunId: null,
   agentConsoleHydrated: false,
   renderedAgentRunIds: new Set(),
   revision: { state_revision: 1, project_revision: 0 },
@@ -3227,6 +3229,9 @@ function renderActiveDocument() {
     renderProjectFiles();
     renderDocumentTabs();
     updateEditorChrome();
+    if (state.posture === "agent" && state.agentWorkSurface === "file") {
+      $("#agentFileSurfaceTitle").textContent = "No file selected";
+    }
     return;
   }
   $("#projectName").textContent = activeProjectName();
@@ -3234,6 +3239,9 @@ function renderActiveDocument() {
   renderProjectFiles();
   renderDocumentTabs();
   updateEditorChrome();
+  if (state.posture === "agent" && state.agentWorkSurface === "file") {
+    $("#agentFileSurfaceTitle").textContent = documentState.path;
+  }
 }
 
 async function restoreDraftChoice(path, savedContent, draftContent) {
@@ -3248,7 +3256,7 @@ async function restoreDraftChoice(path, savedContent, draftContent) {
 }
 
 async function openDocument(path, options = {}) {
-  const { sessionEntry = null, forceReload = false } = options;
+  const { sessionEntry = null, forceReload = false, revealWorkSurface = true } = options;
   if (state.activeDocument && state.activeDocument !== path) {
     syncDocumentFromEditor({ render: false, persist: false });
     clearAgentEditHighlight();
@@ -3256,6 +3264,7 @@ async function openDocument(path, options = {}) {
   if (state.documents[path]?.transient) {
     state.activeDocument = path;
     renderActiveDocument();
+    if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
     requestAnimationFrame(() => layoutEditor());
     return;
   }
@@ -3292,6 +3301,7 @@ async function openDocument(path, options = {}) {
   }
   state.activeDocument = path;
   renderActiveDocument();
+  if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
   requestAnimationFrame(() => layoutEditor());
   scheduleSessionSave();
 }
@@ -5159,6 +5169,7 @@ function renderTaskRail() {
     start.addEventListener("click", startNewAgentTask);
     empty.append(heading, description, start);
     list.append(empty);
+    syncAgentWorkSurfaceLayout();
     return;
   }
 
@@ -5186,6 +5197,7 @@ function renderTaskRail() {
 
   const header = document.querySelector(".task-rail-header span");
   if (header) header.textContent = `Tasks (${state.agentTurns.length})`;
+  syncAgentWorkSurfaceLayout();
 }
 
 function startNewAgentTask() {
@@ -5784,6 +5796,7 @@ function renderArtifactRecords() {
         toast(`Artifact detail is unavailable: ${error}`, true);
       }
       renderPlots();
+      if (state.posture === "agent") openAgentWorkSurface("artifact");
     });
     list.append(row);
 
@@ -5805,6 +5818,7 @@ function renderArtifactRecords() {
         toast(`Artifact detail is unavailable: ${error}`, true);
       }
       renderPlots();
+      if (state.posture === "agent") openAgentWorkSurface("artifact");
     });
     outputList.append(output);
   }
@@ -6535,9 +6549,10 @@ async function maybeApplyPreviewScenario() {
   if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
+    const previewState = previewParams.get("state") || "default";
     state.posture = "agent";
     state.agentSurface = "direct";
-    if (previewParams.get("state") !== "empty") {
+    if (previewState !== "empty") {
       await invoke("run_agent", {
         prompt: "Review the current QC analysis and identify the next decision.",
         mode: "ask",
@@ -6545,9 +6560,63 @@ async function maybeApplyPreviewScenario() {
       await loadAgentData();
     }
     applyPostureLayout();
-    $("#agentInput").value = previewParams.get("state") === "empty"
+    $("#agentInput").value = previewState === "empty"
       ? ""
       : "Compare the flagged samples with the current thresholds";
+    if (previewState === "file") {
+      await openDocument("analysis.R");
+    } else if (previewState === "run" || previewState === "artifact") {
+      const previewRun = await invoke("execute_r", {
+        request: {
+          code: "summary(qc)",
+          source_path: "analysis.R",
+          execution_mode: "file",
+          document_version: 1,
+        },
+      });
+      await loadRunData();
+      state.activeRunId = previewRun?.run_id || state.runs[0]?.run_id || null;
+      state.agentReviewRunId = previewRun?.run_id || state.runs[0]?.run_id || null;
+      if (previewState === "artifact") {
+        const plot = activePlotRecord();
+        if (plot) {
+          const detail = await invoke("export_plot_artifact", {
+            request: { plot_id: plot.plot_id, path: "artifacts/agent-review.png" },
+          });
+          state.selectedArtifactId = detail?.artifact?.artifact_id || null;
+          state.selectedArtifactDetail = detail || null;
+          openAgentWorkSurface("artifact");
+        }
+      } else {
+        openAgentWorkSurface("run");
+      }
+    } else if (previewState === "audit" || previewState === "audit-failure") {
+      state.auditResult = previewState === "audit-failure"
+        ? {
+          scope: "project",
+          status: "error",
+          findings: [],
+          coverage: { files_scanned: 1, runs_considered: 0, artifacts_considered: 0 },
+          truncated: true,
+          truncation_reasons: ["A source file could not be inspected."],
+        }
+        : {
+          scope: "project",
+          status: "findings",
+          coverage: { files_scanned: 4, runs_considered: 2, artifacts_considered: 1 },
+          findings: [{
+            category: "source",
+            severity: "warning",
+            rule_id: "source.set-seed",
+            summary: "Random analysis does not declare a seed.",
+            evidence: [{ kind: "file", path: "analysis.R" }],
+            limitations: [],
+          }],
+          truncated: false,
+          truncation_reasons: [],
+        };
+      openAgentWorkSurface("audit");
+    }
     setTimeout(recordPreviewLayoutEvidence, 0);
     return;
   }
@@ -6734,10 +6803,14 @@ function recordPreviewLayoutEvidence() {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       posture: state.posture,
       surface: state.agentSurface,
+      work_surface: state.agentWorkSurface,
       mode: state.agentMode,
       counts: { tasks: state.agentTurns.length },
       visible: {
         task_rail: Boolean(taskRail && taskRail.width > 0 && taskRail.height > 0),
+        editor: Boolean(workSurface && workSurface.width > 0 && workSurface.height > 0),
+        execution_dock: getComputedStyle($(".execution-dock")).display !== "none",
+        review_workspace: !$("#agentReviewWorkspace").classList.contains("hidden"),
         human_layout_presets: getComputedStyle($(".work-modes")).display !== "none",
         act_authorization: !$(".act-authorization").classList.contains("hidden"),
       },
@@ -8001,8 +8074,14 @@ function hideAgentFileMentions() {
   $("#agentFileMentions").replaceChildren();
 }
 
-function insertAgentFileMention(path) {
+async function insertAgentFileMention(path) {
   const { start, end, contextSource } = state.agentFileMention;
+  if (contextSource === "open_file") {
+    hideAgentFileMentions();
+    closeAgentContextMenu();
+    await openDocument(path);
+    return;
+  }
   insertAgentReference(path, {
     source: contextSource,
     range: start >= 0 ? { start, end } : null,
@@ -8111,6 +8190,196 @@ function applyWorkbenchLayout(layout) {
   requestAnimationFrame(() => layoutEditor());
 }
 
+function normalizedArtifactDetail() {
+  return state.selectedArtifactDetail?.artifact || state.selectedArtifactDetail || null;
+}
+
+function reviewWorkSurfaceKind() {
+  if (state.auditLoading || state.auditResult) return "audit";
+  if (normalizedArtifactDetail()) return "artifact";
+  return "run";
+}
+
+function syncAgentWorkSurfaceLayout() {
+  const shell = $(".app-shell");
+  const isAgent = state.posture === "agent";
+  const kind = ["file", "run", "artifact", "audit"].includes(state.agentWorkSurface)
+    ? state.agentWorkSurface
+    : "none";
+  const isReview = ["run", "artifact", "audit"].includes(kind);
+
+  shell.classList.toggle("agent-work-open", isAgent && kind !== "none");
+  shell.classList.toggle("agent-work-file", isAgent && kind === "file");
+  shell.classList.toggle("agent-work-review", isAgent && isReview);
+  shell.classList.toggle("has-task-rail", isAgent && kind === "none" && state.agentTurns.length > 0);
+  shell.dataset.agentWorkSurface = isAgent ? kind : "none";
+
+  $("#taskRail").classList.toggle("hidden", !(isAgent && kind === "none" && state.agentTurns.length > 0));
+  $("#agentFileSurfaceHeader").classList.toggle("hidden", !(isAgent && kind === "file"));
+  $("#agentReviewWorkspace").classList.toggle("hidden", !(isAgent && isReview));
+  $("#agentFileSurfaceTitle").textContent = state.activeDocument || "No file selected";
+  if (isAgent && isReview) renderAgentReviewWorkspace();
+  requestAnimationFrame(() => layoutEditor());
+}
+
+function openAgentWorkSurface(kind) {
+  if (state.posture !== "agent") return;
+  if (kind === "run" && !state.runs.some((run) => run.run_id === state.agentReviewRunId)) {
+    state.agentReviewRunId = state.activeRunId || state.runs[0]?.run_id || null;
+  }
+  state.agentWorkSurface = kind;
+  state.agentSurface = kind === "file" ? "direct" : "review";
+  applyAgentSurface(state.agentSurface);
+  syncAgentWorkSurfaceLayout();
+  scheduleSessionSave();
+}
+
+function closeAgentWorkSurface() {
+  state.agentWorkSurface = "none";
+  state.agentSurface = "direct";
+  applyAgentSurface("direct");
+  syncAgentWorkSurfaceLayout();
+  scheduleSessionSave();
+  $("#agentInput").focus();
+}
+
+function appendAgentReviewSection(container, label, value) {
+  if (value === null || value === undefined || value === "") return;
+  const section = document.createElement("section");
+  section.className = "review-section";
+  const heading = document.createElement("strong");
+  heading.textContent = label;
+  const content = document.createElement("pre");
+  content.textContent = String(value);
+  section.append(heading, content);
+  container.append(section);
+}
+
+function appendAuditEvidence(container, evidence) {
+  const evidenceRow = document.createElement("div");
+  evidenceRow.className = "agent-audit-evidence";
+  for (const item of evidence || []) {
+    const path = String(item.path || "");
+    const label = `${item.kind || "evidence"}: ${path || item.excerpt || "available"}`;
+    const canOpen = path && state.project.files.some((file) => file.path === path);
+    const element = document.createElement(canOpen ? "button" : "span");
+    if (canOpen) {
+      element.type = "button";
+      element.setAttribute("aria-label", `Open audit evidence ${path}`);
+      element.addEventListener("click", () => openDocument(path));
+    }
+    element.textContent = label;
+    evidenceRow.append(element);
+  }
+  if (evidenceRow.childElementCount) container.append(evidenceRow);
+}
+
+function renderAgentAuditWorkspace(content) {
+  const result = state.auditResult;
+  if (state.auditLoading) {
+    content.innerHTML = '<div class="agent-review-empty" role="status">Auditing project reproducibility...</div>';
+    return;
+  }
+  if (!result) {
+    content.innerHTML = '<div class="agent-review-empty">Run an audit to inspect deterministic findings.</div>';
+    return;
+  }
+  const summary = document.createElement("div");
+  summary.className = "agent-review-summary";
+  const coverage = result.coverage || {};
+  appendAgentReviewSection(summary, "Status", result.status || "unknown");
+  appendAgentReviewSection(
+    summary,
+    "Coverage",
+    `Scanned ${coverage.files_scanned || 0} files, ${coverage.runs_considered || 0} runs, ${coverage.artifacts_considered || 0} artifacts`,
+  );
+  if (result.truncated) appendAgentReviewSection(summary, "Limitations", (result.truncation_reasons || []).join("; ") || "Result is incomplete.");
+  content.append(summary);
+
+  const findings = result.findings || [];
+  if (!findings.length) {
+    const empty = document.createElement("div");
+    empty.className = "agent-review-empty";
+    empty.textContent = result.status === "error" ? "The audit did not complete." : "No reproducibility findings.";
+    content.append(empty);
+    return;
+  }
+  const groups = Object.groupBy
+    ? Object.groupBy(findings, (finding) => finding.category || "other")
+    : findings.reduce((all, finding) => {
+      const category = finding.category || "other";
+      (all[category] ||= []).push(finding);
+      return all;
+    }, {});
+  for (const [category, items] of Object.entries(groups)) {
+    const group = document.createElement("section");
+    group.className = "agent-audit-group";
+    const heading = document.createElement("h3");
+    heading.textContent = `${category} (${items.length})`;
+    group.append(heading);
+    for (const finding of items) {
+      const card = document.createElement("article");
+      card.className = `agent-audit-finding severity-${finding.severity || "warning"}`;
+      const rule = document.createElement("strong");
+      rule.textContent = finding.rule_id || "Finding";
+      const summaryText = document.createElement("p");
+      summaryText.textContent = finding.summary || "No summary supplied.";
+      card.append(rule, summaryText);
+      appendAuditEvidence(card, finding.evidence);
+      if (finding.limitations?.length) {
+        const limitations = document.createElement("p");
+        limitations.textContent = `Limitations: ${finding.limitations.join(", ")}`;
+        card.append(limitations);
+      }
+      group.append(card);
+    }
+    content.append(group);
+  }
+}
+
+function renderAgentReviewWorkspace() {
+  const kind = state.agentWorkSurface;
+  const content = $("#agentReviewWorkspaceContent");
+  content.replaceChildren();
+  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "artifact" ? "Artifact" : "Run";
+
+  if (kind === "audit") {
+    $("#agentReviewWorkspaceTitle").textContent = "Reproducibility audit";
+    renderAgentAuditWorkspace(content);
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "agent-review-summary";
+  if (kind === "artifact") {
+    const artifact = normalizedArtifactDetail();
+    $("#agentReviewWorkspaceTitle").textContent = artifact?.output_path || "Artifact review";
+    if (!artifact) {
+      content.innerHTML = '<div class="agent-review-empty">Select an Artifact to review.</div>';
+      return;
+    }
+    appendAgentReviewSection(summary, "Kind", artifact.artifact_kind || "unknown");
+    appendAgentReviewSection(summary, "Producing run", artifact.run_id);
+    appendAgentReviewSection(summary, "Output", artifact.output_path);
+    appendAgentReviewSection(summary, "Source", artifact.source_path);
+    appendAgentReviewSection(summary, "Provenance", artifact.provenance_complete ? "complete" : "incomplete");
+    appendAgentReviewSection(summary, "Reason", artifact.incomplete_reason);
+  } else {
+    const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
+    $("#agentReviewWorkspaceTitle").textContent = run ? `Run ${run.run_id.slice(0, 12)}` : "Run review";
+    if (!run) {
+      content.innerHTML = '<div class="agent-review-empty">Select a run from Runs to review it.</div>';
+      return;
+    }
+    appendAgentReviewSection(summary, "Status", run.status);
+    appendAgentReviewSection(summary, "Origin", run.origin);
+    appendAgentReviewSection(summary, "Request", run.request_type);
+    appendAgentReviewSection(summary, "Source", run.source_path);
+    appendAgentReviewSection(summary, "Error", run.error_message);
+  }
+  content.append(summary);
+}
+
 function applyPostureLayout() {
   const shell = $(".app-shell");
   const isAgent = state.posture === "agent";
@@ -8134,18 +8403,20 @@ function applyPostureLayout() {
   // Rearrange panels for agent-first
   if (isAgent) {
     switchContextTab("agent");
-    $("#taskRail").classList.remove("hidden");
     $(".sidebar > .panel-tabs").classList.add("hidden");
     $(".sidebar > .side-content").classList.add("hidden");
     $("#agentSurfaceTabs").classList.remove("hidden");
     applyAgentSurface(state.agentSurface);
     renderTaskRail();
+    syncAgentWorkSurfaceLayout();
   } else {
+    state.agentWorkSurface = "none";
     $("#taskRail").classList.add("hidden");
     $(".sidebar > .panel-tabs").classList.remove("hidden");
     $(".sidebar > .side-content").classList.remove("hidden");
     $("#agentSurfaceTabs").classList.add("hidden");
     applyWorkbenchLayout(state.humanPreset);
+    syncAgentWorkSurfaceLayout();
   }
 
   postMessage({ postureUpdated: { posture: state.posture, surface: state.agentSurface } });
@@ -8162,7 +8433,10 @@ $$('[data-posture]').forEach((button) => button.addEventListener("click", () => 
 
 function switchAgentSurface(name) {
   state.agentSurface = name;
+  if (name === "direct" || name === "monitor") state.agentWorkSurface = "none";
+  if (name === "review") state.agentWorkSurface = reviewWorkSurfaceKind();
   applyAgentSurface(name);
+  syncAgentWorkSurfaceLayout();
   scheduleSessionSave();
 }
 
@@ -8174,13 +8448,16 @@ function applyAgentSurface(name) {
   const isMonitor = name === "monitor";
   const isReview = name === "review";
 
-  $("#agentPanel").classList.toggle("hidden", !isDirect);
+  $("#agentPanel").classList.toggle("hidden", !(isDirect || (isReview && state.posture === "agent")));
   $(".context-tabs").classList.toggle("hidden", !isDirect);
   $("#agentMonitorPanel").classList.toggle("hidden", !isMonitor);
-  $("#agentReviewPanel").classList.toggle("hidden", !isReview);
+  $("#agentReviewPanel").classList.toggle("hidden", !(isReview && state.posture !== "agent"));
 
   if (isMonitor) renderMonitorPanel();
-  if (isReview) renderReviewPanel();
+  if (isReview) {
+    renderReviewPanel();
+    if (state.posture === "agent") renderAgentReviewWorkspace();
+  }
 }
 
 $$("[data-agent-surface]").forEach((button) => button.addEventListener("click", () => {
@@ -8195,10 +8472,16 @@ function renderMonitorPanel() {
   const recentRuns = state.runs.filter((r) => !["running", "waiting"].includes(r.status)).slice(0, 5);
 
   for (const run of [...activeRuns, ...recentRuns]) {
-    const item = document.createElement("div");
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "monitor-run-item";
     const icon = run.status === "running" ? "⟳" : run.status === "completed" ? "✓" : run.status === "failed" ? "✗" : "·";
     item.innerHTML = `<span>${icon}</span><span>${run.origin}</span><span>${run.request_type}</span><span style="color:var(--muted);margin-left:auto;font-size:10px">${run.started_at?.slice(11, 19) || ""}</span>`;
+    item.setAttribute("aria-label", `Review ${run.request_type} run ${run.run_id}`);
+    item.addEventListener("click", () => {
+      state.agentReviewRunId = run.run_id;
+      openAgentWorkSurface("run");
+    });
     list.append(item);
   }
 
@@ -8250,14 +8533,22 @@ function addReviewSection(container, label, value) {
 
 $("#monitorInterrupt").addEventListener("click", () => invoke("interrupt_r"));
 $("#monitorRestart").addEventListener("click", () => invoke("restart_workspace_r"));
+$("#agentFileSurfaceClose").addEventListener("click", closeAgentWorkSurface);
+$("#agentReviewSurfaceClose").addEventListener("click", closeAgentWorkSurface);
+$("#agentOpenFileButton").addEventListener("click", () => {
+  if (state.posture !== "agent") return;
+  switchAgentSurface("direct");
+  showAgentProjectFilePicker("open_file");
+});
 
 // ── Reproducibility Audit ──
 
 $("#auditProjectButton").addEventListener("click", async () => {
   state.auditLoading = true;
   state.auditResult = null;
+  if (state.posture === "agent") openAgentWorkSurface("audit");
   renderAuditPanel();
-  $("#auditPanel").classList.remove("hidden");
+  if (state.posture !== "agent") $("#auditPanel").classList.remove("hidden");
   try {
     state.auditResult = await invoke("audit_reproducibility", { scope: "project" });
   } catch (e) {
@@ -8265,10 +8556,12 @@ $("#auditProjectButton").addEventListener("click", async () => {
   }
   state.auditLoading = false;
   renderAuditPanel();
+  if (state.posture === "agent") renderAgentReviewWorkspace();
 });
 
 $("#auditCloseButton").addEventListener("click", () => {
-  $("#auditPanel").classList.add("hidden");
+  if (state.posture === "agent") closeAgentWorkSurface();
+  else $("#auditPanel").classList.add("hidden");
 });
 
 $("#lintCurrentFileButton").addEventListener("click", async () => {
@@ -8942,6 +9235,13 @@ async function hydrateProject(response) {
   resetAgentContext();
   state.fileEditProposal = null;
   state.fileEditUndo = null;
+  state.agentWorkSurface = "none";
+  state.auditResult = null;
+  state.auditLoading = false;
+  state.activeRunId = null;
+  state.agentReviewRunId = null;
+  state.selectedArtifactId = null;
+  state.selectedArtifactDetail = null;
   state.documents = {};
   state.closedDrafts = {};
   state.expandedDirectories.clear();
@@ -8965,16 +9265,15 @@ async function hydrateProject(response) {
   applySessionPanels(session.panels || {});
   if (session.posture) {
     state.posture = session.posture;
-    state.agentSurface = session.agent_surface || "direct";
+    state.agentSurface = state.posture === "agent" ? "direct" : (session.agent_surface || "direct");
     state.humanPreset = session.human_preset || "code";
-    applyPostureLayout();
   }
   setProjectStatus("ready");
   await loadProjectSkills();
   const sessionDocuments = session.open_documents || [];
   const activeDocumentPath = session.active_document;
   for (const entry of sessionDocuments) {
-    await openDocument(entry.path, { sessionEntry: entry });
+    await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false });
   }
   const target = activeDocumentPath && state.project.files.some((file) => file.path === activeDocumentPath)
     ? activeDocumentPath
@@ -8982,10 +9281,12 @@ async function hydrateProject(response) {
   if (target) {
     await openDocument(target, {
       sessionEntry: sessionDocuments.find((entry) => entry.path === target) || null,
+      revealWorkSurface: false,
     });
   } else {
     renderActiveDocument();
   }
+  applyPostureLayout();
 }
 
 function setStartupBusy(busy) {

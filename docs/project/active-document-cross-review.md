@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-02
+Review date: 2026-08-03
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 ## Purpose
@@ -48,6 +48,7 @@ semantics.
 | `plans/active-2026-07-31-ux1-interaction-foundation-handoff.md` | accepted | interaction inventory, terminology contract, state presentation contract, mock fixtures, usability protocol | UX1 accepted; UX2 may proceed |
 | `plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | simplified Agent entry and current Agent-first Direct presentation only | policy and authority boundaries preserved; installed-app acceptance remains open; broader UX4 work still requires separate authorization |
 | `plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | second-round Agent-first navigation, progressive activity disclosure, and presentation density | internal posture/surface values and all authority boundaries preserved; installed-app acceptance remains open |
+| `plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md` | active; UX4-AWS1 implementation and automated/browser verification complete 2026-08-03 | simple default Agent-first Task surface and explicitly opened file/run/Artifact/audit work surfaces over existing entities | installed-app acceptance remains open; no new Task schema or audit scope |
 | `plans/active-2026-08-02-console-logs-separation-spec.md` | active; CL1 implemented and automated/browser evidence passed | frontend-only separation of the Workspace R Console transcript from operational and Agent Logs | installed-app/manual acceptance remains open and separate |
 | `plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | guarded local Git review, hunk/file stage/unstage, confirmed restore, and commit UI over the supervised CLI | installed-app acceptance remains open; repository replacement/adversarial hardening remain separate |
 | `plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md` | proposed broader direction; BH1-BH5 accepted, RA-RC1 authorized, and Waves 4-14 not authorized | BH1-BH5 baseline-hardening direction beyond the focused active handoffs | BH5 acceptance; RA-RC1 active |

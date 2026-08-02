@@ -26,14 +26,21 @@ assert.match(
 assert.match(html, /class="act-authorization hidden"/);
 assert.match(html, /id="agentInput"[^>]*aria-label="Ask Rho"/);
 assert.match(html, /<details id="projectSkillsPanel"/);
+assert.match(html, /id="agentFileSurfaceClose"[^>]*aria-label="Close file and return to Task"/);
+assert.match(html, /id="agentReviewWorkspace"[^>]*aria-label="Review work surface"/);
+assert.match(html, /id="agentReviewSurfaceClose"[^>]*aria-label="Close review and return to Task"/);
 
 assert.match(css, /body\.agent-posture \.work-modes\s*\{\s*display:\s*none/);
 assert.match(css, /body\.agent-posture \.menu\s*\{\s*display:\s*none/);
 assert.match(css, /\.app-shell\.agent-first \.context-tabs\s*\{\s*display:\s*none/);
 assert.match(css, /\.app-shell\.agent-first \.agent-composer-resize\s*\{\s*display:\s*none/);
 assert.match(css, /\.app-shell\.agent-first \.agent-composer\s*\{[^}]*flex-basis:\s*128px/);
+assert.match(css, /\.app-shell\.agent-first \.workspace\s*\{[^}]*display:\s*none/);
+assert.match(css, /\.app-shell\.agent-first \.execution-dock,[\s\S]*display:\s*none/);
+assert.match(css, /\.app-shell\.agent-first\.agent-work-file \.workspace\s*\{[^}]*display:\s*grid/);
+assert.match(css, /\.app-shell\.agent-first\.agent-work-review \.agent-review-workspace\s*\{[^}]*display:\s*flex/);
 assert.match(css, /\.agent-mode-popover\s*\{[^}]*position:\s*absolute/);
-assert.match(css, /@media \(max-width: 960px\)[\s\S]*\.app-shell\.agent-first \.sidebar\s*\{\s*display:\s*none/);
+assert.match(css, /@media \(max-width: 960px\)[\s\S]*\.app-shell\.agent-first \.sidebar,\s*\.app-shell\.agent-first\.has-task-rail \.sidebar\s*\{\s*display:\s*none/);
 
 assert.match(js, /function syncAgentModeControl\(\)/);
 assert.match(js, /const label = prettyAgentMode\(state\.agentMode\)/);
@@ -45,9 +52,21 @@ assert.match(js, /state\.agentActivityExpanded\.has\(turn\.turn_id\)/);
 assert.match(js, /\$\$\('\[data-posture\]'\)/);
 assert.doesNotMatch(js, /function togglePosture\(/);
 assert.match(js, /function startNewAgentTask\(\)/);
+assert.match(js, /agentWorkSurface:\s*"none"/);
+assert.match(js, /agentReviewRunId:\s*null/);
+assert.match(js, /function openAgentWorkSurface\(kind\)/);
+assert.match(js, /function closeAgentWorkSurface\(\)/);
+assert.match(js, /async function hydrateProject\(response\)[\s\S]*state\.agentWorkSurface = "none";[\s\S]*state\.auditResult = null;[\s\S]*applyPostureLayout\(\);\s*\n}/);
+assert.match(js, /openDocument\(entry\.path, \{ sessionEntry: entry, revealWorkSurface: false \}\)/);
+assert.match(js, /openAgentWorkSurface\("audit"\)/);
+assert.match(js, /openAgentWorkSurface\("file"\)/);
+assert.match(js, /state\.agentReviewRunId = run\.run_id;[\s\S]*openAgentWorkSurface\("run"\)/);
 assert.match(js, /document\.createElement\("button"\)/);
 assert.match(js, /\$\("#agentInput"\)\.focus\(\)/);
 assert.doesNotMatch(js, /\$\("#agentComposer"\)\.focus\(\)/);
 assert.match(js, /scenario === "agent-first-direct"/);
+assert.match(js, /previewState === "file"/);
+assert.match(js, /previewState === "run" \|\| previewState === "artifact"/);
+assert.match(js, /previewState === "audit" \|\| previewState === "audit-failure"/);
 
 console.log("Agent-first UI contract checks passed.");

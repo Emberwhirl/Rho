@@ -98,6 +98,7 @@
           <button data-layout="agent" type="button">Agent</button>
         </div>
         <div class="top-actions">
+          <button id="agentOpenFileButton" class="agent-only-action" type="button" title="Open a project file">File</button>
           <button id="restartButton" class="icon-button" type="button" title="Restart Workspace R" aria-label="Restart Workspace R">↻</button>
           <button id="interruptButton" class="icon-button danger" type="button" title="Interrupt R" aria-label="Interrupt R">■</button>
           <button id="runButton" class="run-button" type="button" title="Run selection or document">
@@ -176,6 +177,13 @@
       <div id="leftResizeHandle" class="resize-handle vertical left-handle" role="separator" aria-label="Resize Files panel" aria-orientation="vertical" aria-valuemin="160" aria-valuemax="380" tabindex="0"></div>
 
       <main class="workspace">
+        <header id="agentFileSurfaceHeader" class="agent-work-header hidden">
+          <div>
+            <span class="agent-work-kind">File</span>
+            <strong id="agentFileSurfaceTitle">No file selected</strong>
+          </div>
+          <button id="agentFileSurfaceClose" type="button" aria-label="Close file and return to Task">Back to Task</button>
+        </header>
         <section class="editor-region">
           <div class="document-tabs">
             <div id="documentTabs" class="document-tab-list"></div>
@@ -300,6 +308,17 @@ plot(
             <div id="problemList"></div>
           </div>
         </section>
+      </main>
+
+      <main id="agentReviewWorkspace" class="agent-review-workspace hidden" aria-label="Review work surface">
+        <header class="agent-work-header">
+          <div>
+            <span id="agentReviewKind" class="agent-work-kind">Review</span>
+            <strong id="agentReviewWorkspaceTitle">Review</strong>
+          </div>
+          <button id="agentReviewSurfaceClose" type="button" aria-label="Close review and return to Task">Back to Task</button>
+        </header>
+        <div id="agentReviewWorkspaceContent" class="agent-review-workspace-content"></div>
       </main>
 
       <div id="rightResizeHandle" class="resize-handle vertical right-handle" role="separator" aria-label="Resize Agent panel" aria-orientation="vertical" aria-valuemin="280" aria-valuemax="520" tabindex="0"></div>
