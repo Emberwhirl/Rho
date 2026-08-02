@@ -1464,8 +1464,9 @@ body.resizing-vertical { cursor: col-resize; }
   min-width: 160px;
 }
 .data-viewer-filter {
+  flex: 1 1 180px;
   min-width: 140px;
-  max-width: 200px;
+  max-width: 260px;
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border);
@@ -1474,6 +1475,8 @@ body.resizing-vertical { cursor: col-resize; }
   background: #fff;
 }
 .data-viewer-filter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.data-viewer-filter:disabled { background: #f4f6f6; color: var(--muted); }
+.data-viewer #dataViewerStatus.error { color: var(--danger); }
 .data-viewer-actions {
   display: flex;
   flex-wrap: wrap;

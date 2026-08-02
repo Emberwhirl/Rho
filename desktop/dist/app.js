@@ -77,6 +77,10 @@ const state = {
     columnOffset: 0,
     columnLimit: 20,
     workspace: null,
+    query: null,
+    error: null,
+    queryTimer: null,
+    pageRequestId: 0,
     sortColumn: null,
     sortDirection: null,
   },
@@ -1168,17 +1172,18 @@ function mockInspectObject(name) {
 }
 
 function mockInspectDataObject(name) {
-  if (name === "qc") {
+  if (["qc", "qc_paged"].includes(name)) {
+    const rowCount = name === "qc_paged" ? 60 : 12;
     return {
       execution: {
         ok: true,
         name,
         class: ["data.frame"],
         display_kind: "data_frame",
-        dimensions: [12, 3],
+        dimensions: [rowCount, 3],
         view_token: `mock-view-${name}-${state.revision.state_revision}`,
         views: [
-          { kind: "table", key: "table", label: "Table", rows: 12, columns: 3 },
+          { kind: "table", key: "table", label: "Table", rows: rowCount, columns: 3 },
         ],
         truncated: false,
         truncation_reason: null,
@@ -1210,37 +1215,86 @@ function mockReadDataView(request) {
       workspace: state.revision,
     };
   }
-  const rows = Array.from({ length: 12 }, (_, index) => ({
+  const sourceTotalRows = request.object_name === "qc_paged" ? 60 : 12;
+  const sourceRows = Array.from({ length: sourceTotalRows }, (_, index) => ({
+    source_index: index,
     row_name: `cell_${index + 1}`,
-    cells: [`S${index + 1}`, String(70000 + index * 231), String(3100 + index * 17)],
+    cells: [`S${index + 1}`, 70000 + index * 231, 3100 + index * 17],
   }));
+  const normalizedQuery = request.query === null || request.query === undefined
+    ? null
+    : String(request.query).trim() || null;
+  if (normalizedQuery && (new TextEncoder().encode(normalizedQuery).length > 256 || /[\r\n\0]/.test(normalizedQuery))) {
+    return {
+      execution: { ok: false, error_code: "invalid_query", message: "Search query is invalid." },
+      workspace: state.revision,
+    };
+  }
+  const sortColumn = request.sort_column === null || request.sort_column === undefined
+    ? null
+    : Number(request.sort_column);
+  const sortDirection = request.sort_direction === null || request.sort_direction === undefined
+    ? null
+    : String(request.sort_direction);
+  if ((sortColumn === null) !== (sortDirection === null)
+      || (sortColumn !== null && (!Number.isInteger(sortColumn) || sortColumn < 0 || sortColumn >= 3))
+      || (sortDirection !== null && !["asc", "desc"].includes(sortDirection))) {
+    return {
+      execution: { ok: false, error_code: "invalid_sort", message: "Sort request is invalid." },
+      workspace: state.revision,
+    };
+  }
+  const needle = normalizedQuery?.toLocaleLowerCase() || null;
+  let rows = needle
+    ? sourceRows.filter((row) => [row.row_name, ...row.cells].some((value) => String(value).toLocaleLowerCase().includes(needle)))
+    : [...sourceRows];
+  if (sortColumn !== null) {
+    rows.sort((left, right) => {
+      const a = left.cells[sortColumn];
+      const b = right.cells[sortColumn];
+      const aMissing = a === null || a === undefined;
+      const bMissing = b === null || b === undefined;
+      if (aMissing !== bMissing) return aMissing ? 1 : -1;
+      if (aMissing) return left.source_index - right.source_index;
+      const comparison = typeof a === "number" && typeof b === "number"
+        ? a - b
+        : String(a).localeCompare(String(b));
+      return comparison === 0
+        ? left.source_index - right.source_index
+        : (sortDirection === "desc" ? -comparison : comparison);
+    });
+  }
   const rowOffset = request.row_offset || 0;
   const rowLimit = request.row_limit || 50;
   const columnOffset = request.column_offset || 0;
   const columnLimit = request.column_limit || 20;
   const allColumns = [
-    { name: "sample", label: "sample" },
-    { name: "reads", label: "reads" },
-    { name: "detected", label: "detected" },
+    { index: 0, name: "sample", label: "sample" },
+    { index: 1, name: "reads", label: "reads" },
+    { index: 2, name: "detected", label: "detected" },
   ];
   const columns = allColumns.slice(columnOffset, columnOffset + columnLimit);
   const pageRows = rows.slice(rowOffset, rowOffset + rowLimit).map((row) => ({
     row_name: row.row_name,
-    cells: row.cells.slice(columnOffset, columnOffset + columnLimit),
+    cells: row.cells.slice(columnOffset, columnOffset + columnLimit).map((value) => value === null || value === undefined ? null : String(value)),
   }));
   const page = {
     object_name: request.object_name,
     class: ["data.frame"],
-    dimensions: [12, 3],
+    dimensions: [sourceTotalRows, 3],
     view_kind: request.view_kind,
     view_key: request.view_key,
     view_token: request.view_token,
-    total_rows: 12,
+    source_total_rows: sourceTotalRows,
+    total_rows: rows.length,
     total_columns: 3,
     row_offset: rowOffset,
     row_limit: rowLimit,
     column_offset: columnOffset,
     column_limit: columnLimit,
+    query: normalizedQuery,
+    sort_column: sortColumn,
+    sort_direction: sortDirection,
     columns,
     rows: pageRows,
     truncated: false,
@@ -2035,6 +2089,9 @@ async function mockInvoke(command, args) {
       row_limit: request.row_limit,
       column_offset: request.column_offset,
       column_limit: request.column_limit,
+      query: request.query,
+      sort_column: request.sort_column,
+      sort_direction: request.sort_direction,
       workspace: request.workspace,
     });
     if (!response.execution?.ok) throw new Error(response.execution?.message || "Workspace data view did not return a page");
@@ -2069,6 +2126,9 @@ async function mockInvoke(command, args) {
         row_count: page.rows?.length || 0,
         column_offset: page.column_offset,
         column_count: page.columns?.length || 0,
+        query: page.query,
+        sort_column: page.sort_column,
+        sort_direction: page.sort_direction,
         format,
       },
       provenanceComplete: Boolean(sourcePath && documentVersion !== null && documentVersion !== undefined),
@@ -6677,6 +6737,9 @@ async function maybeApplyPreviewScenario() {
         row_limit: page.row_limit,
         column_offset: page.column_offset,
         column_limit: page.column_limit,
+        query: page.query,
+        sort_column: page.sort_column,
+        sort_direction: page.sort_direction,
         workspace: currentViewerWorkspace(),
       },
     });
@@ -7110,10 +7173,11 @@ function dataViewerWindowMeta(page) {
   return [
     `${stringValues(page.class).join("/") || "object"} · ${page.dimensions?.join(" × ") || "shape unknown"}`,
     `rows ${rowStart}-${rowEnd} of ${page.total_rows || 0}`,
+    page.query ? `${page.total_rows || 0} matches from ${page.source_total_rows || 0} rows` : null,
     `cols ${columnStart}-${columnEnd} of ${page.total_columns || 0}`,
     `payload ${formatBytes(page.payload_bytes || 0)}`,
     page.truncated ? `truncated: ${page.truncation_reason || "yes"}` : "truncated: no",
-  ].join(" · ");
+  ].filter(Boolean).join(" · ");
 }
 
 function renderDataViewer() {
@@ -7149,9 +7213,15 @@ function renderDataViewer() {
     selector.append(option);
   }
 
-  $("#dataViewerStatus").textContent = page
-    ? (page.truncated ? "Showing a bounded partial page." : "Showing a bounded page from Workspace R.")
-    : "Choose a view to load its first bounded page.";
+  $("#dataViewerStatus").textContent = state.dataViewer.error?.message
+    || (state.dataViewer.loadingPage
+      ? "Searching Workspace R..."
+      : page
+        ? (page.total_rows === 0
+          ? "No rows match this search."
+          : (page.truncated ? "Showing a bounded partial page." : "Showing a bounded page from Workspace R."))
+        : "Choose a view to load its first bounded page.");
+  $("#dataViewerStatus").classList.toggle("error", Boolean(state.dataViewer.error));
   $("#dataViewerMeta").textContent = dataViewerWindowMeta(page);
   $("#dataViewerExportButton").disabled = !page || state.dataViewer.loadingPage;
 
@@ -7164,14 +7234,7 @@ function renderDataViewer() {
   $("#dataViewerColumnPrev").disabled = columnPrevDisabled;
   $("#dataViewerColumnNext").disabled = columnNextDisabled;
   selector.disabled = state.dataViewer.loadingPage;
-
-  // Row count display
-  if (page) {
-    const start = (page.row_offset || 0) + 1;
-    const end = (page.row_offset || 0) + (page.rows?.length || 0);
-    const total = page.total_rows || 0;
-    $("#dataViewerMeta").textContent = `Showing rows ${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}`;
-  }
+  $("#dataViewerFilter").disabled = state.dataViewer.loadingPage;
 
   thead.replaceChildren();
   tbody.replaceChildren();
@@ -7185,12 +7248,13 @@ function renderDataViewer() {
   for (const column of page.columns || []) {
     const cell = document.createElement("th");
     cell.tabIndex = 0;
-    cell.textContent = (column.label || column.name || "") + (state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : "");
-    cell.setAttribute("aria-sort", state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? "ascending" : "descending") : "none");
+    const sorted = state.dataViewer.sortColumn === column.index;
+    cell.textContent = `${column.label || column.name || ""}${sorted ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : ""}`;
+    cell.setAttribute("aria-sort", sorted ? (state.dataViewer.sortDirection === "asc" ? "ascending" : "descending") : "none");
     cell.style.cursor = "pointer";
     cell.title = "Click to sort";
     cell.addEventListener("click", () => {
-      if (state.dataViewer.sortColumn === column.name) {
+      if (state.dataViewer.sortColumn === column.index) {
         if (state.dataViewer.sortDirection === "asc") {
           state.dataViewer.sortDirection = "desc";
         } else if (state.dataViewer.sortDirection === "desc") {
@@ -7198,23 +7262,17 @@ function renderDataViewer() {
           state.dataViewer.sortDirection = null;
         }
       } else {
-        state.dataViewer.sortColumn = column.name;
+        state.dataViewer.sortColumn = column.index;
         state.dataViewer.sortDirection = "asc";
       }
       state.dataViewer.rowOffset = 0;
-      fetchDataViewerPage(state.selectedDataObjectDetail, selectedDataView(state.selectedDataObjectDetail));
+      loadDataViewPage({ rowOffset: 0 });
     });
     headerRow.append(cell);
   }
   thead.append(headerRow);
 
   for (const row of page.rows || []) {
-    // Apply filter: check if any cell or row name contains the filter text
-    const filterText = ($("#dataViewerFilter").value || "").trim().toLowerCase();
-    if (filterText) {
-      const rowText = (row.row_name || "") + " " + (row.cells || []).map(c => c === null || c === undefined ? "" : String(c)).join(" ");
-      if (!rowText.toLowerCase().includes(filterText)) continue;
-    }
     const tr = document.createElement("tr");
     const label = document.createElement("th");
     label.scope = "row";
@@ -7292,6 +7350,9 @@ async function exportVisibleDataView() {
         row_limit: page.row_limit,
         column_offset: page.column_offset,
         column_limit: page.column_limit,
+        query: page.query,
+        sort_column: page.sort_column,
+        sort_direction: page.sort_direction,
         workspace: currentViewerWorkspace(),
       },
     });
@@ -7367,7 +7428,9 @@ async function loadDataViewPage(options = {}) {
     renderEnvironment();
     return null;
   }
+  const pageRequestId = ++state.dataViewer.pageRequestId;
   state.dataViewer.loadingPage = true;
+  state.dataViewer.error = null;
   if (typeof options.rowOffset === "number") state.dataViewer.rowOffset = Math.max(0, options.rowOffset);
   if (typeof options.columnOffset === "number") state.dataViewer.columnOffset = Math.max(0, options.columnOffset);
   renderDataViewer();
@@ -7382,28 +7445,40 @@ async function loadDataViewPage(options = {}) {
         row_limit: state.dataViewer.rowLimit,
         column_offset: state.dataViewer.columnOffset,
         column_limit: state.dataViewer.columnLimit,
+        query: state.dataViewer.query,
         sort_column: state.dataViewer.sortColumn,
         sort_direction: state.dataViewer.sortDirection,
         workspace: currentViewerWorkspace(),
       },
     });
+    if (pageRequestId !== state.dataViewer.pageRequestId) return null;
     updateIdentity(response.workspace);
     state.dataViewer.workspace = { ...response.workspace };
     state.selectedDataPage = response.execution?.page || null;
     if (response.execution && !response.execution.ok) {
       state.selectedDataPage = null;
-      state.selectedDataObjectDetail = { ...detail, ok: false, message: response.execution.message, error_code: response.execution.error_code };
+      state.dataViewer.error = {
+        message: response.execution.message,
+        error_code: response.execution.error_code,
+      };
+    } else if (state.selectedDataPage) {
+      state.dataViewer.query = state.selectedDataPage.query ?? null;
+      state.dataViewer.sortColumn = state.selectedDataPage.sort_column ?? null;
+      state.dataViewer.sortDirection = state.selectedDataPage.sort_direction ?? null;
     }
     renderEnvironment();
     return state.selectedDataPage;
   } catch (error) {
+    if (pageRequestId !== state.dataViewer.pageRequestId) return null;
     state.selectedDataPage = null;
-    state.selectedDataObjectDetail = { ...detail, ok: false, message: String(error), error_code: "stale_view_revision" };
+    state.dataViewer.error = { message: String(error), error_code: "stale_view_revision" };
     renderEnvironment();
     return null;
   } finally {
-    state.dataViewer.loadingPage = false;
-    renderDataViewer();
+    if (pageRequestId === state.dataViewer.pageRequestId) {
+      state.dataViewer.loadingPage = false;
+      renderDataViewer();
+    }
   }
 }
 
@@ -7417,9 +7492,17 @@ async function inspectEnvironmentObject(name) {
   state.selectedObjectDetail = null;
   state.selectedDataObjectDetail = null;
   state.selectedDataPage = null;
+  state.dataViewer.pageRequestId += 1;
+  clearTimeout(state.dataViewer.queryTimer);
+  state.dataViewer.queryTimer = null;
   state.dataViewer.rowOffset = 0;
   state.dataViewer.columnOffset = 0;
   state.dataViewer.workspace = null;
+  state.dataViewer.query = null;
+  state.dataViewer.error = null;
+  state.dataViewer.sortColumn = null;
+  state.dataViewer.sortDirection = null;
+  $("#dataViewerFilter").value = "";
   const promise = invoke("inspect_data_object", { request: { object_name: name } })
     .then((response) => {
       updateIdentity(response.workspace);
@@ -9800,18 +9883,25 @@ $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironment
 $("#dataViewerViewSelect").addEventListener("change", () => {
   state.dataViewer.rowOffset = 0;
   state.dataViewer.columnOffset = 0;
+  state.dataViewer.sortColumn = null;
+  state.dataViewer.sortDirection = null;
   loadDataViewPage({ rowOffset: 0, columnOffset: 0 });
 });
 $("#dataViewerFilter").addEventListener("input", () => {
-  renderDataViewer();
+  state.dataViewer.query = $("#dataViewerFilter").value;
+  state.dataViewer.rowOffset = 0;
+  state.dataViewer.error = null;
+  clearTimeout(state.dataViewer.queryTimer);
+  state.dataViewer.queryTimer = setTimeout(() => {
+    state.dataViewer.queryTimer = null;
+    loadDataViewPage({ rowOffset: 0 });
+  }, 250);
 });
 $("#dataViewerPageSize").addEventListener("change", () => {
   const size = parseInt($("#dataViewerPageSize").value, 10);
   state.dataViewer.rowLimit = size;
   state.dataViewer.rowOffset = 0;
-  const detail = state.selectedDataObjectDetail;
-  const view = selectedDataView(detail);
-  if (detail && view) fetchDataViewerPage(detail, view);
+  loadDataViewPage({ rowOffset: 0 });
 });
 $("#dataViewerRowPrev").addEventListener("click", () => {
   loadDataViewPage({ rowOffset: Math.max(0, state.dataViewer.rowOffset - state.dataViewer.rowLimit) });

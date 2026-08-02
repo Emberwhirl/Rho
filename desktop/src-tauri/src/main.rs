@@ -287,6 +287,9 @@ struct ReadDataViewRequest {
     row_limit: Option<usize>,
     column_offset: Option<usize>,
     column_limit: Option<usize>,
+    query: Option<String>,
+    sort_column: Option<usize>,
+    sort_direction: Option<String>,
     workspace: ViewerWorkspaceRequest,
 }
 
@@ -308,6 +311,9 @@ struct ExportDataViewArtifactRequest {
     row_limit: Option<usize>,
     column_offset: Option<usize>,
     column_limit: Option<usize>,
+    query: Option<String>,
+    sort_column: Option<usize>,
+    sort_direction: Option<String>,
     workspace: ViewerWorkspaceRequest,
 }
 
@@ -924,6 +930,28 @@ fn data_view_delimited_text(page: &Value, delimiter: char) -> Result<String> {
     Ok(format!("{}\r\n", lines.join("\r\n")))
 }
 
+fn data_view_artifact_metadata(
+    page: &Value,
+    object_name: &str,
+    view_kind: &str,
+    view_key: &str,
+    format: &str,
+) -> Value {
+    json!({
+        "object_name": object_name,
+        "view_kind": view_kind,
+        "view_key": view_key,
+        "row_offset": page.get("row_offset").and_then(Value::as_u64),
+        "row_count": page.get("rows").and_then(Value::as_array).map(Vec::len),
+        "column_offset": page.get("column_offset").and_then(Value::as_u64),
+        "column_count": page.get("columns").and_then(Value::as_array).map(Vec::len),
+        "query": page.get("query").cloned().unwrap_or(Value::Null),
+        "sort_column": page.get("sort_column").cloned().unwrap_or(Value::Null),
+        "sort_direction": page.get("sort_direction").cloned().unwrap_or(Value::Null),
+        "format": format,
+    })
+}
+
 #[tauri::command]
 async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Result<Value, String> {
     if request.code.trim().is_empty() {
@@ -1104,7 +1132,10 @@ async fn read_data_view(
             "row_offset": request.row_offset.unwrap_or(0),
             "row_limit": request.row_limit.unwrap_or(50),
             "column_offset": request.column_offset.unwrap_or(0),
-            "column_limit": request.column_limit.unwrap_or(20)
+            "column_limit": request.column_limit.unwrap_or(20),
+            "query": request.query,
+            "sort_column": request.sort_column,
+            "sort_direction": request.sort_direction
         },
         "expected_workspace": viewer_expected_workspace(&request.workspace)
     });
@@ -1730,7 +1761,10 @@ async fn export_data_view_artifact(
             "row_offset": request.row_offset.unwrap_or(0),
             "row_limit": request.row_limit.unwrap_or(50),
             "column_offset": request.column_offset.unwrap_or(0),
-            "column_limit": request.column_limit.unwrap_or(20)
+            "column_limit": request.column_limit.unwrap_or(20),
+            "query": request.query,
+            "sort_column": request.sort_column,
+            "sort_direction": request.sort_direction
         },
         "expected_workspace": viewer_expected_workspace(&request.workspace)
     });
@@ -1790,16 +1824,13 @@ async fn export_data_view_artifact(
             "text/csv"
         }
         .to_string(),
-        metadata_json: serde_json::to_string(&json!({
-            "object_name": request.object_name,
-            "view_kind": request.view_kind,
-            "view_key": request.view_key,
-            "row_offset": page.get("row_offset").and_then(Value::as_u64),
-            "row_count": page.get("rows").and_then(Value::as_array).map(|rows| rows.len()),
-            "column_offset": page.get("column_offset").and_then(Value::as_u64),
-            "column_count": page.get("columns").and_then(Value::as_array).map(|columns| columns.len()),
-            "format": format,
-        }))
+        metadata_json: serde_json::to_string(&data_view_artifact_metadata(
+            page,
+            &request.object_name,
+            &request.view_kind,
+            &request.view_key,
+            &format,
+        ))
         .map_err(display_error)?,
         provenance_complete,
         incomplete_reason,
@@ -4082,10 +4113,10 @@ mod tests {
     use super::{
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RuntimeConfig,
         StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic, classify_startup_error,
-        configure_user_startup, data_view_delimited_text, ensure_artifact_export_target,
-        ensure_supported_r_version, existing_startup_file, has_png_signature,
-        parse_r_runtime_probe, project_switch_blocker, run_is_retryable, safe_delete_project_file,
-        switch_project_with_watcher_factory, write_r_probe_script,
+        configure_user_startup, data_view_artifact_metadata, data_view_delimited_text,
+        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
+        has_png_signature, parse_r_runtime_probe, project_switch_blocker, run_is_retryable,
+        safe_delete_project_file, switch_project_with_watcher_factory, write_r_probe_script,
     };
 
     use crate::project::{
@@ -4835,6 +4866,31 @@ mod tests {
         );
         assert_eq!(output, expected);
         assert!(String::from_utf8(output.into_bytes()).is_ok());
+    }
+
+    #[test]
+    fn data_view_artifact_metadata_replays_normalized_query_sort_and_window() {
+        let page = json!({
+            "row_offset": 25,
+            "rows": [{"row_name": "cell_35", "cells": ["S35"]}],
+            "column_offset": 1,
+            "columns": [{"index": 1, "name": "reads", "label": "reads"}],
+            "query": "S",
+            "sort_column": 1,
+            "sort_direction": "desc"
+        });
+
+        let metadata = data_view_artifact_metadata(&page, "qc", "table", "table", "csv");
+
+        assert_eq!(metadata["object_name"], "qc");
+        assert_eq!(metadata["row_offset"], 25);
+        assert_eq!(metadata["row_count"], 1);
+        assert_eq!(metadata["column_offset"], 1);
+        assert_eq!(metadata["column_count"], 1);
+        assert_eq!(metadata["query"], "S");
+        assert_eq!(metadata["sort_column"], 1);
+        assert_eq!(metadata["sort_direction"], "desc");
+        assert_eq!(metadata["format"], "csv");
     }
 
     #[test]

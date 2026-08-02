@@ -64,6 +64,9 @@ this file records behavior that is already available in a released build.
 #### WS3: Data viewer interaction
 
 - Added sortable columns and keyboard navigation to the data viewer.
+- Data Viewer search, stable sorting, matched paging, and visible-page export
+  are now computed by Workspace R over the complete bounded view rather than
+  filtering only the rows already loaded in the browser.
 
 #### WS4: Git integration
 

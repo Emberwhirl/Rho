@@ -3388,10 +3388,60 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 .get("column_limit")
                 .and_then(Value::as_u64)
                 .unwrap_or(20);
+            let query = match arguments.get("query") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) => {
+                    let value = value.trim();
+                    if value.as_bytes().len() > 256
+                        || value
+                            .chars()
+                            .any(|character| matches!(character, '\0' | '\r' | '\n'))
+                    {
+                        anyhow::bail!(
+                            "workspace.read_data_view query must be at most 256 UTF-8 bytes without NUL or newline controls"
+                        );
+                    }
+                    (!value.is_empty()).then_some(value)
+                }
+                Some(_) => anyhow::bail!(
+                    "workspace.read_data_view optional argument `query` must be a string or null"
+                ),
+            };
+            let sort_column = match arguments.get("sort_column") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(value.as_u64().context(
+                    "workspace.read_data_view optional argument `sort_column` must be a non-negative integer or null",
+                )?),
+            };
+            let sort_direction = match arguments.get("sort_direction") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(value)) if matches!(value.as_str(), "asc" | "desc") => {
+                    Some(value.as_str())
+                }
+                Some(_) => anyhow::bail!(
+                    "workspace.read_data_view optional argument `sort_direction` must be `asc`, `desc`, or null"
+                ),
+            };
+            if sort_column.is_some() != sort_direction.is_some() {
+                anyhow::bail!(
+                    "workspace.read_data_view sort_column and sort_direction must be provided together"
+                );
+            }
+            let query = query
+                .map(r_string)
+                .transpose()?
+                .unwrap_or_else(|| "NULL".to_string());
+            let sort_column = sort_column
+                .map(|value| format!("{value}L"))
+                .unwrap_or_else(|| "NULL".to_string());
+            let sort_direction = sort_direction
+                .map(r_string)
+                .transpose()?
+                .unwrap_or_else(|| "NULL".to_string());
             Ok((
                 OperationClass::Probe,
                 format!(
-                    "{bridge}$rho_read_data_view(object_name = {}, view_token = {}, view_kind = {}, view_key = {}, row_offset = {}, row_limit = {}, column_offset = {}, column_limit = {}, envir = .GlobalEnv)",
+                    "{bridge}$rho_read_data_view(object_name = {}, view_token = {}, view_kind = {}, view_key = {}, row_offset = {}, row_limit = {}, column_offset = {}, column_limit = {}, query = {}, sort_column = {}, sort_direction = {}, envir = .GlobalEnv)",
                     r_string(object_name)?,
                     r_string(view_token)?,
                     r_string(view_kind)?,
@@ -3399,7 +3449,10 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                     row_offset,
                     row_limit,
                     column_offset,
-                    column_limit
+                    column_limit,
+                    query,
+                    sort_column,
+                    sort_direction
                 ),
             ))
         }
@@ -4170,7 +4223,10 @@ mod tests {
                 "row_offset": 10,
                 "row_limit": 20,
                 "column_offset": 5,
-                "column_limit": 8
+                "column_limit": 8,
+                "query": " target \"quoted\" ",
+                "sort_column": 3,
+                "sort_direction": "desc"
             }),
         )
         .unwrap();
@@ -4181,6 +4237,49 @@ mod tests {
         assert!(expression.contains("view_kind = \"assay\""));
         assert!(expression.contains("row_offset = 10"));
         assert!(expression.contains("column_limit = 8"));
+        assert!(expression.contains("query = \"target \\\"quoted\\\"\""));
+        assert!(expression.contains("sort_column = 3L"));
+        assert!(expression.contains("sort_direction = \"desc\""));
+    }
+
+    #[test]
+    fn bridge_expression_normalizes_absent_data_view_query_and_sort() {
+        let (_, expression) = bridge_expression(
+            "workspace.read_data_view",
+            &json!({
+                "object_name": "qc",
+                "view_token": "token",
+                "view_kind": "table",
+                "view_key": "table"
+            }),
+        )
+        .unwrap();
+
+        assert!(expression.contains("query = NULL"));
+        assert!(expression.contains("sort_column = NULL"));
+        assert!(expression.contains("sort_direction = NULL"));
+    }
+
+    #[test]
+    fn bridge_expression_rejects_invalid_data_view_query_and_sort() {
+        let base = json!({
+            "object_name": "qc",
+            "view_token": "token",
+            "view_kind": "table",
+            "view_key": "table"
+        });
+        let mut invalid_query = base.clone();
+        invalid_query["query"] = json!("line\nbreak");
+        assert!(bridge_expression("workspace.read_data_view", &invalid_query).is_err());
+
+        let mut unpaired_sort = base.clone();
+        unpaired_sort["sort_column"] = json!(0);
+        assert!(bridge_expression("workspace.read_data_view", &unpaired_sort).is_err());
+
+        let mut invalid_direction = base;
+        invalid_direction["sort_column"] = json!(0);
+        invalid_direction["sort_direction"] = json!("up");
+        assert!(bridge_expression("workspace.read_data_view", &invalid_direction).is_err());
     }
 
     #[test]

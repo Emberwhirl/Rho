@@ -750,6 +750,9 @@ rho_viewer_max_rows <- function() 100L
 rho_viewer_max_columns <- function() 50L
 rho_viewer_max_cell_bytes <- function() 4096L
 rho_viewer_max_payload_bytes <- function() 1024L * 1024L
+rho_viewer_max_query_bytes <- function() 256L
+rho_viewer_max_search_rows <- function() 50000L
+rho_viewer_max_search_cells <- function() 100000L
 
 rho_viewer_error <- function(code, message, ...) {
   extras <- list(...)
@@ -959,10 +962,131 @@ rho_viewer_column_labels <- function(names, offset = 0L, count = NULL) {
       value <- paste0("V", as.integer(offset) + index)
     }
     list(
+      index = as.integer(offset) + index - 1L,
       name = value,
       label = bounded_text(value, max_chars = 256L)
     )
   })
+}
+
+rho_viewer_normalize_query <- function(query) {
+  if (is.null(query)) {
+    return(list(ok = TRUE, value = NULL))
+  }
+  if (!is.character(query) || length(query) != 1L || is.na(query)) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "invalid_query",
+      "Search query must be one UTF-8 string or null."
+    )))
+  }
+  value <- trimws(enc2utf8(query))
+  bytes <- charToRaw(value)
+  if (any(bytes == as.raw(0L)) || grepl("[\r\n]", value)) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "invalid_query",
+      "Search query cannot contain NUL or newline controls."
+    )))
+  }
+  if (length(bytes) > rho_viewer_max_query_bytes()) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "invalid_query",
+      "Search query exceeds the supported UTF-8 byte limit.",
+      supported_maximum_bytes = rho_viewer_max_query_bytes()
+    )))
+  }
+  list(ok = TRUE, value = if (nzchar(value)) value else NULL)
+}
+
+rho_viewer_normalize_sort <- function(sort_column, sort_direction, total_columns) {
+  if (is.null(sort_column)) {
+    if (!is.null(sort_direction)) {
+      return(list(ok = FALSE, error = rho_viewer_error(
+        "invalid_sort",
+        "Sort direction requires a sort column."
+      )))
+    }
+    return(list(ok = TRUE, column = NULL, direction = NULL))
+  }
+  if (length(sort_column) != 1L || is.na(sort_column)
+      || !is.numeric(sort_column) || sort_column != as.integer(sort_column)
+      || sort_column < 0L || sort_column >= total_columns) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "invalid_sort",
+      "Sort column must be a valid zero-based absolute column index."
+    )))
+  }
+  if (!is.character(sort_direction) || length(sort_direction) != 1L
+      || is.na(sort_direction) || !(sort_direction %in% c("asc", "desc"))) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "invalid_sort",
+      "Sort direction must be `asc` or `desc`."
+    )))
+  }
+  list(ok = TRUE, column = as.integer(sort_column), direction = sort_direction)
+}
+
+rho_viewer_column <- function(data, column_index) {
+  if (is.data.frame(data)) {
+    return(data[[column_index]])
+  }
+  data[, column_index, drop = TRUE]
+}
+
+rho_viewer_matching_rows <- function(data, row_names, query, total_rows, total_columns) {
+  if (is.null(query)) {
+    return(list(ok = TRUE, indices = seq_len(total_rows)))
+  }
+  cells <- as.double(total_rows) * as.double(total_columns)
+  if (total_rows > rho_viewer_max_search_rows() || cells > rho_viewer_max_search_cells()) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "search_scope_exceeded",
+      "Exact search is unavailable because this view exceeds the supported scope.",
+      source_total_rows = as.integer(total_rows),
+      source_total_cells = cells,
+      supported_maximum_rows = rho_viewer_max_search_rows(),
+      supported_maximum_cells = rho_viewer_max_search_cells()
+    )))
+  }
+  normalized_query <- tolower(enc2utf8(query))
+  matches_query <- function(values) {
+    grepl(normalized_query, tolower(enc2utf8(as.character(values))), fixed = TRUE)
+  }
+  matched <- matches_query(row_names)
+  for (column_index in seq_len(total_columns)) {
+    values <- rho_viewer_column(data, column_index)
+    text <- vapply(seq_len(total_rows), function(row_index) {
+      rho_viewer_cell_text(values[row_index]) %||% ""
+    }, character(1))
+    matched <- matched | matches_query(text)
+  }
+  list(ok = TRUE, indices = which(matched))
+}
+
+rho_viewer_sorted_rows <- function(data, row_indices, sort_column, sort_direction) {
+  if (is.null(sort_column) || !length(row_indices)) {
+    return(list(ok = TRUE, indices = row_indices))
+  }
+  values <- rho_viewer_column(data, sort_column + 1L)
+  if (is.list(values) || is.complex(values)) {
+    return(list(ok = FALSE, error = rho_viewer_error(
+      "unsupported_sort_column",
+      "This column type cannot be sorted in the Data Viewer.",
+      sort_column = sort_column
+    )))
+  }
+  selected <- values[row_indices]
+  missing <- is.na(selected)
+  present_positions <- which(!missing)
+  if (length(present_positions)) {
+    order_positions <- order(
+      selected[present_positions],
+      present_positions,
+      decreasing = c(identical(sort_direction, "desc"), FALSE),
+      method = "radix"
+    )
+    present_positions <- present_positions[order_positions]
+  }
+  list(ok = TRUE, indices = row_indices[c(present_positions, which(missing))])
 }
 
 rho_viewer_cell_text <- function(value) {
@@ -1134,6 +1258,9 @@ rho_read_data_view <- function(object_name,
                                row_limit = 50L,
                                column_offset = 0L,
                                column_limit = 20L,
+                               query = NULL,
+                               sort_column = NULL,
+                               sort_direction = NULL,
                                envir = .GlobalEnv) {
   stopifnot(is.character(object_name), length(object_name) == 1L, nzchar(object_name))
   stopifnot(is.character(view_token), length(view_token) == 1L, nzchar(view_token))
@@ -1200,12 +1327,44 @@ rho_read_data_view <- function(object_name,
   }
 
   materialized <- rho_viewer_materialize_view(value, view_kind, view_key)
-  row_indices <- rho_viewer_subset_indices(row_offset, row_limit_checked, materialized$total_rows)
+  normalized_query <- rho_viewer_normalize_query(query)
+  if (!isTRUE(normalized_query$ok)) {
+    return(normalized_query$error)
+  }
+  normalized_sort <- rho_viewer_normalize_sort(
+    sort_column,
+    sort_direction,
+    materialized$total_columns
+  )
+  if (!isTRUE(normalized_sort$ok)) {
+    return(normalized_sort$error)
+  }
+  row_names <- materialized$row_names %||% as.character(seq_len(materialized$total_rows))
+  matched <- rho_viewer_matching_rows(
+    materialized$data,
+    row_names,
+    normalized_query$value,
+    materialized$total_rows,
+    materialized$total_columns
+  )
+  if (!isTRUE(matched$ok)) {
+    return(matched$error)
+  }
+  sorted <- rho_viewer_sorted_rows(
+    materialized$data,
+    matched$indices,
+    normalized_sort$column,
+    normalized_sort$direction
+  )
+  if (!isTRUE(sorted$ok)) {
+    return(sorted$error)
+  }
+  page_positions <- rho_viewer_subset_indices(row_offset, row_limit_checked, length(sorted$indices))
+  row_indices <- sorted$indices[page_positions]
   column_indices <- rho_viewer_subset_indices(column_offset, column_limit_checked, materialized$total_columns)
   rows <- list()
   truncated <- FALSE
   truncation_reason <- NULL
-  row_names <- materialized$row_names %||% rep.int("", materialized$total_rows)
   columns <- rho_viewer_column_labels(
     materialized$column_names[column_indices],
     offset = as.integer(column_offset),
@@ -1231,12 +1390,16 @@ rho_read_data_view <- function(object_name,
         view_kind = view_kind,
         view_key = view_key,
         view_token = descriptor$view_token,
-        total_rows = as.integer(materialized$total_rows),
+        source_total_rows = as.integer(materialized$total_rows),
+        total_rows = as.integer(length(sorted$indices)),
         total_columns = as.integer(materialized$total_columns),
         row_offset = as.integer(row_offset),
         row_limit = as.integer(row_limit_checked),
         column_offset = as.integer(column_offset),
         column_limit = as.integer(column_limit_checked),
+        query = normalized_query$value,
+        sort_column = normalized_sort$column,
+        sort_direction = normalized_sort$direction,
         columns = columns,
         rows = candidate_rows,
         truncated = FALSE,
@@ -1254,7 +1417,7 @@ rho_read_data_view <- function(object_name,
   }
 
   if (!truncated && length(row_indices) < as.integer(row_limit_checked)
-      && (as.integer(row_offset) + length(row_indices)) < materialized$total_rows) {
+      && (as.integer(row_offset) + length(row_indices)) < length(sorted$indices)) {
     truncated <- TRUE
     truncation_reason <- "payload_limit"
   }
@@ -1268,12 +1431,16 @@ rho_read_data_view <- function(object_name,
       view_kind = view_kind,
       view_key = view_key,
       view_token = descriptor$view_token,
-      total_rows = as.integer(materialized$total_rows),
+      source_total_rows = as.integer(materialized$total_rows),
+      total_rows = as.integer(length(sorted$indices)),
       total_columns = as.integer(materialized$total_columns),
       row_offset = as.integer(row_offset),
       row_limit = as.integer(row_limit_checked),
       column_offset = as.integer(column_offset),
       column_limit = as.integer(column_limit_checked),
+      query = normalized_query$value,
+      sort_column = normalized_sort$column,
+      sort_direction = normalized_sort$direction,
       columns = columns,
       rows = rows,
       truncated = truncated,
@@ -1640,4 +1807,3 @@ rho_discover_chunks <- function(path, limit = 200L) {
     unsupported = FALSE
   )
 }
-

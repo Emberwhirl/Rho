@@ -581,14 +581,14 @@ plot(
                   <span>View</span>
                   <select id="dataViewerViewSelect" aria-label="Choose data view"></select>
                 </label>
-                <input id="dataViewerFilter" class="data-viewer-filter" type="search" placeholder="Filter rows…" aria-label="Filter table rows" />
+                <input id="dataViewerFilter" class="data-viewer-filter" type="search" maxlength="256" placeholder="Search all rows" aria-label="Search all table rows" />
                 <div class="data-viewer-actions">
                   <label class="data-viewer-pagesize">
                     <span>Rows</span>
                     <select id="dataViewerPageSize" aria-label="Rows per page">
                       <option value="25">25</option>
-                      <option value="50">50</option>
-                      <option value="100" selected>100</option>
+                      <option value="50" selected>50</option>
+                      <option value="100">100</option>
                     </select>
                   </label>
                   <button id="dataViewerRowPrev" type="button" aria-label="Previous rows">Rows ←</button>
@@ -598,7 +598,7 @@ plot(
                   <button id="dataViewerExportButton" type="button">Export Page</button>
                 </div>
               </div>
-              <div id="dataViewerStatus" class="environment-hint">Select a supported object to open the bounded viewer.</div>
+              <div id="dataViewerStatus" class="environment-hint" aria-live="polite">Select a supported object to open the bounded viewer.</div>
               <div id="dataViewerMeta" class="environment-hint"></div>
               <div class="data-viewer-table-wrap">
                 <table id="dataViewerTable" class="data-viewer-table">

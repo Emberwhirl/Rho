@@ -241,6 +241,133 @@ test_that("data viewer pages return bounded rows and token mismatch is stale", {
   expect_identical(stale$error_code, "stale_view_token")
 })
 
+test_that("data viewer searches row names and off-page cells before paging", {
+  workspace <- new.env(parent = baseenv())
+  workspace$qc <- data.frame(
+    sample = paste0("S", seq_len(80L)),
+    note = c(rep("ordinary", 79L), "Hidden TARGET value"),
+    row.names = c("named-target", paste0("cell_", 2:80)),
+    stringsAsFactors = FALSE
+  )
+  detail <- rho_inspect_data_object("qc", envir = workspace)
+
+  off_page <- rho_read_data_view(
+    "qc", detail$view_token, "table", "table",
+    row_offset = 0L, row_limit = 5L, query = "target", envir = workspace
+  )
+
+  expect_true(off_page$ok)
+  expect_identical(off_page$page$source_total_rows, 80L)
+  expect_identical(off_page$page$total_rows, 2L)
+  expect_identical(off_page$page$query, "target")
+  expect_equal(vapply(off_page$page$rows, `[[`, character(1), "row_name"), c("named-target", "cell_80"))
+
+  restored <- rho_read_data_view(
+    "qc", detail$view_token, "table", "table",
+    row_offset = 75L, row_limit = 5L, query = "  ", envir = workspace
+  )
+  expect_true(restored$ok)
+  expect_null(restored$page$query)
+  expect_identical(restored$page$total_rows, 80L)
+  expect_identical(restored$page$rows[[5L]]$row_name, "cell_80")
+})
+
+test_that("data viewer sorts filtered rows stably by absolute duplicate-name index", {
+  workspace <- new.env(parent = baseenv())
+  data <- data.frame(
+    check.names = FALSE,
+    dup = c("group", "group", "group", "other", "group"),
+    dup = c(2, NA, 1, 0, 2),
+    stringsAsFactors = FALSE,
+    row.names = paste0("r", 1:5)
+  )
+  colnames(data) <- c("dup", "dup")
+  workspace$dups <- data
+  detail <- rho_inspect_data_object("dups", envir = workspace)
+
+  ascending <- rho_read_data_view(
+    "dups", detail$view_token, "table", "table",
+    row_limit = 2L, query = "group", sort_column = 1L,
+    sort_direction = "asc", envir = workspace
+  )
+  descending <- rho_read_data_view(
+    "dups", detail$view_token, "table", "table",
+    row_offset = 0L, row_limit = 4L, query = "group", sort_column = 1L,
+    sort_direction = "desc", envir = workspace
+  )
+
+  expect_true(ascending$ok)
+  expect_identical(ascending$page$columns[[1L]]$index, 0L)
+  expect_identical(ascending$page$columns[[2L]]$index, 1L)
+  expect_equal(vapply(ascending$page$rows, `[[`, character(1), "row_name"), c("r3", "r1"))
+  expect_equal(vapply(descending$page$rows, `[[`, character(1), "row_name"), c("r1", "r5", "r3", "r2"))
+  expect_identical(descending$page$sort_column, 1L)
+  expect_identical(descending$page$sort_direction, "desc")
+})
+
+test_that("data viewer validates query and sort without silent fallback", {
+  workspace <- new.env(parent = baseenv())
+  workspace$qc <- data.frame(value = 1:3, nested = I(list(list(1), list(2), list(3))))
+  detail <- rho_inspect_data_object("qc", envir = workspace)
+  read <- function(...) rho_read_data_view(
+    "qc", detail$view_token, "table", "table", envir = workspace, ...
+  )
+
+  expect_identical(read(query = paste(rep("x", 257L), collapse = ""))$error_code, "invalid_query")
+  expect_identical(read(query = "line\nbreak")$error_code, "invalid_query")
+  expect_identical(read(sort_column = 2L, sort_direction = "asc")$error_code, "invalid_sort")
+  expect_identical(read(sort_column = 0L, sort_direction = "up")$error_code, "invalid_sort")
+  expect_identical(read(sort_direction = "asc")$error_code, "invalid_sort")
+  expect_identical(read(sort_column = 1L, sort_direction = "asc")$error_code, "unsupported_sort_column")
+
+  recovered <- read(sort_column = 0L, sort_direction = "desc")
+  expect_true(recovered$ok)
+  expect_equal(vapply(recovered$page$rows, function(row) row$cells[[1L]], character(1)), c("3", "2", "1"))
+})
+
+test_that("data viewer enforces exact search scope and isolates environments", {
+  exact <- new.env(parent = baseenv())
+  exact$values <- matrix("ordinary", nrow = 50000L, ncol = 2L)
+  exact$values[50000L, 2L] <- "needle"
+  exact_detail <- rho_inspect_data_object("values", envir = exact)
+  exact_result <- rho_read_data_view(
+    "values", exact_detail$view_token, "matrix", "matrix",
+    row_limit = 1L, query = "needle", envir = exact
+  )
+  expect_true(exact_result$ok)
+  expect_identical(exact_result$page$total_rows, 1L)
+  expect_identical(exact_result$page$rows[[1L]]$row_name, "50000")
+
+  over <- new.env(parent = baseenv())
+  over$values <- matrix(strrep("x", 20L), nrow = 50001L, ncol = 2L)
+  over_detail <- rho_inspect_data_object("values", envir = over)
+  over_result <- rho_read_data_view(
+    "values", over_detail$view_token, "matrix", "matrix",
+    row_limit = 1L, query = "x", envir = over
+  )
+  expect_false(over_result$ok)
+  expect_identical(over_result$error_code, "search_scope_exceeded")
+  expect_identical(over_result$supported_maximum_rows, 50000L)
+  expect_identical(over_result$supported_maximum_cells, 100000L)
+
+  isolated <- new.env(parent = baseenv())
+  isolated$values <- matrix("foreign-needle", nrow = 1L)
+  isolated_detail <- rho_inspect_data_object("values", envir = isolated)
+  isolated_result <- rho_read_data_view(
+    "values", isolated_detail$view_token, "matrix", "matrix",
+    row_limit = 1L, query = "foreign", envir = isolated
+  )
+  expect_true(isolated_result$ok)
+  expect_identical(isolated_result$page$total_rows, 1L)
+
+  recovered <- rho_read_data_view(
+    "values", over_detail$view_token, "matrix", "matrix",
+    row_limit = 1L, query = NULL, envir = over
+  )
+  expect_true(recovered$ok)
+  expect_identical(recovered$page$total_rows, 50001L)
+})
+
 test_that("data viewer supports bounded matrix pages", {
   workspace <- new.env(parent = baseenv())
   workspace$mat <- matrix(

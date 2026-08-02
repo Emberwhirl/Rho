@@ -49,6 +49,9 @@ rho_read_data_view(
   row_limit = 50L,
   column_offset = 0L,
   column_limit = 20L,
+  query = NULL,
+  sort_column = NULL,
+  sort_direction = NULL,
   envir = .GlobalEnv
 )
 
