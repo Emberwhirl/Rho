@@ -1332,6 +1332,22 @@ body.resizing-vertical { cursor: col-resize; }
   flex-wrap: wrap;
   gap: 6px;
 }
+.data-viewer-pagesize {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.data-viewer-pagesize select {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  background: #fff;
+}
 .data-viewer-actions button {
   min-height: 28px;
 }
@@ -1372,11 +1388,10 @@ body.resizing-vertical { cursor: col-resize; }
 .data-viewer-table td:first-child {
   position: sticky;
   left: 0;
-  z-index: 1;
-  background: inherit;
+  z-index: 2;
+  background: #fff;
 }
-.data-viewer-table thead th:first-child,
-.data-viewer-table tbody th {
+.data-viewer-table thead th:first-child {
   background: #f6f8f8;
 }
 .data-viewer-table tbody tr:last-child td,

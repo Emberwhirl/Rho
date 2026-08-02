@@ -6512,6 +6512,14 @@ function renderDataViewer() {
   $("#dataViewerColumnNext").disabled = columnNextDisabled;
   selector.disabled = state.dataViewer.loadingPage;
 
+  // Row count display
+  if (page) {
+    const start = (page.row_offset || 0) + 1;
+    const end = (page.row_offset || 0) + (page.rows?.length || 0);
+    const total = page.total_rows || 0;
+    $("#dataViewerMeta").textContent = `Showing rows ${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()}`;
+  }
+
   thead.replaceChildren();
   tbody.replaceChildren();
   if (!page) return;
@@ -6519,9 +6527,11 @@ function renderDataViewer() {
   const headerRow = document.createElement("tr");
   const rowHeader = document.createElement("th");
   rowHeader.textContent = "#";
+  rowHeader.tabIndex = 0;
   headerRow.append(rowHeader);
   for (const column of page.columns || []) {
     const cell = document.createElement("th");
+    cell.tabIndex = 0;
     cell.textContent = (column.label || column.name || "") + (state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : "");
     cell.setAttribute("aria-sort", state.dataViewer.sortColumn === column.name ? (state.dataViewer.sortDirection === "asc" ? "ascending" : "descending") : "none");
     cell.style.cursor = "pointer";
@@ -6555,10 +6565,12 @@ function renderDataViewer() {
     const tr = document.createElement("tr");
     const label = document.createElement("th");
     label.scope = "row";
+    label.tabIndex = 0;
     label.textContent = row.row_name || "";
     tr.append(label);
     for (const cellValue of row.cells || []) {
       const cell = document.createElement("td");
+      cell.tabIndex = 0;
       if (cellValue === null || cellValue === undefined || cellValue === "") {
         cell.textContent = "NA";
         cell.className = "missing";
@@ -8867,6 +8879,14 @@ $("#dataViewerViewSelect").addEventListener("change", () => {
 $("#dataViewerFilter").addEventListener("input", () => {
   renderDataViewer();
 });
+$("#dataViewerPageSize").addEventListener("change", () => {
+  const size = parseInt($("#dataViewerPageSize").value, 10);
+  state.dataViewer.rowLimit = size;
+  state.dataViewer.rowOffset = 0;
+  const detail = state.selectedDataObjectDetail;
+  const view = selectedDataView(detail);
+  if (detail && view) fetchDataViewerPage(detail, view);
+});
 $("#dataViewerRowPrev").addEventListener("click", () => {
   loadDataViewPage({ rowOffset: Math.max(0, state.dataViewer.rowOffset - state.dataViewer.rowLimit) });
 });
@@ -8897,6 +8917,14 @@ $("#dataViewerTable").addEventListener("keydown", (event) => {
   else if (event.key === "ArrowUp") next = Math.max(index - cols, 0);
   else if (event.key === "Home") next = index - (index % cols);
   else if (event.key === "End") next = Math.min(index - (index % cols) + cols - 1, focusable.length - 1);
+  else if (event.key === "Tab") {
+    event.preventDefault();
+    if (event.shiftKey) {
+      next = index > 0 ? index - 1 : focusable.length - 1;
+    } else {
+      next = index < focusable.length - 1 ? index + 1 : 0;
+    }
+  }
   else return;
   event.preventDefault();
   focusable[next].focus();

@@ -494,6 +494,14 @@ plot(
                 </label>
                 <input id="dataViewerFilter" class="data-viewer-filter" type="search" placeholder="Filter rows…" aria-label="Filter table rows" />
                 <div class="data-viewer-actions">
+                  <label class="data-viewer-pagesize">
+                    <span>Rows</span>
+                    <select id="dataViewerPageSize" aria-label="Rows per page">
+                      <option value="25">25</option>
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                    </select>
+                  </label>
                   <button id="dataViewerRowPrev" type="button" aria-label="Previous rows">Rows ←</button>
                   <button id="dataViewerRowNext" type="button" aria-label="Next rows">Rows →</button>
                   <button id="dataViewerColumnPrev" type="button" aria-label="Previous columns">Cols ←</button>
