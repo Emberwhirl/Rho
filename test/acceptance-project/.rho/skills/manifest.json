@@ -1,0 +1,10 @@
+{
+  "skills": [
+    {
+      "id": "iris-analyzer",
+      "name": "Iris Analyzer",
+      "description": "Guide for exploratory analysis of the iris dataset. Helps with R code for summary statistics, clustering, and visualization.",
+      "version": "1.0.0"
+    }
+  ]
+}
