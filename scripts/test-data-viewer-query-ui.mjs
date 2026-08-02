@@ -24,7 +24,7 @@ assert.match(js, /state\.dataViewer\.sortColumn = column\.index/);
 assert.match(js, /query: page\.query,[\s\S]*sort_column: page\.sort_column,[\s\S]*sort_direction: page\.sort_direction,[\s\S]*workspace: currentViewerWorkspace\(\)/);
 assert.match(js, /let rows = needle[\s\S]*?sourceRows\.filter[\s\S]*?if \(sortColumn !== null\)[\s\S]*?rows\.sort[\s\S]*?const pageRows = rows\.slice/);
 assert.match(js, /source_total_rows: sourceTotalRows,[\s\S]*total_rows: rows\.length/);
-assert.match(js, /request\.object_name === "qc_paged" \? 60 : 12/);
+assert.match(js, /request\.object_name === "qc_paged" \? 60 : request\.object_name === "qc_types" \? 6 : 12/);
 assert.match(js, /\{ index: 0, name: "sample"/);
 assert.doesNotMatch(js, /fetchDataViewerPage/);
 assert.doesNotMatch(js, /Apply filter: check if any cell/);

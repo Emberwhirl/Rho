@@ -67,6 +67,9 @@ this file records behavior that is already available in a released build.
 - Data Viewer search, stable sorting, matched paging, and visible-page export
   are now computed by Workspace R over the complete bounded view rather than
   filtering only the rows already loaded in the browser.
+- Column type labels, bounded visible-page missing counts, numeric alignment, and
+  distinct `NA`, `NaN`, `Inf`, `-Inf`, and empty-string rendering make
+  scientific table values easier to interpret without changing the source.
 
 #### WS4: Git integration
 

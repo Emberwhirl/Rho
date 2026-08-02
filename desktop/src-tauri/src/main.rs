@@ -4869,6 +4869,31 @@ mod tests {
     }
 
     #[test]
+    fn data_view_delimited_text_preserves_empty_missing_and_non_finite_values() {
+        let page = json!({
+            "columns": [
+                { "name": "empty" },
+                { "name": "missing" },
+                { "name": "nan" },
+                { "name": "positive" },
+                { "name": "negative" }
+            ],
+            "rows": [{
+                "row_name": "sample_1",
+                "cells": ["", null, "NaN", "Inf", "-Inf"],
+                "cell_states": ["empty", "na", "nan", "pos_inf", "neg_inf"]
+            }]
+        });
+
+        let output = data_view_delimited_text(&page, ',').unwrap();
+
+        assert_eq!(
+            output,
+            "row_name,empty,missing,nan,positive,negative\r\nsample_1,,,NaN,Inf,-Inf\r\n"
+        );
+    }
+
+    #[test]
     fn data_view_artifact_metadata_replays_normalized_query_sort_and_window() {
         let page = json!({
             "row_offset": 25,

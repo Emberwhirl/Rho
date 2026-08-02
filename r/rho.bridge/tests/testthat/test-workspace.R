@@ -562,6 +562,56 @@ test_that("data viewer preserves bounded strings, list columns, missing values, 
   expect_lte(page$page$payload_bytes, 1024L * 1024L)
 })
 
+test_that("data viewer reports column types and aligned special cell states", {
+  workspace <- new.env(parent = baseenv())
+  workspace$typed <- data.frame(
+    logical = c(TRUE, NA, FALSE, TRUE, FALSE, TRUE),
+    integer = c(1L, NA, 3L, 4L, 5L, 6L),
+    double = c(1, NaN, Inf, -Inf, NA, 2),
+    character = c("", NA, "plain", "x", "y", "z"),
+    factor = factor(c("a", NA, "b", "a", "b", "a")),
+    date = as.Date(c("2026-01-01", NA, "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06")),
+    datetime = as.POSIXct(c("2026-01-01", NA, "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"), tz = "UTC"),
+    complex = c(1 + 2i, NA, 3 + 4i, 5 + 0i, 6 + 1i, 7 + 2i),
+    nested = I(list(list(a = 1L), NULL, list(b = 2L), list(), list(3L), list(4L))),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  detail <- rho_inspect_data_object("typed", envir = workspace)
+  page <- rho_read_data_view(
+    "typed", detail$view_token, "table", "table",
+    row_limit = 6L, column_limit = 9L, envir = workspace
+  )
+
+  expect_true(page$ok)
+  expect_equal(
+    vapply(page$page$columns, `[[`, character(1), "type"),
+    c("logical", "integer", "double", "character", "factor", "date", "datetime", "complex", "list")
+  )
+  expect_identical(page$page$columns[[3L]]$page_missing_count, 2L)
+  expect_identical(unlist(page$page$columns[[5L]]$classes), "factor")
+  expect_identical(page$page$rows[[1L]]$cell_states[[4L]], "empty")
+  expect_identical(page$page$rows[[1L]]$cells[[4L]], "")
+  expect_identical(page$page$rows[[2L]]$cell_states[[1L]], "na")
+  expect_null(page$page$rows[[2L]]$cells[[1L]])
+  expect_identical(page$page$rows[[2L]]$cell_states[[3L]], "nan")
+  expect_identical(page$page$rows[[2L]]$cells[[3L]], "NaN")
+  expect_identical(page$page$rows[[3L]]$cell_states[[3L]], "pos_inf")
+  expect_identical(page$page$rows[[3L]]$cells[[3L]], "Inf")
+  expect_identical(page$page$rows[[4L]]$cell_states[[3L]], "neg_inf")
+  expect_identical(page$page$rows[[4L]]$cells[[3L]], "-Inf")
+  expect_identical(page$page$rows[[2L]]$cell_states[[9L]], "na")
+
+  filtered <- rho_read_data_view(
+    "typed", detail$view_token, "table", "table",
+    row_limit = 6L, column_limit = 9L, query = "nan", envir = workspace
+  )
+  expect_true(filtered$ok)
+  expect_identical(filtered$page$total_rows, 1L)
+  expect_identical(filtered$page$columns[[3L]]$page_missing_count, 1L)
+  expect_identical(filtered$page$rows[[1L]]$cell_states[[3L]], "nan")
+})
+
 test_that("data viewer reports optional package unavailability explicitly", {
   workspace <- new.env(parent = baseenv())
   workspace$qc <- data.frame(sample = "S1", stringsAsFactors = FALSE)

@@ -1172,18 +1172,19 @@ function mockInspectObject(name) {
 }
 
 function mockInspectDataObject(name) {
-  if (["qc", "qc_paged"].includes(name)) {
-    const rowCount = name === "qc_paged" ? 60 : 12;
+  if (["qc", "qc_paged", "qc_types"].includes(name)) {
+    const rowCount = name === "qc_paged" ? 60 : name === "qc_types" ? 6 : 12;
+    const columnCount = name === "qc_types" ? 6 : 3;
     return {
       execution: {
         ok: true,
         name,
         class: ["data.frame"],
         display_kind: "data_frame",
-        dimensions: [rowCount, 3],
+        dimensions: [rowCount, columnCount],
         view_token: `mock-view-${name}-${state.revision.state_revision}`,
         views: [
-          { kind: "table", key: "table", label: "Table", rows: rowCount, columns: 3 },
+          { kind: "table", key: "table", label: "Table", rows: rowCount, columns: columnCount },
         ],
         truncated: false,
         truncation_reason: null,
@@ -1215,12 +1216,23 @@ function mockReadDataView(request) {
       workspace: state.revision,
     };
   }
-  const sourceTotalRows = request.object_name === "qc_paged" ? 60 : 12;
-  const sourceRows = Array.from({ length: sourceTotalRows }, (_, index) => ({
-    source_index: index,
-    row_name: `cell_${index + 1}`,
-    cells: [`S${index + 1}`, 70000 + index * 231, 3100 + index * 17],
-  }));
+  const typedRows = [
+    { row_name: "sample_1", cells: [true, 1, 1.5, "", "control", "2026-01-01"], cell_states: ["value", "value", "value", "empty", "value", "value"] },
+    { row_name: "sample_2", cells: [null, null, "NaN", null, null, null], cell_states: ["na", "na", "nan", "na", "na", "na"] },
+    { row_name: "sample_3", cells: [false, 3, "Inf", "plain", "treated", "2026-01-03"], cell_states: ["value", "value", "pos_inf", "value", "value", "value"] },
+    { row_name: "sample_4", cells: [true, 4, "-Inf", "alpha", "control", "2026-01-04"], cell_states: ["value", "value", "neg_inf", "value", "value", "value"] },
+    { row_name: "sample_5", cells: [false, 5, null, "beta", "treated", "2026-01-05"], cell_states: ["value", "value", "na", "value", "value", "value"] },
+    { row_name: "sample_6", cells: [true, 6, 2.75, "gamma", "control", "2026-01-06"], cell_states: ["value", "value", "value", "value", "value", "value"] },
+  ].map((row, index) => ({ ...row, source_index: index }));
+  const sourceTotalRows = request.object_name === "qc_paged" ? 60 : request.object_name === "qc_types" ? 6 : 12;
+  const sourceRows = request.object_name === "qc_types"
+    ? typedRows
+    : Array.from({ length: sourceTotalRows }, (_, index) => ({
+      source_index: index,
+      row_name: `cell_${index + 1}`,
+      cells: [`S${index + 1}`, 70000 + index * 231, 3100 + index * 17],
+      cell_states: ["value", "value", "value"],
+    }));
   const normalizedQuery = request.query === null || request.query === undefined
     ? null
     : String(request.query).trim() || null;
@@ -1236,8 +1248,9 @@ function mockReadDataView(request) {
   const sortDirection = request.sort_direction === null || request.sort_direction === undefined
     ? null
     : String(request.sort_direction);
+  const sourceColumnCount = request.object_name === "qc_types" ? 6 : 3;
   if ((sortColumn === null) !== (sortDirection === null)
-      || (sortColumn !== null && (!Number.isInteger(sortColumn) || sortColumn < 0 || sortColumn >= 3))
+      || (sortColumn !== null && (!Number.isInteger(sortColumn) || sortColumn < 0 || sortColumn >= sourceColumnCount))
       || (sortDirection !== null && !["asc", "desc"].includes(sortDirection))) {
     return {
       execution: { ok: false, error_code: "invalid_sort", message: "Sort request is invalid." },
@@ -1246,7 +1259,7 @@ function mockReadDataView(request) {
   }
   const needle = normalizedQuery?.toLocaleLowerCase() || null;
   let rows = needle
-    ? sourceRows.filter((row) => [row.row_name, ...row.cells].some((value) => String(value).toLocaleLowerCase().includes(needle)))
+    ? sourceRows.filter((row) => [row.row_name, ...row.cells].some((value) => String(value ?? "").toLocaleLowerCase().includes(needle)))
     : [...sourceRows];
   if (sortColumn !== null) {
     rows.sort((left, right) => {
@@ -1268,26 +1281,38 @@ function mockReadDataView(request) {
   const rowLimit = request.row_limit || 50;
   const columnOffset = request.column_offset || 0;
   const columnLimit = request.column_limit || 20;
-  const allColumns = [
-    { index: 0, name: "sample", label: "sample" },
-    { index: 1, name: "reads", label: "reads" },
-    { index: 2, name: "detected", label: "detected" },
+  const allColumns = request.object_name === "qc_types" ? [
+    { index: 0, name: "included", label: "included", type: "logical", classes: ["logical"] },
+    { index: 1, name: "replicate", label: "replicate", type: "integer", classes: ["integer"] },
+    { index: 2, name: "score", label: "score", type: "double", classes: ["numeric"] },
+    { index: 3, name: "note", label: "note", type: "character", classes: ["character"] },
+    { index: 4, name: "group", label: "group", type: "factor", classes: ["factor"] },
+    { index: 5, name: "collected", label: "collected", type: "date", classes: ["Date"] },
+  ] : [
+    { index: 0, name: "sample", label: "sample", type: "character", classes: ["character"] },
+    { index: 1, name: "reads", label: "reads", type: "integer", classes: ["integer"] },
+    { index: 2, name: "detected", label: "detected", type: "integer", classes: ["integer"] },
   ];
-  const columns = allColumns.slice(columnOffset, columnOffset + columnLimit);
+  const selectedColumns = allColumns.slice(columnOffset, columnOffset + columnLimit);
   const pageRows = rows.slice(rowOffset, rowOffset + rowLimit).map((row) => ({
     row_name: row.row_name,
     cells: row.cells.slice(columnOffset, columnOffset + columnLimit).map((value) => value === null || value === undefined ? null : String(value)),
+    cell_states: row.cell_states.slice(columnOffset, columnOffset + columnLimit),
+  }));
+  const columns = selectedColumns.map((column, index) => ({
+    ...column,
+    page_missing_count: pageRows.filter((row) => ["na", "nan"].includes(row.cell_states[index])).length,
   }));
   const page = {
     object_name: request.object_name,
     class: ["data.frame"],
-    dimensions: [sourceTotalRows, 3],
+    dimensions: [sourceTotalRows, sourceColumnCount],
     view_kind: request.view_kind,
     view_key: request.view_key,
     view_token: request.view_token,
     source_total_rows: sourceTotalRows,
     total_rows: rows.length,
-    total_columns: 3,
+    total_columns: sourceColumnCount,
     row_offset: rowOffset,
     row_limit: rowLimit,
     column_offset: columnOffset,
@@ -7180,6 +7205,15 @@ function dataViewerWindowMeta(page) {
   ].filter(Boolean).join(" · ");
 }
 
+function dataViewerCellPresentation(value, state) {
+  if (state === "na") return { text: "NA", className: "missing", label: "Missing value NA" };
+  if (state === "nan") return { text: "NaN", className: "non-finite", label: "Not a number" };
+  if (state === "pos_inf") return { text: "Inf", className: "non-finite", label: "Positive infinity" };
+  if (state === "neg_inf") return { text: "-Inf", className: "non-finite", label: "Negative infinity" };
+  if (state === "empty") return { text: '""', className: "empty-value", label: "Empty string" };
+  return { text: value === null || value === undefined ? "NA" : String(value), className: "", label: null };
+}
+
 function renderDataViewer() {
   const viewer = $("#dataViewer");
   const table = $("#dataViewerTable");
@@ -7249,10 +7283,18 @@ function renderDataViewer() {
     const cell = document.createElement("th");
     cell.tabIndex = 0;
     const sorted = state.dataViewer.sortColumn === column.index;
-    cell.textContent = `${column.label || column.name || ""}${sorted ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : ""}`;
+    const label = document.createElement("span");
+    label.className = "data-viewer-column-name";
+    label.textContent = `${column.label || column.name || ""}${sorted ? (state.dataViewer.sortDirection === "asc" ? " ▲" : " ▼") : ""}`;
+    const type = document.createElement("span");
+    type.className = "data-viewer-column-type";
+    type.textContent = column.type || "value";
+    cell.append(label, type);
     cell.setAttribute("aria-sort", sorted ? (state.dataViewer.sortDirection === "asc" ? "ascending" : "descending") : "none");
     cell.style.cursor = "pointer";
-    cell.title = "Click to sort";
+    const classes = (column.classes || []).join("/") || column.type || "value";
+    const missing = Number(column.page_missing_count || 0);
+    cell.title = `${classes} · ${missing.toLocaleString()} missing on page · Click to sort`;
     cell.addEventListener("click", () => {
       if (state.dataViewer.sortColumn === column.index) {
         if (state.dataViewer.sortDirection === "asc") {
@@ -7279,17 +7321,21 @@ function renderDataViewer() {
     label.tabIndex = 0;
     label.textContent = row.row_name || "";
     tr.append(label);
-    for (const cellValue of row.cells || []) {
+    (row.cells || []).forEach((cellValue, columnIndex) => {
       const cell = document.createElement("td");
       cell.tabIndex = 0;
-      if (cellValue === null || cellValue === undefined || cellValue === "") {
-        cell.textContent = "NA";
-        cell.className = "missing";
-      } else {
-        cell.textContent = String(cellValue);
-      }
+      const column = page.columns?.[columnIndex] || {};
+      const fallbackState = cellValue === null || cellValue === undefined ? "na" : cellValue === "" ? "empty" : "value";
+      const cellState = row.cell_states?.[columnIndex] || fallbackState;
+      const presentation = dataViewerCellPresentation(cellValue, cellState);
+      cell.textContent = presentation.text;
+      cell.dataset.cellState = cellState;
+      if (presentation.className) cell.classList.add(presentation.className);
+      if (["integer", "double", "complex"].includes(column.type)) cell.classList.add("numeric-value");
+      if (column.type === "logical") cell.classList.add("logical-value");
+      if (presentation.label) cell.setAttribute("aria-label", presentation.label);
       tr.append(cell);
-    }
+    });
     tbody.append(tr);
   }
 }

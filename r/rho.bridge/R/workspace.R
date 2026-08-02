@@ -969,6 +969,44 @@ rho_viewer_column_labels <- function(names, offset = 0L, count = NULL) {
   })
 }
 
+rho_viewer_column_type <- function(value) {
+  if (is.factor(value)) return("factor")
+  if (inherits(value, "Date")) return("date")
+  if (inherits(value, "POSIXt")) return("datetime")
+  if (is.logical(value)) return("logical")
+  if (is.integer(value)) return("integer")
+  if (is.double(value)) return("double")
+  if (is.character(value)) return("character")
+  if (is.complex(value)) return("complex")
+  if (is.list(value)) return("list")
+  "other"
+}
+
+rho_viewer_column_metadata <- function(columns, data, column_indices, row_indices) {
+  lapply(seq_along(columns), function(index) {
+    value <- rho_viewer_column(data, column_indices[[index]])
+    classes <- head(as.character(class(value)), 8L)
+    columns[[index]]$type <- rho_viewer_column_type(value)
+    columns[[index]]$classes <- lapply(classes, bounded_text, max_chars = 128L)
+    columns[[index]]$page_missing_count <- as.integer(sum(is.na(value[row_indices])))
+    columns[[index]]
+  })
+}
+
+rho_viewer_cell_state <- function(value) {
+  if (is.null(value) || !length(value)) return("na")
+  if (is.list(value) && !is.data.frame(value)) return("value")
+  if (length(value) != 1L) return("value")
+  scalar <- unclass(value)[[1L]]
+  if (is.numeric(scalar) && is.nan(scalar)) return("nan")
+  if (is.numeric(scalar) && is.infinite(scalar)) {
+    return(if (scalar > 0) "pos_inf" else "neg_inf")
+  }
+  if (length(scalar) == 1L && is.na(scalar)) return("na")
+  if (is.character(scalar) && identical(scalar, "")) return("empty")
+  "value"
+}
+
 rho_viewer_normalize_query <- function(query) {
   if (is.null(query)) {
     return(list(ok = TRUE, value = NULL))
@@ -1105,11 +1143,22 @@ rho_viewer_cell_text <- function(value) {
       max_chars = rho_viewer_max_cell_bytes()
     ))
   }
+  state <- rho_viewer_cell_state(value)
+  if (identical(state, "na")) return(NULL)
+  if (identical(state, "nan")) return("NaN")
+  if (identical(state, "pos_inf")) return("Inf")
+  if (identical(state, "neg_inf")) return("-Inf")
   if (is.factor(value) || inherits(value, c("Date", "POSIXt"))) {
     return(bounded_text(as.character(value[[1L]]), max_chars = rho_viewer_max_cell_bytes()))
   }
   if (is.atomic(value)) {
     scalar <- unclass(value)[[1L]]
+    if (is.numeric(scalar) && is.nan(scalar)) {
+      return("NaN")
+    }
+    if (is.numeric(scalar) && is.infinite(scalar)) {
+      return(if (scalar > 0) "Inf" else "-Inf")
+    }
     if (length(scalar) == 1L && is.na(scalar)) {
       return(NULL)
     }
@@ -1203,17 +1252,18 @@ rho_viewer_rows_payload <- function(data, row_indices, column_indices, row_names
   lapply(seq_along(row_indices), function(index) {
     row_index <- row_indices[[index]]
     if (is.data.frame(subset)) {
-      row_values <- lapply(subset[index, , drop = FALSE], function(cell) {
-        rho_viewer_cell_text(cell[[1L]])
+      source_values <- lapply(subset[index, , drop = FALSE], function(cell) cell[[1L]])
+      row_values <- lapply(source_values, function(cell) {
+        rho_viewer_cell_text(cell)
       })
     } else {
-      row_values <- lapply(seq_along(column_indices), function(column_index) {
-        rho_viewer_cell_text(subset[index, column_index])
-      })
+      source_values <- lapply(seq_along(column_indices), function(column_index) subset[index, column_index])
+      row_values <- lapply(source_values, rho_viewer_cell_text)
     }
     list(
       row_name = bounded_text((row_names %||% character())[[row_index]] %||% as.character(row_index), max_chars = 256L),
-      cells = row_values
+      cells = row_values,
+      cell_states = lapply(source_values, rho_viewer_cell_state)
     )
   })
 }
@@ -1365,7 +1415,7 @@ rho_read_data_view <- function(object_name,
   rows <- list()
   truncated <- FALSE
   truncation_reason <- NULL
-  columns <- rho_viewer_column_labels(
+  column_labels <- rho_viewer_column_labels(
     materialized$column_names[column_indices],
     offset = as.integer(column_offset),
     count = length(column_indices)
@@ -1380,6 +1430,12 @@ rho_read_data_view <- function(object_name,
         column_indices,
         row_names
       )
+    )
+    candidate_columns <- rho_viewer_column_metadata(
+      column_labels,
+      materialized$data,
+      column_indices,
+      row_indices[seq_along(candidate_rows)]
     )
     candidate <- list(
       ok = TRUE,
@@ -1400,7 +1456,7 @@ rho_read_data_view <- function(object_name,
         query = normalized_query$value,
         sort_column = normalized_sort$column,
         sort_direction = normalized_sort$direction,
-        columns = columns,
+        columns = candidate_columns,
         rows = candidate_rows,
         truncated = FALSE,
         truncation_reason = NULL,
@@ -1421,6 +1477,13 @@ rho_read_data_view <- function(object_name,
     truncated <- TRUE
     truncation_reason <- "payload_limit"
   }
+
+  columns <- rho_viewer_column_metadata(
+    column_labels,
+    materialized$data,
+    column_indices,
+    row_indices[seq_along(rows)]
+  )
 
   response <- list(
     ok = TRUE,

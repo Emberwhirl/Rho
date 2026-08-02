@@ -1530,6 +1530,16 @@ body.resizing-vertical { cursor: col-resize; }
   font-weight: 600;
   cursor: pointer;
 }
+.data-viewer-column-name,
+.data-viewer-column-type { display: block; }
+.data-viewer-column-type {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
 .data-viewer-table th:hover { background: var(--accent-pale); }
 .data-viewer-table th[aria-sort="ascending"],
 .data-viewer-table th[aria-sort="descending"] { color: var(--accent-strong); font-weight: 700; }
@@ -1552,6 +1562,16 @@ body.resizing-vertical { cursor: col-resize; }
   color: var(--muted);
   font-style: italic;
 }
+.data-viewer-table .empty-value {
+  color: var(--muted);
+  font-style: italic;
+}
+.data-viewer-table .non-finite {
+  color: #8a4b16;
+  font-variant-numeric: tabular-nums;
+}
+.data-viewer-table .numeric-value { text-align: right; font-variant-numeric: tabular-nums; }
+.data-viewer-table .logical-value { color: #315d65; font-weight: 600; }
 .environment-operation-surface {
   width: min(860px, calc(100vw - 40px));
   display: grid;

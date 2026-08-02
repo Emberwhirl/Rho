@@ -62,6 +62,7 @@ changes.
 - Verified adversarial Git hardening: [`plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md`](plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md)
 - Verified Git repository replacement handling: [`plans/active-2026-08-03-ws4-repository-replacement-spec.md`](plans/active-2026-08-03-ws4-repository-replacement-spec.md)
 - Active broker-owned Data Viewer query: [`plans/active-2026-08-03-ws3-broker-data-query-spec.md`](plans/active-2026-08-03-ws3-broker-data-query-spec.md)
+- Active Data Viewer type and missing-value presentation: [`plans/active-2026-08-03-ws3-type-missing-presentation-spec.md`](plans/active-2026-08-03-ws3-type-missing-presentation-spec.md)
 - Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
 - Current `0.3.x` milestone verification: [`verification/0.3x-milestone/verification.md`](verification/0.3x-milestone/verification.md)

@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **22 open items** and **27 completed
-items**. The 22 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **21 open items** and **28 completed
+items**. The 21 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -17,14 +17,14 @@ included in that checklist count.
 |---|---:|---|
 | M1 and `0.3.x` acceptance | 8 | Record representative manual and installed-candidate evidence |
 | WS4 Git completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS3 table interaction | 1 | Specify richer type and missing-value presentation |
+| WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 2 | Specify cancellation/restart truth and Artifact linkage |
 | WS1 package/environment completion | 3 | Select lockfile comparison or package mutation as a bounded package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **22** | |
+| **Total** | **21** | |
 
-For near-term planning, this is **14 product implementation items** plus **8
+For near-term planning, this is **13 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -95,6 +95,14 @@ the broker-owned filter/search item without closing installed-app acceptance.
 The checklist is now **22 open / 27 completed**, and richer type/missing-value
 presentation is the sole WS3 checklist gap.
 
+The authorized WS3-Q2 package,
+[`active-2026-08-03-ws3-type-missing-presentation-spec.md`](active-2026-08-03-ws3-type-missing-presentation-spec.md),
+completed additive Workspace-owned column type/class/page-missing metadata, aligned
+special-value states, truthful frontend/mock rendering, export compatibility,
+contract review, and the complete affected automated/browser matrix on
+2026-08-03. This closes the last WS3 checklist capability without closing
+installed-app acceptance. The checklist is now **21 open / 28 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
@@ -108,7 +116,7 @@ presentation is the sole WS3 checklist gap.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 22-item checklist and require separate
+These six directions remain outside the 21-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 
