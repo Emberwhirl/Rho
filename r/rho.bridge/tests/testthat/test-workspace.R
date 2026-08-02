@@ -272,6 +272,195 @@ test_that("lockfile inventory accepts an empty Packages object", {
   expect_length(result$packages, 0L)
 })
 
+test_that("lockfile inventory binds dependency roles to DESCRIPTION and bounded closure", {
+  project <- file.path(tempdir(), paste0("rho-lockfile-roles-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines(c(
+    "Package: rolefixture",
+    "Version: 1.0.0",
+    "Imports: directA (>= 1.0),",
+    "  directB",
+    "LinkingTo: compiledDirect",
+    "Suggests: optionalDirect",
+    "Depends: R (>= 4.4)"
+  ), file.path(project, "DESCRIPTION"))
+  jsonlite::write_json(list(Packages = list(
+    directA = list(Version = "1.0", Requirements = list("transitiveA", "directB")),
+    directB = list(Version = "1.0", Requirements = "transitiveB"),
+    compiledDirect = list(Version = "1.0"),
+    optionalDirect = list(Version = "1.0"),
+    transitiveA = list(Version = "1.0", Requirements = "transitiveB"),
+    transitiveB = list(Version = "1.0", Requirements = "directA"),
+    unreachable = list(Version = "1.0")
+  )), file.path(project, "renv.lock"), auto_unbox = TRUE)
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  result <- rho_list_lockfile_packages(project)
+  roles <- stats::setNames(
+    vapply(result$packages, `[[`, character(1), "dependency_role"),
+    vapply(result$packages, `[[`, character(1), "name")
+  )
+
+  expect_identical(result$dependency_roles$state, "available")
+  expect_false(result$dependency_roles$incomplete)
+  expect_identical(unlist(result$dependency_roles$fields$Imports), c("directA", "directB"))
+  expect_identical(
+    unname(roles[c("compiledDirect", "directA", "directB", "optionalDirect")]),
+    rep("direct", 4L)
+  )
+  expect_identical(unname(roles[c("transitiveA", "transitiveB")]), rep("transitive", 2L))
+  expect_identical(roles[["unreachable"]], "unclassified")
+})
+
+test_that("lockfile inventory normalizes and redacts package sources", {
+  project <- file.path(tempdir(), paste0("rho-lockfile-sources-", Sys.getpid()))
+  dir.create(file.path(project, "vendor", "inside"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  jsonlite::write_json(list(Packages = list(
+    cranPkg = list(Version = "1", Source = "Repository", Repository = "CRAN"),
+    githubPkg = list(Version = "1", RemoteType = "github", RemoteUsername = "org", RemoteRepo = "repo", RemoteRef = "v1"),
+    gitlabPkg = list(Version = "1", RemoteType = "gitlab", RemoteUsername = "org", RemoteRepo = "repo"),
+    bitbucketPkg = list(Version = "1", RemoteType = "bitbucket", RemoteUsername = "org", RemoteRepo = "repo"),
+    gitPkg = list(Version = "1", Source = "git", RemoteUrl = "https://token:secret@example.org/org/repo.git?key=secret#frag"),
+    scpGitPkg = list(Version = "1", Source = "git", RemoteUrl = "git@example.org:org/repo.git"),
+    urlPkg = list(Version = "1", Source = "URL", URL = "https://user:password@example.org/pkg.tar.gz?token=secret#fragment"),
+    localPkg = list(Version = "1", Source = "Local", Path = "vendor/inside"),
+    escapedPkg = list(Version = "1", Source = "Local", Path = "../outside"),
+    unknownPkg = list(Version = "1", Source = "Mystery")
+  )), file.path(project, "renv.lock"), auto_unbox = TRUE)
+  installed <- matrix(
+    c("installedOnly", "2", "C:/lib", "Bioconductor"),
+    ncol = 4L,
+    dimnames = list(NULL, c("Package", "Version", "LibPath", "Repository"))
+  )
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() "C:/lib",
+    .package = "rho.bridge"
+  )
+
+  result <- rho_list_lockfile_packages(project)
+  packages <- stats::setNames(result$packages, vapply(result$packages, `[[`, character(1), "name"))
+
+  expect_identical(packages$cranPkg$source, list(kind = "repository", detail = "CRAN"))
+  expect_identical(packages$githubPkg$source, list(kind = "github", detail = "org/repo@v1"))
+  expect_identical(packages$gitlabPkg$source, list(kind = "gitlab", detail = "org/repo"))
+  expect_identical(packages$bitbucketPkg$source, list(kind = "bitbucket", detail = "org/repo"))
+  expect_identical(packages$gitPkg$source, list(kind = "git", detail = "example.org/org/repo.git"))
+  expect_identical(packages$scpGitPkg$source, list(kind = "git", detail = "example.org:org/repo.git"))
+  expect_identical(packages$urlPkg$source, list(kind = "url", detail = "example.org/pkg.tar.gz"))
+  expect_identical(packages$localPkg$source, list(kind = "local", detail = "vendor/inside"))
+  expect_identical(packages$escapedPkg$source, list(kind = "local", detail = NULL))
+  expect_identical(packages$unknownPkg$source, list(kind = "unknown", detail = NULL))
+  expect_identical(packages$installedOnly$source, list(kind = "repository", detail = "Bioconductor"))
+  encoded <- jsonlite::toJSON(result, auto_unbox = TRUE, null = "null")
+  expect_false(grepl("token|secret|key=|frag", encoded, ignore.case = TRUE))
+})
+
+test_that("lockfile inventory reports DESCRIPTION absence invalidity and size limits", {
+  projects <- file.path(tempdir(), paste0("rho-description-state-", Sys.getpid(), "-", c("missing", "invalid", "large")))
+  lapply(projects, dir.create, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(projects, recursive = TRUE, force = TRUE), add = TRUE)
+  for (project in projects) writeLines('{"Packages": {"pkg": {"Version": "1"}}}', file.path(project, "renv.lock"))
+  writeLines("not a dcf record", file.path(projects[[2L]], "DESCRIPTION"))
+  writeLines(c("Package: huge", "Version: 1", paste0("Description: ", strrep("x", 270000L))), file.path(projects[[3L]], "DESCRIPTION"))
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  states <- vapply(projects, function(project) {
+    rho_list_lockfile_packages(project)$dependency_roles$state
+  }, character(1))
+
+  expect_identical(unname(states), c("no_description", "invalid_description", "description_size_limit"))
+})
+
+test_that("dependency role bounds discard partial transitive claims", {
+  requirements <- list(root = c("a", "b", "c"), a = "d", b = "e")
+
+  requirement_result <- rho.bridge:::rho_lockfile_dependency_closure(
+    "root", requirements, requirement_limit = 2L
+  )
+  edge_result <- rho.bridge:::rho_lockfile_dependency_closure(
+    "root", requirements, requirement_limit = 3L, edge_limit = 2L
+  )
+  node_result <- rho.bridge:::rho_lockfile_dependency_closure(
+    "root", list(root = "a", a = "b"), node_limit = 2L
+  )
+  source_result <- rho.bridge:::rho_lockfile_dependency_closure(
+    "root", requirements, graph_complete = FALSE
+  )
+
+  expect_identical(requirement_result$reasons[[1L]], "dependency_requirement_limit")
+  expect_identical(edge_result$reasons[[1L]], "dependency_edge_limit")
+  expect_identical(node_result$reasons[[1L]], "dependency_node_limit")
+  expect_identical(source_result$reasons[[1L]], "lockfile_packages_source_limit")
+  for (result in list(requirement_result, edge_result, node_result, source_result)) {
+    expect_true(result$incomplete)
+    expect_length(result$transitive, 0L)
+  }
+})
+
+test_that("dependency roles and source labels stay isolated across Unicode projects", {
+  root <- file.path(tempdir(), paste0("rho-role-isolation-", Sys.getpid()))
+  projects <- file.path(root, c("project-alpha", "project-\u79d1\u5b66"))
+  lapply(projects, dir.create, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines(c("Package: alpha", "Version: 1", "Imports: alphaDirect"), file.path(projects[[1L]], "DESCRIPTION"))
+  writeLines(c("Package: unicode", "Version: 1", "Imports: unicodeDirect"), file.path(projects[[2L]], "DESCRIPTION"))
+  jsonlite::write_json(
+    list(Packages = list(alphaDirect = list(Version = "1", Source = "Local", Path = "vendor/alpha"))),
+    file.path(projects[[1L]], "renv.lock"), auto_unbox = TRUE
+  )
+  jsonlite::write_json(
+    list(Packages = list(unicodeDirect = list(Version = "1", Source = "Repository", Repository = "\u955c\u50cf\u6e90"))),
+    file.path(projects[[2L]], "renv.lock"), auto_unbox = TRUE
+  )
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  alpha <- rho_list_lockfile_packages(projects[[1L]])
+  unicode <- rho_list_lockfile_packages(projects[[2L]])
+
+  expect_identical(alpha$packages[[1L]]$name, "alphaDirect")
+  expect_identical(alpha$packages[[1L]]$dependency_role, "direct")
+  expect_identical(alpha$packages[[1L]]$source, list(kind = "local", detail = "vendor/alpha"))
+  expect_identical(unicode$packages[[1L]]$name, "unicodeDirect")
+  expect_identical(unicode$packages[[1L]]$dependency_role, "direct")
+  expect_identical(unicode$packages[[1L]]$source, list(kind = "repository", detail = "\u955c\u50cf\u6e90"))
+  expect_false(grepl("alpha", jsonlite::toJSON(unicode, auto_unbox = TRUE), fixed = TRUE))
+})
+
+test_that("dependency roles reject DESCRIPTION symlink escape when supported", {
+  project <- file.path(tempdir(), paste0("rho-description-link-", Sys.getpid()))
+  outside <- tempfile("rho-description-outside-")
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  writeLines(c("Package: outside", "Version: 1"), outside)
+  on.exit(unlink(c(project, outside), recursive = TRUE, force = TRUE), add = TRUE)
+  linked <- suppressWarnings(file.symlink(outside, file.path(project, "DESCRIPTION")))
+  skip_if_not(linked, "File symlinks are unavailable in this Windows session")
+
+  result <- rho.bridge:::rho_lockfile_description_roles(
+    normalizePath(project, winslash = "/", mustWork = TRUE)
+  )
+
+  expect_identical(result$state, "invalid_description")
+  expect_match(result$error, "regular file inside")
+})
+
 test_that("typed environment operation returns structured result", {
   project <- file.path(tempdir(), paste0("rho-bridge-operation-", Sys.getpid()))
   dir.create(project, recursive = TRUE, showWarnings = FALSE)

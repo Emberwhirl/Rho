@@ -1465,8 +1465,8 @@ body.resizing-vertical { cursor: col-resize; }
 .package-table-head,
 .package-row.lockfile {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) 62px 62px minmax(82px, 0.9fr);
-  gap: 6px;
+  grid-template-columns: minmax(112px, 1fr) 50px 50px minmax(74px, 0.8fr);
+  gap: 4px;
   align-items: center;
 }
 .package-table-head {
@@ -1483,6 +1483,18 @@ body.resizing-vertical { cursor: col-resize; }
   text-transform: uppercase;
 }
 .package-row.lockfile .pkg-version { text-align: left; }
+.pkg-identity { display: grid; min-width: 0; gap: 1px; }
+.package-row.lockfile .pkg-name {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.pkg-metadata {
+  color: var(--subtle);
+  font-size: 8px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .package-state {
   overflow: hidden;
   color: var(--muted);

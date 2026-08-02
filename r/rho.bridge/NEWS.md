@@ -1,3 +1,10 @@
+# rho.bridge 0.1.4
+
+- Added evidence-bound direct, transitive, and unclassified dependency roles
+  from the project DESCRIPTION and bounded lockfile requirements graph.
+- Added credential-safe repository, remote, URL, and project-local package
+  source metadata to lockfile and installed-library inventory rows.
+
 # rho.bridge 0.1.3
 
 - Added a bounded, project-root-explicit lockfile and installed-library union

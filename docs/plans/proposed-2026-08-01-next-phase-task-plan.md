@@ -3,7 +3,7 @@
 Status: proposed coordination plan; reconciled after focused P2/P3 packages
 
 Date: 2026-08-01
-Last reconciled: 2026-08-02
+Last reconciled: 2026-08-03
 Scope: post-Waves-1-14 implementation sprint, closing acceptance gates and
 completing remaining proposal capabilities
 
@@ -112,7 +112,7 @@ From the RStudio-inspired workflow proposal, capability-decision table row 1:
 
 - [x] Searchable installed-package inventory
 - [x] Searchable lockfile inventory and installed-versus-locked comparison
-- [ ] Direct versus transitive dependency and package-source display
+- [x] Direct versus transitive dependency and package-source display
 - [x] Bounded status and change preview before `renv` initialization,
   restore, or snapshot
 - [x] Exact operation, project root, revisions, repositories, and expected

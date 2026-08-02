@@ -71,6 +71,9 @@ this file records behavior that is already available in a released build.
 - Added Installed and Lockfile package tabs with one searchable, bounded
   installed-versus-locked comparison, explicit drift labels, and truthful
   missing, malformed, unavailable, and incomplete lockfile states.
+- Lockfile rows now distinguish dependencies declared by DESCRIPTION from
+  bounded transitive requirements and unclassified packages, and show
+  credential-safe repository, remote, URL, or project-local source details.
 
 #### WS9: lintr diagnostics
 

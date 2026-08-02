@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **18 open items** and **31 completed
-items**. The 18 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **17 open items** and **32 completed
+items**. The 17 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -19,7 +19,7 @@ included in that checklist count.
 | WS4 Git completion | 0 | Capability complete; installed-app acceptance remains separate |
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
-| WS1 package/environment completion | 2 | Select dependency/source display or package mutation as a bounded package |
+| WS1 package/environment completion | 1 | Package mutation is the sole remaining WS1 capability package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
 | **Total** | **18** | |
@@ -130,6 +130,15 @@ affected automated/browser matrix on 2026-08-03. This closes searchable
 lockfile comparison without authorizing dependency/source presentation or any
 package mutation. Installed-app acceptance remains open. The checklist is now
 **18 open / 31 completed**.
+
+The authorized WS1-L2 package,
+[`active-2026-08-03-ws1-dependency-source-spec.md`](active-2026-08-03-ws1-dependency-source-spec.md),
+completed evidence-bound direct/transitive/unclassified roles, bounded graph
+failure truth, credential-safe package source presentation, browser/mock
+parity, contract review, and the complete affected automated matrix on
+2026-08-03. This closes dependency/source presentation without authorizing any
+package mutation. Installed-app acceptance remains open. The checklist is now
+**17 open / 32 completed**.
 
 ## Follow-up Order
 

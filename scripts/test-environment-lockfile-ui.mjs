@@ -20,6 +20,8 @@ assert.match(css, /\.package-state\.version_mismatch/);
 assert.match(css, /\.package-state\.missing_in_library/);
 assert.match(css, /\.package-state\.missing_in_lockfile/);
 assert.match(css, /\.package-state\.matched/);
+assert.match(css, /\.package-row\.lockfile \.pkg-name\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*normal/);
+assert.match(css, /\.pkg-metadata\s*\{[^}]*overflow-wrap:\s*anywhere/);
 
 assert.match(js, /if \(command === "list_lockfile_packages"\)/);
 assert.match(js, /invoke\("list_lockfile_packages", \{ limit: 500 \}\)/);
@@ -29,6 +31,12 @@ assert.match(js, /stateLabels = \{[\s\S]*matched: "Matched"[\s\S]*version_mismat
 assert.match(js, /lockfile\.state === "invalid_lockfile"/);
 assert.match(js, /lockfile\.state === "no_lockfile"/);
 assert.match(js, /data\.incomplete && data\.incomplete_reasons/);
+assert.match(js, /Roles from DESCRIPTION/);
+assert.match(js, /Dependency roles unavailable: no DESCRIPTION/);
+assert.match(js, /roleLabels = \{ direct: "Direct", transitive: "Transitive", unclassified: "Unclassified" \}/);
+assert.match(js, /sourceLabels = \{/);
+assert.match(js, /pkg\.source\?\.detail/);
+assert.match(js, /base\.packages\.map\(\(pkg\) => \(\{ \.\.\.pkg, dependency_role: "unclassified" \}\)\)/);
 assert.match(js, /scenario === "environment-lockfile"/);
 assert.match(js, /document_overflow: document\.documentElement\.scrollWidth > document\.documentElement\.clientWidth/);
 
@@ -36,6 +44,9 @@ for (const state of ["matched", "version_mismatch", "missing_in_library", "missi
   assert.match(js, new RegExp(`state: "${state}"`), `Mock inventory must include ${state}`);
 }
 for (const state of ["missing", "malformed", "truncated"]) {
+  assert.match(js, new RegExp(`mockState === "${state}"`), `Mock preview must include ${state}`);
+}
+for (const state of ["missing-description", "invalid-description"]) {
   assert.match(js, new RegExp(`mockState === "${state}"`), `Mock preview must include ${state}`);
 }
 

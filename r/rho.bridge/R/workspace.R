@@ -358,11 +358,184 @@ rho_lockfile_inventory_text <- function(value, max_bytes = 512L) {
 rho_lockfile_inventory_installed_rows <- function() {
   utils::installed.packages(
     lib.loc = .libPaths(),
-    fields = c("Package", "Version", "LibPath")
+    fields = c(
+      "Package", "Version", "LibPath", "Repository", "RemoteType",
+      "RemoteUrl", "RemoteUsername", "RemoteRepo", "RemoteRef"
+    )
   )
 }
 
 rho_lockfile_inventory_library_paths <- function() .libPaths()
+
+rho_lockfile_inventory_matrix_value <- function(rows, index, name) {
+  if (!(name %in% colnames(rows))) return(NULL)
+  value <- rows[index, name]
+  if (!length(value) || is.na(value[[1L]])) return(NULL)
+  rho_lockfile_inventory_text(value, 1000L)
+}
+
+rho_lockfile_dependency_names <- function(value) {
+  if (is.null(value) || !length(value)) return(character())
+  values <- unlist(value, use.names = FALSE)
+  tokens <- trimws(unlist(strsplit(values, ",", fixed = TRUE), use.names = FALSE))
+  tokens <- trimws(sub("\\s*\\(.*$", "", tokens))
+  unique(tokens[grepl("^[A-Za-z][A-Za-z0-9.]*$", tokens) & tokens != "R"])
+}
+
+rho_lockfile_description_roles <- function(project_dir) {
+  description <- file.path(project_dir, "DESCRIPTION")
+  result <- list(
+    state = "no_description",
+    path = NULL,
+    fields = list(),
+    direct = character(),
+    error = NULL
+  )
+  if (!file.exists(description)) return(result)
+  info <- file.info(description)
+  normalized <- tryCatch(
+    normalizePath(description, winslash = "/", mustWork = TRUE),
+    error = function(e) e
+  )
+  root_prefix <- paste0(tolower(project_dir), "/")
+  if (inherits(normalized, "error") || isTRUE(info$isdir) || nzchar(Sys.readlink(description)) ||
+      !startsWith(tolower(normalized), root_prefix)) {
+    result$state <- "invalid_description"
+    result$error <- "DESCRIPTION must be a regular file inside the project root"
+    return(result)
+  }
+  if (is.na(info$size) || info$size > 256L * 1024L) {
+    result$state <- "description_size_limit"
+    result$error <- "DESCRIPTION exceeds the 256 KiB inventory budget"
+    return(result)
+  }
+  fields <- c("Depends", "Imports", "LinkingTo", "Suggests")
+  parsed <- tryCatch(read.dcf(normalized, fields = fields), error = function(e) e)
+  if (inherits(parsed, "error") || nrow(parsed) != 1L) {
+    result$state <- "invalid_description"
+    result$error <- rho_lockfile_inventory_text(
+      if (inherits(parsed, "error")) conditionMessage(parsed) else "DESCRIPTION must contain one DCF record",
+      1000L
+    )
+    return(result)
+  }
+  declared <- lapply(fields, function(field) {
+    value <- parsed[1L, field]
+    if (is.na(value)) character() else rho_lockfile_dependency_names(value)
+  })
+  names(declared) <- fields
+  result$state <- "available"
+  result$path <- normalized
+  result$fields <- lapply(declared, as.list)
+  result$direct <- sort(unique(unlist(declared, use.names = FALSE)))
+  result
+}
+
+rho_lockfile_dependency_closure <- function(direct,
+                                            requirements,
+                                            requirement_limit = 512L,
+                                            node_limit = 10000L,
+                                            edge_limit = 10000L,
+                                            graph_complete = TRUE) {
+  if (!length(direct)) {
+    return(list(transitive = character(), incomplete = FALSE, reasons = list()))
+  }
+  if (!isTRUE(graph_complete)) {
+    return(list(
+      transitive = character(),
+      incomplete = TRUE,
+      reasons = list("lockfile_packages_source_limit")
+    ))
+  }
+  queue <- direct
+  seen <- character()
+  edges <- 0L
+  reasons <- list()
+  while (length(queue)) {
+    name <- queue[[1L]]
+    queue <- queue[-1L]
+    if (name %in% seen) next
+    seen <- c(seen, name)
+    if (length(seen) > node_limit) {
+      reasons <- list("dependency_node_limit")
+      break
+    }
+    children <- requirements[[name]] %||% character()
+    if (length(children) > requirement_limit) {
+      reasons <- list("dependency_requirement_limit")
+      break
+    }
+    edges <- edges + length(children)
+    if (edges > edge_limit) {
+      reasons <- list("dependency_edge_limit")
+      break
+    }
+    queue <- c(queue, setdiff(children, seen))
+  }
+  if (length(reasons)) {
+    return(list(transitive = character(), incomplete = TRUE, reasons = reasons))
+  }
+  list(
+    transitive = sort(setdiff(seen, direct)),
+    incomplete = FALSE,
+    reasons = list()
+  )
+}
+
+rho_lockfile_safe_remote_label <- function(value) {
+  value <- rho_lockfile_inventory_text(value, 1000L)
+  if (is.null(value) || !nzchar(value)) return(NULL)
+  value <- sub("#.*$", "", value)
+  value <- sub("\\?.*$", "", value)
+  value <- sub("^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]+@", "\\1", value)
+  value <- sub("^([A-Za-z][A-Za-z0-9+.-]*://)", "", value)
+  value <- sub("^[^@/]+@", "", value)
+  rho_lockfile_inventory_text(value, 256L)
+}
+
+rho_lockfile_local_source_label <- function(value, project_dir) {
+  value <- rho_lockfile_inventory_text(value, 1000L)
+  if (is.null(value) || !nzchar(value)) return(NULL)
+  candidate <- if (grepl("^([A-Za-z]:[/\\\\]|/)", value)) value else file.path(project_dir, value)
+  normalized <- normalizePath(candidate, winslash = "/", mustWork = FALSE)
+  root_prefix <- paste0(tolower(project_dir), "/")
+  if (!startsWith(tolower(normalized), root_prefix)) return(NULL)
+  substring(normalized, nchar(project_dir) + 2L)
+}
+
+rho_lockfile_package_source <- function(metadata, project_dir) {
+  value <- function(name) rho_lockfile_inventory_text(metadata[[name]], 1000L)
+  source <- tolower(value("Source") %||% "")
+  remote_type <- tolower(value("RemoteType") %||% "")
+  repository <- value("Repository")
+  if (source == "repository" || !is.null(repository)) {
+    return(list(kind = "repository", detail = rho_lockfile_inventory_text(repository, 128L)))
+  }
+  remote_kind <- if (remote_type %in% c("github", "gitlab", "bitbucket")) remote_type else source
+  if (remote_kind %in% c("github", "gitlab", "bitbucket")) {
+    owner <- value("RemoteUsername")
+    repo <- value("RemoteRepo")
+    ref <- value("RemoteRef")
+    detail <- paste0(
+      if (!is.null(owner) && !is.null(repo)) paste0(owner, "/", repo) else repo %||% "",
+      if (!is.null(ref)) paste0("@", ref) else ""
+    )
+    return(list(kind = remote_kind, detail = rho_lockfile_inventory_text(detail, 256L)))
+  }
+  if (remote_type == "git" || source == "git") {
+    return(list(kind = "git", detail = rho_lockfile_safe_remote_label(value("RemoteUrl") %||% value("URL"))))
+  }
+  if (remote_type == "url" || source == "url") {
+    return(list(kind = "url", detail = rho_lockfile_safe_remote_label(value("RemoteUrl") %||% value("URL"))))
+  }
+  if (remote_type %in% c("local", "path") || source %in% c("local", "cellar", "path")) {
+    return(list(
+      kind = "local",
+      detail = rho_lockfile_local_source_label(value("Path") %||% value("RemoteUrl"), project_dir)
+    ))
+  }
+  list(kind = "unknown", detail = NULL)
+}
 
 rho_lockfile_inventory_error <- function(project_dir, lockfile, message) {
   list(
@@ -431,6 +604,10 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
     if (is.na(matched)) length(library_paths) + 1L else matched
   }
   installed <- lapply(seq_len(nrow(installed_result)), function(index) {
+    source_metadata <- stats::setNames(lapply(
+      c("Repository", "RemoteType", "RemoteUrl", "RemoteUsername", "RemoteRepo", "RemoteRef"),
+      function(field) rho_lockfile_inventory_matrix_value(installed_result, index, field)
+    ), c("Repository", "RemoteType", "RemoteUrl", "RemoteUsername", "RemoteRepo", "RemoteRef"))
     list(
       name = rho_lockfile_inventory_text(installed_result[index, "Package"], 256L),
       version = rho_lockfile_inventory_text(installed_result[index, "Version"], 128L),
@@ -438,6 +615,7 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
         normalizePath(installed_result[index, "LibPath"], winslash = "/", mustWork = FALSE),
         1000L
       ),
+      source = rho_lockfile_package_source(source_metadata, project_dir),
       library_rank = library_rank(installed_result[index, "LibPath"]),
       source_index = index
     )
@@ -458,6 +636,7 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
   lockfile_state <- "no_lockfile"
   parse_error <- NULL
   lockfile_truncated <- FALSE
+  requirements <- list()
   if (lockfile_exists) {
     lockfile_bytes <- file.info(lockfile_path)$size
     if (is.na(lockfile_bytes) || lockfile_bytes > 5L * 1024L * 1024L) {
@@ -482,9 +661,17 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
     entry_names <- head(entry_names, source_limit)
     locked <- lapply(entry_names, function(name) {
       item <- entries[[name]] %||% list()
+      source_fields <- c(
+        "Source", "Repository", "RemoteType", "RemoteHost", "RemoteUsername",
+        "RemoteRepo", "RemoteRef", "RemoteUrl", "URL", "Path"
+      )
+      source_metadata <- stats::setNames(lapply(source_fields, function(field) item[[field]]), source_fields)
+      package_requirements <- rho_lockfile_dependency_names(item$Requirements)
+      requirements[[name]] <<- package_requirements
       list(
         name = rho_lockfile_inventory_text(name, 256L),
-        version = rho_lockfile_inventory_text(item$Version, 128L)
+        version = rho_lockfile_inventory_text(item$Version, 128L),
+        source = rho_lockfile_package_source(source_metadata, project_dir)
       )
     })
     locked <- locked[vapply(locked, function(item) !is.null(item$name) && nzchar(item$name), logical(1))]
@@ -493,6 +680,20 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
   }
 
   locked_names <- vapply(locked, function(item) item$name, character(1))
+  dependency_roles <- rho_lockfile_description_roles(project_dir)
+  dependency_closure <- if (identical(dependency_roles$state, "available")) {
+    rho_lockfile_dependency_closure(
+      dependency_roles$direct,
+      requirements,
+      graph_complete = !lockfile_truncated
+    )
+  } else {
+    list(transitive = character(), incomplete = FALSE, reasons = list())
+  }
+  dependency_roles$incomplete <- dependency_closure$incomplete
+  dependency_roles$incomplete_reasons <- dependency_closure$reasons
+  direct_names <- dependency_roles$direct
+  dependency_roles$direct <- NULL
   union_names <- sort(unique(c(locked_names, installed_names)))
   packages <- lapply(union_names, function(name) {
     locked_index <- match(name, locked_names)
@@ -500,6 +701,14 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
     locked_version <- if (is.na(locked_index)) NULL else locked[[locked_index]]$version
     installed_version <- if (is.na(installed_index)) NULL else installed[[installed_index]]$version
     library <- if (is.na(installed_index)) NULL else installed[[installed_index]]$library
+    source <- if (!is.na(locked_index)) locked[[locked_index]]$source else installed[[installed_index]]$source
+    dependency_role <- if (name %in% direct_names) {
+      "direct"
+    } else if (name %in% dependency_closure$transitive) {
+      "transitive"
+    } else {
+      "unclassified"
+    }
     state <- if (is.na(locked_index)) {
       "missing_in_lockfile"
     } else if (is.na(installed_index)) {
@@ -514,6 +723,8 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
       locked_version = locked_version,
       installed_version = installed_version,
       library = library,
+      dependency_role = dependency_role,
+      source = source,
       state = state
     )
   })
@@ -532,6 +743,7 @@ rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
       state = lockfile_state,
       parse_error = parse_error
     ),
+    dependency_roles = dependency_roles,
     packages = head(packages, limit),
     total_count = if (source_incomplete) NULL else length(packages),
     returned_count = min(length(packages), limit),

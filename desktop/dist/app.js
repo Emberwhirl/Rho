@@ -404,11 +404,19 @@ function mockLockfileInventory() {
       parse_error: null,
     },
     packages: [
-      { name: "DESeq2", locked_version: "1.48.0", installed_version: "1.48.0", library: "C:/R/win-library/4.6", state: "matched" },
-      { name: "ggplot2", locked_version: "3.5.1", installed_version: "3.5.2", library: "C:/R/win-library/4.6", state: "version_mismatch" },
-      { name: "tidyr", locked_version: "1.3.1", installed_version: null, library: null, state: "missing_in_library" },
-      { name: "SummarizedExperiment", locked_version: null, installed_version: "1.38.0", library: "C:/R/win-library/4.6", state: "missing_in_lockfile" },
+      { name: "DESeq2", locked_version: "1.48.0", installed_version: "1.48.0", library: "C:/R/win-library/4.6", dependency_role: "direct", source: { kind: "repository", detail: "Bioconductor" }, state: "matched" },
+      { name: "ggplot2", locked_version: "3.5.1", installed_version: "3.5.2", library: "C:/R/win-library/4.6", dependency_role: "transitive", source: { kind: "repository", detail: "CRAN" }, state: "version_mismatch" },
+      { name: "tidyr", locked_version: "1.3.1", installed_version: null, library: null, dependency_role: "unclassified", source: { kind: "github", detail: "tidyverse/tidyr@v1.3.1" }, state: "missing_in_library" },
+      { name: "SummarizedExperiment", locked_version: null, installed_version: "1.38.0", library: "C:/R/win-library/4.6", dependency_role: "unclassified", source: { kind: "unknown", detail: null }, state: "missing_in_lockfile" },
     ],
+    dependency_roles: {
+      state: "available",
+      path: "C:/Users/demo/RhoProject/DESCRIPTION",
+      fields: { Imports: ["DESeq2"], Suggests: [] },
+      error: null,
+      incomplete: false,
+      incomplete_reasons: [],
+    },
     total_count: 4,
     returned_count: 4,
     counts: { matched: 1, version_mismatch: 1, missing_in_library: 1, missing_in_lockfile: 1 },
@@ -436,6 +444,20 @@ function mockLockfileInventory() {
       counts: { matched: 0, version_mismatch: 0, missing_in_library: 0, missing_in_lockfile: 0 },
       incomplete: true,
       incomplete_reasons: ["lockfile_invalid"],
+    };
+  }
+  if (mockState === "missing-description") {
+    return {
+      ...base,
+      packages: base.packages.map((pkg) => ({ ...pkg, dependency_role: "unclassified" })),
+      dependency_roles: { state: "no_description", path: null, fields: {}, error: null, incomplete: false, incomplete_reasons: [] },
+    };
+  }
+  if (mockState === "invalid-description") {
+    return {
+      ...base,
+      packages: base.packages.map((pkg) => ({ ...pkg, dependency_role: "unclassified" })),
+      dependency_roles: { state: "invalid_description", path: null, fields: {}, error: "DESCRIPTION could not be parsed", incomplete: false, incomplete_reasons: [] },
     };
   }
   if (mockState === "truncated") return { ...base, total_count: 612, truncated: true };
@@ -6337,6 +6359,11 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     missing_in_library: "Not installed",
     missing_in_lockfile: "Not locked",
   };
+  const roleLabels = { direct: "Direct", transitive: "Transitive", unclassified: "Unclassified" };
+  const sourceLabels = {
+    repository: "Repository", github: "GitHub", gitlab: "GitLab",
+    bitbucket: "Bitbucket", git: "Git", url: "URL", local: "Local", unknown: "Unknown source",
+  };
   if (lockfile.state === "invalid_lockfile") {
     meta.textContent = "Invalid lockfile";
     summary.textContent = lockfile.parse_error || "renv.lock could not be parsed.";
@@ -6349,12 +6376,25 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
   summary.textContent = lockfile.state === "no_lockfile"
     ? "No renv.lock. Installed packages are shown as not locked."
     : `Matched ${counts.matched || 0} · Mismatch ${counts.version_mismatch || 0} · Not installed ${counts.missing_in_library || 0} · Not locked ${counts.missing_in_lockfile || 0}`;
+  const dependencyRoles = data.dependency_roles || {};
+  if (dependencyRoles.state === "available") {
+    summary.textContent += dependencyRoles.incomplete ? " · Dependency roles incomplete" : " · Roles from DESCRIPTION";
+  } else if (dependencyRoles.state === "no_description") {
+    summary.textContent += " · Dependency roles unavailable: no DESCRIPTION";
+  } else if (dependencyRoles.state) {
+    summary.textContent += ` · Dependency roles unavailable: ${dependencyRoles.error || dependencyRoles.state}`;
+  }
   if (data.incomplete && data.incomplete_reasons?.length) {
     summary.textContent += ` · Incomplete: ${data.incomplete_reasons.join(", ")}`;
   }
 
   const visible = filter
-    ? packages.filter((pkg) => String(pkg.name || "").toLowerCase().includes(filter))
+    ? packages.filter((pkg) => [
+      pkg.name,
+      roleLabels[pkg.dependency_role] || pkg.dependency_role,
+      sourceLabels[pkg.source?.kind] || pkg.source?.kind,
+      pkg.source?.detail,
+    ].filter(Boolean).join(" ").toLowerCase().includes(filter))
     : packages;
   list.replaceChildren();
   if (!visible.length) {
@@ -6372,10 +6412,19 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
   for (const pkg of visible) {
     const row = document.createElement("div");
     row.className = "package-row lockfile";
+    const identity = document.createElement("div");
+    identity.className = "pkg-identity";
     const name = document.createElement("span");
     name.className = "pkg-name";
     name.textContent = pkg.name || "";
     name.title = pkg.library ? `${pkg.name} · ${pkg.library}` : pkg.name || "";
+    const packageMeta = document.createElement("span");
+    packageMeta.className = "pkg-metadata";
+    const sourceText = sourceLabels[pkg.source?.kind] || pkg.source?.kind || "Unknown source";
+    const sourceDetail = pkg.source?.detail ? `: ${pkg.source.detail}` : "";
+    packageMeta.textContent = `${roleLabels[pkg.dependency_role] || "Unclassified"} · ${sourceText}${sourceDetail}`;
+    packageMeta.title = packageMeta.textContent;
+    identity.append(name, packageMeta);
     const locked = document.createElement("span");
     locked.className = "pkg-version";
     locked.textContent = pkg.locked_version || "—";
@@ -6386,7 +6435,7 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     status.className = `package-state ${pkg.state || ""}`;
     status.textContent = stateLabels[pkg.state] || pkg.state || "Unknown";
     status.title = status.textContent;
-    row.append(name, locked, installed, status);
+    row.append(identity, locked, installed, status);
     list.append(row);
   }
 }
@@ -7139,6 +7188,7 @@ function recordPreviewLayoutEvidence() {
       active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
       active_package_tab: state.environmentPackageTab,
       lockfile_state: state.lockfilePackages?.lockfile?.state || null,
+      dependency_role_state: state.lockfilePackages?.dependency_roles?.state || null,
       counts: state.lockfilePackages?.counts || null,
       rows: $$("#packageList .package-row.lockfile").length,
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
