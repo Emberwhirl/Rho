@@ -134,7 +134,7 @@ Their completion does not authorize the unimplemented remainder.
 
 | Workstream | Reconciled state on 2026-08-02 | Remaining proposal scope |
 | --- | --- | --- |
-| WS1 packages and environments | Partial: reviewed environment operations plus searchable Installed and Lockfile inventories with installed-versus-locked comparison, evidence-bound dependency roles, and credential-safe package-source presentation are implemented | package install/remove/update remains outside the accepted inventory package |
+| WS1 packages and environments | Capability implementation complete: reviewed project-wide operations, searchable Installed and Lockfile comparison, dependency/source evidence, and confirmed one-package install/update/remove are implemented | installed-app acceptance remains open; arbitrary package sources, global libraries, and implicit lockfile writes remain excluded |
 | WS2 editor and local Help | Partial: Air was selected; dynamic completion, signatures, hover help, project-local go-to-definition, and `lintr` projection are implemented | bounded find-references; package source/help navigation beyond the current fallback; full installed-version help/examples/vignettes and recorded example execution; diagnostic grouping/quick fixes; reviewable formatting and refactors; Agent citations to local Help |
 | WS3 object and artifact inspection | Partial: bounded viewers, Workspace-owned literal search, stable absolute-column sort, matched paging, page-size control, frozen identifier column, keyboard navigation, exact visible-page exports, column type/class/page-missing metadata, distinct special-value rendering, and Artifact provenance are implemented | bounded tree navigation; broader plot zoom/format review; complete common inspection/provenance navigation; TanStack Table remains deferred rather than required for the current vanilla-table slice |
 | WS4 Git | Capability implementation complete: supervised CLI review, guarded file/hunk mutations, restore/commit UI, adversarial repository hardening, and repository-bound replacement guards are verified | installed-app acceptance remains open; current V1 retains the supervised Git CLI instead of `gitoxide` |
@@ -265,6 +265,8 @@ Required behavior:
 - dedicated direct-UI and optional Agent-linked environment request records;
 - before/after immutable environment evidence linked to the operation run;
 - truthful partial-failure and cancellation states without rollback claims;
+- one-package install, update, and remove bound to the exact project library
+  and fresh package-state validation, without implicit lockfile writes;
 - no silent installation of `renv`, `BiocManager`, or another package;
 - no silent repository change or activation of another library in the running
   Workspace R.

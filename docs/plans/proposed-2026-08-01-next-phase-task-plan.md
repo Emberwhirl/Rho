@@ -87,8 +87,8 @@ implemented in the existing vanilla table.
 - [x] Page-size selection and row-count presentation
 - [x] Frozen identifier column
 - [x] Current keyboard navigation contract
-- [ ] Broker-owned filtering and search
-- [ ] Richer type/missing-value presentation and any separately justified
+- [x] Broker-owned filtering and search
+- [x] Richer type/missing-value presentation and any separately justified
   column interaction; TanStack Table remains deferred
 
 ### P2-3: render_document_job Robustness
@@ -121,7 +121,7 @@ From the RStudio-inspired workflow proposal, capability-decision table row 1:
 - [x] Before/after immutable environment evidence linked to the operation run
 - [x] Truthful failure/cancellation states without rollback claims
 - [x] No silent installation of `renv`, `BiocManager`, or other packages
-- [ ] Individual package install/remove/update workflow, if separately
+- [x] Individual package install/remove/update workflow, if separately
   authorized; it remains outside the accepted read-only inventory package
 
 ### P3-2: WS2 Editor Enhancement

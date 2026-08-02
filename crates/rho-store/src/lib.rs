@@ -2182,6 +2182,57 @@ mod tests {
     }
 
     #[test]
+    fn environment_package_requests_are_project_isolated() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        for (request_id, project_root, package) in [
+            ("env_pkg_a", "D:/Rho/project-a", "ggplot2"),
+            ("env_pkg_b", "D:/Rho/project-b", "dplyr"),
+        ] {
+            store
+                .create_environment_operation_request(&EnvironmentOperationRequestDraft {
+                    request_id: request_id.to_string(),
+                    turn_id: None,
+                    source: "user".to_string(),
+                    request_name: "environment.package_remove".to_string(),
+                    project_root: project_root.to_string(),
+                    arguments_json: format!(
+                        r#"{{"operation":"remove_package","package":"{package}"}}"#
+                    ),
+                    preview_json: format!(r#"{{"package":"{package}"}}"#),
+                    preview_sha256: format!("preview_{request_id}"),
+                    workspace_id: "ws_test".to_string(),
+                    state_revision: 1,
+                    project_revision: 1,
+                    before_snapshot_id: Some(format!("before_{request_id}")),
+                })
+                .unwrap();
+        }
+
+        let project_a = store
+            .list_environment_operation_requests("D:/Rho/project-a", Some(20), None)
+            .unwrap();
+        assert_eq!(project_a.len(), 1);
+        assert_eq!(project_a[0].request_id, "env_pkg_a");
+        assert!(
+            store
+                .get_environment_operation_request("D:/Rho/project-a", "env_pkg_b")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !store
+                .claim_environment_operation_request(
+                    "D:/Rho/project-a",
+                    "environment.package_remove",
+                    "env_pkg_b",
+                    "run_wrong_project",
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn persists_artifacts_and_resolves_scientific_run_past_non_state_runs() {
         let directory = TempDir::new().unwrap();
         let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();

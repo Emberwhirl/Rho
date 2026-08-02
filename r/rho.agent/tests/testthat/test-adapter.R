@@ -30,15 +30,23 @@ test_that("aisdk workspace tools target the broker boundary", {
       "initialize_project_environment",
       "restore_project_environment",
       "snapshot_project_environment",
+      "install_project_package",
+      "update_project_package",
+      "remove_project_package",
       "propose_file_edit"
     )
   )
-  expect_identical(tools[[1L]]$meta$rho_approval, "automatic")
-  expect_identical(tools[[3L]]$meta$rho_approval, "required")
-  expect_identical(tools[[4L]]$meta$rho_approval, "required")
-  expect_identical(tools[[5L]]$meta$rho_approval, "required")
-  expect_identical(tools[[6L]]$meta$rho_approval, "required")
-  expect_identical(tools[[7L]]$meta$rho_approval, "automatic")
+  approvals <- stats::setNames(
+    vapply(tools, function(tool) tool$meta$rho_approval, character(1L)),
+    vapply(tools, function(tool) tool$name, character(1L))
+  )
+  expect_identical(approvals[["get_workspace_snapshot"]], "automatic")
+  expect_identical(approvals[["propose_file_edit"]], "automatic")
+  expect_true(all(approvals[c(
+    "run_r", "initialize_project_environment", "restore_project_environment",
+    "snapshot_project_environment", "install_project_package",
+    "update_project_package", "remove_project_package"
+  )] == "required"))
 })
 
 test_that("workspace snapshot preview is concise and readable", {

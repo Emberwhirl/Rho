@@ -1,3 +1,10 @@
+# rho.bridge 0.1.5
+
+- Added previewed, project-root-explicit install, update, and remove operations
+  for one validated package in the exact renv project library.
+- Added fixed non-interactive renv argument forwarding, repository validation,
+  execution-time package-state checks, and bounded diagnostics.
+
 # rho.bridge 0.1.4
 
 - Added evidence-bound direct, transitive, and unclassified dependency roles

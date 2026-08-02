@@ -1465,7 +1465,7 @@ body.resizing-vertical { cursor: col-resize; }
 .package-table-head,
 .package-row.lockfile {
   display: grid;
-  grid-template-columns: minmax(112px, 1fr) 50px 50px minmax(74px, 0.8fr);
+  grid-template-columns: minmax(112px, 1fr) 50px 50px minmax(74px, 0.8fr) 58px;
   gap: 4px;
   align-items: center;
 }
@@ -1483,6 +1483,16 @@ body.resizing-vertical { cursor: col-resize; }
   text-transform: uppercase;
 }
 .package-row.lockfile .pkg-version { text-align: left; }
+.package-manage-action {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 9px;
+}
+.package-manage-action:hover { border-color: var(--accent); color: var(--accent-strong); }
 .pkg-identity { display: grid; min-width: 0; gap: 1px; }
 .package-row.lockfile .pkg-name {
   font-size: 10px;
@@ -1798,6 +1808,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .app-shell.agent-first.has-task-rail { grid-template-columns: 176px minmax(0, 1fr); }
   .app-shell.agent-first.agent-work-open { grid-template-columns: 300px minmax(0, 1fr); }
 }
+.package-management-surface { width: min(520px, calc(100vw - 40px)); display: grid; gap: 12px; }
+.package-management-fields { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; }
+.package-management-fields label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.package-management-fields select,
+.package-management-fields input {
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
 
 @media (max-width: 960px) {
   .app-shell { grid-template-columns: minmax(0, 1fr) 330px; }
@@ -1809,6 +1833,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .project-switcher { display: none; }
   .agent-llm-layout { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-grid { grid-template-columns: minmax(0, 1fr); }
+  .package-management-fields { grid-template-columns: minmax(0, 1fr); }
   .data-viewer-table th { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
   .data-viewer-table td { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
   .app-shell.agent-first,

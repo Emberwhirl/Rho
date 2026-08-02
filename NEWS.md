@@ -68,6 +68,9 @@ this file records behavior that is already available in a released build.
 
 #### WS1: Packages and environments
 
+- Added reviewed one-package Install, Update, and Remove actions that target
+  only the active project's confirmed renv library, preserve lockfile changes
+  as a separate Snapshot action, and expose partial-write recovery warnings.
 - Added Installed and Lockfile package tabs with one searchable, bounded
   installed-versus-locked comparison, explicit drift labels, and truthful
   missing, malformed, unavailable, and incomplete lockfile states.

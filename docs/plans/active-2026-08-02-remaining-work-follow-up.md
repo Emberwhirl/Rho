@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **17 open items** and **32 completed
-items**. The 17 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **16 open items** and **33 completed
+items**. The 16 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -19,12 +19,12 @@ included in that checklist count.
 | WS4 Git completion | 0 | Capability complete; installed-app acceptance remains separate |
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
-| WS1 package/environment completion | 1 | Package mutation is the sole remaining WS1 capability package |
+| WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **18** | |
+| **Total** | **16** | |
 
-For near-term planning, this is **10 product implementation items** plus **8
+For near-term planning, this is **8 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -140,20 +140,29 @@ parity, contract review, and the complete affected automated matrix on
 package mutation. Installed-app acceptance remains open. The checklist is now
 **17 open / 32 completed**.
 
+The authorized WS1-M1 package,
+[`active-2026-08-03-ws1-package-mutation-spec.md`](active-2026-08-03-ws1-package-mutation-spec.md),
+completed one-package Install, Update, and Remove through the dedicated
+environment request lane, exact project-library and repository binding,
+execution-time state checks, Agent parity, recovery truth, contract review,
+and the complete affected automated/browser matrix on 2026-08-03. This closes
+the last WS1 capability item without closing installed-app acceptance. The
+checklist is now **16 open / 33 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
    `test/acceptance-project/MANUAL-ACCEPTANCE.md` until the user runs them
    against an exact candidate; separately record the distribution decision and
    affected-suite rerun.
-2. Select one remaining package at a time from WS1, WS2, or structural claim
+2. Select one remaining package at a time from WS2 or structural claim
    review.
 3. Reconcile this count whenever an owning focused contract becomes active or
    its evidence gate closes.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 18-item checklist and require separate
+These six directions remain outside the 16-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

@@ -407,6 +407,7 @@ struct EnvironmentOperationRequestInput {
     operation: String,
     repositories: Option<HashMap<String, String>>,
     bioconductor: Option<String>,
+    package: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1549,6 +1550,8 @@ async fn request_environment_operation_preview(
             project_root: None,
             repositories: request.repositories,
             bioconductor: request.bioconductor,
+            package: request.package,
+            project_library: None,
         },
         None,
         "user",

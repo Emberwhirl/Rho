@@ -905,10 +905,161 @@ rho_read_only_renv_status <- function(project_dir) {
   )
 }
 
+rho_environment_package_name <- function(package) {
+  package <- rho_lockfile_inventory_text(package, 129L)
+  if (is.null(package) || nchar(package, type = "bytes") > 128L ||
+      !grepl("^[A-Za-z][A-Za-z0-9.]*$", package)) {
+    stop("Package must be one valid R package name (1 to 128 ASCII characters).", call. = FALSE)
+  }
+  package
+}
+
+rho_renv_project_library_path <- function(project_dir) renv::paths$library(project = project_dir)
+
+rho_environment_project_library <- function(project_dir) {
+  project_dir <- normalizePath(project_dir, winslash = "/", mustWork = TRUE)
+  library <- normalizePath(
+    rho_renv_project_library_path(project_dir),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  if (!startsWith(tolower(library), paste0(tolower(project_dir), "/"))) {
+    stop("The configured renv project library is outside the active project root.", call. = FALSE)
+  }
+  library
+}
+
+rho_environment_renv_available <- function() requireNamespace("renv", quietly = TRUE)
+
+rho_environment_diagnostics <- function(values) {
+  values <- trimws(head(as.character(values), 50L))
+  unname(vapply(values, function(value) {
+    rho_lockfile_inventory_text(value, 1000L) %||% ""
+  }, character(1)))
+}
+
+rho_environment_package_repositories <- function(repositories = NULL) {
+  repositories <- repositories %||% getOption("repos")
+  if (is.null(repositories) || !length(repositories) || length(repositories) > 16L) {
+    stop("Install and update require 1 to 16 configured repositories.", call. = FALSE)
+  }
+  repo_names <- names(repositories)
+  repositories <- as.character(repositories)
+  if (is.null(repo_names)) repo_names <- rep("", length(repositories))
+  repo_names[!nzchar(repo_names)] <- paste0("repo", which(!nzchar(repo_names)))
+  if (any(nchar(repo_names, type = "bytes") > 64L) || anyDuplicated(repo_names)) {
+    stop("Repository names must be unique and no longer than 64 bytes.", call. = FALSE)
+  }
+  invalid <- is.na(repositories) |
+    repositories == "@CRAN@" |
+    nchar(repositories, type = "bytes") > 1000L |
+    !grepl("^https?://", repositories, ignore.case = TRUE) |
+    grepl("^https?://[^/@]+@", repositories, ignore.case = TRUE) |
+    grepl("[?#]", repositories)
+  if (any(invalid)) {
+    stop(
+      "Repositories must be explicit HTTP(S) URLs without credentials, query strings, or fragments.",
+      call. = FALSE
+    )
+  }
+  repositories <- stats::setNames(repositories, repo_names)
+  repositories[order(names(repositories))]
+}
+
+rho_environment_project_installed_version <- function(project_library, package) {
+  rows <- tryCatch(
+    utils::installed.packages(lib.loc = project_library),
+    error = function(e) matrix(character(), nrow = 0L, ncol = 0L)
+  )
+  if (!("Package" %in% colnames(rows)) || !("Version" %in% colnames(rows))) return(NULL)
+  matched <- which(rows[, "Package"] == package)
+  if (!length(matched)) return(NULL)
+  rho_lockfile_inventory_text(rows[matched[[1L]], "Version"], 128L)
+}
+
+rho_environment_package_priority <- function(package) {
+  rows <- tryCatch(
+    utils::installed.packages(lib.loc = .Library, fields = "Priority"),
+    error = function(e) matrix(character(), nrow = 0L, ncol = 0L)
+  )
+  if (!("Package" %in% colnames(rows)) || !("Priority" %in% colnames(rows))) return(NULL)
+  matched <- which(rows[, "Package"] == package)
+  if (!length(matched)) return(NULL)
+  rho_lockfile_inventory_text(rows[matched[[1L]], "Priority"], 32L)
+}
+
+#' Preview one bounded package mutation in the explicit project library.
+#' @export
+rho_environment_package_preview <- function(operation,
+                                            package,
+                                            project_dir = getwd(),
+                                            repositories = NULL) {
+  operation <- match.arg(operation, c("install_package", "update_package", "remove_package"))
+  package <- rho_environment_package_name(package)
+  project_dir <- normalizePath(project_dir, winslash = "/", mustWork = TRUE)
+  if (!rho_environment_renv_available()) {
+    stop("Package `renv` is unavailable.", call. = FALSE)
+  }
+  project_library <- rho_environment_project_library(project_dir)
+  installed_version <- rho_environment_project_installed_version(project_library, package)
+  lockfile <- rho_read_lockfile(project_dir)
+  locked <- if (isTRUE(lockfile$valid)) {
+    Filter(function(item) identical(item$name, package), lockfile$packages)
+  } else {
+    list()
+  }
+  locked_version <- if (length(locked)) locked[[1L]]$version else NULL
+  priority <- rho_environment_package_priority(package)
+  if (operation == "install_package" && !is.null(installed_version)) {
+    stop(sprintf("Package `%s` is already installed in the project library; use Update.", package), call. = FALSE)
+  }
+  if (operation %in% c("update_package", "remove_package") && is.null(installed_version)) {
+    stop(sprintf("Package `%s` is not installed in the project library.", package), call. = FALSE)
+  }
+  if (operation == "remove_package" && isTRUE(priority %in% c("base", "recommended"))) {
+    stop(sprintf("Package `%s` is a %s package and cannot be removed.", package, priority), call. = FALSE)
+  }
+  repositories <- if (operation == "remove_package") {
+    character()
+  } else {
+    rho_environment_package_repositories(repositories)
+  }
+  disposition <- switch(
+    operation,
+    install_package = "will_install",
+    update_package = "will_update",
+    remove_package = "will_remove"
+  )
+  warnings <- c(
+    if (operation != "remove_package") {
+      "Dependency resolution may install or update additional packages."
+    },
+    "Package operations can leave partial library writes after failure or cancellation; refresh before recovery."
+  )
+  list(
+    ok = TRUE,
+    operation = operation,
+    package = package,
+    project_dir = project_dir,
+    project_library = project_library,
+    installed_version = installed_version,
+    locked_version = locked_version,
+    disposition = disposition,
+    repositories = as.list(repositories),
+    warnings = as.list(warnings)
+  )
+}
+
+rho_renv_install_package <- function(arguments) do.call(renv::install, arguments)
+rho_renv_update_package <- function(arguments) do.call(renv::update, arguments)
+rho_renv_remove_package <- function(arguments) do.call(renv::remove, arguments)
+
 rho_execute_renv_operation <- function(operation,
                                        project_dir = getwd(),
                                        repositories = NULL,
-                                       bioconductor = NULL) {
+                                       bioconductor = NULL,
+                                       package = NULL,
+                                       project_library = NULL) {
   stopifnot(is.character(operation), length(operation) == 1L, nzchar(operation))
   project_dir <- normalizePath(project_dir, winslash = "/", mustWork = FALSE)
   project_lockfile <- normalizePath(
@@ -916,7 +1067,7 @@ rho_execute_renv_operation <- function(operation,
     winslash = "/",
     mustWork = FALSE
   )
-  if (!requireNamespace("renv", quietly = TRUE)) {
+  if (!rho_environment_renv_available()) {
     return(list(
       ok = FALSE,
       operation = operation,
@@ -933,7 +1084,47 @@ rho_execute_renv_operation <- function(operation,
   result <- tryCatch(
     withCallingHandlers(
       {
-        if (identical(operation, "snapshot")) {
+        if (operation %in% c("install_package", "update_package", "remove_package")) {
+          package <- rho_environment_package_name(package)
+          expected_library <- rho_environment_project_library(project_dir)
+          confirmed_library <- normalizePath(project_library, winslash = "/", mustWork = FALSE)
+          if (!identical(tolower(expected_library), tolower(confirmed_library))) {
+            stop("Confirmed package library no longer matches the active renv project library.", call. = FALSE)
+          }
+          repositories <- if (operation == "remove_package") {
+            character()
+          } else {
+            rho_environment_package_repositories(repositories)
+          }
+          rho_environment_package_preview(
+            operation = operation,
+            package = package,
+            project_dir = project_dir,
+            repositories = repositories
+          )
+          arguments <- switch(
+            operation,
+            install_package = list(
+              packages = package, library = confirmed_library, rebuild = FALSE,
+              repos = repositories, prompt = FALSE, dependencies = NA,
+              transactional = TRUE, lock = FALSE, project = project_dir
+            ),
+            update_package = list(
+              packages = package, library = confirmed_library, rebuild = FALSE,
+              check = FALSE, prompt = FALSE, lock = FALSE, all = FALSE,
+              repos = repositories, project = project_dir
+            ),
+            remove_package = list(
+              packages = package, library = confirmed_library, project = project_dir
+            )
+          )
+          switch(
+            operation,
+            install_package = rho_renv_install_package(arguments),
+            update_package = rho_renv_update_package(arguments),
+            remove_package = rho_renv_remove_package(arguments)
+          )
+        } else if (identical(operation, "snapshot")) {
           renv::snapshot(
             project = project_dir,
             lockfile = project_lockfile,
@@ -981,6 +1172,8 @@ rho_execute_renv_operation <- function(operation,
   )
 
   if (inherits(result, "error")) {
+    messages <- rho_environment_diagnostics(messages)
+    warnings <- rho_environment_diagnostics(warnings)
     return(list(
       ok = FALSE,
       operation = operation,
@@ -995,6 +1188,9 @@ rho_execute_renv_operation <- function(operation,
     ))
   }
 
+  messages <- rho_environment_diagnostics(messages)
+  warnings <- rho_environment_diagnostics(warnings)
+
   list(
     ok = TRUE,
     operation = operation,
@@ -1002,6 +1198,8 @@ rho_execute_renv_operation <- function(operation,
     lockfile = project_lockfile,
     repositories = repositories,
     bioconductor = bioconductor,
+    package = package,
+    project_library = project_library,
     messages = messages,
     warnings = warnings,
     value = compact_text(capture.output(str(result, max.level = 2L)), max_chars = 4000L),
@@ -1014,12 +1212,16 @@ rho_execute_renv_operation <- function(operation,
 rho_environment_operation <- function(operation,
                                       project_dir = getwd(),
                                       repositories = NULL,
-                                      bioconductor = NULL) {
+                                      bioconductor = NULL,
+                                      package = NULL,
+                                      project_library = NULL) {
   rho_execute_renv_operation(
     operation = operation,
     project_dir = project_dir,
     repositories = repositories,
-    bioconductor = bioconductor
+    bioconductor = bioconductor,
+    package = package,
+    project_library = project_library
   )
 }
 

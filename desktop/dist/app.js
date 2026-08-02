@@ -67,6 +67,7 @@ const state = {
   environmentPackageTab: "installed",
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
+  packageManagementDialog: { busy: false, returnFocus: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
   selectedDataObjectDetail: null,
@@ -1105,15 +1106,39 @@ function mockEnvironmentOperationTone(status) {
 
 function createMockEnvironmentOperationRequest(operation, request = {}) {
   const requestedAt = new Date().toISOString();
-  const requestName = `environment.${operation}`;
+  const requestName = {
+    install_package: "environment.package_install",
+    update_package: "environment.package_update",
+    remove_package: "environment.package_remove",
+  }[operation] || `environment.${operation}`;
   const beforeSnapshotId = `env_before_${mockEnvironmentOperationSequence + 1}`;
+  const packageOperation = ["install_package", "update_package", "remove_package"].includes(operation);
+  const packageName = request.package || null;
+  const projectLibrary = packageOperation ? `${mockLastProject}/renv/library` : null;
+  const repositories = packageOperation && operation !== "remove_package"
+    ? { CRAN: "https://cloud.r-project.org" }
+    : (request.repositories || {});
+  const packagePreview = packageOperation ? {
+    ok: true,
+    operation,
+    package: packageName,
+    project_dir: mockLastProject,
+    project_library: projectLibrary,
+    installed_version: operation === "install_package" ? null : "3.5.1",
+    locked_version: operation === "remove_package" ? null : "3.4.4",
+    disposition: { install_package: "will_install", update_package: "will_update", remove_package: "will_remove" }[operation],
+    repositories,
+    warnings: ["Package operations can leave partial library writes after failure or cancellation; refresh before recovery."],
+  } : null;
   const preview = {
     request_name: requestName,
     arguments: {
       operation,
       project_root: mockLastProject,
-      repositories: Object.entries(request.repositories || {}).map(([name, value]) => ({ name, value })),
+      repositories: Object.entries(repositories).map(([name, value]) => ({ name, value })),
       bioconductor: request.bioconductor || null,
+      package: packageName,
+      project_library: projectLibrary,
     },
     workspace: {
       workspace_id: "desktop_mock",
@@ -1121,7 +1146,7 @@ function createMockEnvironmentOperationRequest(operation, request = {}) {
       project_revision: state.revision.project_revision,
     },
     before_snapshot_id: beforeSnapshotId,
-    preview: {
+    preview: packagePreview || {
       project_dir: mockLastProject,
       renv: {
         status: operation === "initialize" ? "absent" : "present",
@@ -1160,8 +1185,10 @@ function createMockEnvironmentOperationRequest(operation, request = {}) {
     arguments_json: JSON.stringify({
       operation,
       project_root: mockLastProject,
-      repositories: request.repositories || null,
+      repositories: packageOperation ? repositories : (request.repositories || null),
       bioconductor: request.bioconductor || null,
+      package: packageName,
+      project_library: projectLibrary,
     }),
     preview_json: previewJson,
     preview_sha256: `preview_mock_${mockEnvironmentOperationSequence}`,
@@ -2244,6 +2271,11 @@ async function mockInvoke(command, args) {
     return { status: "delivered", request_id: approval.request_id, turn_id: turn.turn_id };
   }
   if (command === "request_environment_operation_preview") {
+    const operation = args.request?.operation;
+    if (["install_package", "update_package", "remove_package"].includes(operation)
+        && !/^[A-Za-z][A-Za-z0-9.]{0,127}$/.test(args.request?.package || "")) {
+      throw new Error("Package must be one valid R package name.");
+    }
     return structuredClone(createMockEnvironmentOperationRequest(args.request?.operation, args.request || {}));
   }
   if (command === "export_data_view_artifact") {
@@ -2439,11 +2471,16 @@ async function mockInvoke(command, args) {
       sourcePath: null,
       executionMode: null,
     }).run_id;
-    state.revision.project_revision += 1;
+    if (request.request_name.startsWith("environment.package_")) {
+      state.revision.state_revision += 1;
+    } else {
+      state.revision.project_revision += 1;
+    }
     request.completed_at = respondedAt;
     request.terminal_outcome = "completed";
     const run = mockRuns[0];
     if (run) {
+      run.state_revision_after = state.revision.state_revision;
       run.project_revision_after = state.revision.project_revision;
       run.code_preview = request.request_name;
       run.arguments_json = request.arguments_json;
@@ -6403,7 +6440,7 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
   }
   const header = document.createElement("div");
   header.className = "package-table-head";
-  for (const label of ["Package", "Locked", "Installed", "State"]) {
+  for (const label of ["Package", "Locked", "Installed", "State", "Action"]) {
     const cell = document.createElement("span");
     cell.textContent = label;
     header.append(cell);
@@ -6435,7 +6472,22 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     status.className = `package-state ${pkg.state || ""}`;
     status.textContent = stateLabels[pkg.state] || pkg.state || "Unknown";
     status.title = status.textContent;
-    row.append(identity, locked, installed, status);
+    const action = document.createElement("span");
+    const packageOperation = {
+      missing_in_library: ["install_package", "Install"],
+      version_mismatch: ["update_package", "Update"],
+      missing_in_lockfile: ["remove_package", "Remove"],
+    }[pkg.state];
+    if (packageOperation) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "package-manage-action";
+      button.textContent = packageOperation[1];
+      button.title = `${packageOperation[1]} ${pkg.name}`;
+      button.addEventListener("click", () => openPackageManagementDialog(packageOperation[0], pkg.name, button));
+      action.append(button);
+    }
+    row.append(identity, locked, installed, status, action);
     list.append(row);
   }
 }
@@ -6906,6 +6958,9 @@ function environmentOperationLabel(requestName) {
     "environment.initialize": "Initialize renv",
     "environment.restore": "Restore lockfile",
     "environment.snapshot": "Snapshot lockfile",
+    "environment.package_install": "Install package",
+    "environment.package_update": "Update package",
+    "environment.package_remove": "Remove package",
   }[requestName] || requestName || "Environment operation";
 }
 
@@ -6920,7 +6975,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7014,6 +7069,34 @@ async function maybeApplyPreviewScenario() {
     applyWorkbenchLayout("analyze");
     await loadPackageInventories();
     switchEnvironmentPackageTab("lockfile");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  if (scenario === "environment-package") {
+    applyWorkbenchLayout("analyze");
+    await switchContextTab("environment");
+    await loadPackageInventories();
+    switchEnvironmentPackageTab("lockfile");
+    const previewState = previewParams.get("state") || "form";
+    const operation = previewParams.get("operation") || "update_package";
+    const packageName = previewParams.get("package") || "ggplot2";
+    if (previewState === "form") {
+      openPackageManagementDialog(operation, packageName, $("#environmentManagePackageButton"));
+    } else {
+      const request = createMockEnvironmentOperationRequest(operation, { package: packageName });
+      if (["stale", "failed", "interrupted", "running", "rejected"].includes(previewState)) {
+        request.status = previewState;
+        request.reason = {
+          stale: "Workspace or project revision changed before confirmation.",
+          failed: "Repository was unavailable; partial library writes may exist.",
+          interrupted: "Operation was interrupted; refresh the project library before recovery.",
+          rejected: "Package operation was rejected without changing the project library.",
+        }[previewState] || null;
+      }
+      state.environmentOperations = [...mockEnvironmentOperationRequests];
+      renderEnvironmentOperationCard();
+      openEnvironmentOperationDialog(request.request_id, $("#environmentManagePackageButton"));
+    }
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -7112,7 +7195,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -7197,6 +7280,27 @@ function recordPreviewLayoutEvidence() {
         search_with_list: rectsOverlap(search, list),
       },
       rects: { section, tabs, search, list },
+    });
+    return;
+  }
+  if (scenario === "environment-package") {
+    const management = rectEvidence($("#packageManagementDialog .product-dialog-surface"));
+    const review = rectEvidence($("#environmentOperationDialog .product-dialog-surface"));
+    const packageList = rectEvidence($("#packageList"));
+    const activeRequest = state.environmentOperations.find((item) => item.request_id === state.environmentOperationDialog.requestId) || null;
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      package_tab: state.environmentPackageTab,
+      management_open: !$("#packageManagementDialog").classList.contains("hidden"),
+      review_open: !$("#environmentOperationDialog").classList.contains("hidden"),
+      request: activeRequest ? { request_name: activeRequest.request_name, status: activeRequest.status } : null,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      overlaps: {
+        management_outside_viewport: Boolean(management && (management.left < 0 || management.right > window.innerWidth)),
+        review_outside_viewport: Boolean(review && (review.left < 0 || review.right > window.innerWidth)),
+      },
+      rects: { management, review, package_list: packageList },
     });
     return;
   }
@@ -7290,7 +7394,11 @@ function latestEnvironmentOperation() {
 function formatEnvironmentOperationSummary(request) {
   if (!request) return "No environment operation has been requested yet.";
   const reason = request.reason ? ` · ${request.reason}` : "";
-  if (request.status === "requested") return "Preview ready. Review the bounded drift report before allowing the broker to mutate the project environment.";
+  if (request.status === "requested") {
+    return request.request_name?.startsWith("environment.package_")
+      ? "Preview ready. Review the package, project library, repositories, and partial-write warning before running."
+      : "Preview ready. Review the bounded drift report before allowing the broker to mutate the project environment.";
+  }
   if (request.status === "completed") return `${environmentOperationLabel(request.request_name)} finished.${reason}`;
   if (request.status === "running") return `${environmentOperationLabel(request.request_name)} is running.${reason}`;
   return `${environmentOperationLabel(request.request_name)} ${prettyEnvironmentOperationStatus(request.status).toLowerCase()}.${reason}`;
@@ -7314,6 +7422,7 @@ function renderEnvironmentOperationCard() {
     $("#environmentInitButton"),
     $("#environmentRestoreButton"),
     $("#environmentSnapshotButton"),
+    $("#environmentManagePackageButton"),
   ];
   const dialogBusy = state.environmentOperationDialog.busy;
   const enabled = !state.busy && !dialogBusy && state.projectStatus === "ready" && Boolean(state.project.root);
@@ -7349,6 +7458,8 @@ function formatEnvironmentOperationArguments(request) {
     `before_snapshot_id: ${request?.before_snapshot_id || "none"}`,
     `bioconductor: ${args.bioconductor || "null"}`,
     `repositories: ${(args.repositories && Object.keys(args.repositories).length) ? JSON.stringify(args.repositories, null, 2) : "null"}`,
+    `package: ${args.package || "none"}`,
+    `project_library: ${args.project_library || "none"}`,
   ].join("\n");
 }
 
@@ -7358,6 +7469,18 @@ function formatEnvironmentOperationPreview(request) {
   const renv = preview.renv || {};
   const renvStatus = preview.renv_status || {};
   const diff = preview.diff || {};
+  if (preview.package) {
+    return [
+      `project_dir: ${preview.project_dir || request?.project_root || "unknown"}`,
+      `project_library: ${preview.project_library || "unknown"}`,
+      `action: ${preview.disposition || preview.operation || "unknown"}`,
+      `package: ${preview.package}`,
+      `installed_version: ${preview.installed_version || "not installed"}`,
+      `locked_version: ${preview.locked_version || "not locked"}`,
+      `repositories: ${Object.keys(preview.repositories || {}).length ? JSON.stringify(preview.repositories, null, 2) : "none"}`,
+      `warnings: ${(preview.warnings || []).join(" | ") || "none"}`,
+    ].join("\n");
+  }
   const diffLines = (diff.values || []).map((item) =>
     `${item.direction}: ${item.name} (lockfile ${item.lockfile_version || "missing"} · library ${item.library_version || "missing"})`
   );
@@ -7383,6 +7506,9 @@ function renderEnvironmentOperationDialog() {
   dialog.classList.remove("hidden");
   $("#environmentOperationDialogTitle").textContent = environmentOperationLabel(request.request_name);
   $("#environmentOperationDialogState").textContent = prettyEnvironmentOperationStatus(request.status);
+  $("#environmentOperationDialogNote").textContent = request.request_name?.startsWith("environment.package_")
+    ? "Review the exact package, project library, repositories, revisions, and partial-write warning before the broker changes the project environment."
+    : "Review the exact renv action, project root, revisions, and bounded drift preview before the broker mutates the project environment.";
   $("#environmentOperationArguments").textContent = formatEnvironmentOperationArguments(request);
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
@@ -7435,12 +7561,15 @@ async function beginEnvironmentOperation(operation, options = {}) {
         operation,
         repositories: options.repositories ?? null,
         bioconductor: options.bioconductor ?? null,
+        package: options.package ?? null,
       },
     });
     await loadEnvironmentOperationData();
-    openEnvironmentOperationDialog(request.request_id, document.activeElement);
+    openEnvironmentOperationDialog(request.request_id, options.returnFocus || document.activeElement);
+    return { ok: true, request };
   } catch (error) {
     toast(String(error), true);
+    return { ok: false, error: String(error) };
   } finally {
     state.environmentOperationDialog.busy = false;
     renderEnvironmentOperationCard();
@@ -7521,6 +7650,67 @@ function dataViewerWindowMeta(page) {
     `payload ${formatBytes(page.payload_bytes || 0)}`,
     page.truncated ? `truncated: ${page.truncation_reason || "yes"}` : "truncated: no",
   ].filter(Boolean).join(" · ");
+}
+
+function packageManagementInputValid(value) {
+  return /^[A-Za-z][A-Za-z0-9.]{0,127}$/.test(value);
+}
+
+function renderPackageManagementDialog() {
+  const busy = state.packageManagementDialog.busy;
+  $("#packageManagementOperation").disabled = busy;
+  $("#packageManagementName").disabled = busy;
+  $("#packageManagementPreview").disabled = busy;
+  $("#packageManagementCancel").disabled = busy;
+  const projectLibrary = state.environment?.renv?.project_library;
+  $("#packageManagementLibrary").textContent = projectLibrary
+    ? `Current environment reports ${projectLibrary}. Preview revalidates the exact project library and repositories.`
+    : "Preview resolves and validates the exact project library and repositories.";
+}
+
+function openPackageManagementDialog(operation = "install_package", packageName = "", trigger = null) {
+  state.packageManagementDialog.returnFocus = trigger || document.activeElement;
+  $("#packageManagementOperation").value = operation;
+  $("#packageManagementName").value = packageName;
+  $("#packageManagementError").textContent = "";
+  $("#packageManagementError").classList.add("hidden");
+  $("#packageManagementDialog").classList.remove("hidden");
+  renderPackageManagementDialog();
+  $("#packageManagementName").focus();
+}
+
+function closePackageManagementDialog({ restoreFocus = true } = {}) {
+  $("#packageManagementDialog").classList.add("hidden");
+  const returnFocus = state.packageManagementDialog.returnFocus;
+  state.packageManagementDialog.returnFocus = null;
+  if (restoreFocus && returnFocus?.focus) returnFocus.focus();
+}
+
+async function submitPackageManagement(event) {
+  event.preventDefault();
+  if (state.packageManagementDialog.busy) return;
+  const operation = $("#packageManagementOperation").value;
+  const packageName = $("#packageManagementName").value.trim();
+  const error = $("#packageManagementError");
+  if (!packageManagementInputValid(packageName)) {
+    error.textContent = "Enter one valid R package name.";
+    error.classList.remove("hidden");
+    $("#packageManagementName").focus();
+    return;
+  }
+  state.packageManagementDialog.busy = true;
+  error.classList.add("hidden");
+  renderPackageManagementDialog();
+  const returnFocus = state.packageManagementDialog.returnFocus;
+  const result = await beginEnvironmentOperation(operation, { package: packageName, returnFocus });
+  state.packageManagementDialog.busy = false;
+  renderPackageManagementDialog();
+  if (result.ok) {
+    closePackageManagementDialog({ restoreFocus: false });
+  } else {
+    error.textContent = result.error;
+    error.classList.remove("hidden");
+  }
 }
 
 function dataViewerCellPresentation(value, state) {
@@ -10320,6 +10510,11 @@ window.addEventListener("beforeunload", stopRenderPoll);
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
 $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));
+$("#environmentManagePackageButton").addEventListener("click", (event) => openPackageManagementDialog("install_package", "", event.currentTarget));
+$("#packageManagementForm").addEventListener("submit", submitPackageManagement);
+$("#packageManagementClose").addEventListener("click", () => closePackageManagementDialog());
+$("#packageManagementCancel").addEventListener("click", () => closePackageManagementDialog());
+$("[data-package-management-close]").addEventListener("click", () => closePackageManagementDialog());
 $("#dataViewerViewSelect").addEventListener("change", () => {
   state.dataViewer.rowOffset = 0;
   state.dataViewer.columnOffset = 0;
@@ -10521,6 +10716,9 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#environmentOperationDialog") && $("#environmentOperationDialog").classList.contains("hidden")) {
     state.environmentOperationDialog.returnFocus = null;
   }
+  if (!event.target.closest("#packageManagementDialog") && $("#packageManagementDialog").classList.contains("hidden")) {
+    state.packageManagementDialog.returnFocus = null;
+  }
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Tab" && state.product.dialog) {
@@ -10543,6 +10741,7 @@ document.addEventListener("keydown", (event) => {
     hideAgentFileMentions();
     closeAgentModelSelector();
     closeAgentLlmDialog();
+    closePackageManagementDialog();
     closeEnvironmentOperationDialog();
     closeProductDialog();
     clearAgentEditHighlight();

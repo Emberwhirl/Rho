@@ -65,6 +65,8 @@ pub struct EnvironmentOperationArguments {
     pub project_root: Option<String>,
     pub repositories: Option<HashMap<String, String>>,
     pub bioconductor: Option<String>,
+    pub package: Option<String>,
+    pub project_library: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -1952,7 +1954,10 @@ fn authorize_agent_workspace_request(
         "workspace.execute"
         | "environment.initialize"
         | "environment.restore"
-        | "environment.snapshot" => {
+        | "environment.snapshot"
+        | "environment.package_install"
+        | "environment.package_update"
+        | "environment.package_remove" => {
             ensure!(mode == "act", "{mode} mode cannot mutate Workspace R");
             let request_id = payload
                 .get("approval_request_id")
@@ -1995,6 +2000,9 @@ fn agent_tool_request_type(tool: &str) -> Option<&'static str> {
         "initialize_project_environment" => Some("environment.initialize"),
         "restore_project_environment" => Some("environment.restore"),
         "snapshot_project_environment" => Some("environment.snapshot"),
+        "install_project_package" => Some("environment.package_install"),
+        "update_project_package" => Some("environment.package_update"),
+        "remove_project_package" => Some("environment.package_remove"),
         _ => None,
     }
 }
@@ -2002,7 +2010,12 @@ fn agent_tool_request_type(tool: &str) -> Option<&'static str> {
 fn request_type_uses_environment_contract(request_type: &str) -> bool {
     matches!(
         request_type,
-        "environment.initialize" | "environment.restore" | "environment.snapshot"
+        "environment.initialize"
+            | "environment.restore"
+            | "environment.snapshot"
+            | "environment.package_install"
+            | "environment.package_update"
+            | "environment.package_remove"
     )
 }
 
@@ -2020,10 +2033,17 @@ fn tool_environment_operation_arguments(
         .get("bioconductor")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let package = arguments
+        .get("package")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     let operation = match tool {
         "initialize_project_environment" => "initialize",
         "restore_project_environment" => "restore",
         "snapshot_project_environment" => "snapshot",
+        "install_project_package" => "install_package",
+        "update_project_package" => "update_package",
+        "remove_project_package" => "remove_package",
         _ => bail!("unsupported environment tool `{tool}`"),
     };
     Ok(EnvironmentOperationArguments {
@@ -2031,6 +2051,8 @@ fn tool_environment_operation_arguments(
         project_root: None,
         repositories,
         bioconductor,
+        package,
+        project_library: None,
     })
 }
 
@@ -2622,14 +2644,40 @@ fn environment_operation_request_name(operation: &str) -> Result<&'static str> {
         "initialize" => Ok("environment.initialize"),
         "restore" => Ok("environment.restore"),
         "snapshot" => Ok("environment.snapshot"),
+        "install_package" => Ok("environment.package_install"),
+        "update_package" => Ok("environment.package_update"),
+        "remove_package" => Ok("environment.package_remove"),
         _ => bail!("unsupported environment operation `{operation}`"),
     }
 }
 
-fn environment_operation_bridge_expression(
-    arguments: &EnvironmentOperationArguments,
+fn environment_operation_is_package(operation: &str) -> bool {
+    matches!(
+        operation,
+        "install_package" | "update_package" | "remove_package"
+    )
+}
+
+fn validate_environment_package_name(package: &str) -> Result<()> {
+    let bytes = package.as_bytes();
+    ensure!(
+        !bytes.is_empty() && bytes.len() <= 128,
+        "Package must contain 1 to 128 ASCII characters"
+    );
+    ensure!(
+        bytes[0].is_ascii_alphabetic()
+            && bytes[1..]
+                .iter()
+                .all(|value| value.is_ascii_alphanumeric() || *value == b'.'),
+        "Package must be one valid R package name"
+    );
+    Ok(())
+}
+
+fn environment_repositories_expression(
+    repositories: &Option<HashMap<String, String>>,
 ) -> Result<String> {
-    let repositories = match &arguments.repositories {
+    match repositories {
         Some(values) if !values.is_empty() => {
             let mut entries = values.iter().collect::<Vec<_>>();
             entries.sort_by(|left, right| left.0.cmp(right.0));
@@ -2643,12 +2691,30 @@ fn environment_operation_bridge_expression(
                 .map(|(_, value)| r_string(value))
                 .collect::<Result<Vec<_>>>()?
                 .join(", ");
-            format!("stats::setNames(c({repo_values}), c({names}))")
+            Ok(format!("stats::setNames(c({repo_values}), c({names}))"))
         }
-        _ => "NULL".to_string(),
-    };
+        _ => Ok("NULL".to_string()),
+    }
+}
+
+fn environment_operation_bridge_expression(
+    arguments: &EnvironmentOperationArguments,
+) -> Result<String> {
+    let repositories = environment_repositories_expression(&arguments.repositories)?;
     let bioconductor = arguments
         .bioconductor
+        .as_deref()
+        .map(r_string)
+        .transpose()?
+        .unwrap_or_else(|| "NULL".to_string());
+    let package = arguments
+        .package
+        .as_deref()
+        .map(r_string)
+        .transpose()?
+        .unwrap_or_else(|| "NULL".to_string());
+    let project_library = arguments
+        .project_library
         .as_deref()
         .map(r_string)
         .transpose()?
@@ -2658,7 +2724,9 @@ fn environment_operation_bridge_expression(
   operation = {operation},
   project_dir = {project_dir},
   repositories = {repositories},
-  bioconductor = {bioconductor}
+  bioconductor = {bioconductor},
+  package = {package},
+  project_library = {project_library}
 )"#,
         operation = r_string(&arguments.operation)?,
         project_dir = r_string(arguments.project_root.as_deref().unwrap_or_default())?,
@@ -2668,7 +2736,12 @@ fn environment_operation_bridge_expression(
 fn environment_operation_requires_after_snapshot(request_type: &str) -> bool {
     matches!(
         request_type,
-        "environment.initialize" | "environment.restore" | "environment.snapshot"
+        "environment.initialize"
+            | "environment.restore"
+            | "environment.snapshot"
+            | "environment.package_install"
+            | "environment.package_update"
+            | "environment.package_remove"
     )
 }
 
@@ -2680,6 +2753,9 @@ fn scientific_run_requires_environment_snapshot(request_type: &str) -> bool {
             | "environment.initialize"
             | "environment.restore"
             | "environment.snapshot"
+            | "environment.package_install"
+            | "environment.package_update"
+            | "environment.package_remove"
     )
 }
 
@@ -2698,7 +2774,9 @@ fn canonical_environment_operation_arguments(
         "operation": arguments.operation,
         "project_root": project_root,
         "repositories": repositories.into_iter().map(|(name, value)| json!({"name": name, "value": value})).collect::<Vec<_>>(),
-        "bioconductor": arguments.bioconductor
+        "bioconductor": arguments.bioconductor,
+        "package": arguments.package,
+        "project_library": arguments.project_library
     })
 }
 
@@ -2716,36 +2794,94 @@ async fn preview_environment_operation(
         .context("No active project root is configured")?
         .replace('\\', "/");
     let project_argument = r_string(&project_root)?;
-    let preview_value = execute_bridge_result_expression(
-        session,
-        &format!(
-            r#"getOption("rho.bridge.env")$rho_environment_status_preview(
+    let package_operation = environment_operation_is_package(&arguments.operation);
+    let preview_value = if package_operation {
+        let package = arguments
+            .package
+            .as_deref()
+            .context("Package operation requires `package`")?;
+        validate_environment_package_name(package)?;
+        let repositories = environment_repositories_expression(&arguments.repositories)?;
+        let value = execute_bridge_result_expression(
+            session,
+            &format!(
+                r#"getOption("rho.bridge.env")$rho_environment_package_preview(
+  operation = {operation},
+  package = {package},
+  project_dir = {project_argument},
+  repositories = {repositories}
+)"#,
+                operation = r_string(&arguments.operation)?,
+                package = r_string(package)?,
+            ),
+        )
+        .await
+        .context("previewing package environment operation")?;
+        ensure!(
+            value.get("ok").and_then(Value::as_bool) == Some(true),
+            "Package operation preview did not return an accepted result"
+        );
+        value
+    } else {
+        execute_bridge_result_expression(
+            session,
+            &format!(
+                r#"getOption("rho.bridge.env")$rho_environment_status_preview(
   project_dir = {project_argument},
   diff_limit = {MAX_ENVIRONMENT_DIFF_ENTRIES}
 )"#
-        ),
-    )
-    .await
-    .unwrap_or_else(|error| {
-        json!({
-            "project_dir": project_root,
-            "renv": {"status": "degraded", "synchronization": "incomplete"},
-            "renv_status": {
-                "ok": false,
-                "messages": [],
-                "warnings": [],
-                "error": {"message": error.to_string(), "call": null}
-            },
-            "bioconductor": {"status": "unknown", "version": null, "package_available": false},
-            "diff": {"values": [], "truncated": false}
+            ),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            json!({
+                "project_dir": project_root,
+                "renv": {"status": "degraded", "synchronization": "incomplete"},
+                "renv_status": {
+                    "ok": false,
+                    "messages": [],
+                    "warnings": [],
+                    "error": {"message": error.to_string(), "call": null}
+                },
+                "bioconductor": {"status": "unknown", "version": null, "package_available": false},
+                "diff": {"values": [], "truncated": false}
+            })
         })
-    });
+    };
     let before_snapshot_id = capture_environment_snapshot_id(session, store).await.ok();
+    let preview_repositories = if package_operation && arguments.operation != "remove_package" {
+        Some(
+            serde_json::from_value(
+                preview_value
+                    .get("repositories")
+                    .cloned()
+                    .context("Package preview omitted repositories")?,
+            )
+            .context("decoding package preview repositories")?,
+        )
+    } else if package_operation {
+        Some(HashMap::new())
+    } else {
+        arguments.repositories.clone()
+    };
+    let preview_project_library = if package_operation {
+        Some(
+            preview_value
+                .get("project_library")
+                .and_then(Value::as_str)
+                .context("Package preview omitted project library")?
+                .to_string(),
+        )
+    } else {
+        arguments.project_library.clone()
+    };
     let stored_arguments = EnvironmentOperationArguments {
         operation: arguments.operation.clone(),
         project_root: Some(project_root.clone()),
-        repositories: arguments.repositories.clone(),
+        repositories: preview_repositories,
         bioconductor: arguments.bioconductor.clone(),
+        package: arguments.package.clone(),
+        project_library: preview_project_library,
     };
     let canonical_arguments =
         canonical_environment_operation_arguments(&project_root, &stored_arguments);
@@ -2793,6 +2929,8 @@ async fn execute_confirmed_environment_operation(
             "operation": stored_arguments.operation,
             "repositories": stored_arguments.repositories,
             "bioconductor": stored_arguments.bioconductor,
+            "package": stored_arguments.package,
+            "project_library": stored_arguments.project_library,
             "project_root": request.project_root
         },
         "expected_workspace": broker.identity(),
@@ -3540,11 +3678,19 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
-        "environment.initialize" | "environment.restore" | "environment.snapshot" => {
+        "environment.initialize"
+        | "environment.restore"
+        | "environment.snapshot"
+        | "environment.package_install"
+        | "environment.package_update"
+        | "environment.package_remove" => {
             let operation = match request_type {
                 "environment.initialize" => "initialize",
                 "environment.restore" => "restore",
                 "environment.snapshot" => "snapshot",
+                "environment.package_install" => "install_package",
+                "environment.package_update" => "update_package",
+                "environment.package_remove" => "remove_package",
                 _ => unreachable!(),
             };
             let repositories = arguments
@@ -3564,9 +3710,22 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                     .get("bioconductor")
                     .and_then(Value::as_str)
                     .map(str::to_string),
+                package: arguments
+                    .get("package")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                project_library: arguments
+                    .get("project_library")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            };
+            let class = if environment_operation_is_package(operation) {
+                OperationClass::StateCapable
+            } else {
+                OperationClass::ProjectMutation
             };
             Ok((
-                OperationClass::ProjectMutation,
+                class,
                 environment_operation_bridge_expression(&operation_arguments)?,
             ))
         }
@@ -3638,11 +3797,23 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
                 )
             })
             .unwrap_or_else(|| bridge_expression.to_string()),
-        "environment.initialize" | "environment.restore" | "environment.snapshot" => arguments
-            .get("project_root")
-            .and_then(Value::as_str)
-            .map(|project_root| format!("{request_type} {project_root}"))
-            .unwrap_or_else(|| request_type.to_string()),
+        "environment.initialize"
+        | "environment.restore"
+        | "environment.snapshot"
+        | "environment.package_install"
+        | "environment.package_update"
+        | "environment.package_remove" => {
+            let project_root = arguments
+                .get("project_root")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown project");
+            let package = arguments
+                .get("package")
+                .and_then(Value::as_str)
+                .map(|value| format!(" {value}"))
+                .unwrap_or_default();
+            format!("{request_type}{package} {project_root}")
+        }
         "workspace.render_document" => arguments
             .get("path")
             .and_then(Value::as_str)
@@ -4319,6 +4490,134 @@ mod tests {
         assert!(high.contains("limit = 500L"));
         assert!(
             bridge_expression("workspace.list_lockfile_packages", &json!({"limit": 50}),).is_err()
+        );
+    }
+
+    #[test]
+    fn package_environment_operations_bind_validated_arguments_and_fixed_r_calls() {
+        assert!(validate_environment_package_name("SummarizedExperiment").is_ok());
+        for invalid in ["", "bad-name", "pkg@1.0", "../pkg", "\u{5305}"] {
+            assert!(validate_environment_package_name(invalid).is_err());
+        }
+
+        let arguments = tool_environment_operation_arguments(
+            "install_project_package",
+            &json!({"package": "ggplot2"}),
+        )
+        .unwrap();
+        assert_eq!(arguments.operation, "install_package");
+        assert_eq!(arguments.package.as_deref(), Some("ggplot2"));
+        assert!(request_type_uses_environment_contract(
+            "environment.package_install"
+        ));
+
+        let arguments = EnvironmentOperationArguments {
+            operation: "install_package".to_string(),
+            project_root: Some("C:/projects/quoted \"root\"".to_string()),
+            repositories: Some(HashMap::from([
+                (
+                    "CRAN".to_string(),
+                    "https://cloud.r-project.org".to_string(),
+                ),
+                (
+                    "BioC".to_string(),
+                    "https://bioconductor.org/packages/3.21/bioc".to_string(),
+                ),
+            ])),
+            bioconductor: None,
+            package: Some("ggplot2".to_string()),
+            project_library: Some("C:/projects/quoted \"root\"/renv/library".to_string()),
+        };
+        let expression = environment_operation_bridge_expression(&arguments).unwrap();
+        assert!(expression.contains("operation = \"install_package\""));
+        assert!(expression.contains("package = \"ggplot2\""));
+        assert!(
+            expression
+                .contains("project_library = \"C:/projects/quoted \\\"root\\\"/renv/library\"")
+        );
+        assert!(expression.contains("stats::setNames"));
+
+        let canonical =
+            canonical_environment_operation_arguments("C:/projects/quoted \"root\"", &arguments);
+        assert_eq!(canonical["package"], "ggplot2");
+        assert_eq!(canonical["repositories"][0]["name"], "BioC");
+        assert_eq!(canonical["repositories"][1]["name"], "CRAN");
+
+        let (class, remove_expression) = bridge_expression(
+            "environment.package_remove",
+            &json!({
+                "project_root": "C:/projects/a",
+                "project_library": "C:/projects/a/renv/library",
+                "package": "ggplot2",
+                "repositories": {}
+            }),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::StateCapable));
+        assert!(remove_expression.contains("operation = \"remove_package\""));
+    }
+
+    #[test]
+    fn agent_package_mutation_requires_exact_single_use_approval() {
+        let arguments = json!({
+            "operation": "remove_package",
+            "project_root": "C:/projects/a",
+            "repositories": {},
+            "bioconductor": null,
+            "package": "ggplot2",
+            "project_library": "C:/projects/a/renv/library"
+        });
+        let payload = json!({
+            "arguments": arguments,
+            "approval_request_id": "env_pkg_1"
+        });
+        let approved = ApprovedMutation {
+            request_type: "environment.package_remove".to_string(),
+            arguments: arguments.clone(),
+        };
+        let mut ask_approvals = HashMap::from([("env_pkg_1".to_string(), approved.clone())]);
+        assert!(
+            authorize_agent_workspace_request(
+                "ask",
+                "environment.package_remove",
+                &payload,
+                &mut ask_approvals,
+            )
+            .is_err()
+        );
+
+        let mut changed = arguments.clone();
+        changed["package"] = json!("dplyr");
+        let mut changed_approvals = HashMap::from([("env_pkg_1".to_string(), approved.clone())]);
+        assert!(
+            authorize_agent_workspace_request(
+                "act",
+                "environment.package_remove",
+                &json!({"arguments": changed, "approval_request_id": "env_pkg_1"}),
+                &mut changed_approvals,
+            )
+            .is_err()
+        );
+
+        let mut approvals = HashMap::from([("env_pkg_1".to_string(), approved)]);
+        assert!(
+            authorize_agent_workspace_request(
+                "act",
+                "environment.package_remove",
+                &payload,
+                &mut approvals,
+            )
+            .is_ok()
+        );
+        assert!(approvals.is_empty());
+        assert!(
+            authorize_agent_workspace_request(
+                "act",
+                "environment.package_remove",
+                &payload,
+                &mut approvals,
+            )
+            .is_err()
         );
     }
 

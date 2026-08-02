@@ -13,6 +13,9 @@ rho_agent_tool_request_type <- function(tool_name) {
     initialize_project_environment = "environment.initialize",
     restore_project_environment = "environment.restore",
     snapshot_project_environment = "environment.snapshot",
+    install_project_package = "environment.package_install",
+    update_project_package = "environment.package_update",
+    remove_project_package = "environment.package_remove",
     NULL
   )
 }
@@ -127,6 +130,45 @@ rho_create_workspace_tools <- function() {
       ),
       parameters = aisdk::z_empty_object(),
       execute = function(args) rho_broker_tool_request("environment.snapshot", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "install_project_package",
+      description = paste(
+        "Install one named R package into the active project's renv library.",
+        "The broker previews the exact project library and repositories and requires a fresh visible confirmation."
+      ),
+      parameters = aisdk::z_object(
+        package = aisdk::z_string("One R package name", min_length = 1L, max_length = 128L),
+        .required = "package"
+      ),
+      execute = function(args) rho_broker_tool_request("environment.package_install", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "update_project_package",
+      description = paste(
+        "Update one installed R package in the active project's renv library.",
+        "The broker previews the exact project library and repositories and requires a fresh visible confirmation."
+      ),
+      parameters = aisdk::z_object(
+        package = aisdk::z_string("One R package name", min_length = 1L, max_length = 128L),
+        .required = "package"
+      ),
+      execute = function(args) rho_broker_tool_request("environment.package_update", args),
+      meta = list(validate_arguments = TRUE, rho_approval = "required")
+    ),
+    aisdk::tool(
+      name = "remove_project_package",
+      description = paste(
+        "Remove one R package from the active project's renv library.",
+        "This destructive action requires a fresh broker preview and visible confirmation."
+      ),
+      parameters = aisdk::z_object(
+        package = aisdk::z_string("One R package name", min_length = 1L, max_length = 128L),
+        .required = "package"
+      ),
+      execute = function(args) rho_broker_tool_request("environment.package_remove", args),
       meta = list(validate_arguments = TRUE, rho_approval = "required")
     ),
     aisdk::tool(

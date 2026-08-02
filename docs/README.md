@@ -67,6 +67,7 @@ changes.
 - Active render result to Artifact linkage: [`plans/active-2026-08-03-render-artifact-linkage-spec.md`](plans/active-2026-08-03-render-artifact-linkage-spec.md)
 - Active WS1 lockfile inventory and library comparison: [`plans/active-2026-08-03-ws1-lockfile-inventory-spec.md`](plans/active-2026-08-03-ws1-lockfile-inventory-spec.md)
 - Active WS1 dependency role and package source presentation: [`plans/active-2026-08-03-ws1-dependency-source-spec.md`](plans/active-2026-08-03-ws1-dependency-source-spec.md)
+- Active WS1 individual package mutation: [`plans/active-2026-08-03-ws1-package-mutation-spec.md`](plans/active-2026-08-03-ws1-package-mutation-spec.md)
 - Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
 - Current `0.3.x` milestone verification: [`verification/0.3x-milestone/verification.md`](verification/0.3x-milestone/verification.md)
