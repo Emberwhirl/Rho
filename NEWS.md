@@ -65,6 +65,9 @@ this file records behavior that is already available in a released build.
 
 - Added Air-backed R function index, dynamic Monaco completions, and hover help.
 - Selected Air as the primary language backend after evaluation checkpoint.
+- Go to Definition now opens a bounded Local Help panel after a project-source
+  miss, showing the owning installed package, local Help record, library root,
+  and only package-contained source references when available.
 
 #### WS1: Packages and environments
 

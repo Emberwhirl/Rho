@@ -2674,6 +2674,17 @@ fn validate_environment_package_name(package: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_local_help_lookup(name: &str, package: Option<&str>) -> Result<()> {
+    ensure!(
+        !name.is_empty() && name.len() <= 128 && !name.chars().any(char::is_control),
+        "Help name must contain 1 to 128 UTF-8 bytes without control characters"
+    );
+    if let Some(package) = package {
+        validate_environment_package_name(package).context("invalid Help package")?;
+    }
+    Ok(())
+}
+
 fn environment_repositories_expression(
     repositories: &Option<HashMap<String, String>>,
 ) -> Result<String> {
@@ -3472,6 +3483,7 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 .get("package")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty());
+            validate_local_help_lookup(name, package)?;
             let pkg_arg = match package {
                 Some(p) => r_string(p)?,
                 None => "NULL".to_string(),
@@ -4555,6 +4567,26 @@ mod tests {
         .unwrap();
         assert!(matches!(class, OperationClass::StateCapable));
         assert!(remove_expression.contains("operation = \"remove_package\""));
+    }
+
+    #[test]
+    fn local_help_lookup_is_bounded_escaped_and_read_only() {
+        let (class, expression) = bridge_expression(
+            "workspace.function_help",
+            &json!({"name": "mean\"quoted", "package": "base"}),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(expression.contains("rho_function_help(\"mean\\\"quoted\", package = \"base\")"));
+
+        for arguments in [
+            json!({"name": ""}),
+            json!({"name": "x".repeat(129)}),
+            json!({"name": "mean", "package": "bad-package"}),
+            json!({"name": "bad\nname"}),
+        ] {
+            assert!(bridge_expression("workspace.function_help", &arguments).is_err());
+        }
     }
 
     #[test]

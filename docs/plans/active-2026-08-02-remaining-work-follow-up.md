@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **16 open items** and **33 completed
-items**. The 16 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **15 open items** and **34 completed
+items**. The 15 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -20,11 +20,11 @@ included in that checklist count.
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS2 editor enhancement | 7 | Select one editor/help/refactor package |
+| WS2 editor enhancement | 6 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **16** | |
+| **Total** | **15** | |
 
-For near-term planning, this is **8 product implementation items** plus **8
+For near-term planning, this is **7 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -149,6 +149,15 @@ and the complete affected automated/browser matrix on 2026-08-03. This closes
 the last WS1 capability item without closing installed-app acceptance. The
 checklist is now **16 open / 33 completed**.
 
+The authorized WS2-H1 package,
+[`active-2026-08-03-ws2-local-help-location-spec.md`](active-2026-08-03-ws2-local-help-location-spec.md),
+completed bounded installed-package and local Help resolution, a visible Help
+fallback after a project-definition miss, package-contained source-reference
+checks, browser/mock parity, contract review, and the complete affected
+automated matrix on 2026-08-03. This closes package source/help locations
+without claiming full Rd rendering, example execution, or installed-app
+acceptance. The checklist is now **15 open / 34 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
@@ -162,7 +171,7 @@ checklist is now **16 open / 33 completed**.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 16-item checklist and require separate
+These six directions remain outside the 15-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

@@ -1822,6 +1822,35 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   color: var(--text);
   font: inherit;
 }
+.local-help-panel { overflow: auto; }
+.local-help-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.local-help-header h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
+.local-help-kicker { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.local-help-content { display: grid; gap: 0; padding: 4px 16px 18px; }
+.local-help-summary { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.local-help-summary strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.local-help-summary p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.local-help-signature {
+  margin: 12px 0 2px;
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f7f9f9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.local-help-location { display: grid; gap: 4px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.local-help-location span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.local-help-location code { color: var(--text); font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.local-help-warning { margin: 10px 0 0; color: var(--warning-text); font-size: 11px; }
 
 @media (max-width: 960px) {
   .app-shell { grid-template-columns: minmax(0, 1fr) 330px; }

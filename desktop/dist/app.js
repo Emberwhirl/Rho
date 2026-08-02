@@ -68,6 +68,7 @@ const state = {
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   packageManagementDialog: { busy: false, returnFocus: null },
+  localHelp: { status: "empty", record: null, error: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
   selectedDataObjectDetail: null,
@@ -1927,14 +1928,31 @@ async function mockInvoke(command, args) {
   }
   if (command === "editor_function_help") {
     const name = args.name || "";
+    const previewState = previewParams.get("state") || "found";
+    if (previewState === "error") throw new Error("Local Help bridge is unavailable.");
+    if (previewState === "unavailable") {
+      return { name, found: false, package: null, signature: null, help_topic: null, help_record: null, package_root: null, library_root: null, source_path: null, source_line: null, ambiguous: false, truncated: false };
+    }
+    const longRoot = previewState === "long"
+      ? `C:/Users/scientist/Documents/Unicode project/packages/${"nested-location/".repeat(9)}stats`
+      : "C:/R/library/stats";
     const mockHelp = {
-      "mean": { name: "mean", package: "base", signature: "function (x, ...)", help_title: "Arithmetic Mean", help_text: "Generic function for the (trimmed) arithmetic mean." },
-      "lm": { name: "lm", package: "stats", signature: "function (formula, data, subset, weights, na.action, method = \"qr\", model = TRUE, ...)", help_title: "Fitting Linear Models", help_text: "lm is used to fit linear models. It can be used to carry out regression, single stratum analysis of variance and analysis of covariance." },
-      "plot": { name: "plot", package: "graphics", signature: "function (x, y, ...)", help_title: "Generic X-Y Plotting", help_text: "Generic function for plotting of R objects." },
-      "summary": { name: "summary", package: "base", signature: "function (object, ...)", help_title: "Object Summaries", help_text: "summary is a generic function used to produce result summaries of the results of various model fitting functions." },
-      "read.csv": { name: "read.csv", package: "utils", signature: "function (file, header = TRUE, sep = \",\", quote = \"\\\"\", dec = \".\", fill = TRUE, comment.char = \"\", ...)", help_title: "Data Input", help_text: "Reads a file in table format and creates a data frame from it, with cases corresponding to lines and variables to fields in the file." },
+      "mean": { package: "base", signature: "function (x, ...)", root: "C:/R/library/base" },
+      "lm": { package: "stats", signature: "function (formula, data, subset, weights, na.action, method = \"qr\", model = TRUE, ...)", root: longRoot },
+      "plot": { package: "graphics", signature: "function (x, y, ...)", root: "C:/R/library/graphics" },
+      "summary": { package: "base", signature: "function (object, ...)", root: "C:/R/library/base" },
+      "read.csv": { package: "utils", signature: "function (file, header = TRUE, sep = \",\", quote = \"\\\"\", dec = \".\", fill = TRUE, comment.char = \"\", ...)", root: "C:/R/library/utils" },
     };
-    return mockHelp[name] || { name, package: "base", signature: `function ${name}(...)`, help_title: null, help_text: null };
+    const item = mockHelp[name] || { package: "base", signature: `function ${name}(...)`, root: "C:/R/library/base" };
+    return {
+      name, found: true, package: item.package, signature: item.signature,
+      help_topic: name, help_record: `${item.root}/help/${name}`,
+      package_root: item.root, library_root: item.root.slice(0, item.root.lastIndexOf("/")),
+      source_path: name === "lm" ? `${item.root}/R/lm.R` : null,
+      source_line: name === "lm" ? 20 : null,
+      ambiguous: previewState === "ambiguous", truncated: previewState === "long",
+      help_title: null, help_text: null,
+    };
   }
   if (command === "editor_lint_file") {
     return {
@@ -2847,6 +2865,8 @@ function registerRLanguage(monaco) {
             ];
             if (help.help_title) contents.push({ value: `*${help.help_title}*` });
             if (help.help_text) contents.push({ value: help.help_text });
+            if (help.help_record) contents.push({ value: `Local Help: \`${help.package || "R"}::${help.help_topic || help.name}\`` });
+            if (help.source_path) contents.push({ value: "Installed source reference available in the Help panel." });
             return {
               range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
               contents,
@@ -6241,12 +6261,91 @@ async function gotoDefinitionAtCursor() {
       }
     } else {
       // Fall back to help
-      await invoke("editor_function_help", { name, package: null });
+      await showLocalHelp(name);
       toast(`No project definition for '${name}' — opening help`);
     }
   } catch (error) {
     toast(`Go to definition failed: ${error}`, true);
   }
+}
+
+function appendLocalHelpLocation(container, label, value) {
+  if (!value) return;
+  const row = document.createElement("div");
+  row.className = "local-help-location";
+  const heading = document.createElement("span");
+  heading.textContent = label;
+  const path = document.createElement("code");
+  path.textContent = value;
+  row.append(heading, path);
+  container.append(row);
+}
+
+function renderLocalHelp() {
+  const content = $("#localHelpContent");
+  const badge = $("#localHelpState");
+  content.replaceChildren();
+  badge.textContent = state.localHelp.status;
+  if (state.localHelp.status === "loading") {
+    content.append(emptyRow("Resolving local Help"));
+    return;
+  }
+  if (state.localHelp.status === "error") {
+    const error = emptyRow("Local Help unavailable");
+    const detail = document.createElement("p");
+    detail.textContent = state.localHelp.error || "The installed Help record could not be resolved.";
+    error.append(detail);
+    content.append(error);
+    return;
+  }
+  const record = state.localHelp.record;
+  if (!record?.found) {
+    content.append(emptyRow(record ? `No installed Help found for ${record.name}` : "No symbol selected"));
+    return;
+  }
+  const summary = document.createElement("div");
+  summary.className = "local-help-summary";
+  const title = document.createElement("strong");
+  title.textContent = `${record.package || "R"}::${record.name}`;
+  const note = document.createElement("p");
+  note.textContent = record.help_topic ? `Local topic: ${record.help_topic}` : "Installed function location";
+  summary.append(title, note);
+  content.append(summary);
+  if (record.signature) {
+    const signature = document.createElement("code");
+    signature.className = "local-help-signature";
+    signature.textContent = record.signature;
+    content.append(signature);
+  }
+  appendLocalHelpLocation(content, "Local Help record", record.help_record);
+  appendLocalHelpLocation(content, "Package root", record.package_root);
+  appendLocalHelpLocation(content, "Library root", record.library_root);
+  appendLocalHelpLocation(content, "Source reference", record.source_path ? `${record.source_path}${record.source_line ? `:${record.source_line}` : ""}` : null);
+  if (record.ambiguous || record.truncated) {
+    const warning = document.createElement("p");
+    warning.className = "local-help-warning";
+    warning.textContent = [
+      record.ambiguous ? "Multiple local Help records matched; the first result in R's lookup order is shown." : null,
+      record.truncated ? "One or more displayed fields were truncated to the transport limit." : null,
+    ].filter(Boolean).join(" ");
+    content.append(warning);
+  }
+}
+
+async function showLocalHelp(name, packageName = null) {
+  applyWorkbenchLayout("analyze");
+  await switchContextTab("help");
+  state.localHelp = { status: "loading", record: null, error: null };
+  renderLocalHelp();
+  $("#localHelpHeading").focus();
+  try {
+    const record = await invoke("editor_function_help", { name, package: packageName });
+    state.localHelp = { status: record?.found ? "found" : "unavailable", record, error: null };
+  } catch (error) {
+    state.localHelp = { status: "error", record: null, error: String(error) };
+  }
+  renderLocalHelp();
+  return state.localHelp.record;
 }
 
 async function runSelectionOrCurrentLine() {
@@ -6975,7 +7074,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7100,6 +7199,11 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "local-help") {
+    await showLocalHelp(previewParams.get("topic") || "lm", previewParams.get("package") || null);
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -7195,7 +7299,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -7301,6 +7405,26 @@ function recordPreviewLayoutEvidence() {
         review_outside_viewport: Boolean(review && (review.left < 0 || review.right > window.innerWidth)),
       },
       rects: { management, review, package_list: packageList },
+    });
+    return;
+  }
+  if (scenario === "local-help") {
+    const panel = rectEvidence($("#localHelpPanel"));
+    const content = rectEvidence($("#localHelpContent"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      status: state.localHelp.status,
+      record: state.localHelp.record ? {
+        package: state.localHelp.record.package,
+        topic: state.localHelp.record.help_topic,
+        ambiguous: state.localHelp.record.ambiguous,
+        truncated: state.localHelp.record.truncated,
+        source_available: Boolean(state.localHelp.record.source_path),
+      } : null,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
+      rects: { panel, content },
     });
     return;
   }
@@ -8887,6 +9011,7 @@ function switchContextTab(name) {
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
   $("#evidencePanel").classList.toggle("hidden", name !== "evidence");
   $("#gitPanel").classList.toggle("hidden", name !== "git");
+  $("#localHelpPanel").classList.toggle("hidden", name !== "help");
   $("#chunksPanel").classList.toggle("hidden", name !== "chunks");
   if (name === "evidence") loadEvidenceEntries();
   if (name === "git") return loadGitStatus().then(() => loadGitReview());

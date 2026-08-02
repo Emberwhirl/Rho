@@ -132,7 +132,7 @@ Implemented focused packages and remaining proposal items after selecting Air:
 - [x] Hover help through the Workspace bridge with non-blocking fallback
 - [x] Project-local go to definition with Help fallback
 - [x] Optional `lintr` findings projected into Problems
-- [ ] Package source/help locations beyond the current Help fallback
+- [x] Package source/help locations beyond the current Help fallback
 - [ ] Find project references with bounded results
 - [ ] Full installed-version Help: arguments, examples, vignettes, package
   version, and recorded execution of a selected example

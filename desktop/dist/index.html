@@ -347,6 +347,7 @@ plot(
           <button data-context-tab="environment" type="button">Environment <span id="objectCount" class="count">0</span></button>
           <button data-context-tab="evidence" type="button">Evidence <span id="evidenceCount" class="count">0</span></button>
           <button data-context-tab="git" type="button">Git <span id="gitChangeCount" class="count">0</span></button>
+          <button data-context-tab="help" type="button">Help</button>
           <button data-context-tab="chunks" type="button" id="chunksTab" class="hidden">Chunks <span id="chunkCount" class="count">0</span></button>
         </div>
 
@@ -508,6 +509,19 @@ plot(
                 <button id="gitCommitButton" type="submit">Commit</button>
               </div>
             </form>
+          </div>
+        </section>
+
+        <section id="localHelpPanel" class="context-content local-help-panel hidden" aria-labelledby="localHelpHeading">
+          <header class="local-help-header">
+            <div>
+              <span class="local-help-kicker">Installed R documentation</span>
+              <h2 id="localHelpHeading" tabindex="-1">Local Help</h2>
+            </div>
+            <span id="localHelpState" class="revision-badge">empty</span>
+          </header>
+          <div id="localHelpContent" class="local-help-content" aria-live="polite">
+            <div class="empty-state compact-empty"><strong>No symbol selected</strong><p>Use Go to Definition on an installed function.</p></div>
           </div>
         </section>
 

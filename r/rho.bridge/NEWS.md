@@ -1,3 +1,10 @@
+# rho.bridge 0.1.6
+
+- Added bounded local Help, installed-package, library, and package-contained
+  source-reference discovery without attaching or loading package namespaces.
+- Preserved a fixed JSON-safe Help response for missing, ambiguous, and
+  truncated lookups.
+
 # rho.bridge 0.1.5
 
 - Added previewed, project-root-explicit install, update, and remove operations
