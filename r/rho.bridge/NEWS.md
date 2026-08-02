@@ -1,3 +1,10 @@
+# rho.bridge 0.1.3
+
+- Added a bounded, project-root-explicit lockfile and installed-library union
+  with matched, version-mismatch, not-installed, and not-locked states.
+- Added truthful missing, malformed, unavailable, source-limit, and file-size
+  states while selecting duplicate installed packages by `.libPaths()` order.
+
 # rho.bridge 0.1.2
 
 - Added additive column type/class/missing-count metadata and aligned cell

@@ -111,7 +111,7 @@ acceptance gate.
 From the RStudio-inspired workflow proposal, capability-decision table row 1:
 
 - [x] Searchable installed-package inventory
-- [ ] Searchable lockfile inventory and installed-versus-locked comparison
+- [x] Searchable lockfile inventory and installed-versus-locked comparison
 - [ ] Direct versus transitive dependency and package-source display
 - [x] Bounded status and change preview before `renv` initialization,
   restore, or snapshot

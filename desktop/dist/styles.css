@@ -1402,6 +1402,30 @@ body.resizing-vertical { cursor: col-resize; }
   padding: 0 2px;
 }
 .package-list-header strong { font-size: 12px; }
+.package-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #f2f4f4;
+}
+.package-tabs button {
+  min-height: 26px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.package-tabs button.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(24, 45, 49, 0.12);
+}
+.package-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 #packageFilter {
   width: 100%;
   height: 26px;
@@ -1412,6 +1436,12 @@ body.resizing-vertical { cursor: col-resize; }
   background: #fff;
 }
 #packageFilter:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.package-list-summary {
+  min-height: 14px;
+  color: var(--subtle);
+  font-size: 9px;
+  line-height: 1.35;
+}
 .package-list {
   max-height: 200px;
   overflow-y: auto;
@@ -1432,6 +1462,39 @@ body.resizing-vertical { cursor: col-resize; }
 .package-row .pkg-library { color: var(--subtle); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .package-row.loaded .pkg-name { font-weight: 700; color: var(--accent-strong); }
 .package-row.base { opacity: 0.55; }
+.package-table-head,
+.package-row.lockfile {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) 62px 62px minmax(82px, 0.9fr);
+  gap: 6px;
+  align-items: center;
+}
+.package-table-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 23px;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+  background: #f7f9f9;
+  color: var(--subtle);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.package-row.lockfile .pkg-version { text-align: left; }
+.package-state {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.package-state.version_mismatch,
+.package-state.missing_in_library { color: #9b4b34; font-weight: 600; }
+.package-state.missing_in_lockfile { color: #75601e; font-weight: 600; }
+.package-state.matched { color: #267064; }
 .environment-row { min-height: 38px; padding: 5px 11px; border-bottom: 1px solid #edf0f1; cursor: default; }
 .environment-row:hover { background: #f2f6f6; }
 .environment-row.active { background: #e1f1ef; }

@@ -111,6 +111,167 @@ test_that("environment status preview reports bounded diff", {
   )
 })
 
+test_that("lockfile inventory reports all comparison states and library precedence", {
+  project <- file.path(tempdir(), paste0("rho-lockfile-inventory-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  jsonlite::write_json(
+    list(Packages = list(
+      matched = list(Version = "1.0.0"),
+      mismatch = list(Version = "2.0.0"),
+      lockedOnly = list(Version = "3.0.0")
+    )),
+    file.path(project, "renv.lock"),
+    auto_unbox = TRUE
+  )
+  installed <- matrix(
+    c(
+      "matched", "1.0.0", "C:/lib-second",
+      "matched", "1.0.0", "C:/lib-first",
+      "mismatch", "2.1.0", "C:/lib-first",
+      "libraryOnly", "4.0.0", "C:/lib-first"
+    ),
+    ncol = 3L,
+    byrow = TRUE,
+    dimnames = list(NULL, c("Package", "Version", "LibPath"))
+  )
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() c("C:/lib-first", "C:/lib-second"),
+    .package = "rho.bridge"
+  )
+
+  result <- rho_list_lockfile_packages(project, limit = 500L)
+  by_name <- stats::setNames(result$packages, vapply(result$packages, `[[`, character(1), "name"))
+
+  expect_identical(vapply(result$packages, `[[`, character(1), "name"), sort(names(by_name)))
+  expect_identical(by_name$matched$state, "matched")
+  expect_identical(by_name$matched$library, "C:/lib-first")
+  expect_identical(by_name$mismatch$state, "version_mismatch")
+  expect_identical(by_name$lockedOnly$state, "missing_in_library")
+  expect_identical(by_name$libraryOnly$state, "missing_in_lockfile")
+  expect_identical(unlist(result$counts, use.names = FALSE), rep(1L, 4L))
+  expect_identical(result$total_count, 4L)
+  expect_false(result$truncated)
+  expect_true(is.character(jsonlite::toJSON(result, auto_unbox = TRUE, null = "null")))
+})
+
+test_that("lockfile inventory distinguishes missing malformed and enumeration recovery", {
+  project_a <- file.path(tempdir(), paste0("rho-lockfile-a-", Sys.getpid()))
+  project_b <- file.path(tempdir(), paste0("rho-lockfile-b-", Sys.getpid()))
+  dir.create(project_a, recursive = TRUE, showWarnings = FALSE)
+  dir.create(project_b, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(c(project_a, project_b), recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines("{ broken", file.path(project_b, "renv.lock"))
+  installed <- matrix(
+    c("libraryOnly", "1.0.0", "C:/lib"),
+    ncol = 3L,
+    dimnames = list(NULL, c("Package", "Version", "LibPath"))
+  )
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() "C:/lib",
+    .package = "rho.bridge"
+  )
+
+  missing <- rho_list_lockfile_packages(project_a)
+  malformed <- rho_list_lockfile_packages(project_b)
+
+  expect_identical(missing$lockfile$state, "no_lockfile")
+  expect_identical(missing$packages[[1L]]$state, "missing_in_lockfile")
+  expect_identical(malformed$lockfile$state, "invalid_lockfile")
+  expect_true(malformed$incomplete)
+  expect_length(malformed$packages, 0L)
+  expect_match(malformed$lockfile$parse_error, "parse|lexical|broken", ignore.case = TRUE)
+
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() stop("enumeration unavailable"),
+    .package = "rho.bridge"
+  )
+  failed <- rho_list_lockfile_packages(project_a)
+  expect_true(failed$incomplete)
+  expect_identical(failed$incomplete_reasons[[1L]], "installed_packages_unavailable")
+  expect_match(failed$lockfile$parse_error, "enumeration unavailable")
+})
+
+test_that("lockfile inventory clamps limits, isolates projects, and bounds Unicode", {
+  project_a <- file.path(tempdir(), paste0("rho-lockfile-isolation-a-", Sys.getpid()))
+  project_b <- file.path(tempdir(), paste0("rho-lockfile-isolation-b-", Sys.getpid()))
+  dir.create(project_a, recursive = TRUE, showWarnings = FALSE)
+  dir.create(project_b, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(c(project_a, project_b), recursive = TRUE, force = TRUE), add = TRUE)
+  jsonlite::write_json(
+    list(Packages = setNames(list(list(Version = "1.0.0")), "项目包")),
+    file.path(project_a, "renv.lock"),
+    auto_unbox = TRUE
+  )
+  jsonlite::write_json(
+    list(Packages = list(otherProject = list(Version = "2.0.0"))),
+    file.path(project_b, "renv.lock"),
+    auto_unbox = TRUE
+  )
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  a <- rho_list_lockfile_packages(project_a, limit = 0L)
+  b <- rho_list_lockfile_packages(project_b, limit = 9999L)
+
+  expect_identical(a$returned_count, 1L)
+  expect_identical(a$packages[[1L]]$name, "项目包")
+  expect_identical(b$packages[[1L]]$name, "otherProject")
+  expect_false(any(vapply(b$packages, function(item) identical(item$name, "项目包"), logical(1))))
+})
+
+test_that("lockfile inventory marks source and response bounds truthfully", {
+  project <- file.path(tempdir(), paste0("rho-lockfile-bounds-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  package_names <- paste0("locked", seq_len(4L))
+  packages <- stats::setNames(lapply(package_names, function(name) {
+    list(Version = strrep(name, 200000L))
+  }), package_names)
+  jsonlite::write_json(list(Packages = packages), file.path(project, "renv.lock"), auto_unbox = TRUE)
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  result <- rho_list_lockfile_packages(project, limit = 2L)
+
+  expect_length(result$packages, 0L)
+  expect_false(result$truncated)
+  expect_true(result$incomplete)
+  expect_null(result$total_count)
+  expect_identical(result$incomplete_reasons[[1L]], "lockfile_size_limit")
+  expect_match(result$lockfile$parse_error, "5 MiB")
+})
+
+test_that("lockfile inventory accepts an empty Packages object", {
+  project <- file.path(tempdir(), paste0("rho-lockfile-empty-", Sys.getpid()))
+  dir.create(project, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(project, recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines('{"Packages": {}}', file.path(project, "renv.lock"))
+  installed <- matrix(character(), nrow = 0L, ncol = 3L, dimnames = list(NULL, c("Package", "Version", "LibPath")))
+  local_mocked_bindings(
+    rho_lockfile_inventory_installed_rows = function() installed,
+    rho_lockfile_inventory_library_paths = function() character(),
+    .package = "rho.bridge"
+  )
+
+  result <- rho_list_lockfile_packages(project)
+
+  expect_true(result$lockfile$valid)
+  expect_identical(result$lockfile$state, "available")
+  expect_identical(result$total_count, 0L)
+  expect_length(result$packages, 0L)
+})
+
 test_that("typed environment operation returns structured result", {
   project <- file.path(tempdir(), paste0("rho-bridge-operation-", Sys.getpid()))
   dir.create(project, recursive = TRUE, showWarnings = FALSE)

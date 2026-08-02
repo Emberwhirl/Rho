@@ -66,6 +66,12 @@ this file records behavior that is already available in a released build.
 - Added Air-backed R function index, dynamic Monaco completions, and hover help.
 - Selected Air as the primary language backend after evaluation checkpoint.
 
+#### WS1: Packages and environments
+
+- Added Installed and Lockfile package tabs with one searchable, bounded
+  installed-versus-locked comparison, explicit drift labels, and truthful
+  missing, malformed, unavailable, and incomplete lockfile states.
+
 #### WS9: lintr diagnostics
 
 - Added lintr bridge producing normalized diagnostics from R source files.

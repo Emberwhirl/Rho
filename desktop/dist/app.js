@@ -63,6 +63,8 @@ const state = {
   },
   environment: null,
   installedPackages: null,
+  lockfilePackages: null,
+  environmentPackageTab: "installed",
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   selectedObjectName: null,
@@ -389,6 +391,56 @@ const MOCK_BIOC_PACKAGES = [
   { name: "renv",         version: "1.2.3",  library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
   { name: "SummarizedExperiment", version: "1.38.0", library: "C:/R/win-library/4.6", priority: null, built: "4.6.1" },
 ];
+
+function mockLockfileInventory() {
+  const mockState = previewParams.get("state") || "default";
+  const base = {
+    project_dir: "C:/Users/demo/RhoProject",
+    lockfile: {
+      path: "C:/Users/demo/RhoProject/renv.lock",
+      exists: true,
+      valid: true,
+      state: "available",
+      parse_error: null,
+    },
+    packages: [
+      { name: "DESeq2", locked_version: "1.48.0", installed_version: "1.48.0", library: "C:/R/win-library/4.6", state: "matched" },
+      { name: "ggplot2", locked_version: "3.5.1", installed_version: "3.5.2", library: "C:/R/win-library/4.6", state: "version_mismatch" },
+      { name: "tidyr", locked_version: "1.3.1", installed_version: null, library: null, state: "missing_in_library" },
+      { name: "SummarizedExperiment", locked_version: null, installed_version: "1.38.0", library: "C:/R/win-library/4.6", state: "missing_in_lockfile" },
+    ],
+    total_count: 4,
+    returned_count: 4,
+    counts: { matched: 1, version_mismatch: 1, missing_in_library: 1, missing_in_lockfile: 1 },
+    truncated: false,
+    incomplete: false,
+    incomplete_reasons: [],
+  };
+  if (mockState === "missing") {
+    return {
+      ...base,
+      lockfile: { ...base.lockfile, exists: false, valid: false, state: "no_lockfile", parse_error: null },
+      packages: [{ name: "ggplot2", locked_version: null, installed_version: "3.5.2", library: "C:/R/win-library/4.6", state: "missing_in_lockfile" }],
+      total_count: 1,
+      returned_count: 1,
+      counts: { matched: 0, version_mismatch: 0, missing_in_library: 0, missing_in_lockfile: 1 },
+    };
+  }
+  if (mockState === "malformed") {
+    return {
+      ...base,
+      lockfile: { ...base.lockfile, valid: false, state: "invalid_lockfile", parse_error: "lexical error while parsing renv.lock" },
+      packages: [],
+      total_count: null,
+      returned_count: 0,
+      counts: { matched: 0, version_mismatch: 0, missing_in_library: 0, missing_in_lockfile: 0 },
+      incomplete: true,
+      incomplete_reasons: ["lockfile_invalid"],
+    };
+  }
+  if (mockState === "truncated") return { ...base, total_count: 612, truncated: true };
+  return base;
+}
 
 function slugifyAgentId(value, fallback = "item") {
   const slug = String(value || "")
@@ -2271,6 +2323,9 @@ async function mockInvoke(command, args) {
       total_count: MOCK_BASE_PACKAGES.length + MOCK_BIOC_PACKAGES.length,
       truncated: false,
     };
+  }
+  if (command === "list_lockfile_packages") {
+    return structuredClone(mockLockfileInventory());
   }
   if (command === "resolve_doi") {
     return {
@@ -6160,7 +6215,7 @@ async function refreshEnvironment() {
     state.objects = response.execution?.objects || [];
     state.environment = response.execution?.environment || null;
     renderEnvironment();
-    loadInstalledPackages();
+    loadPackageInventories();
   } catch (error) {
     toast(String(error), true);
   }
@@ -6177,15 +6232,46 @@ async function loadInstalledPackages() {
   }
 }
 
+async function loadLockfilePackages() {
+  try {
+    state.lockfilePackages = await invoke("list_lockfile_packages", { limit: 500 });
+  } catch (error) {
+    state.lockfilePackages = { error: String(error) };
+  }
+  renderPackageList();
+}
+
+function loadPackageInventories() {
+  return Promise.all([loadInstalledPackages(), loadLockfilePackages()]);
+}
+
+function switchEnvironmentPackageTab(tab) {
+  state.environmentPackageTab = tab === "lockfile" ? "lockfile" : "installed";
+  $$('[data-package-tab]').forEach((button) => {
+    const active = button.dataset.packageTab === state.environmentPackageTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  renderPackageList();
+}
+
 function renderPackageList() {
   const list = $("#packageList");
   const meta = $("#packageListMeta");
-  const data = state.installedPackages;
+  const summary = $("#packageListSummary");
+  const lockfileTab = state.environmentPackageTab === "lockfile";
+  const data = lockfileTab ? state.lockfilePackages : state.installedPackages;
   const filter = ($("#packageFilter").value || "").trim().toLowerCase();
 
   if (!data || data.error) {
-    meta.textContent = data?.error || "Could not load packages.";
-    list.replaceChildren(emptyRow("Package list unavailable"));
+    meta.textContent = data?.error || "Loading";
+    summary.textContent = "";
+    list.replaceChildren(emptyRow(data?.error ? "Package list unavailable" : "Loading packages"));
+    return;
+  }
+
+  if (lockfileTab) {
+    renderLockfilePackageList(data, filter, list, meta, summary);
     return;
   }
 
@@ -6195,11 +6281,12 @@ function renderPackageList() {
   meta.textContent = truncated
     ? `Showing ${packages.length} of ${total} packages`
     : `${total} packages`;
+  summary.textContent = "Packages visible to the current R library search path.";
 
   // Get set of attached package names for highlighting
-  const attachedNames = new Set(
-    (state.environment?.attached_packages || []).map((p) => p.name)
-  );
+  const attached = state.environment?.attached_packages;
+  const attachedPackages = Array.isArray(attached) ? attached : attached?.values || [];
+  const attachedNames = new Set(attachedPackages.map((pkg) => pkg.name));
 
   let visible = filter
     ? packages.filter((p) => p.name.toLowerCase().includes(filter))
@@ -6235,6 +6322,71 @@ function renderPackageList() {
     lib.textContent = abbreviateLibrary(pkg.library);
 
     row.append(name, version, lib);
+    list.append(row);
+  }
+}
+
+function renderLockfilePackageList(data, filter, list, meta, summary) {
+  const packages = data.packages || [];
+  const counts = data.counts || {};
+  const lockfile = data.lockfile || {};
+  const total = data.total_count;
+  const stateLabels = {
+    matched: "Matched",
+    version_mismatch: "Version mismatch",
+    missing_in_library: "Not installed",
+    missing_in_lockfile: "Not locked",
+  };
+  if (lockfile.state === "invalid_lockfile") {
+    meta.textContent = "Invalid lockfile";
+    summary.textContent = lockfile.parse_error || "renv.lock could not be parsed.";
+    list.replaceChildren(emptyRow("Fix renv.lock before comparing packages"));
+    return;
+  }
+  meta.textContent = data.truncated
+    ? `${data.returned_count || packages.length} shown; comparison incomplete`
+    : `${total ?? packages.length} packages`;
+  summary.textContent = lockfile.state === "no_lockfile"
+    ? "No renv.lock. Installed packages are shown as not locked."
+    : `Matched ${counts.matched || 0} · Mismatch ${counts.version_mismatch || 0} · Not installed ${counts.missing_in_library || 0} · Not locked ${counts.missing_in_lockfile || 0}`;
+  if (data.incomplete && data.incomplete_reasons?.length) {
+    summary.textContent += ` · Incomplete: ${data.incomplete_reasons.join(", ")}`;
+  }
+
+  const visible = filter
+    ? packages.filter((pkg) => String(pkg.name || "").toLowerCase().includes(filter))
+    : packages;
+  list.replaceChildren();
+  if (!visible.length) {
+    list.append(emptyRow(filter ? "No packages match the search" : "No packages to compare"));
+    return;
+  }
+  const header = document.createElement("div");
+  header.className = "package-table-head";
+  for (const label of ["Package", "Locked", "Installed", "State"]) {
+    const cell = document.createElement("span");
+    cell.textContent = label;
+    header.append(cell);
+  }
+  list.append(header);
+  for (const pkg of visible) {
+    const row = document.createElement("div");
+    row.className = "package-row lockfile";
+    const name = document.createElement("span");
+    name.className = "pkg-name";
+    name.textContent = pkg.name || "";
+    name.title = pkg.library ? `${pkg.name} · ${pkg.library}` : pkg.name || "";
+    const locked = document.createElement("span");
+    locked.className = "pkg-version";
+    locked.textContent = pkg.locked_version || "—";
+    const installed = document.createElement("span");
+    installed.className = "pkg-version";
+    installed.textContent = pkg.installed_version || "—";
+    const status = document.createElement("span");
+    status.className = `package-state ${pkg.state || ""}`;
+    status.textContent = stateLabels[pkg.state] || pkg.state || "Unknown";
+    status.title = status.textContent;
+    row.append(name, locked, installed, status);
     list.append(row);
   }
 }
@@ -6719,7 +6871,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -6806,6 +6958,13 @@ async function maybeApplyPreviewScenario() {
       await loadGitReview({ preserveSelection: false });
       mockGitFailureCommand = null;
     }
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  if (scenario === "environment-lockfile") {
+    applyWorkbenchLayout("analyze");
+    await loadPackageInventories();
+    switchEnvironmentPackageTab("lockfile");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -6904,7 +7063,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -6967,6 +7126,27 @@ function recordPreviewLayoutEvidence() {
       overlaps: {
         diff_outside_panel: Boolean(panel && diff && diff.width > 0 && (diff.left < panel.left || diff.right > panel.right)),
       },
+    });
+    return;
+  }
+  if (scenario === "environment-lockfile") {
+    const section = rectEvidence($(".package-list-section"));
+    const tabs = rectEvidence($(".package-tabs"));
+    const search = rectEvidence($("#packageFilter"));
+    const list = rectEvidence($("#packageList"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      active_package_tab: state.environmentPackageTab,
+      lockfile_state: state.lockfilePackages?.lockfile?.state || null,
+      counts: state.lockfilePackages?.counts || null,
+      rows: $$("#packageList .package-row.lockfile").length,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      overlaps: {
+        tabs_with_search: rectsOverlap(tabs, search),
+        search_with_list: rectsOverlap(search, list),
+      },
+      rects: { section, tabs, search, list },
     });
     return;
   }
@@ -10082,6 +10262,7 @@ $("#agentContextNewFile").addEventListener("click", async () => {
 });
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
 $("#packageFilter").addEventListener("input", renderPackageList);
+$$('[data-package-tab]').forEach((button) => button.addEventListener("click", () => switchEnvironmentPackageTab(button.dataset.packageTab)));
 $("#environmentSearch").addEventListener("input", renderEnvironment);
 initEvidencePanel();
 initChunkPanel();

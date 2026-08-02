@@ -3374,6 +3374,23 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 format!("{bridge}$rho_list_installed_packages(limit = {limit}L)",),
             ))
         }
+        "workspace.list_lockfile_packages" => {
+            let root = arguments["project_root"].as_str().context(
+                "workspace.list_lockfile_packages requires string argument `project_root`",
+            )?;
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(500)
+                .clamp(1, 500);
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_list_lockfile_packages({}, limit = {limit}L)",
+                    r_string(root)?,
+                ),
+            ))
+        }
         "workspace.find_function_definition" => {
             let name = arguments["name"]
                 .as_str()
@@ -4280,6 +4297,29 @@ mod tests {
         assert!(matches!(class, OperationClass::Probe));
         assert!(expression.contains("rho_inspect_data_object"));
         assert!(expression.contains("\"sce\""));
+    }
+
+    #[test]
+    fn bridge_expression_bounds_lockfile_inventory_and_requires_project_root() {
+        let (class, low) = bridge_expression(
+            "workspace.list_lockfile_packages",
+            &json!({"project_root": "C:/projects/quoted \"root\"", "limit": 0}),
+        )
+        .unwrap();
+        let (_, high) = bridge_expression(
+            "workspace.list_lockfile_packages",
+            &json!({"project_root": "C:/projects/b", "limit": 900}),
+        )
+        .unwrap();
+
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(low.contains("rho_list_lockfile_packages"));
+        assert!(low.contains("C:/projects/quoted \\\"root\\\""));
+        assert!(low.contains("limit = 1L"));
+        assert!(high.contains("limit = 500L"));
+        assert!(
+            bridge_expression("workspace.list_lockfile_packages", &json!({"limit": 50}),).is_err()
+        );
     }
 
     #[test]

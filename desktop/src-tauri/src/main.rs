@@ -1612,6 +1612,39 @@ async fn list_installed_packages(
     .map_err(display_error)
 }
 
+fn lockfile_inventory_arguments(project_root: &Path, limit: Option<u64>) -> Value {
+    json!({
+        "project_root": normalize_project_root(project_root.to_string_lossy().as_ref()),
+        "limit": limit.unwrap_or(500).clamp(1, 500)
+    })
+}
+
+#[tauri::command]
+async fn list_lockfile_packages(
+    limit: Option<u64>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let root = state.project_root.read().await.clone();
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": lockfile_inventory_arguments(&root, limit),
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.list_lockfile_packages",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
 #[tauri::command]
 async fn respond_environment_operation(
     request: EnvironmentOperationDecisionRequest,
@@ -4409,8 +4442,8 @@ mod tests {
         bounded_diagnostic, classify_startup_error, configure_user_startup,
         data_view_artifact_metadata, data_view_delimited_text, ensure_artifact_export_target,
         ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
-        parse_r_runtime_probe, project_switch_blocker, reconcile_render_job,
-        render_job_is_terminal, run_is_retryable, safe_delete_project_file,
+        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
+        reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
         switch_project_with_watcher_factory, write_r_probe_script,
     };
 
@@ -4439,6 +4472,17 @@ mod tests {
         assert!(!run_is_retryable("environment.restore", "user"));
         assert!(!run_is_retryable("workspace.set_project_root", "system"));
         assert!(!run_is_retryable("workspace.bootstrap", "system"));
+    }
+
+    #[test]
+    fn lockfile_inventory_arguments_normalize_root_and_clamp_limit() {
+        let root = Path::new("C:\\projects\\rho-lockfile");
+        let low = lockfile_inventory_arguments(root, Some(0));
+        let high = lockfile_inventory_arguments(root, Some(900));
+
+        assert_eq!(low["project_root"], "C:/projects/rho-lockfile");
+        assert_eq!(low["limit"], 1);
+        assert_eq!(high["limit"], 500);
     }
 
     fn test_runtime_config(store_path: &Path, data_dir: &Path) -> RuntimeConfig {
@@ -5793,6 +5837,7 @@ fn main() {
             get_environment_operation_request,
             respond_environment_operation,
             list_installed_packages,
+            list_lockfile_packages,
             list_runs,
             list_plot_artifacts,
             export_plot_artifact,

@@ -560,10 +560,15 @@ plot(
           </div>
           <div class="package-list-section">
             <div class="package-list-header">
-              <strong>Installed Packages</strong>
+              <strong>Packages</strong>
               <span id="packageListMeta" class="environment-hint"></span>
             </div>
-            <input id="packageFilter" type="search" placeholder="Filter packages…" aria-label="Filter installed packages" />
+            <div class="package-tabs" role="tablist" aria-label="Package inventory">
+              <button id="installedPackageTab" type="button" role="tab" data-package-tab="installed" aria-selected="true" class="active">Installed</button>
+              <button id="lockfilePackageTab" type="button" role="tab" data-package-tab="lockfile" aria-selected="false">Lockfile</button>
+            </div>
+            <input id="packageFilter" type="search" placeholder="Search packages" aria-label="Search packages" />
+            <div id="packageListSummary" class="package-list-summary" aria-live="polite"></div>
             <div id="packageList" class="package-list">
               <div class="empty-state compact-empty"><strong>Loading packages…</strong></div>
             </div>

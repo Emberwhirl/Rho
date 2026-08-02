@@ -339,6 +339,214 @@ rho_list_installed_packages <- function(limit = 500L) {
   )
 }
 
+rho_lockfile_inventory_limit <- function(limit) {
+  value <- if (!length(limit)) 500L else suppressWarnings(as.integer(limit[[1L]]))
+  if (is.na(value)) value <- 500L
+  max(1L, min(value, 500L))
+}
+
+rho_lockfile_inventory_text <- function(value, max_bytes = 512L) {
+  if (is.null(value) || !length(value) || is.na(value[[1L]])) return(NULL)
+  value <- enc2utf8(as.character(value[[1L]]))
+  if (nchar(value, type = "bytes") <= max_bytes) return(value)
+  while (nchar(value, type = "bytes") > max_bytes && nchar(value) > 0L) {
+    value <- substr(value, 1L, nchar(value) - 1L)
+  }
+  value
+}
+
+rho_lockfile_inventory_installed_rows <- function() {
+  utils::installed.packages(
+    lib.loc = .libPaths(),
+    fields = c("Package", "Version", "LibPath")
+  )
+}
+
+rho_lockfile_inventory_library_paths <- function() .libPaths()
+
+rho_lockfile_inventory_error <- function(project_dir, lockfile, message) {
+  list(
+    project_dir = project_dir,
+    lockfile = list(
+      path = lockfile,
+      exists = file.exists(lockfile),
+      valid = FALSE,
+      state = "invalid_lockfile",
+      parse_error = rho_lockfile_inventory_text(message, 1000L)
+    ),
+    packages = list(),
+    total_count = NULL,
+    returned_count = 0L,
+    counts = list(
+      matched = 0L,
+      version_mismatch = 0L,
+      missing_in_library = 0L,
+      missing_in_lockfile = 0L
+    ),
+    truncated = FALSE,
+    incomplete = TRUE,
+    incomplete_reasons = list("lockfile_invalid")
+  )
+}
+
+#' Return a bounded lockfile and installed-library comparison.
+#'
+#' @param project_dir Explicit project root containing `renv.lock`.
+#' @param limit Maximum number of sorted comparison rows returned (1 to 500).
+#' @export
+rho_list_lockfile_packages <- function(project_dir, limit = 500L) {
+  project_dir <- normalizePath(project_dir, winslash = "/", mustWork = FALSE)
+  lockfile_path <- normalizePath(
+    file.path(project_dir, "renv.lock"),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  limit <- rho_lockfile_inventory_limit(limit)
+  source_limit <- 10000L
+
+  installed_result <- tryCatch(rho_lockfile_inventory_installed_rows(), error = function(e) e)
+  if (inherits(installed_result, "error")) {
+    result <- rho_lockfile_inventory_error(
+      project_dir,
+      lockfile_path,
+      paste("Installed package enumeration failed:", conditionMessage(installed_result))
+    )
+    result$lockfile$state <- if (file.exists(lockfile_path)) "unavailable" else "no_lockfile"
+    result$lockfile$exists <- file.exists(lockfile_path)
+    result$incomplete_reasons <- list("installed_packages_unavailable")
+    return(result)
+  }
+
+  installed_source_count <- nrow(installed_result)
+  installed_truncated <- installed_source_count > source_limit
+  installed_result <- installed_result[seq_len(min(installed_source_count, source_limit)), , drop = FALSE]
+  library_paths <- normalizePath(
+    rho_lockfile_inventory_library_paths(),
+    winslash = "/",
+    mustWork = FALSE
+  )
+  library_rank <- function(path) {
+    normalized <- normalizePath(path, winslash = "/", mustWork = FALSE)
+    matched <- match(tolower(normalized), tolower(library_paths))
+    if (is.na(matched)) length(library_paths) + 1L else matched
+  }
+  installed <- lapply(seq_len(nrow(installed_result)), function(index) {
+    list(
+      name = rho_lockfile_inventory_text(installed_result[index, "Package"], 256L),
+      version = rho_lockfile_inventory_text(installed_result[index, "Version"], 128L),
+      library = rho_lockfile_inventory_text(
+        normalizePath(installed_result[index, "LibPath"], winslash = "/", mustWork = FALSE),
+        1000L
+      ),
+      library_rank = library_rank(installed_result[index, "LibPath"]),
+      source_index = index
+    )
+  })
+  installed <- installed[vapply(installed, function(item) !is.null(item$name) && nzchar(item$name), logical(1))]
+  installed <- installed[order(
+    vapply(installed, function(item) item$name, character(1)),
+    vapply(installed, function(item) item$library_rank, integer(1)),
+    vapply(installed, function(item) item$source_index, integer(1))
+  )]
+  installed_names <- vapply(installed, function(item) item$name, character(1))
+  installed <- installed[!duplicated(installed_names)]
+  installed_names <- vapply(installed, function(item) item$name, character(1))
+
+  lockfile_exists <- file.exists(lockfile_path)
+  locked <- list()
+  lockfile_valid <- FALSE
+  lockfile_state <- "no_lockfile"
+  parse_error <- NULL
+  lockfile_truncated <- FALSE
+  if (lockfile_exists) {
+    lockfile_bytes <- file.info(lockfile_path)$size
+    if (is.na(lockfile_bytes) || lockfile_bytes > 5L * 1024L * 1024L) {
+      result <- rho_lockfile_inventory_error(
+        project_dir,
+        lockfile_path,
+        "renv.lock exceeds the 5 MiB inventory budget"
+      )
+      result$incomplete_reasons <- list("lockfile_size_limit")
+      return(result)
+    }
+    parsed <- tryCatch(jsonlite::fromJSON(lockfile_path, simplifyVector = FALSE), error = function(e) e)
+    if (inherits(parsed, "error") || !is.list(parsed$Packages)) {
+      parse_error <- if (inherits(parsed, "error")) conditionMessage(parsed) else "renv.lock Packages must be an object"
+      return(rho_lockfile_inventory_error(project_dir, lockfile_path, parse_error))
+    }
+    lockfile_valid <- TRUE
+    lockfile_state <- "available"
+    entries <- parsed$Packages
+    entry_names <- names(entries) %||% character()
+    lockfile_truncated <- length(entry_names) > source_limit
+    entry_names <- head(entry_names, source_limit)
+    locked <- lapply(entry_names, function(name) {
+      item <- entries[[name]] %||% list()
+      list(
+        name = rho_lockfile_inventory_text(name, 256L),
+        version = rho_lockfile_inventory_text(item$Version, 128L)
+      )
+    })
+    locked <- locked[vapply(locked, function(item) !is.null(item$name) && nzchar(item$name), logical(1))]
+    locked <- locked[order(vapply(locked, function(item) item$name, character(1)))]
+    locked <- locked[!duplicated(vapply(locked, function(item) item$name, character(1)))]
+  }
+
+  locked_names <- vapply(locked, function(item) item$name, character(1))
+  union_names <- sort(unique(c(locked_names, installed_names)))
+  packages <- lapply(union_names, function(name) {
+    locked_index <- match(name, locked_names)
+    installed_index <- match(name, installed_names)
+    locked_version <- if (is.na(locked_index)) NULL else locked[[locked_index]]$version
+    installed_version <- if (is.na(installed_index)) NULL else installed[[installed_index]]$version
+    library <- if (is.na(installed_index)) NULL else installed[[installed_index]]$library
+    state <- if (is.na(locked_index)) {
+      "missing_in_lockfile"
+    } else if (is.na(installed_index)) {
+      "missing_in_library"
+    } else if (identical(locked_version, installed_version)) {
+      "matched"
+    } else {
+      "version_mismatch"
+    }
+    list(
+      name = name,
+      locked_version = locked_version,
+      installed_version = installed_version,
+      library = library,
+      state = state
+    )
+  })
+  states <- vapply(packages, function(item) item$state, character(1))
+  incomplete_reasons <- list()
+  if (installed_truncated) incomplete_reasons <- append(incomplete_reasons, "installed_packages_source_limit")
+  if (lockfile_truncated) incomplete_reasons <- append(incomplete_reasons, "lockfile_packages_source_limit")
+  source_incomplete <- length(incomplete_reasons) > 0L
+
+  list(
+    project_dir = project_dir,
+    lockfile = list(
+      path = lockfile_path,
+      exists = lockfile_exists,
+      valid = lockfile_valid,
+      state = lockfile_state,
+      parse_error = parse_error
+    ),
+    packages = head(packages, limit),
+    total_count = if (source_incomplete) NULL else length(packages),
+    returned_count = min(length(packages), limit),
+    counts = list(
+      matched = sum(states == "matched"),
+      version_mismatch = sum(states == "version_mismatch"),
+      missing_in_library = sum(states == "missing_in_library"),
+      missing_in_lockfile = sum(states == "missing_in_lockfile")
+    ),
+    truncated = source_incomplete || length(packages) > limit,
+    incomplete = source_incomplete,
+    incomplete_reasons = incomplete_reasons
+  )
+}
+
 rho_attached_packages <- function(limit = 12L) {
   attached <- search()
   packages <- sub("^package:", "", attached[grepl("^package:", attached)])
