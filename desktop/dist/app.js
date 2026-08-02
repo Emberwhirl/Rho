@@ -1539,6 +1539,19 @@ async function mockInvoke(command, args) {
   if (command === "render_document_job") {
     return { job_id: "render_mock_001", status: "submitted" };
   }
+  if (command === "render_job_status") {
+    if (args.job_id) {
+      return {
+        job_id: args.job_id,
+        path: "report.qmd",
+        status: "completed",
+        message: null,
+        submitted_at: new Date(Date.now() - 5000).toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+    }
+    return [{ job_id: "render_mock_001", path: "report.qmd", status: "completed", message: null, submitted_at: new Date(Date.now() - 5000).toISOString(), completed_at: new Date().toISOString() }];
+  }
   if (command === "get_run_detail") {
     const runId = args.runId ?? args.run_id;
     return structuredClone(mockRuns.find((run) => run.run_id === runId) || null);
@@ -6901,6 +6914,8 @@ function renderEnvironment() {
   renderDataViewer();
 }
 
+let _renderPollTimer = null;
+
 async function renderActiveDocumentFile() {
   const path = state.activeDocument;
   if (!path) {
@@ -6916,21 +6931,27 @@ async function renderActiveDocumentFile() {
     toast("Save the document before rendering so the rendered file matches the editor.", true);
     return;
   }
-  $("#renderDocumentButton").disabled = true;
+
+  // Cancel existing poll if any
+  stopRenderPoll();
+
+  const statusEl = $("#renderJobStatus");
+  const renderBtn = $("#renderDocumentButton");
+  renderBtn.disabled = true;
+  statusEl.classList.remove("hidden");
+  statusEl.textContent = "Rendering\u2026";
+  statusEl.style.background = "var(--accent-pale)";
+  statusEl.style.color = "var(--accent-strong)";
+
   try {
-    const response = await invoke("render_document", {
-      request: {
-        path,
-        document_version: documentState?.versionId ?? null,
-      },
+    const { job_id } = await invoke("render_document_job", {
+      path,
+      document_version: documentState?.versionId ?? null,
     });
-    renderExecution(response, {
-      type: "render",
-      sourcePath: path,
-      documentVersion: documentState?.versionId ?? null,
-    }, "USER");
-    await Promise.all([loadRunData(), refreshEnvironment()]);
+    startRenderPoll(job_id, path);
   } catch (error) {
+    statusEl.classList.add("hidden");
+    renderBtn.disabled = false;
     updateLastRender({
       ok: false,
       tool: null,
@@ -6944,9 +6965,68 @@ async function renderActiveDocumentFile() {
       executionMode: "render",
     });
     toast(String(error), true);
-  } finally {
-    $("#renderDocumentButton").disabled = false;
     renderEnvironmentSummary();
+  }
+}
+
+function startRenderPoll(jobId, path) {
+  const statusEl = $("#renderJobStatus");
+  const renderBtn = $("#renderDocumentButton");
+
+  _renderPollTimer = setInterval(async () => {
+    try {
+      const job = await invoke("render_job_status", { job_id: jobId });
+      if (!job || job.status === "completed") {
+        stopRenderPoll();
+        statusEl.textContent = "Done";
+        statusEl.style.background = "#d4edda";
+        statusEl.style.color = "#155724";
+        renderBtn.disabled = false;
+        toast("Render completed");
+        await Promise.all([loadRunData(), refreshEnvironment()]);
+        renderEnvironmentSummary();
+        setTimeout(() => statusEl.classList.add("hidden"), 3000);
+        return;
+      }
+      if (job.status === "failed") {
+        stopRenderPoll();
+        statusEl.textContent = "Failed";
+        statusEl.style.background = "#f8d7da";
+        statusEl.style.color = "#721c24";
+        renderBtn.disabled = false;
+        const msg = job.message || "Render failed";
+        updateLastRender({
+          ok: false,
+          tool: null,
+          sourcePath: path,
+          outputPath: null,
+          phase: "render",
+          message: msg,
+        });
+        addProblem(msg, "", {
+          sourcePath: path,
+          executionMode: "render",
+        });
+        toast(msg, true);
+        renderEnvironmentSummary();
+        setTimeout(() => statusEl.classList.add("hidden"), 5000);
+        return;
+      }
+      // Still running
+      statusEl.textContent = "Rendering\u2026";
+    } catch (err) {
+      stopRenderPoll();
+      statusEl.classList.add("hidden");
+      renderBtn.disabled = false;
+      toast(`Render status check failed: ${err}`, true);
+    }
+  }, 2000);
+}
+
+function stopRenderPoll() {
+  if (_renderPollTimer) {
+    clearInterval(_renderPollTimer);
+    _renderPollTimer = null;
   }
 }
 
