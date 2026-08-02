@@ -782,6 +782,27 @@ pub async fn dispatch_workspace_request(
     broker: &mut BrokerState,
     store: &mut Store,
 ) -> Result<Value> {
+    dispatch_workspace_request_with_execution_id(
+        request_type,
+        payload,
+        origin,
+        session,
+        broker,
+        store,
+        None,
+    )
+    .await
+}
+
+pub async fn dispatch_workspace_request_with_execution_id(
+    request_type: &str,
+    payload: &Value,
+    origin: ExecutionOrigin,
+    session: &ArkSession,
+    broker: &mut BrokerState,
+    store: &mut Store,
+    execution_id: Option<&str>,
+) -> Result<Value> {
     let expected: ExpectedWorkspace = serde_json::from_value(
         payload
             .get("expected_workspace")
@@ -807,6 +828,13 @@ pub async fn dispatch_workspace_request(
     let (operation_class, bridge_expression) = bridge_expression(request_type, &arguments)?;
     let mut request =
         ExecutionRequest::new(origin, operation_class, expected, bridge_expression.clone());
+    if let Some(execution_id) = execution_id {
+        ensure!(
+            valid_caller_execution_id(execution_id),
+            "invalid caller-provided execution id"
+        );
+        request.execution_id = execution_id.to_string();
+    }
     broker.authorize(&request)?;
     let before = broker.identity().clone();
     let project_root = store
@@ -1123,6 +1151,14 @@ pub async fn dispatch_workspace_request(
         "events": kernel_events,
         "workspace": broker.identity()
     }))
+}
+
+fn valid_caller_execution_id(execution_id: &str) -> bool {
+    !execution_id.is_empty()
+        && execution_id.len() <= 128
+        && execution_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 fn bounded_agent_context_text(value: &str, max_chars: usize) -> String {
@@ -3863,6 +3899,17 @@ mod tests {
             read_bounded_json(br#"{"ok":true,"value":42}"#.as_slice()).unwrap(),
             json!({"ok": true, "value": 42})
         );
+    }
+
+    #[test]
+    fn validates_caller_provided_execution_ids() {
+        assert!(valid_caller_execution_id(
+            "render_15f0f1b2d4d64e1688a5f8725bc23e7a"
+        ));
+        assert!(!valid_caller_execution_id(""));
+        assert!(!valid_caller_execution_id("render-with-dashes"));
+        assert!(!valid_caller_execution_id("render/path"));
+        assert!(!valid_caller_execution_id(&"x".repeat(129)));
     }
 
     #[test]

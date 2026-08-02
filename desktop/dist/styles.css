@@ -453,6 +453,17 @@ body.agent-posture .git-conflict-banner .conflict-list { display: none; }
 .run-button:hover { background: var(--accent-strong); }
 
 .render-job-status { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: var(--accent-pale); color: var(--accent-strong); }
+.render-cancel-button {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #e2b8b8;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--danger);
+  font-size: 10px;
+  cursor: pointer;
+}
+.render-cancel-button:disabled { opacity: 0.55; cursor: wait; }
 
 .sidebar, .context-panel, .workspace { min-width: 0; min-height: 0; }
 .sidebar {
@@ -1737,6 +1748,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .app-shell.agent-first.agent-work-open .agent-review-workspace { grid-column: 1; }
   body.agent-posture .git-conflict-banner { flex: 0 0 auto; max-width: 92px; overflow: hidden; }
   body.agent-posture .git-conflict-banner .conflict-list { display: none; }
+  .topbar:has(#renderJobStatus:not(.hidden)) { gap: 8px; }
+  .topbar:has(#renderJobStatus:not(.hidden)) .git-conflict-banner,
+  .topbar:has(#renderJobStatus:not(.hidden)) .work-modes,
+  .topbar:has(#renderJobStatus:not(.hidden)) .run-button,
+  .topbar:has(#renderJobStatus:not(.hidden)) .audit-button { display: none; }
 }
 
 /* Audit panel */

@@ -34,7 +34,7 @@ use rho_server::coordinator::{
     ApprovalResponseInput, CoordinatorRuntime, EnvironmentOperationArguments,
     PendingApprovalRegistry, ProjectSkillDiscoverySummary, bootstrap_bridge,
     decide_environment_operation, discover_project_skill_summaries, dispatch_workspace_request,
-    request_environment_operation, run_agent_turn,
+    dispatch_workspace_request_with_execution_id, request_environment_operation, run_agent_turn,
 };
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
@@ -182,17 +182,67 @@ struct AppState {
     switch_test_control: SwitchTestControl,
     shutdown_started: AtomicBool,
     render_jobs: Arc<Mutex<HashMap<String, RenderJobState>>>,
+    render_tasks: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
 }
 
 /// Tracked state of an async render job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RenderJobState {
     pub job_id: String,
+    pub project_root: String,
     pub path: String,
-    pub status: String, // "submitted", "running", "completed", "failed"
+    pub document_version: Option<i64>,
+    pub status: String,
     pub message: Option<String>,
+    pub terminal_reason: Option<String>,
     pub submitted_at: String,
     pub completed_at: Option<String>,
+}
+
+fn render_job_is_terminal(status: &str) -> bool {
+    matches!(status, "completed" | "failed" | "interrupted")
+}
+
+fn finish_render_job(
+    job: &mut RenderJobState,
+    status: &str,
+    message: Option<String>,
+    terminal_reason: Option<&str>,
+) {
+    if render_job_is_terminal(&job.status) {
+        return;
+    }
+    job.status = status.to_string();
+    job.message = message;
+    job.terminal_reason = terminal_reason.map(str::to_string);
+    job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+}
+
+fn reconcile_render_job(
+    job: &mut RenderJobState,
+    run_status: Option<&str>,
+    run_message: Option<String>,
+    terminal_reason: Option<&str>,
+) {
+    if render_job_is_terminal(&job.status) {
+        return;
+    }
+    match run_status {
+        Some("completed") => finish_render_job(job, "completed", None, Some("completed")),
+        Some("failed") => finish_render_job(job, "failed", run_message, terminal_reason),
+        Some("interrupted") => finish_render_job(
+            job,
+            "interrupted",
+            Some("Render interrupted while Workspace R restarted.".to_string()),
+            terminal_reason,
+        ),
+        _ => finish_render_job(
+            job,
+            "interrupted",
+            Some("Render stopped before Workspace R restarted.".to_string()),
+            Some("workspace_restart_before_start"),
+        ),
+    }
 }
 
 static STARTUP_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -1202,18 +1252,37 @@ async fn render_document_job(
     document_version: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    let job_id = format!("render_{}", chrono::Utc::now().timestamp_millis());
+    let root = state.project_root.read().await.clone();
+    let project_root = normalize_project_root(root.to_string_lossy().as_ref());
+    let file = project_path(&root, &path).map_err(display_error)?;
+    let extension = file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "rmd" | "qmd") {
+        return Err("Render only supports project .Rmd and .qmd files".to_string());
+    }
+    if !file.is_file() {
+        return Err(format!("Render source does not exist: {path}"));
+    }
+
+    let job_id = format!("render_{}", Uuid::new_v4().simple());
     let job_id_return = job_id.clone();
     let render_jobs = state.render_jobs.clone();
+    let render_tasks = state.render_tasks.clone();
     {
         let mut jobs = render_jobs.lock().await;
         jobs.insert(
             job_id.clone(),
             RenderJobState {
                 job_id: job_id.clone(),
+                project_root,
                 path: path.clone(),
+                document_version,
                 status: "submitted".to_string(),
                 message: None,
+                terminal_reason: None,
                 submitted_at: chrono::Utc::now().to_rfc3339(),
                 completed_at: None,
             },
@@ -1221,25 +1290,25 @@ async fn render_document_job(
     }
     let session_arc = state.session.read().await.clone();
     let context_arc = state.context.lock().await.clone();
-    let path_clone = path.clone();
-    tokio::spawn(async move {
-        // Update status to running
-        {
-            let mut jobs = render_jobs.lock().await;
-            if let Some(job) = jobs.get_mut(&job_id) {
-                job.status = "running".to_string();
-            }
-        }
+    let file_path = file.to_string_lossy().to_string();
+    let task_job_id = job_id.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        tokio::task::yield_now().await;
         let session = match session_arc {
             Some(s) => s,
             None => {
                 eprintln!("render_document_job [{job_id}]: no active session");
                 let mut jobs = render_jobs.lock().await;
                 if let Some(job) = jobs.get_mut(&job_id) {
-                    job.status = "failed".to_string();
-                    job.message = Some("No active Workspace R session".to_string());
-                    job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                    finish_render_job(
+                        job,
+                        "failed",
+                        Some("No active Workspace R session".to_string()),
+                        Some("workspace_unavailable"),
+                    );
                 }
+                drop(jobs);
+                render_tasks.lock().await.remove(&job_id);
                 return;
             }
         };
@@ -1249,49 +1318,97 @@ async fn render_document_job(
                 eprintln!("render_document_job [{job_id}]: no active context");
                 let mut jobs = render_jobs.lock().await;
                 if let Some(job) = jobs.get_mut(&job_id) {
-                    job.status = "failed".to_string();
-                    job.message = Some("No active coordinator context".to_string());
-                    job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                    finish_render_job(
+                        job,
+                        "failed",
+                        Some("No active coordinator context".to_string()),
+                        Some("coordinator_unavailable"),
+                    );
                 }
+                drop(jobs);
+                render_tasks.lock().await.remove(&job_id);
                 return;
             }
         };
         let mut context = context.lock().await;
+        let cancelled_before_start = {
+            let mut jobs = render_jobs.lock().await;
+            match jobs.get_mut(&job_id) {
+                None => true,
+                Some(job) if job.status == "cancel_requested" => {
+                    finish_render_job(
+                        job,
+                        "interrupted",
+                        Some("Render cancelled before it started.".to_string()),
+                        Some("user_cancel_before_start"),
+                    );
+                    true
+                }
+                Some(job) => {
+                    job.status = "running".to_string();
+                    false
+                }
+            }
+        };
+        if cancelled_before_start {
+            render_tasks.lock().await.remove(&job_id);
+            return;
+        }
         let CoordinatorRuntime { broker, store } = &mut *context;
-        let job_id_for_payload = job_id.clone();
         let payload = serde_json::json!({
             "arguments": {
-                "path": path_clone,
+                "path": file_path,
+                "source_path": path,
+                "execution_mode": "render",
                 "document_version": document_version,
-                "job_id": job_id_for_payload
             },
             "expected_workspace": broker.identity()
         });
-        if let Err(e) = dispatch_workspace_request(
+        let outcome = dispatch_workspace_request_with_execution_id(
             "workspace.render_document",
             &payload,
             ExecutionOrigin::User,
             session.as_ref(),
             broker,
             store,
+            Some(&job_id),
         )
-        .await
-        {
-            eprintln!("render_document_job [{job_id}]: dispatch failed: {e:#}");
-            let mut jobs = render_jobs.lock().await;
-            if let Some(job) = jobs.get_mut(&job_id) {
-                job.status = "failed".to_string();
-                job.message = Some(format!("{e:#}"));
-                job.completed_at = Some(chrono::Utc::now().to_rfc3339());
-            }
-        } else {
-            let mut jobs = render_jobs.lock().await;
-            if let Some(job) = jobs.get_mut(&job_id) {
-                job.status = "completed".to_string();
-                job.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        .await;
+        let mut jobs = render_jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&job_id) {
+            match outcome {
+                Ok(response) if response["execution"]["ok"].as_bool().unwrap_or(false) => {
+                    finish_render_job(job, "completed", None, Some("completed"));
+                }
+                Ok(response) => {
+                    let message = response["execution"]["error"]["message"]
+                        .as_str()
+                        .unwrap_or("Render failed")
+                        .to_string();
+                    finish_render_job(job, "failed", Some(message), Some("r_error"));
+                }
+                Err(_error) if job.status == "cancel_requested" => {
+                    finish_render_job(
+                        job,
+                        "interrupted",
+                        Some("Render cancelled.".to_string()),
+                        Some("user_interrupt"),
+                    );
+                }
+                Err(error) => {
+                    eprintln!("render_document_job [{job_id}]: dispatch failed: {error:#}");
+                    finish_render_job(
+                        job,
+                        "failed",
+                        Some(format!("{error:#}")),
+                        Some("execution_error"),
+                    );
+                }
             }
         }
+        render_tasks.lock().await.remove(&job_id);
     });
+    state.render_tasks.lock().await.insert(task_job_id, task);
     Ok(serde_json::json!({ "job_id": job_id_return, "status": "submitted" }))
 }
 
@@ -1300,20 +1417,83 @@ async fn render_job_status(
     job_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = normalize_project_root(root.to_string_lossy().as_ref());
     let mut jobs = state.render_jobs.lock().await;
-    // Clean up completed/failed jobs older than 5 minutes
+    // Keep active jobs indefinitely; expire only terminal convenience records.
     let cutoff = chrono::Utc::now() - chrono::Duration::minutes(5);
     jobs.retain(|_, job| {
-        job.completed_at
-            .as_ref()
-            .map_or(true, |at| at >= &cutoff.to_rfc3339())
+        !render_job_is_terminal(&job.status)
+            || job.completed_at.as_ref().map_or(true, |at| {
+                chrono::DateTime::parse_from_rfc3339(at)
+                    .map(|value| value.with_timezone(&chrono::Utc) >= cutoff)
+                    .unwrap_or(true)
+            })
     });
     if let Some(id) = job_id {
-        Ok(serde_json::json!(jobs.get(&id)))
+        let job = jobs
+            .get(&id)
+            .filter(|job| job.project_root == project_root)
+            .context("Render job not found")
+            .map_err(display_error)?;
+        Ok(serde_json::json!(job))
     } else {
-        let list: Vec<&RenderJobState> = jobs.values().collect();
+        let list: Vec<&RenderJobState> = jobs
+            .values()
+            .filter(|job| job.project_root == project_root)
+            .collect();
         Ok(serde_json::json!(list))
     }
+}
+
+#[tauri::command]
+async fn cancel_render_job(job_id: String, state: State<'_, AppState>) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = normalize_project_root(root.to_string_lossy().as_ref());
+    let should_interrupt = {
+        let mut jobs = state.render_jobs.lock().await;
+        let job = jobs
+            .get_mut(&job_id)
+            .filter(|job| job.project_root == project_root)
+            .context("Render job not found")
+            .map_err(display_error)?;
+        match job.status.as_str() {
+            "submitted" => {
+                job.status = "cancel_requested".to_string();
+                false
+            }
+            "running" => {
+                job.status = "cancel_requested".to_string();
+                true
+            }
+            "cancel_requested" | "interrupted" => false,
+            "completed" | "failed" => {
+                return Err(format!("Render job is already {}", job.status));
+            }
+            _ => return Err(format!("Render job has invalid status: {}", job.status)),
+        }
+    };
+    if should_interrupt {
+        let marked = {
+            let mut store = read_store(&state).map_err(display_error)?;
+            store
+                .request_cancel(&project_root, &job_id)
+                .map_err(display_error)?
+        };
+        // The render owns the coordinator lock while running, so this cannot
+        // target a different Workspace R request during the pre-run race.
+        let session = active_session(&state).await.map_err(display_error)?;
+        session.interrupt().await.map_err(display_error)?;
+        return Ok(json!({
+            "job_id": job_id,
+            "status": "cancel_requested",
+            "run_marked": marked
+        }));
+    }
+    Ok(json!({
+        "job_id": job_id,
+        "status": "cancel_requested"
+    }))
 }
 
 #[tauri::command]
@@ -2532,16 +2712,38 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
         let _ = task.await;
     }
 
-    let active_run_id = {
+    let current_project_root = {
         let root = state.project_root.read().await.clone();
-        let project_root = normalize_project_root(root.to_string_lossy().as_ref());
+        normalize_project_root(root.to_string_lossy().as_ref())
+    };
+    let render_job_ids = {
+        let mut jobs = state.render_jobs.lock().await;
+        jobs.values_mut()
+            .filter(|job| {
+                job.project_root == current_project_root && !render_job_is_terminal(&job.status)
+            })
+            .map(|job| {
+                job.status = "cancel_requested".to_string();
+                job.job_id.clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    let render_tasks = {
+        let mut tasks = state.render_tasks.lock().await;
+        render_job_ids
+            .iter()
+            .filter_map(|job_id| tasks.remove(job_id))
+            .collect::<Vec<_>>()
+    };
+
+    let active_run_id = {
         let mut store = read_store(&state).map_err(display_error)?;
         let run_id = store
-            .latest_active_run_id(&project_root)
+            .latest_active_run_id(&current_project_root)
             .map_err(display_error)?;
         if let Some(run_id) = run_id.as_ref() {
             let _ = store
-                .request_cancel(&project_root, run_id)
+                .request_cancel(&current_project_root, run_id)
                 .map_err(display_error)?;
         }
         run_id
@@ -2549,10 +2751,14 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
 
     let old_context = state.context.lock().await.take();
     let old_session = state.session.write().await.take();
-    if active_run_id.is_some() {
+    if active_run_id.is_some() || !render_job_ids.is_empty() {
         if let Some(session) = old_session.as_ref() {
             let _ = session.interrupt().await;
         }
+    }
+    for task in render_tasks {
+        task.abort();
+        let _ = task.await;
     }
     if let Some(context) = old_context.clone() {
         match tokio::time::timeout(std::time::Duration::from_secs(15), context.lock()).await {
@@ -2573,6 +2779,31 @@ async fn restart_workspace(state: State<'_, AppState>) -> Result<WorkspaceStatus
     sync_workspace_project_root(&state, &root, SwitchTestStep::SyncWorkspace)
         .await
         .map_err(display_error)?;
+    if !render_job_ids.is_empty() {
+        let reconciled = {
+            let store = read_store(&state).map_err(display_error)?;
+            render_job_ids
+                .iter()
+                .map(|job_id| {
+                    store
+                        .get_run_detail(&current_project_root, job_id)
+                        .map(|run| (job_id.clone(), run))
+                        .map_err(display_error)
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let mut jobs = state.render_jobs.lock().await;
+        for (job_id, run) in reconciled {
+            if let Some(job) = jobs.get_mut(&job_id) {
+                reconcile_render_job(
+                    job,
+                    run.as_ref().map(|run| run.status.as_str()),
+                    run.as_ref().and_then(|run| run.error_message.clone()),
+                    run.as_ref().and_then(|run| run.terminal_reason.as_deref()),
+                );
+            }
+        }
+    }
     Ok(status)
 }
 
@@ -3163,6 +3394,23 @@ async fn project_switch_blocker(state: &AppState) -> Result<Option<ProjectSwitch
             operation_status: Some("running".to_string()),
         }));
     }
+
+    let render_jobs = state.render_jobs.lock().await;
+    if let Some(job) = render_jobs
+        .values()
+        .find(|job| job.project_root == current_root && !render_job_is_terminal(&job.status))
+    {
+        return Ok(Some(ProjectSwitchBlocker {
+            kind: ProjectSwitchBlockerKind::ActiveRun,
+            message: "Cancel the submitted document render before switching projects.".to_string(),
+            pending_count: 1,
+            run_id: Some(job.job_id.clone()),
+            turn_id: None,
+            request_id: None,
+            operation_status: Some(job.status.clone()),
+        }));
+    }
+    drop(render_jobs);
 
     let agent_tasks = state.agent_tasks.lock().await;
     if let Some(turn_id) = agent_tasks.keys().next().cloned() {
@@ -4111,11 +4359,12 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RuntimeConfig,
-        StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic, classify_startup_error,
-        configure_user_startup, data_view_artifact_metadata, data_view_delimited_text,
-        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
-        has_png_signature, parse_r_runtime_probe, project_switch_blocker, run_is_retryable,
+        AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RenderJobState,
+        RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, bounded_diagnostic,
+        classify_startup_error, configure_user_startup, data_view_artifact_metadata,
+        data_view_delimited_text, ensure_artifact_export_target, ensure_supported_r_version,
+        existing_startup_file, finish_render_job, has_png_signature, parse_r_runtime_probe,
+        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
         safe_delete_project_file, switch_project_with_watcher_factory, write_r_probe_script,
     };
 
@@ -4190,6 +4439,7 @@ mod tests {
             switch_test_control: SwitchTestControl::default(),
             shutdown_started: AtomicBool::new(false),
             render_jobs: Arc::new(Mutex::new(HashMap::new())),
+            render_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -4282,6 +4532,35 @@ mod tests {
             let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
             assert_eq!(blocker.kind, ProjectSwitchBlockerKind::ActiveRun);
             assert_eq!(blocker.run_id.as_deref(), Some("run-active"));
+        });
+    }
+
+    #[test]
+    fn project_switch_preflight_blocks_only_current_project_render_jobs() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let tempdir = TempDir::new().unwrap();
+            let project_root = tempdir.path().join("project-a");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let store_path = tempdir.path().join("rho.sqlite");
+            let mut store = Store::open(&store_path).unwrap();
+            let normalized_root = normalize_project_root(project_root.to_string_lossy().as_ref());
+            store.set_project_root(Some(&normalized_root)).unwrap();
+            let state = test_app_state(tempdir.path(), &project_root, &store_path);
+            state.render_jobs.lock().await.insert(
+                "render_foreign".to_string(),
+                render_job_fixture("render_foreign", "D:/other-project", "submitted"),
+            );
+            assert!(project_switch_blocker(&state).await.unwrap().is_none());
+
+            state.render_jobs.lock().await.insert(
+                "render_current".to_string(),
+                render_job_fixture("render_current", &normalized_root, "submitted"),
+            );
+            let blocker = project_switch_blocker(&state).await.unwrap().unwrap();
+            assert_eq!(blocker.kind, ProjectSwitchBlockerKind::ActiveRun);
+            assert_eq!(blocker.run_id.as_deref(), Some("render_current"));
+            assert_eq!(blocker.operation_status.as_deref(), Some("submitted"));
         });
     }
 
@@ -4923,6 +5202,85 @@ mod tests {
         assert!(has_png_signature(&[137, 80, 78, 71, 13, 10, 26, 10, 0, 1]));
         assert!(!has_png_signature(b"not-a-png"));
     }
+
+    fn render_job_fixture(job_id: &str, project_root: &str, status: &str) -> RenderJobState {
+        RenderJobState {
+            job_id: job_id.to_string(),
+            project_root: project_root.to_string(),
+            path: "report.Rmd".to_string(),
+            document_version: Some(3),
+            status: status.to_string(),
+            message: None,
+            terminal_reason: None,
+            submitted_at: "2026-08-03T00:00:00Z".to_string(),
+            completed_at: None,
+        }
+    }
+
+    #[test]
+    fn render_job_terminal_transitions_are_monotonic() {
+        let mut job = render_job_fixture("render_1", "D:/project", "running");
+        finish_render_job(&mut job, "completed", None, Some("completed"));
+        assert!(render_job_is_terminal(&job.status));
+        finish_render_job(
+            &mut job,
+            "interrupted",
+            Some("late cancellation".to_string()),
+            Some("user_interrupt"),
+        );
+        assert_eq!(job.status, "completed");
+        assert_eq!(job.terminal_reason.as_deref(), Some("completed"));
+        assert!(job.message.is_none());
+    }
+
+    #[test]
+    fn render_job_restart_reconciliation_distinguishes_run_truth() {
+        let mut before_start = render_job_fixture("render_1", "D:/project", "cancel_requested");
+        reconcile_render_job(&mut before_start, None, None, None);
+        assert_eq!(before_start.status, "interrupted");
+        assert_eq!(
+            before_start.terminal_reason.as_deref(),
+            Some("workspace_restart_before_start")
+        );
+
+        let mut completed = render_job_fixture("render_2", "D:/project", "cancel_requested");
+        reconcile_render_job(&mut completed, Some("completed"), None, Some("completed"));
+        assert_eq!(completed.status, "completed");
+
+        let mut failed = render_job_fixture("render_3", "D:/project", "cancel_requested");
+        reconcile_render_job(
+            &mut failed,
+            Some("failed"),
+            Some("render error".to_string()),
+            Some("r_error"),
+        );
+        assert_eq!(failed.status, "failed");
+        assert_eq!(failed.message.as_deref(), Some("render error"));
+
+        let mut interrupted = render_job_fixture("render_4", "D:/project", "cancel_requested");
+        reconcile_render_job(
+            &mut interrupted,
+            Some("interrupted"),
+            None,
+            Some("cancelled_during_restart"),
+        );
+        assert_eq!(interrupted.status, "interrupted");
+        assert_eq!(
+            interrupted.terminal_reason.as_deref(),
+            Some("cancelled_during_restart")
+        );
+    }
+
+    #[test]
+    fn render_job_serialization_keeps_project_and_document_identity() {
+        let job = render_job_fixture("render_1", "D:/project-a", "submitted");
+        let value = serde_json::to_value(job).unwrap();
+        assert_eq!(value["job_id"], "render_1");
+        assert_eq!(value["project_root"], "D:/project-a");
+        assert_eq!(value["path"], "report.Rmd");
+        assert_eq!(value["document_version"], 3);
+        assert_eq!(value["status"], "submitted");
+    }
 }
 
 async fn smoke_test(include_agent: bool) -> Result<Value> {
@@ -5313,6 +5671,7 @@ fn main() {
                 switch_test_control: SwitchTestControl::default(),
                 shutdown_started: AtomicBool::new(false),
                 render_jobs: Arc::new(Mutex::new(HashMap::new())),
+                render_tasks: Arc::new(Mutex::new(HashMap::new())),
             });
             Ok(())
         })
@@ -5346,6 +5705,7 @@ fn main() {
             render_document,
             render_document_job,
             render_job_status,
+            cancel_render_job,
             request_environment_operation_preview,
             list_environment_operation_requests,
             get_environment_operation_request,

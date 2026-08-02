@@ -97,7 +97,7 @@ Current state: asynchronous submission, frontend polling, completion/failure
 feedback, and browser mock polling are implemented.
 
 - [x] Frontend job-status polling and completion/failure feedback
-- [ ] Cancellation and restart reconciliation
+- [x] Cancellation and restart reconciliation
 - [ ] Render result to Artifact provenance link
 
 ## Phase 3: New Capability Implementation

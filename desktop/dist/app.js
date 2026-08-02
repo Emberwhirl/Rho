@@ -330,7 +330,8 @@ const mockAgentTurns = [];
 const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 const mockEvidenceEntries = [];
-const mockRenderPollCount = {};
+const mockRenderJobs = new Map();
+let mockRenderSequence = 0;
 let mockGitRevisionSequence = 1;
 const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
@@ -1667,17 +1668,49 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "render_document_job") {
-    return { job_id: "render_mock_001", status: "submitted" };
+    mockRenderSequence += 1;
+    const jobId = `render_mock_${String(mockRenderSequence).padStart(3, "0")}`;
+    mockRenderJobs.set(jobId, {
+      job_id: jobId,
+      project_root: mockLastProject,
+      path: args.path,
+      document_version: args.document_version ?? null,
+      status: "submitted",
+      message: null,
+      terminal_reason: null,
+      submitted_at: new Date().toISOString(),
+      completed_at: null,
+      poll_count: 0,
+    });
+    return { job_id: jobId, status: "submitted" };
   }
   if (command === "render_job_status") {
     if (args.job_id) {
-      mockRenderPollCount[args.job_id] = (mockRenderPollCount[args.job_id] || 0) + 1;
-      if (mockRenderPollCount[args.job_id] > 1) {
-        return { job_id: args.job_id, path: "report.qmd", status: "completed", message: null, submitted_at: new Date(Date.now() - 5000).toISOString(), completed_at: new Date().toISOString() };
+      const job = mockRenderJobs.get(args.job_id);
+      if (!job || job.project_root !== mockLastProject) throw new Error("Render job not found");
+      if (job.status === "cancel_requested") {
+        job.status = "interrupted";
+        job.message = "Render cancelled.";
+        job.terminal_reason = "user_interrupt";
+        job.completed_at = new Date().toISOString();
+      } else if (["submitted", "running"].includes(job.status)) {
+        job.poll_count += 1;
+        job.status = job.poll_count > 3 ? "completed" : "running";
+        if (job.status === "completed") job.completed_at = new Date().toISOString();
       }
-      return { job_id: args.job_id, path: "report.qmd", status: "running", message: null, submitted_at: new Date(Date.now() - 3000).toISOString(), completed_at: null };
+      const { poll_count: _pollCount, ...view } = job;
+      return structuredClone(view);
     }
-    return [{ job_id: "render_mock_001", path: "report.qmd", status: "completed", message: null, submitted_at: new Date(Date.now() - 5000).toISOString(), completed_at: new Date().toISOString() }];
+    return [...mockRenderJobs.values()]
+      .filter((job) => job.project_root === mockLastProject)
+      .map(({ poll_count: _pollCount, ...job }) => structuredClone(job));
+  }
+  if (command === "cancel_render_job") {
+    const job = mockRenderJobs.get(args.job_id);
+    if (!job || job.project_root !== mockLastProject) throw new Error("Render job not found");
+    if (["completed", "failed"].includes(job.status)) throw new Error(`Render job is already ${job.status}`);
+    if (job.status !== "interrupted") job.status = "cancel_requested";
+    return { job_id: job.job_id, status: "cancel_requested" };
   }
   if (command === "get_run_detail") {
     const runId = args.runId ?? args.run_id;
@@ -2303,7 +2336,16 @@ async function mockInvoke(command, args) {
       workspace: state.revision,
     };
   }
-  if (command === "restart_workspace") return mockInvoke("workspace_start", {});
+  if (command === "restart_workspace") {
+    for (const job of mockRenderJobs.values()) {
+      if (job.project_root !== mockLastProject || ["completed", "failed", "interrupted"].includes(job.status)) continue;
+      job.status = "interrupted";
+      job.message = "Render interrupted while Workspace R restarted.";
+      job.terminal_reason = "workspace_restart";
+      job.completed_at = new Date().toISOString();
+    }
+    return mockInvoke("workspace_start", {});
+  }
   if (command === "git_status") {
     const working = mockGitReview.working;
     const staged = mockGitReview.staged;
@@ -7709,6 +7751,8 @@ function renderEnvironment() {
 }
 
 let _renderPollTimer = null;
+let _activeRenderJobId = null;
+let _renderPollBusy = false;
 
 async function renderActiveDocumentFile() {
   const path = state.activeDocument;
@@ -7726,12 +7770,14 @@ async function renderActiveDocumentFile() {
     return;
   }
 
-  // Cancel existing poll if any
   stopRenderPoll();
 
   const statusEl = $("#renderJobStatus");
+  const cancelBtn = $("#renderCancelButton");
   const renderBtn = $("#renderDocumentButton");
   renderBtn.disabled = true;
+  cancelBtn.disabled = false;
+  cancelBtn.classList.remove("hidden");
   statusEl.classList.remove("hidden");
   statusEl.textContent = "Rendering\u2026";
   statusEl.style.background = "var(--accent-pale)";
@@ -7742,9 +7788,11 @@ async function renderActiveDocumentFile() {
       path,
       document_version: documentState?.versionId ?? null,
     });
+    _activeRenderJobId = job_id;
     startRenderPoll(job_id, path);
   } catch (error) {
     statusEl.classList.add("hidden");
+    cancelBtn.classList.add("hidden");
     renderBtn.disabled = false;
     updateLastRender({
       ok: false,
@@ -7765,17 +7813,21 @@ async function renderActiveDocumentFile() {
 
 function startRenderPoll(jobId, path) {
   const statusEl = $("#renderJobStatus");
+  const cancelBtn = $("#renderCancelButton");
   const renderBtn = $("#renderDocumentButton");
 
-  _renderPollTimer = setInterval(async () => {
+  const poll = async () => {
+    if (_renderPollBusy || _activeRenderJobId !== jobId) return;
+    _renderPollBusy = true;
     try {
       const job = await invoke("render_job_status", { job_id: jobId });
-      if (!job || job.status === "completed") {
+      if (job.status === "completed") {
         stopRenderPoll();
         statusEl.textContent = "Done";
         statusEl.style.background = "#d4edda";
         statusEl.style.color = "#155724";
         renderBtn.disabled = false;
+        cancelBtn.classList.add("hidden");
         toast("Render completed");
         await Promise.all([loadRunData(), refreshEnvironment()]);
         renderEnvironmentSummary();
@@ -7788,6 +7840,7 @@ function startRenderPoll(jobId, path) {
         statusEl.style.background = "#f8d7da";
         statusEl.style.color = "#721c24";
         renderBtn.disabled = false;
+        cancelBtn.classList.add("hidden");
         const msg = job.message || "Render failed";
         updateLastRender({
           ok: false,
@@ -7806,15 +7859,53 @@ function startRenderPoll(jobId, path) {
         setTimeout(() => statusEl.classList.add("hidden"), 5000);
         return;
       }
-      // Still running
-      statusEl.textContent = "Rendering\u2026";
+      if (job.status === "interrupted") {
+        stopRenderPoll();
+        statusEl.textContent = "Cancelled";
+        statusEl.style.background = "#f1f3f3";
+        statusEl.style.color = "var(--muted)";
+        renderBtn.disabled = false;
+        cancelBtn.classList.add("hidden");
+        const message = job.message || "Render cancelled.";
+        updateLastRender({
+          ok: false,
+          tool: null,
+          sourcePath: path,
+          outputPath: null,
+          phase: "interrupted",
+          message,
+        });
+        toast(message);
+        await Promise.all([loadRunData(), refreshEnvironment()]);
+        renderEnvironmentSummary();
+        setTimeout(() => statusEl.classList.add("hidden"), 4000);
+        return;
+      }
+      const cancelling = job.status === "cancel_requested";
+      statusEl.textContent = cancelling ? "Cancelling\u2026" : "Rendering\u2026";
+      cancelBtn.disabled = cancelling;
     } catch (err) {
       stopRenderPoll();
       statusEl.classList.add("hidden");
       renderBtn.disabled = false;
-      toast(`Render status check failed: ${err}`, true);
+      cancelBtn.classList.add("hidden");
+      const message = `Render status is unavailable: ${err}`;
+      updateLastRender({
+        ok: false,
+        tool: null,
+        sourcePath: path,
+        outputPath: null,
+        phase: "status",
+        message,
+      });
+      toast(message, true);
+      renderEnvironmentSummary();
+    } finally {
+      _renderPollBusy = false;
     }
-  }, 2000);
+  };
+  void poll();
+  _renderPollTimer = setInterval(poll, 2000);
 }
 
 function stopRenderPoll() {
@@ -7822,6 +7913,8 @@ function stopRenderPoll() {
     clearInterval(_renderPollTimer);
     _renderPollTimer = null;
   }
+  _activeRenderJobId = null;
+  _renderPollBusy = false;
 }
 
 function formatBytes(bytes) {
@@ -10005,6 +10098,19 @@ $("#environmentOperationCancel").addEventListener("click", () => {
   else closeEnvironmentOperationDialog();
 });
 $("#renderDocumentButton").addEventListener("click", renderActiveDocumentFile);
+$("#renderCancelButton").addEventListener("click", async () => {
+  const jobId = _activeRenderJobId;
+  if (!jobId) return;
+  const button = $("#renderCancelButton");
+  button.disabled = true;
+  $("#renderJobStatus").textContent = "Cancelling\u2026";
+  try {
+    await invoke("cancel_render_job", { job_id: jobId });
+  } catch (error) {
+    button.disabled = false;
+    toast(`Render cancellation failed: ${error}`, true);
+  }
+});
 $("#renderOpenSourceButton").addEventListener("click", async () => {
   if (!state.lastRender?.sourcePath) return;
   await openDocument(state.lastRender.sourcePath);

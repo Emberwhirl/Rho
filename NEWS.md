@@ -8,6 +8,13 @@ this file records behavior that is already available in a released build.
 
 ### Added
 
+#### Render lifecycle
+
+- Background document renders now have exact job-specific cancellation,
+  distinct cancelled/failed/completed feedback, project isolation, and
+  truthful Workspace R restart reconciliation. A missing ephemeral job is no
+  longer reported as successful completion.
+
 #### WB1: Read-only public Workbench Protocol
 
 - Defined a versioned, paginated, project-scoped public protocol with typed
