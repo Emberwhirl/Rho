@@ -63,7 +63,8 @@ Capabilities with committed code that fall short of their proposal contracts.
 Current state: the supervised system Git CLI now has a guarded review surface
 for working/staged files and hunks, explicit restore confirmation, staged
 revision-bound commit, conflict resolution, browser/mock parity, and adversarial
-repository hardening. Repository replacement is the sole remaining WS4 gap.
+repository hardening and repository-bound replacement guards. All planned WS4
+capability items are complete; installed-app acceptance remains separate.
 
 - [x] Hunk-level stage and unstage
 - [x] File restore with explicit user confirmation
@@ -72,7 +73,7 @@ repository hardening. Repository replacement is the sole remaining WS4 gap.
   CLI rather than migrating to `gitoxide`; any future migration is separate
 - [x] Fail-closed fixtures for worktrees, nested repositories, symlinks,
   case-only paths, non-UTF-8 metadata, and large diffs
-- [ ] Repository replacement handling
+- [x] Repository replacement handling
 - [x] Complete staging/commit UI and browser/mock parity for all accepted
   mutation commands
 

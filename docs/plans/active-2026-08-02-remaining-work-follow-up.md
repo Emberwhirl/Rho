@@ -8,23 +8,23 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **24 open items** and **25 completed
-items**. The 24 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **23 open items** and **26 completed
+items**. The 23 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
 | Follow-up lane | Open items | Next gate |
 |---|---:|---|
 | M1 and `0.3.x` acceptance | 8 | Record representative manual and installed-candidate evidence |
-| WS4 Git completion | 1 | Handle repository replacement |
+| WS4 Git completion | 0 | Capability complete; installed-app acceptance remains separate |
 | WS3 table interaction | 2 | Specify broker-owned filter/search and richer value presentation |
 | Render job robustness | 2 | Specify cancellation/restart truth and Artifact linkage |
 | WS1 package/environment completion | 3 | Select lockfile comparison or package mutation as a bounded package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **24** | |
+| **Total** | **23** | |
 
-For near-term planning, this is **16 product implementation items** plus **8
+For near-term planning, this is **15 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -78,21 +78,28 @@ affected automated matrix on 2026-08-03. It closes the fail-closed fixture
 item without claiming installed-app acceptance. Repository replacement is now
 the sole WS4 gap, and the checklist is **24 open / 25 completed**.
 
+The authorized WS4-G3 package,
+[`active-2026-08-03-ws4-repository-replacement-spec.md`](active-2026-08-03-ws4-repository-replacement-spec.md),
+completed repository-bound SHA-256 revisions, replacement/removal recovery
+fixtures, linked-worktree token isolation, contract review, and the complete
+affected automated matrix on 2026-08-03. This closes the last WS4 capability
+item without closing installed-app acceptance. The checklist is now **23 open
+/ 26 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
    `test/acceptance-project/MANUAL-ACCEPTANCE.md` until the user runs them
    against an exact candidate; separately record the distribution decision and
    affected-suite rerun.
-2. Complete the sole remaining WS4 item: repository replacement handling.
-3. Select one remaining package at a time from WS3, render robustness, WS1,
+2. Select one remaining package at a time from WS3, render robustness, WS1,
    WS2, or structural claim review.
-4. Reconcile this count whenever an owning focused contract becomes active or
+3. Reconcile this count whenever an owning focused contract becomes active or
    its evidence gate closes.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 24-item checklist and require separate
+These six directions remain outside the 23-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

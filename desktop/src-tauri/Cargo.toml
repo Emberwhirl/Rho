@@ -22,6 +22,7 @@ rfd = "0.15"
 serde.workspace = true
 serde_json.workspace = true
 semver = "1.0"
+sha2 = "0.10"
 tauri = { version = "2", features = [] }
 tempfile.workspace = true
 tokio.workspace = true

@@ -208,12 +208,13 @@ acceptance gate. Full evidence is recorded in
 - The old raw-patch helpers remain dormant and unexposed in `git.rs`; removal
   can be mechanical follow-up when the running desktop process no longer locks
   that source file.
-- Fail-closed adversarial repository fixtures and repository replacement remain
-  the two explicit WS4 follow-ups and are not claimed complete.
+- The separately authorized WS4-G2 and WS4-G3 packages subsequently completed
+  adversarial repository fixtures and repository-replacement stale guards;
+  those packages do not alter WS4-G1 installed-app acceptance.
 - Version remains `0.4.0-dev.0`; no independent package version changed.
 
 ## Definition Of Done
 
 WS4-G1 implementation and automated/browser review are complete. The document
-remains active only for installed-app acceptance handoff. Repository replacement
-and adversarial Windows repository fixtures remain explicit follow-up items.
+remains active only for installed-app acceptance handoff. WS4-G2 and WS4-G3
+subsequently closed the two capability follow-ups with automated evidence.

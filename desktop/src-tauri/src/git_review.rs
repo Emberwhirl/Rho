@@ -1,10 +1,9 @@
 use crate::git;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
@@ -42,9 +41,7 @@ pub struct GitReviewDiff {
 }
 
 fn token(value: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
 fn validate_repository(project_root: &Path) -> Result<PathBuf> {
@@ -56,6 +53,85 @@ fn validate_repository(project_root: &Path) -> Result<PathBuf> {
         bail!("Git project root must exactly match the repository worktree root");
     }
     Ok(canonical_root)
+}
+
+fn canonical_git_directory(project_root: &Path, args: &[&str], label: &str) -> Result<PathBuf> {
+    let value = git::run_git(project_root, args)?;
+    let reported = PathBuf::from(value.trim());
+    let candidate = if reported.is_absolute() {
+        reported
+    } else {
+        project_root.join(reported)
+    };
+    fs::canonicalize(candidate).with_context(|| format!("{label} is unavailable"))
+}
+
+#[cfg(windows)]
+fn filesystem_instance(path: &Path) -> Result<String> {
+    use std::os::windows::fs::MetadataExt;
+    let metadata = fs::metadata(path).context("Git authority metadata is unavailable")?;
+    Ok(format!(
+        "windows:{}:{}:{}",
+        metadata.creation_time(),
+        metadata.file_attributes(),
+        metadata.file_size()
+    ))
+}
+
+#[cfg(unix)]
+fn filesystem_instance(path: &Path) -> Result<String> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = fs::metadata(path).context("Git authority metadata is unavailable")?;
+    Ok(format!("unix:{}:{}", metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(any(windows, unix)))]
+fn filesystem_instance(path: &Path) -> Result<String> {
+    let metadata = fs::metadata(path).context("Git authority metadata is unavailable")?;
+    let modified = metadata
+        .modified()
+        .context("Git authority modification time is unavailable")?
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("Git authority modification time predates the Unix epoch")?;
+    Ok(format!(
+        "portable:{}:{}",
+        metadata.len(),
+        modified.as_nanos()
+    ))
+}
+
+fn repository_revision(project_root: &Path) -> Result<String> {
+    let root = validate_repository(project_root)?;
+    let git_dir = canonical_git_directory(
+        project_root,
+        &["rev-parse", "--git-dir"],
+        "Git worktree directory",
+    )?;
+    let common_dir = canonical_git_directory(
+        project_root,
+        &["rev-parse", "--git-common-dir"],
+        "Git common directory",
+    )?;
+    let root_text = root
+        .to_str()
+        .context("Git project root is not valid UTF-8")?;
+    let git_dir_text = git_dir
+        .to_str()
+        .context("Git worktree directory is not valid UTF-8")?;
+    let common_dir_text = common_dir
+        .to_str()
+        .context("Git common directory is not valid UTF-8")?;
+    let object_format = git::run_git(project_root, &["rev-parse", "--show-object-format"])?;
+    let head = git::run_git(project_root, &["rev-parse", "--verify", "HEAD"])
+        .unwrap_or_else(|_| "unborn".to_string());
+    Ok(token(&format!(
+        "root\0{root_text}\0{}\0git-dir\0{git_dir_text}\0{}\0common-dir\0{common_dir_text}\0{}\0object-format\0{}\0head\0{}",
+        filesystem_instance(&root)?,
+        filesystem_instance(&git_dir)?,
+        filesystem_instance(&common_dir)?,
+        object_format.trim(),
+        head.trim()
+    )))
 }
 
 #[cfg(windows)]
@@ -189,6 +265,7 @@ fn diff_output(project_root: &Path, file_path: &str, staged: bool) -> Result<Bou
 
 fn file_revision(project_root: &Path, file_path: &str, staged: bool) -> Result<String> {
     validate_relative_path(project_root, file_path)?;
+    let repository = repository_revision(project_root)?;
     let status = git::run_git(
         project_root,
         &[
@@ -222,7 +299,7 @@ fn file_revision(project_root: &Path, file_path: &str, staged: bool) -> Result<S
         "missing-working-file".to_string()
     };
     Ok(token(&format!(
-        "status\0{status}index\0{index}head\0{head}working\0{working}"
+        "repository\0{repository}status\0{status}index\0{index}head\0{head}working\0{working}"
     )))
 }
 
@@ -252,10 +329,12 @@ fn parse_name_status_z(
 }
 
 pub fn staged_revision(project_root: &Path) -> Result<String> {
-    validate_repository(project_root)?;
-    Ok(git::run_git(project_root, &["write-tree"])?
-        .trim()
-        .to_string())
+    let repository = repository_revision(project_root)?;
+    let tree = git::run_git(project_root, &["write-tree"])?;
+    Ok(token(&format!(
+        "repository\0{repository}tree\0{}",
+        tree.trim()
+    )))
 }
 
 pub fn list_files(project_root: &Path, staged: bool) -> Result<Vec<GitReviewFile>> {
@@ -482,6 +561,7 @@ mod tests {
     fn init_repo() -> TempDir {
         let temp = tempfile::tempdir().unwrap();
         git_ok(temp.path(), &["init"]);
+        git_ok(temp.path(), &["config", "core.autocrlf", "false"]);
         git_ok(temp.path(), &["config", "user.name", "Rho Test"]);
         git_ok(
             temp.path(),
@@ -496,6 +576,32 @@ mod tests {
         git_ok(temp.path(), &["add", "--all"]);
         git_ok(temp.path(), &["commit", "-m", "baseline"]);
         temp
+    }
+
+    fn detach_git_directory(root: &Path) -> (TempDir, PathBuf, Vec<u8>) {
+        let holder = tempfile::tempdir().unwrap();
+        let detached = holder.path().join("detached.git");
+        let index = fs::read(root.join(".git").join("index")).unwrap();
+        fs::rename(root.join(".git"), &detached).unwrap();
+        (holder, detached, index)
+    }
+
+    fn initialize_replacement_baseline(root: &Path) {
+        git_ok(root, &["init"]);
+        git_ok(root, &["config", "core.autocrlf", "false"]);
+        git_ok(root, &["config", "user.name", "Rho Replacement"]);
+        git_ok(
+            root,
+            &["config", "user.email", "rho-replacement@example.invalid"],
+        );
+        fs::write(
+            root.join("analysis.R"),
+            baseline_text("threshold <- 20", "report_ready <- FALSE"),
+        )
+        .unwrap();
+        fs::write(root.join("notes.txt"), "baseline\n").unwrap();
+        git_ok(root, &["add", "--all"]);
+        git_ok(root, &["commit", "-m", "replacement baseline"]);
     }
 
     #[test]
@@ -830,5 +936,164 @@ mod tests {
         let unique: std::collections::HashSet<&str> =
             files.iter().map(|file| file.path.as_str()).collect();
         assert_eq!(unique.len(), MAX_CHANGED_FILES);
+    }
+
+    #[test]
+    fn working_and_hunk_tokens_reject_repository_replacement_then_refresh_recovers() {
+        let repo = init_repo();
+        let changed = baseline_text("threshold <- 18", "report_ready <- TRUE");
+        fs::write(repo.path().join("analysis.R"), &changed).unwrap();
+        let old_review = review_diff(repo.path(), "analysis.R", false).unwrap();
+        assert_eq!(old_review.hunks.len(), 2);
+
+        let (_holder, detached, detached_index) = detach_git_directory(repo.path());
+        initialize_replacement_baseline(repo.path());
+        fs::write(repo.path().join("analysis.R"), &changed).unwrap();
+
+        let hunk_error =
+            stage_hunk(repo.path(), "analysis.R", 0, &old_review.revision).unwrap_err();
+        assert!(hunk_error.to_string().contains("Stale working diff"));
+        let file_error = stage_file(repo.path(), "analysis.R", &old_review.revision).unwrap_err();
+        assert!(file_error.to_string().contains("Stale working file"));
+        assert!(
+            git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            fs::read(detached.join("index")).unwrap(),
+            detached_index,
+            "replacement rejection must not touch the detached repository index"
+        );
+
+        let refreshed = review_diff(repo.path(), "analysis.R", false).unwrap();
+        assert_ne!(refreshed.revision, old_review.revision);
+        stage_hunk(repo.path(), "analysis.R", 0, &refreshed.revision).unwrap();
+        let staged = git::run_git(repo.path(), &["diff", "--cached"]).unwrap();
+        assert!(staged.contains("threshold <- 18"));
+        assert!(!staged.contains("report_ready <- TRUE"));
+    }
+
+    #[test]
+    fn identical_index_tree_cannot_reuse_commit_token_after_replacement() {
+        let repo = init_repo();
+        fs::write(repo.path().join("notes.txt"), "same staged change\n").unwrap();
+        let old_working = review_diff(repo.path(), "notes.txt", false).unwrap();
+        stage_file(repo.path(), "notes.txt", &old_working.revision).unwrap();
+        let old_tree = git::run_git(repo.path(), &["write-tree"]).unwrap();
+        let old_revision = staged_revision(repo.path()).unwrap();
+
+        let (_holder, detached, detached_index) = detach_git_directory(repo.path());
+        initialize_replacement_baseline(repo.path());
+        fs::write(repo.path().join("notes.txt"), "same staged change\n").unwrap();
+        let new_working = review_diff(repo.path(), "notes.txt", false).unwrap();
+        stage_file(repo.path(), "notes.txt", &new_working.revision).unwrap();
+        let new_tree = git::run_git(repo.path(), &["write-tree"]).unwrap();
+        assert_eq!(
+            old_tree, new_tree,
+            "fixture must reproduce the same tree ID"
+        );
+
+        let head_before = git::run_git(repo.path(), &["rev-parse", "HEAD"]).unwrap();
+        let error = commit(repo.path(), "must not cross replacement", &old_revision).unwrap_err();
+        assert!(error.to_string().contains("Stale staged changes"));
+        assert_eq!(
+            git::run_git(repo.path(), &["rev-parse", "HEAD"]).unwrap(),
+            head_before
+        );
+        assert!(
+            !git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(fs::read(detached.join("index")).unwrap(), detached_index);
+
+        let current = staged_revision(repo.path()).unwrap();
+        assert_ne!(current, old_revision);
+        commit(repo.path(), "replacement reviewed", &current).unwrap();
+    }
+
+    #[test]
+    fn removed_repository_rejects_without_write_and_reinit_refresh_recovers() {
+        let repo = init_repo();
+        fs::write(
+            repo.path().join("notes.txt"),
+            "pending without repository\n",
+        )
+        .unwrap();
+        let old = review_diff(repo.path(), "notes.txt", false).unwrap();
+        let (_holder, detached, detached_index) = detach_git_directory(repo.path());
+
+        assert!(stage_file(repo.path(), "notes.txt", &old.revision).is_err());
+        assert_eq!(
+            fs::read_to_string(repo.path().join("notes.txt")).unwrap(),
+            "pending without repository\n"
+        );
+        assert_eq!(fs::read(detached.join("index")).unwrap(), detached_index);
+
+        git_ok(repo.path(), &["init"]);
+        git_ok(repo.path(), &["config", "core.autocrlf", "false"]);
+        let refreshed = review_diff(repo.path(), "notes.txt", false).unwrap();
+        stage_file(repo.path(), "notes.txt", &refreshed.revision).unwrap();
+        assert!(git::run_git(repo.path(), &["ls-files", "--error-unmatch", "notes.txt"]).is_ok());
+    }
+
+    #[test]
+    fn primary_and_linked_worktree_tokens_are_mutually_invalid() {
+        let primary = init_repo();
+        let container = tempfile::tempdir().unwrap();
+        let linked = container.path().join("linked");
+        git_ok(
+            primary.path(),
+            &["worktree", "add", "--detach", linked.to_str().unwrap()],
+        );
+        fs::write(primary.path().join("notes.txt"), "same worktree change\n").unwrap();
+        fs::write(linked.join("notes.txt"), "same worktree change\n").unwrap();
+        let primary_review = review_diff(primary.path(), "notes.txt", false).unwrap();
+        let linked_review = review_diff(&linked, "notes.txt", false).unwrap();
+        assert_ne!(primary_review.revision, linked_review.revision);
+
+        assert!(stage_file(primary.path(), "notes.txt", &linked_review.revision).is_err());
+        assert!(stage_file(&linked, "notes.txt", &primary_review.revision).is_err());
+        assert!(
+            git::run_git(primary.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            git::run_git(&linked, &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+
+        stage_file(primary.path(), "notes.txt", &primary_review.revision).unwrap();
+        stage_file(&linked, "notes.txt", &linked_review.revision).unwrap();
+    }
+
+    #[test]
+    fn replacement_in_one_project_does_not_invalidate_another_project() {
+        let first = init_repo();
+        let second = init_repo();
+        fs::write(first.path().join("notes.txt"), "first pending\n").unwrap();
+        fs::write(second.path().join("notes.txt"), "second pending\n").unwrap();
+        let first_old = review_diff(first.path(), "notes.txt", false).unwrap();
+        let second_review = review_diff(second.path(), "notes.txt", false).unwrap();
+
+        let (_holder, _detached, _index) = detach_git_directory(first.path());
+        initialize_replacement_baseline(first.path());
+        fs::write(first.path().join("notes.txt"), "first pending\n").unwrap();
+        assert!(stage_file(first.path(), "notes.txt", &first_old.revision).is_err());
+
+        stage_file(second.path(), "notes.txt", &second_review.revision).unwrap();
+        assert!(
+            !git::run_git(second.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            git::run_git(first.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
     }
 }

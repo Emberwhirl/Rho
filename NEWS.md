@@ -77,6 +77,9 @@ this file records behavior that is already available in a released build.
 - Hardened Git review against outer/nested repository confusion, symlink and
   case-alias paths, non-UTF-8 metadata, and oversized command/diff output while
   retaining guarded whole-file staging for large changes.
+- Repository-bound SHA-256 review tokens now reject stale file, hunk, and commit
+  actions if the Git authority at the same project path is removed, replaced, or
+  switched to another worktree; an explicit refresh safely resumes review.
 
 #### WS6: Async Quarto render job
 

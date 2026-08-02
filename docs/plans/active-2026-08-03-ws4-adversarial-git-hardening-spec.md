@@ -86,7 +86,8 @@ byte shape or symlink privilege is unavailable.
   project isolation, UI/mock parity, and installed-app acceptance. WS4-G2 only
   strengthens repository/path/output admission and its backend fixtures.
 - The proposed next-phase plan owns sequencing. Its adversarial-fixture item is
-  the only checklist item targeted here; repository replacement stays open.
+  the only checklist item targeted here; replacement was deferred to WS4-G3
+  and was subsequently completed.
 - Project normalization/switching remains broker-owned. This package does not
   persist Git repository identity or infer replacement history.
 - The existing frontend keeps rendering ordinary, truncated, and failure
@@ -154,8 +155,8 @@ Verification completed on 2026-08-03:
 Contract review found no frontend command/schema, persistence, approval, remote,
 credential, or repository-replacement expansion. Version remains
 `0.4.0-dev.0`; `NEWS.md` records the safety hardening. Installed-app acceptance
-remains open under WS4-G1/candidate acceptance, and repository replacement is
-still the sole WS4 capability gap.
+remains open under WS4-G1/candidate acceptance. Repository replacement was
+subsequently completed by WS4-G3 without changing this package's evidence.
 ## Definition Of Done
 
 WS4-G2 reaches its stop when all required fixtures are deterministic, output

@@ -74,6 +74,11 @@ assert.match(review, /fn validate_relative_path\(project_root: &Path, file_path:
 assert.match(review, /fn validate_relative_path_at_root\([\s\S]*root: &Path/);
 assert.match(review, /Git path contains a symlink or reparse point/);
 assert.match(review, /\["write-tree"\]/);
+assert.match(review, /fn repository_revision\(project_root: &Path\)/);
+assert.match(review, /\["rev-parse", "--git-dir"\]/);
+assert.match(review, /\["rev-parse", "--git-common-dir"\]/);
+assert.match(review, /Sha256::digest\(value\.as_bytes\(\)\)/);
+assert.match(review, /"repository\\0\{repository\}tree\\0/);
 assert.match(review, /MAX_DIFF_BYTES:\s*usize\s*=\s*1024 \* 1024/);
 assert.match(git, /pub fn run_git_bounded\(/);
 assert.match(git, /String::from_utf8\(stdout\)/);

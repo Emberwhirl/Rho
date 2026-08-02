@@ -137,7 +137,7 @@ Their completion does not authorize the unimplemented remainder.
 | WS1 packages and environments | Partial: reviewed environment operations and a searchable installed-package inventory are implemented | searchable lockfile inventory; direct/transitive dependency and package-source presentation; package install/remove/update remain outside the accepted inventory package |
 | WS2 editor and local Help | Partial: Air was selected; dynamic completion, signatures, hover help, project-local go-to-definition, and `lintr` projection are implemented | bounded find-references; package source/help navigation beyond the current fallback; full installed-version help/examples/vignettes and recorded example execution; diagnostic grouping/quick fixes; reviewable formatting and refactors; Agent citations to local Help |
 | WS3 object and artifact inspection | Partial: bounded viewers, server-owned paging/sort, page-size control, frozen identifier column, keyboard navigation, exports, and Artifact provenance are implemented | filter/search; bounded tree navigation; richer type/missing-value presentation; broader plot zoom/format review; complete common inspection/provenance navigation; TanStack Table remains deferred rather than required for the current vanilla-table slice |
-| WS4 Git | Partial: status, log, diff, file staging/commit backend, hunk/restore/unstage backend commands, and conflict resolution are present | reviewable frontend flows for hunk stage/unstage and destructive restore; complete staging/commit UI; repository replacement and adversarial Windows fixtures; current V1 retains the supervised Git CLI instead of `gitoxide` |
+| WS4 Git | Capability implementation complete: supervised CLI review, guarded file/hunk mutations, restore/commit UI, adversarial repository hardening, and repository-bound replacement guards are verified | installed-app acceptance remains open; current V1 retains the supervised Git CLI instead of `gitoxide` |
 | WS5 Quarto and R Markdown | Partial: chunk discovery/navigation, current/preceding/below/all chunk execution, and asynchronous render polling are implemented | render cancellation and restart reconciliation; render-to-Artifact provenance closure; HTML/PDF inspection and source-linked diagnostic/review loop |
 | WS6 jobs and Monitor | Partial prototype: Quarto has an in-memory asynchronous job/status adapter | durable typed job records, bounded logs/progress, cancellation, restart/reconnect reconciliation, duplicate prevention, Artifact registration, and a general Monitor job surface |
 | WS6A `targets` | Partial: read-only capability and pipeline inspection are implemented | separately authorized pipeline run/cancel, durable job admission, Artifact registration, selected-result import, and pipeline-to-document orchestration |
@@ -554,16 +554,16 @@ Gate:
 
 ### Phase C: Change And Document Review
 
-Reconciled status: partially implemented. The vanilla bounded viewer, Git CLI
-backend/conflict flow, chunk surface, and render polling exist. The full
-reviewable Git mutation UI and end-to-end render/Artifact review gate remain
-open.
+Reconciled status: partially implemented overall. The vanilla bounded viewer,
+complete supervised-CLI Git review/mutation/hardening workflow, chunk surface,
+and render polling exist. The end-to-end render/Artifact review gate remains
+open; Git installed-app acceptance remains separate.
 
 First extend the accepted viewer contract without changing its data authority.
 The current focused package retained the vanilla table and deferred TanStack
 Table. Current WS4 uses the supervised Git CLI rather than `gitoxide`; its
-remaining mutations still require separately reviewed frontend flows and
-hardening evidence. Deliver richer WS5 artifact review without redefining WP3.
+guarded frontend mutations, adversarial hardening, and replacement detection
+are implemented. Deliver richer WS5 artifact review without redefining WP3.
 
 Gate:
 
