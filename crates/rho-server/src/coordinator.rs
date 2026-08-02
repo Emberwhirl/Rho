@@ -3496,6 +3496,23 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
+        "workspace.function_documentation" => {
+            let name = arguments["name"]
+                .as_str()
+                .context("workspace.function_documentation requires string argument `name`")?;
+            let package = arguments["package"]
+                .as_str()
+                .context("workspace.function_documentation requires string argument `package`")?;
+            validate_local_help_lookup(name, Some(package))?;
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_function_documentation({}, package = {})",
+                    r_string(name)?,
+                    r_string(package)?
+                ),
+            ))
+        }
         "workspace.lint_file" => {
             let path = arguments["path"]
                 .as_str()
@@ -4612,6 +4629,30 @@ mod tests {
             json!({"name": "bad\nname"}),
         ] {
             assert!(bridge_expression("workspace.function_help", &arguments).is_err());
+        }
+    }
+
+    #[test]
+    fn installed_documentation_lookup_is_qualified_escaped_and_read_only() {
+        let (class, expression) = bridge_expression(
+            "workspace.function_documentation",
+            &json!({"name": "mean\"quoted", "package": "base"}),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(
+            expression
+                .contains("rho_function_documentation(\"mean\\\"quoted\", package = \"base\")")
+        );
+
+        for arguments in [
+            json!({"name": "", "package": "base"}),
+            json!({"name": "x".repeat(129), "package": "base"}),
+            json!({"name": "mean", "package": ""}),
+            json!({"name": "mean", "package": "bad-package"}),
+            json!({"name": "bad\nname", "package": "base"}),
+        ] {
+            assert!(bridge_expression("workspace.function_documentation", &arguments).is_err());
         }
     }
 

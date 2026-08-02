@@ -93,12 +93,21 @@ dialog, and verify the updated availability without restarting Rho (G11).
 Open `examples/editor-intelligence.R`:
 
 1. Type after `stats::` and inspect completion.
-2. Hover `median` and open installed Help.
-3. Go to the definition of `flag_low_quality`, then find its project reference.
-4. Confirm the intentionally tight assignment `example_value<-...` appears in
+2. Hover `median` and open installed Help. Confirm the Help location remains
+   visible above the full installed documentation. Inspect Overview,
+   Arguments, Examples, and Vignettes; verify the installed `stats` version is
+   shown and an empty vignette list, if returned by this R installation, is
+   stated truthfully.
+3. In Examples, inspect the complete visible `stats::median` example and click
+   `Run reviewed example`. Cancel once and verify no Console command or Run is
+   created. Open it again, confirm, and verify the exact displayed code appears
+   in Console and as one user Run. If it fails, verify the error also appears
+   in Problems; do not record a failed example as completed.
+4. Go to the definition of `flag_low_quality`, then find its project reference.
+5. Confirm the intentionally tight assignment `example_value<-...` appears in
    Problems when `lintr` is available.
-5. Add a comment, save with Ctrl+S, close the tab, and reopen it.
-6. Modify the same saved file in an external editor and verify Rho detects the
+6. Add a comment, save with Ctrl+S, close the tab, and reopen it.
+7. Modify the same saved file in an external editor and verify Rho detects the
    change. Then create an unsaved Rho draft, overwrite the file externally, and
    verify the draft is preserved for review rather than silently replaced.
 

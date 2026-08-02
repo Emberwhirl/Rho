@@ -534,7 +534,10 @@ Gate:
 
 Reconciled status: partially implemented. RA-RC1 is accepted; RA-RC2, Air
 completion/navigation/hover help, and `lintr` have implementation packages.
-The broader WS2 Help, references, quick-fix, and refactor contract remains open.
+Bounded project references and full installed-version Help with reviewed
+example execution are now implemented through focused WS2 packages. The
+remaining WS2 diagnostic grouping, Agent Help citation, quick-fix, refactor,
+and formatting contracts remain open.
 
 Deliver RA-RC1 and later RA-RC2 according to the authoritative Wave program in
 the active roadmap. After the Wave 7 selection gate, deliver the initial WS2

@@ -70,6 +70,11 @@ this file records behavior that is already available in a released build.
   and only package-contained source references when available.
 - Find Project References now shows bounded, token-aware project matches in a
   navigable References panel, with explicit partial and truncated result states.
+- Local Help now shows bounded installed documentation, package version,
+  arguments, examples, and vignette topics for one qualified package function.
+  A complete visible example can be confirmed and run through the ordinary
+  recorded Workspace execution path; hidden, malformed, or truncated example
+  content cannot run.
 
 #### WS1: Packages and environments
 

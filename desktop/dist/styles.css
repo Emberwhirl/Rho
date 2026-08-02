@@ -1854,6 +1854,51 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .local-help-location span { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .local-help-location code { color: var(--text); font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .local-help-warning { margin: 10px 0 0; color: var(--warning-text); font-size: 11px; }
+.installed-help { margin-top: 14px; border-top: 1px solid var(--border-strong); }
+.installed-help-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0 7px; }
+.installed-help-header strong { font-size: 12px; }
+.installed-help-identity { margin: 0 0 10px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.installed-help-tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.installed-help-tabs button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+.installed-help-tabs button.active { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.installed-help-body { min-width: 0; padding: 4px 0 6px; }
+.installed-help-section { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.installed-help-section h3 { margin: 0 0 5px; font-size: 11px; letter-spacing: 0; }
+.installed-help-section p { margin: 0; color: var(--text); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.installed-help-section pre,
+.installed-help-example {
+  max-height: 260px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #f7f9f9;
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.installed-help-arguments { margin: 0; }
+.installed-help-arguments dt { padding-top: 10px; font-family: var(--mono); font-size: 10px; font-weight: 700; overflow-wrap: anywhere; }
+.installed-help-arguments dd { margin: 3px 0 0; padding-bottom: 10px; border-bottom: 1px solid var(--border); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.installed-help-vignettes > div { display: grid; gap: 3px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.installed-help-vignettes strong { font-size: 11px; overflow-wrap: anywhere; }
+.installed-help-vignettes code { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.installed-help-run { margin-top: 9px; padding: 6px 10px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent); color: #fff; font-size: 10px; }
+.installed-help-run:disabled { opacity: 0.5; cursor: not-allowed; }
+.installed-help-warning { margin: 9px 0 0; color: var(--warning-text); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .project-references-panel { overflow: auto; }
 .project-references-header {
   display: flex;

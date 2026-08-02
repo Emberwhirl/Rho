@@ -1894,6 +1894,32 @@ async fn editor_function_help(
 }
 
 #[tauri::command]
+async fn editor_function_documentation(
+    name: String,
+    package: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": { "name": name, "package": package },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.function_documentation",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn editor_lint_file(path: String, state: State<'_, AppState>) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
@@ -5890,6 +5916,7 @@ fn main() {
             audit_reproducibility,
             editor_package_functions,
             editor_function_help,
+            editor_function_documentation,
             editor_lint_file,
             editor_goto_definition,
             editor_find_project_references,

@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **14 open items** and **35 completed
-items**. The 14 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **13 open items** and **36 completed
+items**. The 13 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -20,11 +20,11 @@ included in that checklist count.
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS2 editor enhancement | 5 | Select one editor/help/refactor package |
+| WS2 editor enhancement | 4 | Select one diagnostics/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **14** | |
+| **Total** | **13** | |
 
-For near-term planning, this is **6 product implementation items** plus **8
+For near-term planning, this is **5 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -166,6 +166,15 @@ browser/mock parity, contract review, and the complete affected automated
 matrix on 2026-08-03. This closes bounded project references without
 authorizing rename/refactor or installed-app acceptance. The checklist is now
 **14 open / 35 completed**.
+
+The authorized WS2-H2 package,
+[`active-2026-08-03-ws2-installed-help-and-example-spec.md`](active-2026-08-03-ws2-installed-help-and-example-spec.md),
+completed bounded installed Rd, package-version, argument, example, and
+vignette presentation plus confirmed ordinary Workspace execution of the
+exact displayed example. Hidden Rd branches are omitted, and malformed or
+truncated examples cannot run. Contract review and the complete affected
+automated/browser matrix passed without closing installed-app acceptance. The
+checklist is now **13 open / 36 completed**.
 
 ## Follow-up Order
 

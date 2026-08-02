@@ -1,3 +1,10 @@
+# rho.bridge 0.1.8
+
+- Added bounded installed Rd documentation, package version, argument,
+  example, and vignette records for one explicitly qualified Help topic.
+- Hidden Rd example branches are omitted, while malformed or truncated
+  examples are marked non-executable before they reach the desktop.
+
 # rho.bridge 0.1.7
 
 - Added bounded, token-aware project reference discovery for R source and R

@@ -69,6 +69,7 @@ const state = {
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   packageManagementDialog: { busy: false, returnFocus: null },
   localHelp: { status: "empty", record: null, error: null },
+  installedHelp: { status: "empty", record: null, error: null, activeView: "overview", running: false },
   projectReferences: { status: "empty", record: null, error: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
@@ -1931,7 +1932,9 @@ async function mockInvoke(command, args) {
   }
   if (command === "editor_function_help") {
     const name = args.name || "";
-    const previewState = previewParams.get("state") || "found";
+    const previewState = previewParams.get("locationState")
+      || (previewParams.get("preview") === "local-help" ? previewParams.get("state") : null)
+      || "found";
     if (previewState === "error") throw new Error("Local Help bridge is unavailable.");
     if (previewState === "unavailable") {
       return { name, found: false, package: null, signature: null, help_topic: null, help_record: null, package_root: null, library_root: null, source_path: null, source_line: null, ambiguous: false, truncated: false };
@@ -1955,6 +1958,49 @@ async function mockInvoke(command, args) {
       source_line: name === "lm" ? 20 : null,
       ambiguous: previewState === "ambiguous", truncated: previewState === "long",
       help_title: null, help_text: null,
+    };
+  }
+  if (command === "editor_function_documentation") {
+    const name = args.name || "lm";
+    const packageName = args.package || "stats";
+    const previewState = previewParams.get("state") || "found";
+    if (previewState === "error") throw new Error("Installed Rd documentation could not be read.");
+    if (previewState === "unavailable") {
+      return { name, package: packageName, package_version: "4.6.0", help_topic: null, found: false, title: null, description: null, usage: null, arguments: [], details: null, value: null, example: { code: null, executable: false, omitted_tags: [], parse_error: null }, vignettes: [], truncated: false, incomplete: false, notices: [] };
+    }
+    const empty = previewState === "empty";
+    const truncated = previewState === "truncated";
+    const omitted = previewState === "omitted";
+    const executionError = previewState === "execution-error";
+    const long = previewState === "long";
+    const exampleCode = executionError
+      ? 'stop("boom")'
+      : "fit <- lm(mpg ~ wt, data = mtcars)\nsummary(fit)";
+    return {
+      name,
+      package: packageName,
+      package_version: "4.6.0",
+      help_topic: name,
+      found: true,
+      title: empty ? null : "Fitting Linear Models",
+      description: empty ? null : "Fit linear models to a formula and data.",
+      usage: empty ? null : long ? `lm(formula, data, ${"optional_argument, ".repeat(35)}...)` : "lm(formula, data, subset, weights, na.action, ...)",
+      arguments: empty ? [] : [
+        { name: "formula", description: "A symbolic description of the model to be fitted." },
+        { name: "data", description: "An optional data frame containing model variables." },
+      ],
+      details: empty ? null : long ? "Model terms are evaluated from the installed documentation. ".repeat(30) : "Models are specified symbolically and fitted by least squares.",
+      value: empty ? null : "An object of class lm containing the fitted model.",
+      example: {
+        code: empty ? null : truncated ? `${exampleCode}\n# ${"truncated ".repeat(40)}...` : exampleCode,
+        executable: !empty && !truncated,
+        omitted_tags: omitted ? ["dontrun", "donttest"] : [],
+        parse_error: truncated ? "Example exceeds the executable transport limit." : null,
+      },
+      vignettes: empty ? [] : [{ topic: "reshape", title: "Using the reshape function" }],
+      truncated,
+      incomplete: truncated || omitted,
+      notices: truncated ? ["example_byte_limit"] : omitted ? ["example_tags_omitted"] : [],
     };
   }
   if (command === "editor_lint_file") {
@@ -6314,6 +6360,180 @@ function appendLocalHelpLocation(container, label, value) {
   container.append(row);
 }
 
+function appendInstalledHelpText(container, headingText, value, code = false) {
+  if (!value) return;
+  const section = document.createElement("section");
+  section.className = "installed-help-section";
+  const heading = document.createElement("h3");
+  heading.textContent = headingText;
+  const body = document.createElement(code ? "pre" : "p");
+  body.textContent = value;
+  section.append(heading, body);
+  container.append(section);
+}
+
+function setInstalledHelpView(view) {
+  state.installedHelp.activeView = view;
+  renderLocalHelp();
+}
+
+async function runInstalledHelpExample() {
+  const documentation = state.installedHelp.record;
+  const example = documentation?.example;
+  if (state.busy || state.installedHelp.running || !example?.executable || !example.code?.trim()) return;
+  const confirmed = await confirmAction({
+    title: "Run reviewed Help example",
+    message: `Run the displayed ${documentation.package}::${documentation.help_topic || documentation.name} example in Workspace R? Ordinary R code may change the Workspace, create files, produce plots, or fail.`,
+    confirmLabel: "Run example",
+    cancelLabel: "Cancel",
+  });
+  if (!confirmed) return;
+  state.installedHelp.running = true;
+  renderLocalHelp();
+  switchDockTab("console");
+  try {
+    await executeCode({
+      code: example.code,
+      type: "help_example",
+      sourcePath: null,
+      documentVersion: null,
+    });
+  } finally {
+    state.installedHelp.running = false;
+    renderLocalHelp();
+  }
+}
+
+function renderInstalledHelp(container) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "installed-help";
+  const header = document.createElement("div");
+  header.className = "installed-help-header";
+  const heading = document.createElement("strong");
+  heading.textContent = "Installed documentation";
+  const status = document.createElement("span");
+  status.className = "revision-badge";
+  status.textContent = state.installedHelp.status;
+  header.append(heading, status);
+  wrapper.append(header);
+
+  if (state.installedHelp.status === "loading") {
+    wrapper.append(emptyRow("Loading installed documentation"));
+    container.append(wrapper);
+    return;
+  }
+  if (state.installedHelp.status === "error") {
+    const error = emptyRow("Installed documentation unavailable");
+    const detail = document.createElement("p");
+    detail.textContent = state.installedHelp.error || "The installed Rd record could not be rendered.";
+    error.append(detail);
+    wrapper.append(error);
+    container.append(wrapper);
+    return;
+  }
+  const record = state.installedHelp.record;
+  if (!record?.found) {
+    wrapper.append(emptyRow(record ? `No installed documentation found for ${record.package}::${record.name}` : "Documentation not requested"));
+    container.append(wrapper);
+    return;
+  }
+
+  const identity = document.createElement("p");
+  identity.className = "installed-help-identity";
+  identity.textContent = `${record.package} ${record.package_version || "version unavailable"} · ${record.help_topic || record.name}`;
+  wrapper.append(identity);
+  const views = ["overview", "arguments", "examples", "vignettes"];
+  const tabs = document.createElement("div");
+  tabs.className = "installed-help-tabs";
+  tabs.setAttribute("role", "tablist");
+  for (const view of views) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(state.installedHelp.activeView === view));
+    button.classList.toggle("active", state.installedHelp.activeView === view);
+    button.textContent = view[0].toUpperCase() + view.slice(1);
+    button.addEventListener("click", () => setInstalledHelpView(view));
+    tabs.append(button);
+  }
+  wrapper.append(tabs);
+  const body = document.createElement("div");
+  body.className = "installed-help-body";
+  const view = state.installedHelp.activeView;
+  if (view === "overview") {
+    appendInstalledHelpText(body, record.title || "Overview", record.description);
+    appendInstalledHelpText(body, "Usage", record.usage, true);
+    appendInstalledHelpText(body, "Details", record.details);
+    appendInstalledHelpText(body, "Value", record.value);
+    if (!record.title && !record.description && !record.usage && !record.details && !record.value) {
+      body.append(emptyRow("No overview sections in this installed Help record"));
+    }
+  } else if (view === "arguments") {
+    if (!record.arguments?.length) {
+      body.append(emptyRow("No documented arguments"));
+    } else {
+      const list = document.createElement("dl");
+      list.className = "installed-help-arguments";
+      for (const argument of record.arguments) {
+        const term = document.createElement("dt");
+        term.textContent = argument.name || "argument";
+        const description = document.createElement("dd");
+        description.textContent = argument.description || "";
+        list.append(term, description);
+      }
+      body.append(list);
+    }
+  } else if (view === "examples") {
+    if (!record.example?.code) {
+      body.append(emptyRow("No runnable example in this installed Help record"));
+    } else {
+      const code = document.createElement("pre");
+      code.className = "installed-help-example";
+      code.textContent = record.example.code;
+      body.append(code);
+      if (record.example.omitted_tags?.length || record.example.parse_error) {
+        const note = document.createElement("p");
+        note.className = "installed-help-warning";
+        note.textContent = [
+          record.example.omitted_tags?.length ? `Omitted non-runnable Rd sections: ${record.example.omitted_tags.join(", ")}.` : null,
+          record.example.parse_error,
+        ].filter(Boolean).join(" ");
+        body.append(note);
+      }
+      const run = document.createElement("button");
+      run.type = "button";
+      run.className = "installed-help-run";
+      run.textContent = state.installedHelp.running ? "Running..." : "Run reviewed example";
+      run.disabled = !record.example.executable || state.busy || state.installedHelp.running;
+      run.addEventListener("click", runInstalledHelpExample);
+      body.append(run);
+    }
+  } else if (!record.vignettes?.length) {
+    body.append(emptyRow("No installed vignettes"));
+  } else {
+    const list = document.createElement("div");
+    list.className = "installed-help-vignettes";
+    for (const vignette of record.vignettes) {
+      const row = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = vignette.title || vignette.topic;
+      const topic = document.createElement("code");
+      topic.textContent = vignette.topic;
+      row.append(title, topic);
+      list.append(row);
+    }
+    body.append(list);
+  }
+  wrapper.append(body);
+  if (record.incomplete || record.truncated) {
+    const warning = document.createElement("p");
+    warning.className = "installed-help-warning";
+    warning.textContent = `Installed documentation is partial (${(record.notices || []).join(", ") || "bounded response"}).`;
+    wrapper.append(warning);
+  }
+  container.append(wrapper);
+}
+
 function renderLocalHelp() {
   const content = $("#localHelpContent");
   const badge = $("#localHelpState");
@@ -6363,17 +6583,36 @@ function renderLocalHelp() {
     ].filter(Boolean).join(" ");
     content.append(warning);
   }
+  renderInstalledHelp(content);
 }
 
 async function showLocalHelp(name, packageName = null) {
   applyWorkbenchLayout("analyze");
   await switchContextTab("help");
   state.localHelp = { status: "loading", record: null, error: null };
+  state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   renderLocalHelp();
   $("#localHelpHeading").focus();
   try {
     const record = await invoke("editor_function_help", { name, package: packageName });
     state.localHelp = { status: record?.found ? "found" : "unavailable", record, error: null };
+    renderLocalHelp();
+    if (record?.found && record.package) {
+      state.installedHelp.status = "loading";
+      renderLocalHelp();
+      try {
+        const documentation = await invoke("editor_function_documentation", { name: record.help_topic || record.name, package: record.package });
+        state.installedHelp = {
+          status: documentation?.found ? "found" : "unavailable",
+          record: documentation,
+          error: null,
+          activeView: "overview",
+          running: false,
+        };
+      } catch (error) {
+        state.installedHelp = { status: "error", record: null, error: String(error), activeView: "overview", running: false };
+      }
+    }
   } catch (error) {
     state.localHelp = { status: "error", record: null, error: String(error) };
   }
@@ -7221,7 +7460,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "project-references"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7351,6 +7590,15 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "installed-help") {
+    await showLocalHelp(previewParams.get("topic") || "lm", previewParams.get("package") || "stats");
+    const requestedView = previewParams.get("view");
+    if (["overview", "arguments", "examples", "vignettes"].includes(requestedView)) {
+      setInstalledHelpView(requestedView);
+    }
+    setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
   if (scenario === "project-references") {
     await showProjectReferences(previewParams.get("symbol") || "flag_low_quality");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
@@ -7451,7 +7699,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "project-references"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -7574,6 +7822,41 @@ function recordPreviewLayoutEvidence() {
         truncated: state.localHelp.record.truncated,
         source_available: Boolean(state.localHelp.record.source_path),
       } : null,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
+      rects: { panel, content },
+    });
+    return;
+  }
+  if (scenario === "installed-help") {
+    const panel = rectEvidence($("#localHelpPanel"));
+    const content = rectEvidence($("#localHelpContent"));
+    const example = state.installedHelp.record?.example || null;
+    const helpRuns = state.runs.filter((run) => run.execution_mode === "help_example");
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      location: {
+        status: state.localHelp.status,
+        package: state.localHelp.record?.package || null,
+        help_record_visible: Boolean(state.localHelp.record?.help_record),
+      },
+      documentation: {
+        status: state.installedHelp.status,
+        found: Boolean(state.installedHelp.record?.found),
+        active_view: state.installedHelp.activeView,
+        incomplete: Boolean(state.installedHelp.record?.incomplete),
+        truncated: Boolean(state.installedHelp.record?.truncated),
+        example_visible: Boolean(example?.code),
+        example_executable: Boolean(example?.executable),
+      },
+      execution: {
+        confirmation_open: !$("#genericDialog").classList.contains("hidden"),
+        help_example_runs: helpRuns.length,
+        latest_status: helpRuns[0]?.status || null,
+        latest_code: helpRuns[0]?.code || null,
+        problems: state.problems.filter((problem) => problem.execution_mode === "help_example").length,
+      },
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
       rects: { panel, content },

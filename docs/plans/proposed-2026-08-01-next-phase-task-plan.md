@@ -134,7 +134,7 @@ Implemented focused packages and remaining proposal items after selecting Air:
 - [x] Optional `lintr` findings projected into Problems
 - [x] Package source/help locations beyond the current Help fallback
 - [x] Find project references with bounded results
-- [ ] Full installed-version Help: arguments, examples, vignettes, package
+- [x] Full installed-version Help: arguments, examples, vignettes, package
   version, and recorded execution of a selected example
 - [ ] Deterministic diagnostic grouping and reviewable quick fixes
 - [ ] Agent answers linked to the resolved local Help record
