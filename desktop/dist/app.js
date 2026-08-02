@@ -5805,7 +5805,8 @@ function renderChunks() {
     return;
   }
 
-  for (const chunk of chunks) {
+  for (let idx = 0; idx < chunks.length; idx++) {
+    const chunk = chunks[idx];
     const item = document.createElement("div");
     item.className = "chunk-item";
 
@@ -5855,7 +5856,21 @@ function renderChunks() {
         toast(`Ran chunk "${chunk.label}"`);
       } catch (err) { toast(`Chunk error: ${err}`, "error"); }
     });
-    actions.append(runBtn);
+    const precBtn = document.createElement("button");
+    precBtn.textContent = "\u2191 Prec";
+    precBtn.title = "Run all preceding chunks";
+    precBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await runPrecedingChunks(idx);
+    });
+    const belowBtn = document.createElement("button");
+    belowBtn.textContent = "\u2193 Below";
+    belowBtn.title = "Run all chunks below this one";
+    belowBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await runBelowChunks(idx);
+    });
+    actions.append(runBtn, precBtn, belowBtn);
 
     item.append(header, preview, actions);
 
@@ -5876,6 +5891,9 @@ function renderChunks() {
 }
 
 function initChunkPanel() {
+  // Run All chunks
+  $("#chunksRunAll").addEventListener("click", () => runAllChunks());
+
   // Hook into openDocument to refresh chunks on file open
   const origOpenDocument = openDocument;
   openDocument = async function(path, options) {
@@ -5884,6 +5902,61 @@ function initChunkPanel() {
     loadChunks();
     return result;
   };
+}
+
+// ── Chunk batch execution helpers ────────────────────────────
+
+function buildChunkBatch(chunks) {
+  return chunks
+    .map((c) => `#| chunk-label: ${c.label}\n${c.code}`)
+    .join("\n\n");
+}
+
+async function runPrecedingChunks(index) {
+  const chunks = (state.chunks?.chunks) || [];
+  const preceding = chunks.slice(0, index);
+  if (!preceding.length) { toast("No preceding chunks to run"); return; }
+  const code = buildChunkBatch(preceding);
+  try {
+    await invoke("execute_r", {
+      code,
+      sourcePath: state.activeFilePath || null,
+      executionMode: "chunk",
+      operationClass: "scientific",
+    });
+    toast(`Ran ${preceding.length} preceding chunk(s)`);
+  } catch (err) { toast(`Batch error: ${err}`, "error"); }
+}
+
+async function runBelowChunks(index) {
+  const chunks = (state.chunks?.chunks) || [];
+  const below = chunks.slice(index + 1);
+  if (!below.length) { toast("No chunks below to run"); return; }
+  const code = buildChunkBatch(below);
+  try {
+    await invoke("execute_r", {
+      code,
+      sourcePath: state.activeFilePath || null,
+      executionMode: "chunk",
+      operationClass: "scientific",
+    });
+    toast(`Ran ${below.length} chunk(s) below`);
+  } catch (err) { toast(`Batch error: ${err}`, "error"); }
+}
+
+async function runAllChunks() {
+  const chunks = (state.chunks?.chunks) || [];
+  if (!chunks.length) { toast("No chunks to run"); return; }
+  const code = buildChunkBatch(chunks);
+  try {
+    await invoke("execute_r", {
+      code,
+      sourcePath: state.activeFilePath || null,
+      executionMode: "chunk",
+      operationClass: "scientific",
+    });
+    toast(`Ran all ${chunks.length} chunk(s)`);
+  } catch (err) { toast(`Batch error: ${err}`, "error"); }
 }
 
 function renderEnvironmentSummary() {
