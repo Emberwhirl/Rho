@@ -1561,7 +1561,7 @@ rho_discover_chunks <- function(path, limit = 200L) {
     ))
   }
 
-  chunk_start_pattern <- "^[[:space:]]*```\\{([a-zA-Z0-9_]+)[[:space:]]*[,}]"
+  chunk_start_pattern <- "^[[:space:]]*```\\{([a-zA-Z0-9_]+)"
 
   chunk_list <- list()
   in_chunk <- FALSE
@@ -1617,6 +1617,20 @@ rho_discover_chunks <- function(path, limit = 200L) {
     } else if (in_chunk) {
       chunk_lines <- c(chunk_lines, line)
     }
+  }
+
+  # Handle unclosed chunk at end of file
+  if (in_chunk && length(chunk_lines) > 0) {
+    chunk_list[[length(chunk_list) + 1L]] <- list(
+      label = paste0("unnamed-chunk-", length(chunk_list) + 1L),
+      engine = "unknown",
+      options = "",
+      start_line = chunk_start,
+      end_line = length(lines),
+      code = paste(chunk_lines, collapse = "\n"),
+      code_preview = paste(head(chunk_lines, 4L), collapse = "\n"),
+      unclosed = TRUE
+    )
   }
 
   list(

@@ -312,6 +312,7 @@ const mockAgentTurns = [];
 const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 const mockEvidenceEntries = [];
+const mockRenderPollCount = {};
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
 const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
 
@@ -1541,14 +1542,11 @@ async function mockInvoke(command, args) {
   }
   if (command === "render_job_status") {
     if (args.job_id) {
-      return {
-        job_id: args.job_id,
-        path: "report.qmd",
-        status: "completed",
-        message: null,
-        submitted_at: new Date(Date.now() - 5000).toISOString(),
-        completed_at: new Date().toISOString(),
-      };
+      mockRenderPollCount[args.job_id] = (mockRenderPollCount[args.job_id] || 0) + 1;
+      if (mockRenderPollCount[args.job_id] > 1) {
+        return { job_id: args.job_id, path: "report.qmd", status: "completed", message: null, submitted_at: new Date(Date.now() - 5000).toISOString(), completed_at: new Date().toISOString() };
+      }
+      return { job_id: args.job_id, path: "report.qmd", status: "running", message: null, submitted_at: new Date(Date.now() - 3000).toISOString(), completed_at: null };
     }
     return [{ job_id: "render_mock_001", path: "report.qmd", status: "completed", message: null, submitted_at: new Date(Date.now() - 5000).toISOString(), completed_at: new Date().toISOString() }];
   }
@@ -3461,7 +3459,7 @@ function renderConflictBanner() {
       btn.textContent = res === "mark" ? "Mark Resolved" : `Accept ${res === "ours" ? "Ours" : "Theirs"}`;
       btn.addEventListener("click", async () => {
         try {
-          await invoke("git_resolve_conflict", { filePath: file, resolution: res });
+          await invoke("git_resolve_conflict", { file_path: file, resolution: res });
           toast(`Resolved ${file} (${res})`);
           loadGitConflicts();
         } catch (err) { toast(`Resolve failed: ${err}`, "error"); }
@@ -5800,44 +5798,17 @@ function initEvidencePanel() {
       const filtered = state.evidenceEntries.filter(
         (e) => e.title.toLowerCase().includes(term) || e.notes.toLowerCase().includes(term)
       );
-      state.evidenceEntriesFiltered = filtered;
-      renderEvidenceListFiltered(filtered);
+      const saved = state.evidenceEntries;
+      state.evidenceEntries = filtered;
+      renderEvidenceList();
+      state.evidenceEntries = saved;
     } else {
-      delete state.evidenceEntriesFiltered;
       renderEvidenceList();
     }
   });
   $("#refreshEvidence").addEventListener("click", loadEvidenceEntries);
 }
 
-function renderEvidenceListFiltered(filtered) {
-  // Same as renderEvidenceList but uses filtered array
-  const list = $("#evidenceList");
-  list.replaceChildren();
-  if (!filtered.length) {
-    list.append(emptyRow("No matching entries"));
-    return;
-  }
-  for (const entry of filtered) {
-    const item = document.createElement("div");
-    item.className = "evidence-item";
-    const header = document.createElement("div");
-    header.className = "evidence-item-header";
-    const title = document.createElement("span");
-    title.className = "evidence-item-title";
-    title.textContent = entry.title;
-    const date = document.createElement("span");
-    date.className = "evidence-item-date";
-    date.textContent = new Date(entry.created_at).toLocaleDateString();
-    header.append(title, date);
-    const notes = document.createElement("div");
-    notes.className = "evidence-item-notes";
-    notes.textContent = entry.notes || "";
-    item.append(header, notes);
-    item.addEventListener("click", () => item.classList.toggle("expanded"));
-    list.append(item);
-  }
-}
 
 // ── Chunk panel ─────────────────────────────────────────────
 
@@ -8924,6 +8895,7 @@ $("#packageFilter").addEventListener("input", renderPackageList);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
 initEvidencePanel();
 initChunkPanel();
+window.addEventListener("beforeunload", stopRenderPoll);
 $("#environmentInitButton").addEventListener("click", () => beginEnvironmentOperation("initialize"));
 $("#environmentRestoreButton").addEventListener("click", () => beginEnvironmentOperation("restore"));
 $("#environmentSnapshotButton").addEventListener("click", () => beginEnvironmentOperation("snapshot"));
