@@ -59,6 +59,7 @@ changes.
 - Active Agent-first intuitive modernization: [`plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md`](plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md)
 - Active Agent-first adaptive work surface: [`plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md`](plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md)
 - Active guarded Git review: [`plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md`](plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md)
+- Verified adversarial Git hardening: [`plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md`](plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md)
 - Deferred aisdk family proposals: [`architecture/proposed-aisdk-family-change-proposals.md`](architecture/proposed-aisdk-family-change-proposals.md)
 - Active `0.3.x` implementation handoff: [`plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`](plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md)
 - Current `0.3.x` milestone verification: [`verification/0.3x-milestone/verification.md`](verification/0.3x-milestone/verification.md)

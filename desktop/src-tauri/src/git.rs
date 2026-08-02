@@ -1,8 +1,33 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+
+const MAX_GIT_STDOUT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_GIT_STDERR_BYTES: usize = 64 * 1024;
+
+pub struct GitCommandOutput {
+    pub stdout: Vec<u8>,
+    pub stdout_truncated: bool,
+}
+
+fn read_bounded(mut stream: impl Read, limit: usize) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut captured = Vec::with_capacity(limit.min(64 * 1024));
+    let mut buffer = [0u8; 16 * 1024];
+    let mut truncated = false;
+    loop {
+        let read = stream.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(captured.len());
+        let keep = remaining.min(read);
+        captured.extend_from_slice(&buffer[..keep]);
+        truncated |= keep < read;
+    }
+    Ok((captured, truncated))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitStatus {
@@ -55,27 +80,68 @@ pub struct GitUnifiedDiff {
     pub hunks: Vec<GitHunk>,
 }
 
+pub fn decode_stdout(stdout: Vec<u8>) -> Result<String> {
+    String::from_utf8(stdout).context("git returned non-UTF-8 stdout")
+}
+
 pub fn run_git(project_root: &Path, args: &[&str]) -> Result<String> {
-    let output = Command::new("git")
+    let output = run_git_bounded(project_root, args, MAX_GIT_STDOUT_BYTES)?;
+    if output.stdout_truncated {
+        bail!(
+            "git output exceeded the {} byte limit",
+            MAX_GIT_STDOUT_BYTES
+        );
+    }
+    decode_stdout(output.stdout)
+}
+
+pub fn run_git_bounded(
+    project_root: &Path,
+    args: &[&str],
+    stdout_limit: usize,
+) -> Result<GitCommandOutput> {
+    let mut child = Command::new("git")
         .args(args)
         .current_dir(project_root)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .context("failed to run git")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("git error: {}", stderr.trim());
+    let stdout = child
+        .stdout
+        .take()
+        .context("failed to capture git stdout")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("failed to capture git stderr")?;
+    let stdout_reader = std::thread::spawn(move || read_bounded(stdout, stdout_limit));
+    let stderr_reader = std::thread::spawn(move || read_bounded(stderr, MAX_GIT_STDERR_BYTES));
+    let status = child.wait().context("failed to wait for git")?;
+    let (stdout, stdout_truncated) = stdout_reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("git stdout reader failed"))?
+        .context("failed to read git stdout")?;
+    let (stderr, stderr_truncated) = stderr_reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("git stderr reader failed"))?
+        .context("failed to read git stderr")?;
+    if !status.success() {
+        let mut diagnostic = String::from_utf8_lossy(&stderr).trim().to_string();
+        if stderr_truncated {
+            diagnostic.push_str(" [truncated]");
+        }
+        bail!("git error: {diagnostic}");
     }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    Ok(GitCommandOutput {
+        stdout,
+        stdout_truncated,
+    })
 }
 
 pub fn git_status(project_root: &Path) -> Result<GitStatus> {
     // Check if it's a git repo
-    let is_repo = Command::new("git")
-        .args(["rev-parse", "--git-dir"])
-        .current_dir(project_root)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let is_repo = run_git(project_root, &["rev-parse", "--git-dir"]).is_ok();
     if !is_repo {
         return Ok(GitStatus {
             is_repo: false,
@@ -377,4 +443,24 @@ pub fn git_restore_file(project_root: &Path, file_path: &str) -> Result<()> {
 pub fn git_unstage_file(project_root: &Path, file_path: &str) -> Result<()> {
     run_git(project_root, &["reset", "HEAD", "--", file_path])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn bounded_reader_caps_captured_bytes_while_draining_input() {
+        let input = vec![b'x'; 4096];
+        let (captured, truncated) = read_bounded(Cursor::new(input), 128).unwrap();
+        assert_eq!(captured.len(), 128);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn successful_git_metadata_rejects_invalid_utf8() {
+        let error = decode_stdout(vec![b'f', 0x80, b'o']).unwrap_err();
+        assert!(error.to_string().contains("non-UTF-8 stdout"));
+    }
 }

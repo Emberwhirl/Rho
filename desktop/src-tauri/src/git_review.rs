@@ -2,13 +2,17 @@ use crate::git;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::ffi::OsStr;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 const MAX_CHANGED_FILES: usize = 200;
 const MAX_DIFF_HUNKS: usize = 128;
 const MAX_DIFF_LINES: usize = 4_000;
+const MAX_DIFF_BYTES: usize = 1024 * 1024;
+const MAX_GIT_PATH_BYTES: usize = 4_096;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitReviewFile {
@@ -43,20 +47,101 @@ fn token(value: &str) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn validate_relative_path(file_path: &str) -> Result<()> {
+fn validate_repository(project_root: &Path) -> Result<PathBuf> {
+    let canonical_root =
+        fs::canonicalize(project_root).context("Git project root is unavailable")?;
+    let top = git::run_git(project_root, &["rev-parse", "--show-toplevel"])?;
+    let canonical_top = fs::canonicalize(top.trim()).context("Git worktree root is unavailable")?;
+    if canonical_root != canonical_top {
+        bail!("Git project root must exactly match the repository worktree root");
+    }
+    Ok(canonical_root)
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    metadata.file_attributes() & 0x400 != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_: &fs::Metadata) -> bool {
+    false
+}
+
+fn has_git_marker(path: &Path) -> bool {
+    fs::symlink_metadata(path.join(".git")).is_ok()
+}
+
+fn validate_relative_path_at_root(project_root: &Path, root: &Path, file_path: &str) -> Result<()> {
     let path = Path::new(file_path);
-    if file_path.trim().is_empty() || path.is_absolute() {
+    if file_path.trim().is_empty()
+        || file_path.len() > MAX_GIT_PATH_BYTES
+        || file_path.contains(['\\', '\0', '\n', '\r'])
+        || path.is_absolute()
+    {
         bail!("Git path must be a non-empty project-relative path");
     }
     if path.components().any(|component| {
         matches!(
             component,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) | Component::CurDir
         )
     }) {
-        bail!("Git path escapes the project root");
+        bail!("Git path must be normalized inside the project root");
+    }
+    if file_path
+        .split('/')
+        .any(|component| component.is_empty() || component == ".git")
+    {
+        bail!("Git path contains a reserved or empty component");
+    }
+
+    let components: Vec<&str> = file_path.split('/').collect();
+    let mut current = root.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        if index > 0 && has_git_marker(&current) {
+            bail!("Git path crosses a nested repository");
+        }
+        let exact_entry = fs::read_dir(&current)
+            .with_context(|| format!("Git path parent is unavailable: {}", current.display()))?
+            .find_map(|entry| {
+                let entry = entry.ok()?;
+                (entry.file_name() == OsStr::new(component)).then_some(entry)
+            });
+        let Some(entry) = exact_entry else {
+            if index + 1 != components.len() {
+                bail!("Git path does not exactly match the filesystem");
+            }
+            let tracked = git::run_git(
+                project_root,
+                &["ls-files", "-z", "--error-unmatch", "--", file_path],
+            )
+            .context("Git path does not exactly match a tracked or working file")?;
+            if tracked.as_bytes() != format!("{file_path}\0").as_bytes() {
+                bail!("Git path does not exactly match the index");
+            }
+            return Ok(());
+        };
+        let metadata =
+            fs::symlink_metadata(entry.path()).context("Git path metadata is unavailable")?;
+        if metadata.file_type().is_symlink() || is_reparse_point(&metadata) {
+            bail!("Git path contains a symlink or reparse point");
+        }
+        current = entry.path();
+    }
+    if has_git_marker(&current) {
+        bail!("Git path resolves to a nested repository");
+    }
+    if current.is_dir() {
+        bail!("Git review path must identify one file");
     }
     Ok(())
+}
+
+fn validate_relative_path(project_root: &Path, file_path: &str) -> Result<()> {
+    let root = validate_repository(project_root)?;
+    validate_relative_path_at_root(project_root, &root, file_path)
 }
 
 fn parse_hunk_header(header: &str) -> Option<(usize, usize, usize, usize)> {
@@ -77,74 +162,121 @@ fn parse_hunk_header(header: &str) -> Option<(usize, usize, usize, usize)> {
     Some((old_start, old_count, new_start, new_count))
 }
 
-fn diff_output(project_root: &Path, file_path: &str, staged: bool) -> Result<String> {
-    validate_relative_path(file_path)?;
+struct BoundedDiff {
+    output: String,
+    truncated: bool,
+}
+
+fn diff_output(project_root: &Path, file_path: &str, staged: bool) -> Result<BoundedDiff> {
+    validate_relative_path(project_root, file_path)?;
     let mut args = vec!["diff", "--binary", "--no-ext-diff", "-U3"];
     if staged {
         args.push("--cached");
     }
     args.extend(["--", file_path]);
-    git::run_git(project_root, &args)
+    let output = git::run_git_bounded(project_root, &args, MAX_DIFF_BYTES)?;
+    if output.stdout_truncated {
+        return Ok(BoundedDiff {
+            output: String::new(),
+            truncated: true,
+        });
+    }
+    Ok(BoundedDiff {
+        output: git::decode_stdout(output.stdout)?,
+        truncated: false,
+    })
 }
 
 fn file_revision(project_root: &Path, file_path: &str, staged: bool) -> Result<String> {
-    let patch = diff_output(project_root, file_path, staged)?;
-    if !staged && patch.is_empty() {
-        let status = git::run_git(
-            project_root,
-            &[
-                "status",
-                "--porcelain",
-                "--untracked-files=all",
-                "--",
-                file_path,
-            ],
-        )?;
-        if status.starts_with("??") {
-            let content_hash = git::run_git(
-                project_root,
-                &["hash-object", "--no-filters", "--", file_path],
-            )?;
-            return Ok(token(&format!("untracked\0{content_hash}")));
+    validate_relative_path(project_root, file_path)?;
+    let status = git::run_git(
+        project_root,
+        &[
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            file_path,
+        ],
+    )?;
+    let index = git::run_git(
+        project_root,
+        &["ls-files", "--stage", "-z", "--", file_path],
+    )?;
+    let head = match git::run_git(project_root, &["ls-tree", "-z", "HEAD", "--", file_path]) {
+        Ok(head) => head,
+        Err(_) if git::run_git(project_root, &["rev-parse", "--verify", "HEAD"]).is_err() => {
+            "missing-head".to_string()
         }
+        Err(error) => return Err(error),
+    };
+    let working = if staged {
+        "staged-view".to_string()
+    } else if project_root.join(file_path).exists() {
+        git::run_git(
+            project_root,
+            &["hash-object", "--no-filters", "--", file_path],
+        )?
+    } else {
+        "missing-working-file".to_string()
+    };
+    Ok(token(&format!(
+        "status\0{status}index\0{index}head\0{head}working\0{working}"
+    )))
+}
+
+fn validate_listed_path(project_root: &Path, root: &Path, file_path: &str) -> Result<()> {
+    validate_relative_path_at_root(project_root, root, file_path)
+        .with_context(|| format!("Unsafe Git path reported by repository: {file_path}"))
+}
+
+fn parse_name_status_z(
+    project_root: &Path,
+    root: &Path,
+    output: &str,
+) -> Result<Vec<GitReviewFile>> {
+    let fields: Vec<&str> = output.split_terminator('\0').collect();
+    if fields.len() % 2 != 0 {
+        bail!("Git returned malformed name-status metadata");
     }
-    Ok(token(&patch))
+    let mut files = Vec::new();
+    for pair in fields.chunks_exact(2) {
+        validate_listed_path(project_root, root, pair[1])?;
+        files.push(GitReviewFile {
+            status: pair[0].to_string(),
+            path: pair[1].to_string(),
+        });
+    }
+    Ok(files)
 }
 
 pub fn staged_revision(project_root: &Path) -> Result<String> {
-    let patch = git::run_git(
-        project_root,
-        &["diff", "--cached", "--binary", "--no-ext-diff"],
-    )?;
-    Ok(token(&patch))
+    validate_repository(project_root)?;
+    Ok(git::run_git(project_root, &["write-tree"])?
+        .trim()
+        .to_string())
 }
 
 pub fn list_files(project_root: &Path, staged: bool) -> Result<Vec<GitReviewFile>> {
-    let mut args = vec!["diff", "--name-status"];
+    let root = validate_repository(project_root)?;
+    let mut args = vec!["diff", "--name-status", "--no-renames", "-z"];
     if staged {
         args.push("--cached");
     }
     let output = git::run_git(project_root, &args)?;
-    let mut files: Vec<GitReviewFile> = output
-        .lines()
-        .filter_map(|line| {
-            let mut parts = line.splitn(2, '\t');
-            Some(GitReviewFile {
-                status: parts.next()?.to_string(),
-                path: parts.next()?.to_string(),
-            })
-        })
-        .take(MAX_CHANGED_FILES)
-        .collect();
+    let mut files = parse_name_status_z(project_root, &root, &output)?;
+    files.truncate(MAX_CHANGED_FILES);
     if !staged && files.len() < MAX_CHANGED_FILES {
         let untracked = git::run_git(
             project_root,
-            &["ls-files", "--others", "--exclude-standard"],
+            &["ls-files", "-z", "--others", "--exclude-standard"],
         )?;
-        for path in untracked.lines().filter(|path| !path.is_empty()) {
+        for path in untracked.split_terminator('\0') {
             if files.len() >= MAX_CHANGED_FILES {
                 break;
             }
+            validate_listed_path(project_root, &root, path)?;
             files.push(GitReviewFile {
                 status: "?".to_string(),
                 path: path.to_string(),
@@ -155,8 +287,19 @@ pub fn list_files(project_root: &Path, staged: bool) -> Result<Vec<GitReviewFile
 }
 
 pub fn review_diff(project_root: &Path, file_path: &str, staged: bool) -> Result<GitReviewDiff> {
-    let output = diff_output(project_root, file_path, staged)?;
+    let bounded = diff_output(project_root, file_path, staged)?;
     let revision = file_revision(project_root, file_path, staged)?;
+    if bounded.truncated {
+        return Ok(GitReviewDiff {
+            path: file_path.to_string(),
+            staged,
+            revision,
+            hunks: Vec::new(),
+            line_count: MAX_DIFF_LINES + 1,
+            truncated: true,
+        });
+    }
+    let output = bounded.output;
     let line_count = output.lines().count();
     let mut prefix = Vec::new();
     let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
@@ -486,18 +629,206 @@ mod tests {
     }
 
     #[test]
-    fn oversized_single_hunk_is_not_exposed_for_partial_application() {
+    fn oversized_diff_allows_guarded_whole_file_stage_and_rejects_stale_revision() {
         let repo = init_repo();
-        let oversized = (0..=MAX_DIFF_LINES)
-            .map(|index| format!("changed line {index:04}"))
+        let oversized = (0..80_000)
+            .map(|index| format!("changed line {index:05} with bounded Git review evidence"))
             .collect::<Vec<_>>()
             .join("\n")
             + "\n";
-        fs::write(repo.path().join("analysis.R"), oversized).unwrap();
+        fs::write(repo.path().join("analysis.R"), &oversized).unwrap();
 
         let diff = review_diff(repo.path(), "analysis.R", false).unwrap();
         assert!(diff.line_count > MAX_DIFF_LINES);
         assert!(diff.truncated);
         assert!(diff.hunks.is_empty());
+
+        fs::write(
+            repo.path().join("analysis.R"),
+            format!("{oversized}stale transition\n"),
+        )
+        .unwrap();
+        let error = stage_file(repo.path(), "analysis.R", &diff.revision).unwrap_err();
+        assert!(error.to_string().contains("Stale working file"));
+        assert!(
+            git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+
+        let current = review_diff(repo.path(), "analysis.R", false).unwrap();
+        stage_file(repo.path(), "analysis.R", &current.revision).unwrap();
+        assert!(
+            !git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn linked_worktree_is_supported_and_primary_index_is_isolated() {
+        let primary = init_repo();
+        let container = tempfile::tempdir().unwrap();
+        let linked = container.path().join("linked");
+        git_ok(
+            primary.path(),
+            &["worktree", "add", "--detach", linked.to_str().unwrap()],
+        );
+        fs::write(linked.join("notes.txt"), "linked changed\n").unwrap();
+
+        let files = list_files(&linked, false).unwrap();
+        assert!(files.iter().any(|file| file.path == "notes.txt"));
+        let review = review_diff(&linked, "notes.txt", false).unwrap();
+        stage_file(&linked, "notes.txt", &review.revision).unwrap();
+        assert!(
+            !git::run_git(&linked, &["diff", "--cached", "--", "notes.txt"])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            git::run_git(primary.path(), &["diff", "--cached", "--", "notes.txt"])
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn repository_subdirectory_is_rejected_before_outer_mutation() {
+        let repo = init_repo();
+        let subdir = repo.path().join("analysis");
+        fs::create_dir(&subdir).unwrap();
+        fs::write(subdir.join("result.txt"), "local\n").unwrap();
+
+        let error = list_files(&subdir, false).unwrap_err();
+        assert!(error.to_string().contains("worktree root"));
+        assert!(
+            git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn nested_repository_is_rejected_while_normal_outer_path_recovers() {
+        let repo = init_repo();
+        let nested = repo.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        git_ok(&nested, &["init"]);
+        fs::write(nested.join("inner.txt"), "nested truth\n").unwrap();
+
+        let error = review_diff(repo.path(), "nested/inner.txt", false).unwrap_err();
+        assert!(error.to_string().contains("nested repository"));
+        assert_eq!(
+            fs::read_to_string(nested.join("inner.txt")).unwrap(),
+            "nested truth\n"
+        );
+        assert!(
+            git::run_git(&nested, &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+
+        fs::write(repo.path().join("notes.txt"), "outer changed\n").unwrap();
+        let outer = review_diff(repo.path(), "notes.txt", false).unwrap();
+        restore_file(repo.path(), "notes.txt", &outer.revision).unwrap();
+        assert_eq!(
+            fs::read_to_string(repo.path().join("notes.txt"))
+                .unwrap()
+                .trim_end(),
+            "baseline"
+        );
+    }
+
+    #[cfg(windows)]
+    fn create_file_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_file(target, link)
+    }
+
+    #[cfg(unix)]
+    fn create_file_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
+    #[cfg(windows)]
+    fn create_dir_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_dir(target, link)
+    }
+
+    #[cfg(unix)]
+    fn create_dir_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
+    #[test]
+    fn external_file_and_directory_links_are_rejected_without_target_change() {
+        let repo = init_repo();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("outside.txt");
+        let outside_dir = outside.path().join("outside-dir");
+        fs::write(&outside_file, "external file truth\n").unwrap();
+        fs::create_dir(&outside_dir).unwrap();
+        fs::write(outside_dir.join("inside.txt"), "external directory truth\n").unwrap();
+
+        if let Err(error) = create_file_link(&outside_file, &repo.path().join("linked-file.txt")) {
+            #[cfg(windows)]
+            if error.raw_os_error() == Some(1314) {
+                return;
+            }
+            panic!("Could not create file symlink fixture: {error}");
+        }
+        create_dir_link(&outside_dir, &repo.path().join("linked-dir")).unwrap();
+
+        for path in ["linked-file.txt", "linked-dir/inside.txt"] {
+            let error = review_diff(repo.path(), path, false).unwrap_err();
+            assert!(error.to_string().contains("symlink or reparse point"));
+        }
+        assert_eq!(
+            fs::read_to_string(&outside_file).unwrap(),
+            "external file truth\n"
+        );
+        assert_eq!(
+            fs::read_to_string(outside_dir.join("inside.txt")).unwrap(),
+            "external directory truth\n"
+        );
+        assert!(
+            git::run_git(repo.path(), &["diff", "--cached"])
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn case_only_alias_is_rejected_and_exact_deleted_path_is_supported() {
+        let repo = init_repo();
+        fs::write(repo.path().join("notes.txt"), "changed\n").unwrap();
+        assert!(review_diff(repo.path(), "NOTES.txt", false).is_err());
+        assert!(review_diff(repo.path(), "notes.txt", false).is_ok());
+
+        fs::remove_file(repo.path().join("notes.txt")).unwrap();
+        let deleted = review_diff(repo.path(), "notes.txt", false).unwrap();
+        stage_file(repo.path(), "notes.txt", &deleted.revision).unwrap();
+        assert!(
+            git::run_git(repo.path(), &["diff", "--cached", "--name-status"])
+                .unwrap()
+                .starts_with('D')
+        );
+    }
+
+    #[test]
+    fn changed_file_projection_is_exactly_bounded_to_two_hundred_entries() {
+        let repo = init_repo();
+        for index in 0..205 {
+            fs::write(
+                repo.path().join(format!("change-{index:03}.txt")),
+                format!("change {index}\n"),
+            )
+            .unwrap();
+        }
+        let files = list_files(repo.path(), false).unwrap();
+        assert_eq!(files.len(), MAX_CHANGED_FILES);
+        assert!(files.iter().all(|file| file.status == "?"));
+        let unique: std::collections::HashSet<&str> =
+            files.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(unique.len(), MAX_CHANGED_FILES);
     }
 }

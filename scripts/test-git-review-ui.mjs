@@ -9,6 +9,7 @@ const css = fs.readFileSync(path.join(root, "desktop", "dist", "styles.css"), "u
 const js = fs.readFileSync(path.join(root, "desktop", "dist", "app.js"), "utf8");
 const main = fs.readFileSync(path.join(root, "desktop", "src-tauri", "src", "main.rs"), "utf8");
 const review = fs.readFileSync(path.join(root, "desktop", "src-tauri", "src", "git_review.rs"), "utf8");
+const git = fs.readFileSync(path.join(root, "desktop", "src-tauri", "src", "git.rs"), "utf8");
 
 assert.match(html, /data-context-tab="git"[\s\S]*id="gitPanel"/);
 assert.match(html, /id="gitWorkingFiles"[\s\S]*id="gitStagedFiles"/);
@@ -68,7 +69,14 @@ assert.match(
 );
 assert.doesNotMatch(main, /hunk_content:\s*String/, "Exposed Tauri handlers must not accept raw patches");
 
-assert.match(review, /fn validate_relative_path\(file_path: &str\)/);
+assert.match(review, /fn validate_repository\(project_root: &Path\)/);
+assert.match(review, /fn validate_relative_path\(project_root: &Path, file_path: &str\)/);
+assert.match(review, /fn validate_relative_path_at_root\([\s\S]*root: &Path/);
+assert.match(review, /Git path contains a symlink or reparse point/);
+assert.match(review, /\["write-tree"\]/);
+assert.match(review, /MAX_DIFF_BYTES:\s*usize\s*=\s*1024 \* 1024/);
+assert.match(git, /pub fn run_git_bounded\(/);
+assert.match(git, /String::from_utf8\(stdout\)/);
 assert.match(review, /let diff = review_diff\(project_root, file_path, false\)\?/);
 assert.match(review, /let diff = review_diff\(project_root, file_path, true\)\?/);
 assert.match(review, /\["commit", "--no-verify", "-m", message\.trim\(\)\]/);

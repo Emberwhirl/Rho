@@ -8,23 +8,23 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **25 open items** and **24 completed
-items**. The 25 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **24 open items** and **25 completed
+items**. The 24 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
 | Follow-up lane | Open items | Next gate |
 |---|---:|---|
 | M1 and `0.3.x` acceptance | 8 | Record representative manual and installed-candidate evidence |
-| WS4 Git completion | 2 | Add adversarial fixtures, then handle repository replacement |
+| WS4 Git completion | 1 | Handle repository replacement |
 | WS3 table interaction | 2 | Specify broker-owned filter/search and richer value presentation |
 | Render job robustness | 2 | Specify cancellation/restart truth and Artifact linkage |
 | WS1 package/environment completion | 3 | Select lockfile comparison or package mutation as a bounded package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **25** | |
+| **Total** | **24** | |
 
-For near-term planning, this is **17 product implementation items** plus **8
+For near-term planning, this is **16 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -69,7 +69,14 @@ The authorized WS4-G1 package,
 completed implementation and automated/browser verification on 2026-08-02.
 It closes hunk stage/unstage, confirmed file restore, and complete current
 staging/commit UI/mock parity. Installed-app execution remains open. The
-checklist is therefore **25 open / 24 completed**.
+checklist was therefore **25 open / 24 completed**.
+
+The authorized WS4-G2 package,
+[`active-2026-08-03-ws4-adversarial-git-hardening-spec.md`](active-2026-08-03-ws4-adversarial-git-hardening-spec.md),
+completed implementation, adversarial fixtures, contract review, and the full
+affected automated matrix on 2026-08-03. It closes the fail-closed fixture
+item without claiming installed-app acceptance. Repository replacement is now
+the sole WS4 gap, and the checklist is **24 open / 25 completed**.
 
 ## Follow-up Order
 
@@ -77,8 +84,7 @@ checklist is therefore **25 open / 24 completed**.
    `test/acceptance-project/MANUAL-ACCEPTANCE.md` until the user runs them
    against an exact candidate; separately record the distribution decision and
    affected-suite rerun.
-2. Complete the two remaining WS4 hardening items, starting with fail-closed
-   adversarial fixtures before repository replacement handling.
+2. Complete the sole remaining WS4 item: repository replacement handling.
 3. Select one remaining package at a time from WS3, render robustness, WS1,
    WS2, or structural claim review.
 4. Reconcile this count whenever an owning focused contract becomes active or
@@ -86,7 +92,7 @@ checklist is therefore **25 open / 24 completed**.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 25-item checklist and require separate
+These six directions remain outside the 24-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

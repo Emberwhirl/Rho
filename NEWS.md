@@ -74,6 +74,9 @@ this file records behavior that is already available in a released build.
   stage and unstage, explicit restore confirmation, and reviewed commits.
 - Git mutations now reject stale revisions, reconstruct hunk patches from the
   broker-read diff, refresh after failure, and commit without project hooks.
+- Hardened Git review against outer/nested repository confusion, symlink and
+  case-alias paths, non-UTF-8 metadata, and oversized command/diff output while
+  retaining guarded whole-file staging for large changes.
 
 #### WS6: Async Quarto render job
 
