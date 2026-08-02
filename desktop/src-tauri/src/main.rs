@@ -1070,6 +1070,38 @@ async fn editor_goto_definition(name: String, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
+async fn editor_find_project_references(
+    name: String,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let payload = json!({
+        "arguments": {
+            "name": name,
+            "project_root": project_root,
+            "limit": limit.unwrap_or(100).clamp(1, 200)
+        },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.find_project_references",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
 async fn editor_discover_chunks(path: String, state: State<'_, AppState>) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
@@ -5860,6 +5892,7 @@ fn main() {
             editor_function_help,
             editor_lint_file,
             editor_goto_definition,
+            editor_find_project_references,
             editor_discover_chunks,
             retry_run,
             run_agent,

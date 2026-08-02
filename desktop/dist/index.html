@@ -348,6 +348,7 @@ plot(
           <button data-context-tab="evidence" type="button">Evidence <span id="evidenceCount" class="count">0</span></button>
           <button data-context-tab="git" type="button">Git <span id="gitChangeCount" class="count">0</span></button>
           <button data-context-tab="help" type="button">Help</button>
+          <button data-context-tab="references" type="button">References</button>
           <button data-context-tab="chunks" type="button" id="chunksTab" class="hidden">Chunks <span id="chunkCount" class="count">0</span></button>
         </div>
 
@@ -522,6 +523,19 @@ plot(
           </header>
           <div id="localHelpContent" class="local-help-content" aria-live="polite">
             <div class="empty-state compact-empty"><strong>No symbol selected</strong><p>Use Go to Definition on an installed function.</p></div>
+          </div>
+        </section>
+
+        <section id="projectReferencesPanel" class="context-content project-references-panel hidden" aria-labelledby="projectReferencesHeading">
+          <header class="project-references-header">
+            <div>
+              <span class="project-references-kicker">Current project</span>
+              <h2 id="projectReferencesHeading" tabindex="-1">References</h2>
+            </div>
+            <span id="projectReferencesState" class="revision-badge">empty</span>
+          </header>
+          <div id="projectReferencesContent" class="project-references-content" aria-live="polite">
+            <div class="empty-state compact-empty"><strong>No reference query yet</strong></div>
           </div>
         </section>
 

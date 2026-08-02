@@ -69,6 +69,7 @@ const state = {
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   packageManagementDialog: { busy: false, returnFocus: null },
   localHelp: { status: "empty", record: null, error: null },
+  projectReferences: { status: "empty", record: null, error: null },
   selectedObjectName: null,
   selectedObjectDetail: null,
   selectedDataObjectDetail: null,
@@ -150,12 +151,14 @@ const mockProjects = {
   "D:/Rho": {
     files: [
       { path: "analysis.R", name: "analysis.R", kind: "source", size_bytes: 120 },
+      { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
       { path: "report.Rmd", name: "report.Rmd", kind: "source", size_bytes: 92 },
       { path: "report.qmd", name: "report.qmd", kind: "source", size_bytes: 96 },
       { path: "scratch.R", name: "scratch.R", kind: "source", size_bytes: 420 },
     ],
     contents: {
       "analysis.R": "# Project analysis\nsummary(qc)\n",
+      "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
@@ -2389,6 +2392,29 @@ async function mockInvoke(command, args) {
   if (command === "editor_goto_definition") {
     return { file: "analysis.R", line: 42, column: 1 };
   }
+  if (command === "editor_find_project_references") {
+    const name = args.name || "flag_low_quality";
+    const previewState = previewParams.get("state") || "found";
+    if (previewState === "error") throw new Error("Workspace reference search is unavailable.");
+    if (previewState === "empty") {
+      return { name, references: [], matched_count: 0, files_scanned: 4, bytes_scanned: 1200, truncated: false, incomplete: false, notices: [] };
+    }
+    const longPath = `analysis/${"\u5206\u6790\u7ed3\u679c/".repeat(10)}editor-intelligence.R`;
+    const references = [
+      { file: previewState === "long" ? longPath : "examples/editor-intelligence.R", line: 4, column: 1, kind: "definition", preview: `${name} <- function(features, mito_percent, doublet_score) {` },
+      { file: "examples/editor-intelligence.R", line: 9, column: 25, kind: "reference", preview: `data$needs_review <- ${name}(` },
+    ];
+    return {
+      name,
+      references,
+      matched_count: previewState === "truncated" ? 243 : references.length,
+      files_scanned: 12,
+      bytes_scanned: 48210,
+      truncated: previewState === "truncated",
+      incomplete: previewState === "incomplete" || previewState === "long",
+      notices: previewState === "incomplete" || previewState === "long" ? ["parse_incomplete"] : [],
+    };
+  }
   if (command === "list_installed_packages") {
     return {
       packages: MOCK_BASE_PACKAGES.concat(MOCK_BIOC_PACKAGES),
@@ -3154,6 +3180,13 @@ async function initializeEditor() {
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => runSelectionOrCurrentLine());
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, () => runActiveFile());
     state.editor.editor.addCommand(KeyCode.F12, () => gotoDefinitionAtCursor());
+    state.editor.editor.addAction({
+      id: "rho.findProjectReferences",
+      label: "Find Project References",
+      keybindings: [KeyMod.Shift | KeyCode.F12],
+      contextMenuGroupId: "navigation",
+      run: () => findProjectReferencesAtCursor(),
+    });
     // Ctrl+Click on a word
     state.editor.editor.onMouseDown((e) => {
       if (e.event.ctrlKey && e.target.type === 6 /* CONTENT_WORD */) {
@@ -6348,6 +6381,120 @@ async function showLocalHelp(name, packageName = null) {
   return state.localHelp.record;
 }
 
+async function openProjectReference(reference) {
+  if (!reference?.file || !state.project.files.some((file) => file.path === reference.file)) {
+    toast(`Reference file is no longer available: ${reference?.file || "unknown"}`, true);
+    return;
+  }
+  await openDocument(reference.file);
+  if (state.activeDocument !== reference.file || !state.editor?.editor) return;
+  const line = Math.max(1, Number(reference.line) || 1);
+  const column = Math.max(1, Number(reference.column) || 1);
+  state.editor.editor.revealLineInCenter(line);
+  state.editor.editor.setPosition({ lineNumber: line, column });
+  state.editor.editor.focus();
+}
+
+function renderProjectReferences() {
+  const content = $("#projectReferencesContent");
+  const badge = $("#projectReferencesState");
+  content.replaceChildren();
+  badge.textContent = state.projectReferences.status;
+  if (state.projectReferences.status === "loading") {
+    content.append(emptyRow("Searching project references"));
+    return;
+  }
+  if (state.projectReferences.status === "error") {
+    const error = emptyRow("Project references unavailable");
+    const detail = document.createElement("p");
+    detail.textContent = state.projectReferences.error || "The Workspace reference query failed.";
+    error.append(detail);
+    content.append(error);
+    return;
+  }
+  const record = state.projectReferences.record;
+  if (!record) {
+    content.append(emptyRow("No symbol selected"));
+    return;
+  }
+  const summary = document.createElement("div");
+  summary.className = "project-references-summary";
+  const title = document.createElement("strong");
+  title.textContent = record.name;
+  const count = document.createElement("p");
+  count.textContent = `${record.matched_count || 0} matches across ${record.files_scanned || 0} files`;
+  summary.append(title, count);
+  content.append(summary);
+  if (!record.references?.length) {
+    content.append(emptyRow(`No project references found for ${record.name}`));
+  } else {
+    const list = document.createElement("div");
+    list.className = "project-reference-list";
+    for (const reference of record.references) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "project-reference-row";
+      const location = document.createElement("span");
+      location.className = "project-reference-location";
+      location.textContent = `${reference.file}:${reference.line}`;
+      const kind = document.createElement("span");
+      kind.className = `project-reference-kind ${reference.kind === "definition" ? "definition" : ""}`;
+      kind.textContent = reference.kind === "definition" ? "Definition" : "Reference";
+      const preview = document.createElement("code");
+      preview.textContent = reference.preview || "";
+      button.append(location, kind, preview);
+      button.addEventListener("click", () => openProjectReference(reference));
+      list.append(button);
+    }
+    content.append(list);
+  }
+  if (record.incomplete || record.truncated) {
+    const warning = document.createElement("p");
+    warning.className = "project-references-warning";
+    const messages = [];
+    if (record.incomplete) messages.push(`Results may be incomplete (${(record.notices || []).join(", ") || "bounded scan"}).`);
+    if (record.truncated) messages.push(`Showing ${record.references?.length || 0} of ${record.matched_count || 0} observed matches.`);
+    warning.textContent = messages.join(" ");
+    content.append(warning);
+  }
+}
+
+async function showProjectReferences(name) {
+  applyWorkbenchLayout("analyze");
+  await switchContextTab("references");
+  state.projectReferences = { status: "loading", record: null, error: null };
+  renderProjectReferences();
+  $("#projectReferencesHeading").focus();
+  try {
+    const record = await invoke("editor_find_project_references", { name, limit: 100 });
+    state.projectReferences = {
+      status: record?.incomplete
+        ? "incomplete"
+        : record?.truncated
+          ? "truncated"
+          : record?.references?.length ? "found" : "empty",
+      record,
+      error: null,
+    };
+  } catch (error) {
+    state.projectReferences = { status: "error", record: null, error: String(error) };
+  }
+  renderProjectReferences();
+  return state.projectReferences.record;
+}
+
+async function findProjectReferencesAtCursor() {
+  const editor = state.editor?.editor;
+  const position = editor?.getPosition();
+  const model = editor?.getModel();
+  const word = position && model?.getWordAtPosition(position);
+  if (!word?.word) {
+    toast("Place the cursor on an R symbol to find references.", true);
+    return;
+  }
+  await showProjectReferences(word.word);
+}
+
 async function runSelectionOrCurrentLine() {
   const request = selectionExecution() || currentLineExecution();
   if (!request) {
@@ -7074,7 +7221,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "project-references"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7204,6 +7351,11 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "project-references") {
+    await showProjectReferences(previewParams.get("symbol") || "flag_low_quality");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -7299,7 +7451,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "project-references"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -7422,6 +7574,27 @@ function recordPreviewLayoutEvidence() {
         truncated: state.localHelp.record.truncated,
         source_available: Boolean(state.localHelp.record.source_path),
       } : null,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
+      rects: { panel, content },
+    });
+    return;
+  }
+  if (scenario === "project-references") {
+    const panel = rectEvidence($("#projectReferencesPanel"));
+    const content = rectEvidence($("#projectReferencesContent"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      status: state.projectReferences.status,
+      record: state.projectReferences.record ? {
+        name: state.projectReferences.record.name,
+        matched_count: state.projectReferences.record.matched_count,
+        returned_count: state.projectReferences.record.references?.length || 0,
+        incomplete: state.projectReferences.record.incomplete,
+        truncated: state.projectReferences.record.truncated,
+      } : null,
+      heading_focused: document.activeElement === $("#projectReferencesHeading"),
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
       rects: { panel, content },
@@ -9007,11 +9180,13 @@ function switchDockTab(name) {
 
 function switchContextTab(name) {
   $$("[data-context-tab]").forEach((button) => button.classList.toggle("active", button.dataset.contextTab === name));
+  document.querySelector(`[data-context-tab="${name}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("#agentPanel").classList.toggle("hidden", name !== "agent");
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
   $("#evidencePanel").classList.toggle("hidden", name !== "evidence");
   $("#gitPanel").classList.toggle("hidden", name !== "git");
   $("#localHelpPanel").classList.toggle("hidden", name !== "help");
+  $("#projectReferencesPanel").classList.toggle("hidden", name !== "references");
   $("#chunksPanel").classList.toggle("hidden", name !== "chunks");
   if (name === "evidence") loadEvidenceEntries();
   if (name === "git") return loadGitStatus().then(() => loadGitReview());

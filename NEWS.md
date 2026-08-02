@@ -68,6 +68,8 @@ this file records behavior that is already available in a released build.
 - Go to Definition now opens a bounded Local Help panel after a project-source
   miss, showing the owning installed package, local Help record, library root,
   and only package-contained source references when available.
+- Find Project References now shows bounded, token-aware project matches in a
+  navigable References panel, with explicit partial and truncated result states.
 
 #### WS1: Packages and environments
 

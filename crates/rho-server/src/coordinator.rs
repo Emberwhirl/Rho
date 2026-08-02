@@ -3557,6 +3557,32 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
+        "workspace.find_project_references" => {
+            let name = arguments["name"]
+                .as_str()
+                .context("workspace.find_project_references requires string argument `name`")?;
+            let root = arguments["project_root"].as_str().context(
+                "workspace.find_project_references requires string argument `project_root`",
+            )?;
+            let limit = arguments
+                .get("limit")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(100)
+                .clamp(1, 200);
+            validate_local_help_lookup(name, None)?;
+            ensure!(
+                !root.is_empty() && root.len() <= 1000 && !root.chars().any(char::is_control),
+                "reference project root must contain 1 to 1000 UTF-8 bytes without control characters"
+            );
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_find_project_references({}, {}, limit = {limit}L)",
+                    r_string(name)?,
+                    r_string(root)?
+                ),
+            ))
+        }
         "workspace.discover_chunks" => {
             let path = arguments["path"]
                 .as_str()
@@ -4586,6 +4612,33 @@ mod tests {
             json!({"name": "bad\nname"}),
         ] {
             assert!(bridge_expression("workspace.function_help", &arguments).is_err());
+        }
+    }
+
+    #[test]
+    fn project_reference_lookup_is_bounded_escaped_and_read_only() {
+        let (class, expression) = bridge_expression(
+            "workspace.find_project_references",
+            &json!({
+                "name": "mean\"quoted",
+                "project_root": "C:/project with space",
+                "limit": 999
+            }),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(expression.contains("rho_find_project_references(\"mean\\\"quoted\""));
+        assert!(expression.contains("\"C:/project with space\", limit = 200L"));
+
+        for arguments in [
+            json!({"name": "", "project_root": "C:/project"}),
+            json!({"name": "x".repeat(129), "project_root": "C:/project"}),
+            json!({"name": "bad\nname", "project_root": "C:/project"}),
+            json!({"name": "mean", "project_root": ""}),
+            json!({"name": "mean", "project_root": "x".repeat(1001)}),
+            json!({"name": "mean", "project_root": "bad\nroot"}),
+        ] {
+            assert!(bridge_expression("workspace.find_project_references", &arguments).is_err());
         }
     }
 

@@ -2388,6 +2388,268 @@ rho_find_function_definition <- function(name, project_root) {
   NULL
 }
 
+#' Find bounded references to one symbol in project R source.
+#' @return A JSON-safe reference result with project-relative paths.
+rho_find_project_references <- function(name, project_root, limit = 100L) {
+  rho_find_project_references_impl(name, project_root, limit = limit)
+}
+
+rho_reference_lookup_name <- function(name) {
+  if (!is.character(name) || length(name) != 1L || is.na(name) || !nzchar(name) ||
+      nchar(enc2utf8(name), type = "bytes") > 128L || grepl("[[:cntrl:]]", name)) {
+    stop("Reference name must contain 1 to 128 UTF-8 bytes without control characters.", call. = FALSE)
+  }
+  enc2utf8(name)
+}
+
+rho_reference_project_root <- function(project_root) {
+  if (!is.character(project_root) || length(project_root) != 1L || is.na(project_root) ||
+      !nzchar(project_root) || nchar(enc2utf8(project_root), type = "bytes") > 1000L ||
+      grepl("[[:cntrl:]]", project_root)) {
+    stop("Reference project root must be one existing directory.", call. = FALSE)
+  }
+  root <- tryCatch(
+    normalizePath(project_root, winslash = "/", mustWork = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(root) || !dir.exists(root)) {
+    stop("Reference project root must be one existing directory.", call. = FALSE)
+  }
+  root
+}
+
+rho_reference_bounded_text <- function(value, max_bytes) {
+  value <- enc2utf8(as.character(value %||% ""))
+  if (nchar(value, type = "bytes") <= max_bytes) return(value)
+  while (nzchar(value) && nchar(value, type = "bytes") > max_bytes - 3L) {
+    value <- substr(value, 1L, nchar(value) - 1L)
+  }
+  paste0(value, "...")
+}
+
+rho_reference_is_inside <- function(path, root) {
+  path <- tolower(path)
+  root <- tolower(root)
+  identical(path, root) || startsWith(path, paste0(root, "/"))
+}
+
+rho_reference_project_files <- function(root, file_limit = 500L, entry_limit = 5000L,
+                                        depth_limit = 8L) {
+  ignored <- c(".git", ".rho", ".rproj.user", "renv", "node_modules", "target")
+  queue <- list(list(path = root, relative = "", depth = 0L))
+  files <- list()
+  notices <- character()
+  entries_seen <- 0L
+
+  while (length(queue)) {
+    current <- queue[[1L]]
+    queue <- queue[-1L]
+    entries <- tryCatch(
+      list.files(current$path, all.files = TRUE, full.names = TRUE, no.. = TRUE),
+      error = function(e) NULL
+    )
+    if (is.null(entries)) {
+      notices <- c(notices, "directory_read_error")
+      next
+    }
+    entries <- entries[order(tolower(basename(entries)), basename(entries))]
+    for (entry in entries) {
+      entries_seen <- entries_seen + 1L
+      if (entries_seen > entry_limit) {
+        notices <- c(notices, "entry_limit")
+        queue <- list()
+        break
+      }
+      name <- basename(entry)
+      relative <- if (nzchar(current$relative)) file.path(current$relative, name) else name
+      relative <- gsub("\\\\", "/", relative)
+      if (nzchar(Sys.readlink(entry))) {
+        notices <- c(notices, "path_containment")
+        next
+      }
+      info <- tryCatch(file.info(entry), error = function(e) NULL)
+      if (is.null(info) || is.na(info$isdir[[1L]])) {
+        notices <- c(notices, "file_metadata_error")
+        next
+      }
+      normalized <- tryCatch(
+        normalizePath(entry, winslash = "/", mustWork = TRUE),
+        error = function(e) NULL
+      )
+      if (is.null(normalized) || !rho_reference_is_inside(normalized, root)) {
+        notices <- c(notices, "path_containment")
+        next
+      }
+      if (isTRUE(info$isdir[[1L]])) {
+        if (tolower(name) %in% ignored) next
+        if (current$depth >= depth_limit) {
+          notices <- c(notices, "depth_limit")
+          next
+        }
+        queue[[length(queue) + 1L]] <- list(
+          path = normalized,
+          relative = relative,
+          depth = current$depth + 1L
+        )
+        next
+      }
+      if (!grepl("\\.(r|rmd|qmd)$", name, ignore.case = TRUE)) next
+      if (nchar(enc2utf8(relative), type = "bytes") > 1000L) {
+        notices <- c(notices, "path_limit")
+        next
+      }
+      if (length(files) >= file_limit) {
+        notices <- c(notices, "file_limit")
+        queue <- list()
+        break
+      }
+      files[[length(files) + 1L]] <- list(
+        path = normalized,
+        relative = relative,
+        size = as.numeric(info$size[[1L]])
+      )
+    }
+  }
+  if (length(files)) {
+    order_index <- order(
+      tolower(vapply(files, `[[`, character(1), "relative")),
+      vapply(files, `[[`, character(1), "relative")
+    )
+    files <- files[order_index]
+  }
+  list(files = files, notices = unique(notices))
+}
+
+rho_reference_r_regions <- function(lines, extension) {
+  if (extension == "r") return(list(list(lines = lines, offset = 0L)))
+  regions <- list()
+  in_r_chunk <- FALSE
+  start <- 0L
+  for (index in seq_along(lines)) {
+    line <- lines[[index]]
+    if (!in_r_chunk && grepl("^[[:space:]]*```[[:space:]]*\\{?[rR]([,}[:space:]].*)?$", line)) {
+      in_r_chunk <- TRUE
+      start <- index + 1L
+      next
+    }
+    if (in_r_chunk && grepl("^[[:space:]]*```[[:space:]]*$", line)) {
+      end <- index - 1L
+      regions[[length(regions) + 1L]] <- list(
+        lines = if (end >= start) lines[start:end] else character(),
+        offset = start - 1L
+      )
+      in_r_chunk <- FALSE
+    }
+  }
+  if (in_r_chunk) {
+    regions[[length(regions) + 1L]] <- list(lines = lines[start:length(lines)], offset = start - 1L)
+  }
+  regions
+}
+
+rho_reference_tokens <- function(lines, name, line_offset = 0L) {
+  if (!length(lines)) return(list(tokens = list(), parse_incomplete = FALSE))
+  parse_region <- function(region_lines, offset) {
+    source <- srcfilecopy("<rho-reference>", region_lines, isFile = FALSE)
+    expression <- parse(text = region_lines, srcfile = source, keep.source = TRUE)
+    data <- getParseData(expression)
+    data <- data[grepl("^SYMBOL", data$token), , drop = FALSE]
+    if (!nrow(data)) return(list())
+    matches <- data[vapply(data$text, function(value) {
+      identical(sub("^`(.*)`$", "\\1", value), name)
+    }, logical(1)), , drop = FALSE]
+    if (!nrow(matches)) return(list())
+    lapply(seq_len(nrow(matches)), function(index) {
+      row <- matches[index, , drop = FALSE]
+      line_index <- as.integer(row$line1[[1L]])
+      column <- as.integer(row$col1[[1L]])
+      source_line <- region_lines[[line_index]]
+      tail <- substring(source_line, min(nchar(source_line) + 1L, column + nchar(row$text[[1L]])))
+      list(
+        line = line_index + offset,
+        column = column,
+        preview = rho_reference_bounded_text(trimws(source_line), 240L),
+        kind = if (grepl("^[[:space:]]*(<-|<<-|=)[[:space:]]*function[[:space:]]*\\(", tail)) {
+          "definition"
+        } else {
+          "reference"
+        }
+      )
+    })
+  }
+
+  parsed <- tryCatch(parse_region(lines, line_offset), error = function(e) NULL)
+  if (!is.null(parsed)) return(list(tokens = parsed, parse_incomplete = FALSE))
+
+  tokens <- list()
+  for (index in seq_along(lines)) {
+    line_tokens <- tryCatch(parse_region(lines[[index]], line_offset + index - 1L), error = function(e) NULL)
+    if (!is.null(line_tokens) && length(line_tokens)) tokens <- c(tokens, line_tokens)
+  }
+  list(tokens = tokens, parse_incomplete = TRUE)
+}
+
+rho_find_project_references_impl <- function(name, project_root, limit = 100L,
+                                             file_limit = 500L,
+                                             per_file_bytes = 1024L * 1024L,
+                                             total_bytes = 8L * 1024L * 1024L) {
+  name <- rho_reference_lookup_name(name)
+  root <- rho_reference_project_root(project_root)
+  limit <- suppressWarnings(as.integer(limit))
+  if (length(limit) != 1L || is.na(limit)) limit <- 100L
+  limit <- max(1L, min(200L, limit))
+  discovery <- rho_reference_project_files(root, file_limit = file_limit)
+  notices <- discovery$notices
+  references <- list()
+  matched_count <- 0L
+  files_scanned <- 0L
+  bytes_scanned <- 0
+
+  for (file in discovery$files) {
+    if (is.na(file$size) || file$size > per_file_bytes) {
+      notices <- c(notices, "file_byte_limit")
+      next
+    }
+    if (bytes_scanned + file$size > total_bytes) {
+      notices <- c(notices, "total_byte_limit")
+      break
+    }
+    lines <- tryCatch(
+      suppressWarnings(readLines(file$path, warn = FALSE, encoding = "UTF-8")),
+      error = function(e) NULL
+    )
+    if (is.null(lines)) {
+      notices <- c(notices, "file_read_error")
+      next
+    }
+    files_scanned <- files_scanned + 1L
+    bytes_scanned <- bytes_scanned + file$size
+    extension <- tolower(tools::file_ext(file$relative))
+    regions <- rho_reference_r_regions(lines, extension)
+    for (region in regions) {
+      parsed <- rho_reference_tokens(region$lines, name, region$offset)
+      if (parsed$parse_incomplete) notices <- c(notices, "parse_incomplete")
+      for (token in parsed$tokens) {
+        matched_count <- matched_count + 1L
+        if (length(references) < limit) {
+          references[[length(references) + 1L]] <- c(list(file = file$relative), token)
+        }
+      }
+    }
+  }
+
+  list(
+    name = name,
+    references = references,
+    matched_count = matched_count,
+    files_scanned = files_scanned,
+    bytes_scanned = as.numeric(bytes_scanned),
+    truncated = matched_count > length(references),
+    incomplete = length(notices) > 0L,
+    notices = as.list(unique(notices))
+  )
+}
+
 #' Discover code chunks in .Rmd/.qmd documents for the Chunk panel.
 rho_discover_chunks <- function(path, limit = 200L) {
   extension <- tolower(tools::file_ext(path))

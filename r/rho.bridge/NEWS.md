@@ -1,3 +1,10 @@
+# rho.bridge 0.1.7
+
+- Added bounded, token-aware project reference discovery for R source and R
+  chunks in R Markdown and Quarto documents.
+- Added truthful partial-scan metadata for parse, containment, file-count, and
+  byte-budget limits while returning project-relative locations only.
+
 # rho.bridge 0.1.6
 
 - Added bounded local Help, installed-package, library, and package-contained
