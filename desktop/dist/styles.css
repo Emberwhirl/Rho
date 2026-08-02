@@ -1615,6 +1615,16 @@ body.resizing-vertical { cursor: col-resize; }
 .git-branch { font-size: 11px; color: var(--muted); margin-left: 8px; padding: 1px 6px; border-radius: 3px; background: var(--surface); }
 .git-dirty { color: var(--warning); font-size: 10px; margin-left: 4px; }
 
+/* Git conflict banner */
+.git-conflict-banner { display: flex; align-items: center; gap: 12px; padding: 3px 10px; background: #fff3cd; border-radius: 4px; }
+.conflict-badge { color: #856404; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.conflict-list { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.conflict-file { display: flex; align-items: center; gap: 6px; padding: 2px 6px; background: #fff; border-radius: 3px; }
+.conflict-file-name { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+.conflict-actions { display: flex; gap: 3px; }
+.conflict-actions button { padding: 1px 6px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; }
+.conflict-actions button:hover { background: var(--hover); }
+
 /* Evidence panel */
 .evidence-panel { display: flex; flex-direction: column; }
 .evidence-toolbar { display: grid; grid-template-columns: 1fr 30px; gap: 5px; padding: 9px; border-bottom: 1px solid var(--border); }

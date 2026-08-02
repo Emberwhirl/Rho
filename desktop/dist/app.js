@@ -2194,6 +2194,10 @@ async function mockInvoke(command, args) {
   }
   if (command === "git_stage") { return null; }
   if (command === "git_commit") { return "abc123def456"; }
+  if (command === "git_list_conflicts") {
+    return { files: ["src/analysis.R", "R/utils.R"], merge_head: "abc1234", has_conflicts: true };
+  }
+  if (command === "git_resolve_conflict") { return null; }
   if (command === "targets_status") {
     return {
       has_targets: true,
@@ -3414,6 +3418,58 @@ function renderGitStatus() {
     $("#gitDirty").textContent = `${s.modified}*`;
   } else {
     $("#gitDirty").classList.add("hidden");
+  }
+  // Check for merge conflicts
+  if (s.is_repo) loadGitConflicts();
+}
+
+async function loadGitConflicts() {
+  try {
+    const result = await invoke("git_list_conflicts");
+    if (result.has_conflicts) {
+      state.gitConflicts = result;
+      renderConflictBanner();
+    } else if (state.gitConflicts) {
+      state.gitConflicts = null;
+      $("#gitConflictBanner").classList.add("hidden");
+    }
+  } catch {
+    // git_list_conflicts may fail if not in merge state - that's fine
+  }
+}
+
+function renderConflictBanner() {
+  const c = state.gitConflicts;
+  if (!c || !c.files?.length) {
+    $("#gitConflictBanner").classList.add("hidden");
+    return;
+  }
+  const banner = $("#gitConflictBanner");
+  banner.classList.remove("hidden");
+  const list = $("#gitConflictList");
+  list.replaceChildren();
+  for (const file of c.files) {
+    const item = document.createElement("div");
+    item.className = "conflict-file";
+    const name = document.createElement("span");
+    name.className = "conflict-file-name";
+    name.textContent = file;
+    const actions = document.createElement("span");
+    actions.className = "conflict-actions";
+    ["ours", "theirs", "mark"].forEach((res) => {
+      const btn = document.createElement("button");
+      btn.textContent = res === "mark" ? "Mark Resolved" : `Accept ${res === "ours" ? "Ours" : "Theirs"}`;
+      btn.addEventListener("click", async () => {
+        try {
+          await invoke("git_resolve_conflict", { filePath: file, resolution: res });
+          toast(`Resolved ${file} (${res})`);
+          loadGitConflicts();
+        } catch (err) { toast(`Resolve failed: ${err}`, "error"); }
+      });
+      actions.append(btn);
+    });
+    item.append(name, actions);
+    list.append(item);
   }
 }
 

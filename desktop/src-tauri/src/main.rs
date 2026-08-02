@@ -2616,6 +2616,56 @@ async fn git_unstage_file(file_path: String, state: State<'_, AppState>) -> Resu
 }
 
 #[tauri::command]
+async fn git_list_conflicts(state: State<'_, AppState>) -> Result<Value, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = Path::new(&*root);
+    // Check MERGE_HEAD
+    let merge_head = git::run_git(project_root, &["rev-parse", "--short", "MERGE_HEAD"])
+        .map(|s| s.trim().to_string())
+        .ok();
+    let output = git::run_git(
+        project_root,
+        &["diff", "--name-only", "--diff-filter=U"],
+    )
+    .map_err(|e| e.to_string())?;
+    let files: Vec<String> = output
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    Ok(json!({
+        "files": files,
+        "merge_head": merge_head,
+        "has_conflicts": !files.is_empty(),
+    }))
+}
+
+#[tauri::command]
+async fn git_resolve_conflict(
+    file_path: String,
+    resolution: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let root = state.project_root.read().await.clone();
+    let root_path = Path::new(&*root);
+    match resolution.as_str() {
+        "ours" => {
+            git::run_git(root_path, &["checkout", "--ours", "--", &file_path]).map_err(|e| e.to_string())?;
+            git::run_git(root_path, &["add", "--", &file_path]).map_err(|e| e.to_string())?;
+        }
+        "theirs" => {
+            git::run_git(root_path, &["checkout", "--theirs", "--", &file_path]).map_err(|e| e.to_string())?;
+            git::run_git(root_path, &["add", "--", &file_path]).map_err(|e| e.to_string())?;
+        }
+        "mark" => {
+            git::run_git(root_path, &["add", "--", &file_path]).map_err(|e| e.to_string())?;
+        }
+        other => return Err(format!("unknown resolution: {other}")),
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn targets_status(state: State<'_, AppState>) -> Result<Value, String> {
     let root = state.project_root.read().await.clone();
     let project_root = root.to_string_lossy().replace('\\', "/");
@@ -5234,6 +5284,8 @@ fn main() {
             git_hunk_unstage,
             git_restore_file,
             git_unstage_file,
+            git_list_conflicts,
+            git_resolve_conflict,
             targets_status,
             resolve_doi,
             create_evidence_entry,
