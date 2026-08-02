@@ -2,6 +2,7 @@
 
 mod agent_llm;
 mod git;
+mod git_review;
 mod project;
 mod update;
 
@@ -2563,21 +2564,31 @@ async fn git_log(
 async fn git_diff(
     staged: Option<bool>,
     state: State<'_, AppState>,
-) -> Result<Vec<git::GitDiffFile>, String> {
+) -> Result<Vec<git_review::GitReviewFile>, String> {
     let root = state.project_root.read().await.clone();
-    git::git_diff(Path::new(&root), staged.unwrap_or(false)).map_err(|e| e.to_string())
+    git_review::list_files(Path::new(&root), staged.unwrap_or(false)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_stage(paths: Option<Vec<String>>, state: State<'_, AppState>) -> Result<(), String> {
+async fn git_stage(
+    file_path: String,
+    expected_revision: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
-    git::git_stage(Path::new(&root), &paths.unwrap_or_default()).map_err(|e| e.to_string())
+    git_review::stage_file(Path::new(&root), &file_path, &expected_revision)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_commit(message: String, state: State<'_, AppState>) -> Result<String, String> {
+async fn git_commit(
+    message: String,
+    expected_staged_revision: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
     let root = state.project_root.read().await.clone();
-    git::git_commit(Path::new(&root), &message).map_err(|e| e.to_string())
+    git_review::commit(Path::new(&root), &message, &expected_staged_revision)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2585,34 +2596,62 @@ async fn git_diff_unified(
     file_path: String,
     staged: Option<bool>,
     state: State<'_, AppState>,
-) -> Result<git::GitUnifiedDiff, String> {
+) -> Result<git_review::GitReviewDiff, String> {
     let root = state.project_root.read().await.clone();
-    git::git_diff_unified(Path::new(&root), &file_path, staged.unwrap_or(false))
+    git_review::review_diff(Path::new(&root), &file_path, staged.unwrap_or(false))
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_hunk_stage(hunk_content: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn git_hunk_stage(
+    file_path: String,
+    hunk_index: usize,
+    expected_revision: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
-    git::git_hunk_stage(Path::new(&root), &hunk_content).map_err(|e| e.to_string())
+    git_review::stage_hunk(Path::new(&root), &file_path, hunk_index, &expected_revision)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_hunk_unstage(hunk_content: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn git_hunk_unstage(
+    file_path: String,
+    hunk_index: usize,
+    expected_revision: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
-    git::git_hunk_unstage(Path::new(&root), &hunk_content).map_err(|e| e.to_string())
+    git_review::unstage_hunk(Path::new(&root), &file_path, hunk_index, &expected_revision)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_restore_file(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn git_restore_file(
+    file_path: String,
+    expected_revision: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
-    git::git_restore_file(Path::new(&root), &file_path).map_err(|e| e.to_string())
+    git_review::restore_file(Path::new(&root), &file_path, &expected_revision)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn git_unstage_file(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn git_unstage_file(
+    file_path: String,
+    expected_revision: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let root = state.project_root.read().await.clone();
-    git::git_unstage_file(Path::new(&root), &file_path).map_err(|e| e.to_string())
+    git_review::unstage_file(Path::new(&root), &file_path, &expected_revision)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn git_staged_revision(state: State<'_, AppState>) -> Result<String, String> {
+    let root = state.project_root.read().await.clone();
+    git_review::staged_revision(Path::new(&root)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2623,11 +2662,8 @@ async fn git_list_conflicts(state: State<'_, AppState>) -> Result<Value, String>
     let merge_head = git::run_git(project_root, &["rev-parse", "--short", "MERGE_HEAD"])
         .map(|s| s.trim().to_string())
         .ok();
-    let output = git::run_git(
-        project_root,
-        &["diff", "--name-only", "--diff-filter=U"],
-    )
-    .map_err(|e| e.to_string())?;
+    let output = git::run_git(project_root, &["diff", "--name-only", "--diff-filter=U"])
+        .map_err(|e| e.to_string())?;
     let files: Vec<String> = output
         .lines()
         .map(|l| l.trim().to_string())
@@ -2650,11 +2686,13 @@ async fn git_resolve_conflict(
     let root_path = Path::new(&*root);
     match resolution.as_str() {
         "ours" => {
-            git::run_git(root_path, &["checkout", "--ours", "--", &file_path]).map_err(|e| e.to_string())?;
+            git::run_git(root_path, &["checkout", "--ours", "--", &file_path])
+                .map_err(|e| e.to_string())?;
             git::run_git(root_path, &["add", "--", &file_path]).map_err(|e| e.to_string())?;
         }
         "theirs" => {
-            git::run_git(root_path, &["checkout", "--theirs", "--", &file_path]).map_err(|e| e.to_string())?;
+            git::run_git(root_path, &["checkout", "--theirs", "--", &file_path])
+                .map_err(|e| e.to_string())?;
             git::run_git(root_path, &["add", "--", &file_path]).map_err(|e| e.to_string())?;
         }
         "mark" => {
@@ -5284,6 +5322,7 @@ fn main() {
             git_hunk_unstage,
             git_restore_file,
             git_unstage_file,
+            git_staged_revision,
             git_list_conflicts,
             git_resolve_conflict,
             targets_status,

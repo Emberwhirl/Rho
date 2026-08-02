@@ -8,23 +8,23 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **28 open items** and **21 completed
-items**. The 28 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **25 open items** and **24 completed
+items**. The 25 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
 | Follow-up lane | Open items | Next gate |
 |---|---:|---|
 | M1 and `0.3.x` acceptance | 8 | Record representative manual and installed-candidate evidence |
-| WS4 Git completion | 5 | Activate a focused frontend mutation and hardening package |
+| WS4 Git completion | 2 | Add adversarial fixtures, then handle repository replacement |
 | WS3 table interaction | 2 | Specify broker-owned filter/search and richer value presentation |
 | Render job robustness | 2 | Specify cancellation/restart truth and Artifact linkage |
 | WS1 package/environment completion | 3 | Select lockfile comparison or package mutation as a bounded package |
 | WS2 editor enhancement | 7 | Select one editor/help/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **28** | |
+| **Total** | **25** | |
 
-For near-term planning, this is **20 product implementation items** plus **8
+For near-term planning, this is **17 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -50,19 +50,26 @@ The user authorized the following presentation-only package on 2026-08-02:
 
 The owning implementation contract is
 [`active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md`](active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md).
-This work does not remove or complete any of the 28 capability and acceptance
-items above. It is a bounded slice of the separately deferred interface
-modernization direction.
+This work did not remove or complete any capability and acceptance items at
+the time it was completed. It is a bounded slice of the separately deferred
+interface modernization direction.
 
 Implementation and automated/browser verification completed on 2026-08-02.
 Installed-app acceptance remains open, so the package and this tracking record
-remain active. The next-phase checklist remains **28 open / 21 completed**.
+remain active.
 
 A second authorized presentation slice,
 [`active-2026-08-02-agent-first-intuitive-modernization-spec.md`](active-2026-08-02-agent-first-intuitive-modernization-spec.md),
 also completed implementation and automated/browser verification on 2026-08-02.
 It improves navigation terminology and progressive disclosure without closing
-any of the 28 capability or acceptance items.
+any capability or acceptance items.
+
+The authorized WS4-G1 package,
+[`active-2026-08-02-ws4-reviewable-git-mutations-spec.md`](active-2026-08-02-ws4-reviewable-git-mutations-spec.md),
+completed implementation and automated/browser verification on 2026-08-02.
+It closes hunk stage/unstage, confirmed file restore, and complete current
+staging/commit UI/mock parity. Installed-app execution remains open. The
+checklist is therefore **25 open / 24 completed**.
 
 ## Follow-up Order
 
@@ -70,8 +77,8 @@ any of the 28 capability or acceptance items.
    `test/acceptance-project/MANUAL-ACCEPTANCE.md` until the user runs them
    against an exact candidate; separately record the distribution decision and
    affected-suite rerun.
-2. Complete the five WS4 frontend/hardening items as the next product mutation
-   package, starting with hunk stage/unstage and confirmed file restore.
+2. Complete the two remaining WS4 hardening items, starting with fail-closed
+   adversarial fixtures before repository replacement handling.
 3. Select one remaining package at a time from WS3, render robustness, WS1,
    WS2, or structural claim review.
 4. Reconcile this count whenever an owning focused contract becomes active or
@@ -79,7 +86,7 @@ any of the 28 capability or acceptance items.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 28-item checklist and require separate
+These six directions remain outside the 25-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

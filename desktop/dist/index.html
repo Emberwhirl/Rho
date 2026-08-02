@@ -83,7 +83,7 @@
           <span id="projectName">Rho Prototype</span>
           <span class="chevron"></span>
         </button>
-        <span id="gitBranch" class="git-branch"></span><span id="gitDirty" class="git-dirty hidden">●</span>
+        <button id="gitBranch" class="git-branch" type="button" title="Open Git review" aria-label="Open Git review"></button><span id="gitDirty" class="git-dirty hidden">●</span>
         <div id="gitConflictBanner" class="git-conflict-banner hidden">
           <span class="conflict-badge">⚠ Conflicts</span>
           <div id="gitConflictList" class="conflict-list"></div>
@@ -326,6 +326,7 @@ plot(
           <button class="active" data-context-tab="agent" type="button">Agent</button>
           <button data-context-tab="environment" type="button">Environment <span id="objectCount" class="count">0</span></button>
           <button data-context-tab="evidence" type="button">Evidence <span id="evidenceCount" class="count">0</span></button>
+          <button data-context-tab="git" type="button">Git <span id="gitChangeCount" class="count">0</span></button>
           <button data-context-tab="chunks" type="button" id="chunksTab" class="hidden">Chunks <span id="chunkCount" class="count">0</span></button>
         </div>
 
@@ -445,6 +446,49 @@ plot(
           <div id="auditCoverage" class="audit-coverage"></div>
           <div id="auditFindings" class="audit-findings"></div>
           <div id="auditTruncated" class="audit-truncated hidden"></div>
+        </section>
+
+        <section id="gitPanel" class="context-content git-panel hidden" aria-label="Git review">
+          <header class="git-review-header">
+            <div>
+              <strong>Review changes</strong>
+              <span id="gitReviewBranch" class="revision-badge">not a repository</span>
+            </div>
+            <button id="gitRefreshButton" type="button" title="Refresh Git review" aria-label="Refresh Git review">↻</button>
+          </header>
+          <div id="gitReviewState" class="git-review-state" role="status">Open a Git project to review changes.</div>
+          <div id="gitReviewBody" class="git-review-body hidden">
+            <div class="git-change-summary" aria-label="Git change summary">
+              <span><strong id="gitWorkingCount">0</strong> working</span>
+              <span><strong id="gitStagedCount">0</strong> staged</span>
+              <span><strong id="gitUntrackedCount">0</strong> untracked</span>
+            </div>
+            <div class="git-change-groups">
+              <section>
+                <h3>Working changes</h3>
+                <div id="gitWorkingFiles" class="git-file-list"></div>
+              </section>
+              <section>
+                <h3>Staged changes</h3>
+                <div id="gitStagedFiles" class="git-file-list"></div>
+              </section>
+            </div>
+            <section id="gitDiffReview" class="git-diff-review hidden">
+              <header class="git-diff-header">
+                <div><span id="gitDiffScope" class="git-scope-badge">Working</span><strong id="gitDiffPath"></strong></div>
+                <div id="gitFileActions" class="git-file-actions"></div>
+              </header>
+              <p id="gitDiffNotice" class="git-diff-notice hidden"></p>
+              <div id="gitHunkList" class="git-hunk-list"></div>
+            </section>
+            <form id="gitCommitForm" class="git-commit-form">
+              <label for="gitCommitMessage">Commit staged changes</label>
+              <div>
+                <input id="gitCommitMessage" type="text" placeholder="Describe the reviewed change" autocomplete="off" />
+                <button id="gitCommitButton" type="submit">Commit</button>
+              </div>
+            </form>
+          </div>
         </section>
 
         <section id="environmentPanel" class="context-content environment-panel hidden">
@@ -761,6 +805,6 @@ plot(
       </section>
     </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.2.0-dev.12"></script>
+    <script src="app.js?v=0.4.0-dev.0&rev=ws4-g1.2"></script>
   </body>
 </html>

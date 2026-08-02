@@ -67,6 +67,10 @@ this file records behavior that is already available in a released build.
 - Added Git status, log, diff, staging, and commit via the system git CLI.
 - File counts (untracked/modified/staged), ahead/behind tracking, and
   porcelain status parsing with full M/A/D/R/C/U/T coverage.
+- Added a Git review tab for working and staged files, guarded file/hunk
+  stage and unstage, explicit restore confirmation, and reviewed commits.
+- Git mutations now reject stale revisions, reconstruct hunk patches from the
+  broker-read diff, refresh after failure, and commit without project hooks.
 
 #### WS6: Async Quarto render job
 

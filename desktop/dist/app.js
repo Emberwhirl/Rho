@@ -49,6 +49,17 @@ const state = {
   selectedArtifactId: null,
   selectedArtifactDetail: null,
   gitStatus: null,
+  gitReview: {
+    loading: false,
+    error: null,
+    working: [],
+    staged: [],
+    stagedRevision: "",
+    selectedPath: null,
+    selectedStaged: false,
+    diff: null,
+    projectRoot: "",
+  },
   environment: null,
   installedPackages: null,
   environmentOperations: [],
@@ -314,7 +325,40 @@ const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 const mockEvidenceEntries = [];
 const mockRenderPollCount = {};
+let mockGitRevisionSequence = 1;
+const mockGitReview = { working: [], staged: [] };
+let mockGitFailureCommand = null;
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+
+function seedMockGitReview() {
+  mockGitRevisionSequence += 1;
+  mockGitReview.working = [
+    {
+      path: "examples/git-review-demo.txt",
+      status: "M",
+      hunks: [
+        {
+          header: "@@ -3,3 +3,3 @@ Section A: QC threshold note",
+          content: "diff --git a/examples/git-review-demo.txt b/examples/git-review-demo.txt\n--- a/examples/git-review-demo.txt\n+++ b/examples/git-review-demo.txt\n@@ -3,3 +3,3 @@ Section A: QC threshold note\n-The mitochondrial review threshold is 20 percent.\n+The mitochondrial review threshold is 18 percent.\n This line is intentionally plain so it can be edited.\n",
+        },
+        {
+          header: "@@ -16,3 +16,3 @@ Section B: report note",
+          content: "diff --git a/examples/git-review-demo.txt b/examples/git-review-demo.txt\n--- a/examples/git-review-demo.txt\n+++ b/examples/git-review-demo.txt\n@@ -16,3 +16,3 @@ Section B: report note\n-The report is generated after the QC summary is reviewed.\n+The report is generated after QC approval is recorded.\n Edit this line separately to create a second diff hunk.\n",
+        },
+      ],
+    },
+    { path: "notes/manual-review.md", status: "?", hunks: [] },
+  ];
+  mockGitReview.staged = [];
+}
+
+function mockGitFileRevision(file, staged) {
+  return `${staged ? "staged" : "working"}-${mockGitRevisionSequence}-${file?.path || "missing"}-${file?.hunks?.length || 0}`;
+}
+
+function mockGitStagedRevision() {
+  return `index-${mockGitRevisionSequence}-${mockGitReview.staged.map((file) => `${file.path}:${file.hunks.length}`).join("|")}`;
+}
 const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
 
 const MOCK_BASE_PACKAGES = [
@@ -1216,10 +1260,13 @@ async function invoke(command, args = {}) {
 }
 
 async function mockInvoke(command, args) {
+  if (mockGitFailureCommand === command) {
+    throw new Error(`Injected ${command} preview failure`);
+  }
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.2.0-dev.12",
+      version: "0.4.0-dev.0",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: "windows-x86_64",
@@ -1237,8 +1284,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.2.0-dev.12",
-      available_version: "0.2.0-dev.12",
+      installed_version: "0.4.0-dev.0",
+      available_version: "0.4.0-dev.0",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2171,15 +2218,17 @@ async function mockInvoke(command, args) {
   }
   if (command === "restart_workspace") return mockInvoke("workspace_start", {});
   if (command === "git_status") {
+    const working = mockGitReview.working;
+    const staged = mockGitReview.staged;
     return {
       is_repo: true,
       branch: "main",
-      dirty: false,
+      dirty: working.length > 0 || staged.length > 0,
       ahead: 0,
       behind: 0,
-      untracked: 0,
-      modified: 0,
-      staged: 0,
+      untracked: working.filter((file) => file.status === "?").length,
+      modified: working.filter((file) => file.status !== "?").length,
+      staged: staged.length,
     };
   }
   if (command === "git_log") {
@@ -2189,10 +2238,68 @@ async function mockInvoke(command, args) {
     ];
   }
   if (command === "git_diff") {
-    return [];
+    return (args.staged ? mockGitReview.staged : mockGitReview.working).map(({ path, status }) => ({ path, status }));
   }
-  if (command === "git_stage") { return null; }
-  if (command === "git_commit") { return "abc123def456"; }
+  if (command === "git_diff_unified") {
+    const staged = Boolean(args.staged);
+    const file = (staged ? mockGitReview.staged : mockGitReview.working).find((entry) => entry.path === args.file_path);
+    if (!file) throw new Error("Selected Git file is unavailable");
+    return {
+      path: file.path,
+      staged,
+      revision: mockGitFileRevision(file, staged),
+      line_count: file.hunks.reduce((count, hunk) => count + hunk.content.split("\n").length, 0),
+      truncated: false,
+      hunks: file.hunks.map((hunk, index) => ({
+        ...hunk,
+        index,
+        old_start: index === 0 ? 3 : 16,
+        old_count: 3,
+        new_start: index === 0 ? 3 : 16,
+        new_count: 3,
+      })),
+    };
+  }
+  if (command === "git_staged_revision") return mockGitStagedRevision();
+  if (["git_stage", "git_unstage_file", "git_restore_file", "git_hunk_stage", "git_hunk_unstage"].includes(command)) {
+    const fromStaged = command === "git_unstage_file" || command === "git_hunk_unstage";
+    const source = fromStaged ? mockGitReview.staged : mockGitReview.working;
+    const target = fromStaged ? mockGitReview.working : mockGitReview.staged;
+    const file = source.find((entry) => entry.path === args.file_path);
+    if (!file) throw new Error("Stale Git review; refresh before changing files");
+    const expected = mockGitFileRevision(file, fromStaged);
+    if (args.expected_revision !== expected) throw new Error("Stale Git review; refresh before changing files");
+    if (command === "git_restore_file") {
+      if (file.status === "?") throw new Error("Untracked files cannot be restored in Git review");
+      source.splice(source.indexOf(file), 1);
+    } else if (command === "git_hunk_stage" || command === "git_hunk_unstage") {
+      const hunk = file.hunks[args.hunk_index];
+      if (!hunk) throw new Error("Selected Git hunk is unavailable");
+      file.hunks.splice(args.hunk_index, 1);
+      let targetFile = target.find((entry) => entry.path === file.path);
+      if (!targetFile) {
+        targetFile = { path: file.path, status: file.status === "?" ? "A" : file.status, hunks: [] };
+        target.push(targetFile);
+      }
+      targetFile.hunks.push(hunk);
+      if (file.hunks.length === 0) source.splice(source.indexOf(file), 1);
+    } else {
+      source.splice(source.indexOf(file), 1);
+      const existing = target.find((entry) => entry.path === file.path);
+      if (existing) existing.hunks.push(...file.hunks);
+      else target.push({ ...file, status: fromStaged && file.status === "A" ? "?" : file.status, hunks: [...file.hunks] });
+    }
+    mockGitRevisionSequence += 1;
+    return null;
+  }
+  if (command === "git_commit") {
+    if (!String(args.message || "").trim()) throw new Error("Commit message cannot be empty");
+    if (args.expected_staged_revision !== mockGitStagedRevision()) throw new Error("Stale staged changes; refresh before committing");
+    if (mockGitReview.staged.length === 0) throw new Error("No staged changes to commit");
+    mockGitReview.staged = [];
+    mockGitRevisionSequence += 1;
+    return "abc123def456";
+  }
   if (command === "git_list_conflicts") {
     return { files: ["src/analysis.R", "R/utils.R"], merge_head: "abc1234", has_conflicts: true };
   }
@@ -3431,17 +3538,280 @@ function renderGitStatus() {
   if (!s || !s.is_repo) {
     $("#gitBranch").textContent = "";
     $("#gitDirty").classList.add("hidden");
+    $("#gitChangeCount").textContent = "0";
     return;
   }
   $("#gitBranch").textContent = s.branch || "HEAD";
+  const changeCount = Number(s.modified || 0) + Number(s.untracked || 0) + Number(s.staged || 0);
+  $("#gitChangeCount").textContent = String(changeCount);
   if (s.dirty) {
     $("#gitDirty").classList.remove("hidden");
-    $("#gitDirty").textContent = `${s.modified}*`;
+    $("#gitDirty").textContent = `${changeCount}*`;
   } else {
     $("#gitDirty").classList.add("hidden");
   }
   // Check for merge conflicts
   if (s.is_repo) loadGitConflicts();
+}
+
+function resetGitReview(projectRoot = state.project.root || "") {
+  state.gitReview = {
+    loading: false,
+    error: null,
+    working: [],
+    staged: [],
+    stagedRevision: "",
+    selectedPath: null,
+    selectedStaged: false,
+    diff: null,
+    projectRoot,
+  };
+}
+
+function gitReviewSelectionExists(path, staged) {
+  const files = staged ? state.gitReview.staged : state.gitReview.working;
+  return files.some((file) => file.path === path);
+}
+
+function renderGitFileList(target, files, staged) {
+  target.replaceChildren();
+  if (!files.length) {
+    const empty = document.createElement("div");
+    empty.className = "git-file-empty";
+    empty.textContent = staged ? "Nothing staged" : "No working changes";
+    target.append(empty);
+    return;
+  }
+  for (const file of files) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "git-file-button";
+    button.classList.toggle("active", state.gitReview.selectedPath === file.path && state.gitReview.selectedStaged === staged);
+    button.title = `${staged ? "Staged" : "Working"}: ${file.path}`;
+    const status = document.createElement("span");
+    status.className = "git-file-status";
+    status.textContent = file.status || "M";
+    const path = document.createElement("span");
+    path.className = "git-file-path";
+    path.textContent = file.path;
+    button.append(status, path);
+    button.addEventListener("click", () => selectGitReviewFile(file.path, staged));
+    target.append(button);
+  }
+}
+
+function gitDiffLineClass(line) {
+  if (line.startsWith("+") && !line.startsWith("+++")) return "add";
+  if (line.startsWith("-") && !line.startsWith("---")) return "remove";
+  if (line.startsWith("@@") || line.startsWith("diff --git") || line.startsWith("---") || line.startsWith("+++")) return "meta";
+  return "";
+}
+
+function renderGitDiff() {
+  const diff = state.gitReview.diff;
+  const review = $("#gitDiffReview");
+  if (!diff) {
+    review.classList.add("hidden");
+    return;
+  }
+  review.classList.remove("hidden");
+  $("#gitDiffScope").textContent = diff.staged ? "Staged" : "Working";
+  $("#gitDiffPath").textContent = diff.path;
+  const notice = $("#gitDiffNotice");
+  notice.classList.toggle("hidden", !diff.truncated);
+  notice.textContent = diff.truncated
+    ? `Diff is bounded to 128 hunks / 4,000 lines. Refresh after each selected action.`
+    : "";
+
+  const actions = $("#gitFileActions");
+  actions.replaceChildren();
+  const file = (diff.staged ? state.gitReview.staged : state.gitReview.working).find((entry) => entry.path === diff.path);
+  const primary = document.createElement("button");
+  primary.type = "button";
+  primary.className = "primary";
+  primary.textContent = diff.staged ? "Unstage file" : "Stage file";
+  primary.addEventListener("click", () => runGitMutation(
+    diff.staged ? "git_unstage_file" : "git_stage",
+    { file_path: diff.path, expected_revision: diff.revision },
+    `${diff.staged ? "Unstaged" : "Staged"} ${diff.path}`,
+  ));
+  actions.append(primary);
+  if (!diff.staged && file?.status !== "?") {
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "danger";
+    restore.textContent = "Restore";
+    restore.addEventListener("click", () => confirmGitRestore(diff));
+    actions.append(restore);
+  }
+
+  const list = $("#gitHunkList");
+  list.replaceChildren();
+  if (!diff.hunks?.length) {
+    const empty = document.createElement("div");
+    empty.className = "git-hunk-empty";
+    empty.textContent = file?.status === "?"
+      ? "Untracked file. Review it in the editor, then use Stage file."
+      : "No text hunks are available. Use the guarded file-level action.";
+    list.append(empty);
+    return;
+  }
+  for (const hunk of diff.hunks) {
+    const card = document.createElement("article");
+    card.className = "git-hunk";
+    const header = document.createElement("header");
+    header.className = "git-hunk-header";
+    const label = document.createElement("span");
+    label.textContent = hunk.header;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "git-hunk-action";
+    action.textContent = diff.staged ? "Unstage hunk" : "Stage hunk";
+    action.addEventListener("click", () => runGitMutation(
+      diff.staged ? "git_hunk_unstage" : "git_hunk_stage",
+      { file_path: diff.path, hunk_index: hunk.index, expected_revision: diff.revision },
+      `${diff.staged ? "Unstaged" : "Staged"} selected hunk in ${diff.path}`,
+    ));
+    header.append(label, action);
+    const code = document.createElement("pre");
+    code.className = "git-hunk-code";
+    for (const line of String(hunk.content || "").split("\n")) {
+      if (!line) continue;
+      const row = document.createElement("span");
+      row.className = `git-diff-line ${gitDiffLineClass(line)}`.trim();
+      row.textContent = line;
+      code.append(row);
+    }
+    card.append(header, code);
+    list.append(card);
+  }
+}
+
+function renderGitReview() {
+  const status = state.gitStatus;
+  const reviewState = $("#gitReviewState");
+  const body = $("#gitReviewBody");
+  $("#gitReviewBranch").textContent = status?.is_repo ? (status.branch || "HEAD") : "not a repository";
+  reviewState.className = "git-review-state";
+  if (!status?.is_repo) {
+    reviewState.textContent = "This project is not a Git repository.";
+    body.classList.add("hidden");
+    return;
+  }
+  if (state.gitReview.error) {
+    reviewState.classList.add("error");
+    reviewState.textContent = state.gitReview.error;
+  } else if (state.gitReview.loading) {
+    reviewState.textContent = "Refreshing repository state...";
+  } else if (!state.gitReview.working.length && !state.gitReview.staged.length) {
+    reviewState.classList.add("clean");
+    reviewState.textContent = "Working tree clean.";
+  } else {
+    reviewState.classList.add("hidden");
+  }
+  body.classList.remove("hidden");
+  $("#gitWorkingCount").textContent = String(state.gitReview.working.length);
+  $("#gitStagedCount").textContent = String(state.gitReview.staged.length);
+  $("#gitUntrackedCount").textContent = String(state.gitReview.working.filter((file) => file.status === "?").length);
+  renderGitFileList($("#gitWorkingFiles"), state.gitReview.working, false);
+  renderGitFileList($("#gitStagedFiles"), state.gitReview.staged, true);
+  renderGitDiff();
+  $("#gitCommitMessage").disabled = state.gitReview.loading || !state.gitReview.staged.length;
+  $("#gitCommitButton").disabled = state.gitReview.loading || !state.gitReview.staged.length;
+}
+
+async function selectGitReviewFile(path, staged) {
+  const projectRoot = state.project.root;
+  state.gitReview.selectedPath = path;
+  state.gitReview.selectedStaged = staged;
+  state.gitReview.diff = null;
+  renderGitReview();
+  try {
+    const diff = await invoke("git_diff_unified", { file_path: path, staged });
+    if (projectRoot !== state.project.root || !gitReviewSelectionExists(path, staged)) return;
+    state.gitReview.diff = diff;
+    state.gitReview.error = null;
+  } catch (error) {
+    if (projectRoot !== state.project.root) return;
+    state.gitReview.error = `Unable to review ${path}: ${error}`;
+  }
+  renderGitReview();
+}
+
+async function loadGitReview({ preserveSelection = true } = {}) {
+  const projectRoot = state.project.root;
+  if (!state.gitStatus?.is_repo || state.projectStatus !== "ready") {
+    resetGitReview(projectRoot);
+    renderGitReview();
+    return;
+  }
+  const previousPath = preserveSelection ? state.gitReview.selectedPath : null;
+  const previousStaged = preserveSelection ? state.gitReview.selectedStaged : false;
+  state.gitReview.loading = true;
+  state.gitReview.error = null;
+  state.gitReview.projectRoot = projectRoot;
+  renderGitReview();
+  try {
+    const [working, staged, stagedRevision] = await Promise.all([
+      invoke("git_diff", { staged: false }),
+      invoke("git_diff", { staged: true }),
+      invoke("git_staged_revision"),
+    ]);
+    if (projectRoot !== state.project.root) return;
+    state.gitReview.working = working || [];
+    state.gitReview.staged = staged || [];
+    state.gitReview.stagedRevision = stagedRevision || "";
+    state.gitReview.loading = false;
+    const keepSelection = previousPath && gitReviewSelectionExists(previousPath, previousStaged);
+    const next = keepSelection
+      ? { path: previousPath, staged: previousStaged }
+      : state.gitReview.working[0]
+        ? { path: state.gitReview.working[0].path, staged: false }
+        : state.gitReview.staged[0]
+          ? { path: state.gitReview.staged[0].path, staged: true }
+          : null;
+    state.gitReview.selectedPath = next?.path || null;
+    state.gitReview.selectedStaged = Boolean(next?.staged);
+    state.gitReview.diff = null;
+    renderGitReview();
+    if (next) await selectGitReviewFile(next.path, next.staged);
+  } catch (error) {
+    if (projectRoot !== state.project.root) return;
+    state.gitReview.loading = false;
+    state.gitReview.error = `Git review unavailable: ${error}`;
+    renderGitReview();
+  }
+}
+
+async function runGitMutation(command, args, successMessage) {
+  if (state.gitReview.loading) return;
+  state.gitReview.loading = true;
+  renderGitReview();
+  try {
+    await invoke(command, args);
+    toast(successMessage);
+  } catch (error) {
+    toast(String(error), true);
+  } finally {
+    await loadGitStatus();
+    await loadGitReview();
+  }
+}
+
+async function confirmGitRestore(diff) {
+  const confirmed = await confirmAction({
+    title: "Restore working changes?",
+    message: `Discard the uncommitted working changes in ${diff.path}? Staged changes are preserved. This cannot be undone in Rho.`,
+    confirmLabel: "Restore file",
+    cancelLabel: "Keep changes",
+    destructive: true,
+  });
+  if (!confirmed) return;
+  await runGitMutation(
+    "git_restore_file",
+    { file_path: diff.path, expected_revision: diff.revision },
+    `Restored ${diff.path}`,
+  );
 }
 
 async function loadGitConflicts() {
@@ -6162,7 +6532,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     state.posture = "agent";
@@ -6179,6 +6549,22 @@ async function maybeApplyPreviewScenario() {
       ? ""
       : "Compare the flagged samples with the current thresholds";
     setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
+  if (scenario === "git-review") {
+    seedMockGitReview();
+    await loadGitStatus();
+    applyWorkbenchLayout("analyze");
+    await switchContextTab("git");
+    const gitPreviewState = previewParams.get("state");
+    if (gitPreviewState === "stale") {
+      mockGitRevisionSequence += 1;
+    } else if (gitPreviewState === "failure") {
+      mockGitFailureCommand = "git_diff";
+      await loadGitReview({ preserveSelection: false });
+      mockGitFailureCommand = null;
+    }
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
   applyWorkbenchLayout("analyze");
@@ -6273,7 +6659,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -6309,6 +6695,34 @@ function recordPreviewLayoutEvidence() {
       rects: { transcript, prompt, tabs },
     };
     target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "git-review") {
+    const panel = rectEvidence($("#gitPanel"));
+    const diff = rectEvidence($("#gitDiffReview"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      counts: {
+        working: state.gitReview.working.length,
+        staged: state.gitReview.staged.length,
+        hunks: state.gitReview.diff?.hunks?.length || 0,
+      },
+      selected: {
+        path: state.gitReview.selectedPath,
+        staged: state.gitReview.selectedStaged,
+        revision: state.gitReview.diff?.revision || null,
+      },
+      visible: {
+        panel: !$("#gitPanel").classList.contains("hidden"),
+        restore: Boolean($("#gitFileActions .danger")),
+        hunk_action: Boolean($("#gitHunkList .git-hunk-action")),
+      },
+      status: { loading: state.gitReview.loading, error: state.gitReview.error },
+      overlaps: {
+        diff_outside_panel: Boolean(panel && diff && diff.width > 0 && (diff.left < panel.left || diff.right > panel.right)),
+      },
+    });
     return;
   }
   if (scenario === "agent-first-direct") {
@@ -7681,8 +8095,11 @@ function switchContextTab(name) {
   $("#agentPanel").classList.toggle("hidden", name !== "agent");
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
   $("#evidencePanel").classList.toggle("hidden", name !== "evidence");
+  $("#gitPanel").classList.toggle("hidden", name !== "git");
   $("#chunksPanel").classList.toggle("hidden", name !== "chunks");
   if (name === "evidence") loadEvidenceEntries();
+  if (name === "git") return loadGitStatus().then(() => loadGitReview());
+  return Promise.resolve();
 }
 
 function applyWorkbenchLayout(layout) {
@@ -8451,6 +8868,10 @@ async function listenForProjectChanges() {
     for (const path of externalPaths) {
       await handleExternalDocumentChange(path);
     }
+    if (changedPaths.length) {
+      await loadGitStatus();
+      if (!$("#gitPanel").classList.contains("hidden")) await loadGitReview();
+    }
   });
 }
 
@@ -8529,6 +8950,8 @@ async function hydrateProject(response) {
   state.editor.models.forEach((model) => model.dispose());
   state.editor.models.clear();
   state.project = response.project || { root: "", files: [], truncated: false };
+  state.gitStatus = null;
+  resetGitReview(state.project.root);
   state.fileEditDecisions = loadFileEditDecisions(state.project.root);
   const session = loadEmergencySession(state.project.root) || response.session || {};
   for (const entry of session.closed_documents || []) {
@@ -8820,8 +9243,33 @@ $("#editor").addEventListener("keydown", (event) => {
 
 $$("[data-dock-tab]").forEach((button) => button.addEventListener("click", () => switchDockTab(button.dataset.dockTab)));
 $$("[data-context-tab]").forEach((button) => button.addEventListener("click", () => {
-  applyWorkbenchLayout(button.dataset.contextTab === "agent" ? "agent" : "analyze");
+  const name = button.dataset.contextTab;
+  applyWorkbenchLayout(name === "agent" ? "agent" : "analyze");
+  if (name !== "agent") switchContextTab(name);
 }));
+$("#gitBranch").addEventListener("click", () => {
+  applyWorkbenchLayout("analyze");
+  switchContextTab("git");
+});
+$("#gitRefreshButton").addEventListener("click", async () => {
+  await loadGitStatus();
+  await loadGitReview();
+});
+$("#gitCommitForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = $("#gitCommitMessage").value.trim();
+  if (!message) {
+    toast("Enter a commit message for the staged changes.", true);
+    $("#gitCommitMessage").focus();
+    return;
+  }
+  await runGitMutation(
+    "git_commit",
+    { message, expected_staged_revision: state.gitReview.stagedRevision },
+    "Committed reviewed changes",
+  );
+  $("#gitCommitMessage").value = "";
+});
 $$("[data-side-tab]").forEach((button) => button.addEventListener("click", () => {
   $$("[data-side-tab]").forEach((value) => value.classList.toggle("active", value === button));
   $("#filesPanel").classList.toggle("hidden", button.dataset.sideTab !== "files");
