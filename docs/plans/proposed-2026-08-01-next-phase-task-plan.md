@@ -138,7 +138,7 @@ Implemented focused packages and remaining proposal items after selecting Air:
   version, and recorded execution of a selected example
 - [x] Deterministic diagnostic grouping and reviewable quick fixes
 - [x] Agent answers linked to the resolved local Help record
-- [ ] Refactoring: rename symbol and extract function as reviewable
+- [x] Refactoring: rename symbol and extract function as reviewable
   document-version-bound workspace edits
 - [ ] Document-version-bound formatting proposals (never auto-apply)
 

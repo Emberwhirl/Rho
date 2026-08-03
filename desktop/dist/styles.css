@@ -946,6 +946,21 @@ body.resizing-vertical { cursor: col-resize; }
 .lint-fix-diff pre { min-height: 80px; max-height: 220px; margin: 0; padding: 9px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: #fbfcfc; font: 11px/1.5 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .lint-fix-diff > div:last-child pre { border-color: #9bbfbb; background: #edf7f5; }
 @media (max-width: 640px) { .lint-fix-diff { grid-template-columns: minmax(0, 1fr); } }
+.product-dialog-surface.refactor-review-surface { width: min(880px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px)); }
+.refactor-review-files { display: grid; gap: 10px; min-height: 0; max-height: 520px; overflow: auto; }
+.refactor-review-file { min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.refactor-review-file header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 7px 9px; border-bottom: 1px solid var(--border); background: #f7f9f9; }
+.refactor-review-file header strong { min-width: 0; overflow-wrap: anywhere; }
+.refactor-review-file header span { flex: 0 0 auto; color: var(--muted); font: 10px "Cascadia Code", Consolas, monospace; }
+.refactor-review-diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.refactor-review-diff > div { min-width: 0; padding: 8px; }
+.refactor-review-diff > div + div { border-left: 1px solid var(--border); }
+.refactor-review-diff span { color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.refactor-review-diff pre { min-height: 92px; max-height: 260px; margin: 5px 0 0; padding: 8px; overflow: auto; border-left: 2px solid #a6b3b5; background: #fbfcfc; font: 10.5px/1.45 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .refactor-review-diff { grid-template-columns: minmax(0, 1fr); }
+  .refactor-review-diff > div + div { border-top: 1px solid var(--border); border-left: 0; }
+}
 .agent-composer-resize { position: relative; flex: 0 0 7px; min-width: 0; margin: 0 10px; cursor: row-resize; touch-action: none; user-select: none; }
 .agent-composer-resize::after { position: absolute; top: 3px; right: 0; left: 0; height: 1px; background: var(--border-strong); content: ""; }
 .agent-composer-resize:hover::after, .agent-composer-resize.active::after { background: var(--accent); }

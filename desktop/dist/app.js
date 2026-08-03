@@ -102,6 +102,7 @@ const state = {
   compareResult: null,
   problems: [],
   lint: { status: "idle", response: null, proposal: null, projectRoot: null, error: null },
+  refactor: { status: "idle", proposal: null, undo: null, error: null, returnFocus: null },
   agentTurns: [],
   agentActivityExpanded: new Set(),
   pendingApprovals: [],
@@ -155,6 +156,7 @@ const mockProjects = {
     files: [
       { path: "analysis.R", name: "analysis.R", kind: "source", size_bytes: 120 },
       { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
+      { path: "examples/editor-refactor-use.R", name: "editor-refactor-use.R", kind: "source", size_bytes: 120 },
       { path: "report.Rmd", name: "report.Rmd", kind: "source", size_bytes: 92 },
       { path: "report.qmd", name: "report.qmd", kind: "source", size_bytes: 96 },
       { path: "scratch.R", name: "scratch.R", kind: "source", size_bytes: 420 },
@@ -162,6 +164,7 @@ const mockProjects = {
     contents: {
       "analysis.R": "# Project analysis\nsummary(qc)\n",
       "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n\nexample_value<-stats::median(c(1, 3, 5))\n",
+      "examples/editor-refactor-use.R": "review_subset <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
@@ -2492,8 +2495,9 @@ async function mockInvoke(command, args) {
     }
     const longPath = `analysis/${"\u5206\u6790\u7ed3\u679c/".repeat(10)}editor-intelligence.R`;
     const references = [
-      { file: previewState === "long" ? longPath : "examples/editor-intelligence.R", line: 4, column: 1, kind: "definition", preview: `${name} <- function(features, mito_percent, doublet_score) {` },
-      { file: "examples/editor-intelligence.R", line: 9, column: 25, kind: "reference", preview: `data$needs_review <- ${name}(` },
+      { file: previewState === "long" ? longPath : "examples/editor-intelligence.R", line: 1, column: 1, kind: "definition", preview: `${name} <- function(features, mito_percent, doublet_score) {` },
+      { file: "examples/editor-intelligence.R", line: 5, column: 22, kind: "reference", preview: `data$needs_review <- ${name}(` },
+      { file: "examples/editor-refactor-use.R", line: 1, column: 18, kind: "reference", preview: `review_subset <- ${name}(` },
     ];
     return {
       name,
@@ -2747,6 +2751,8 @@ function setBusy(busy, label = "R is busy") {
   $("#runButton").disabled = busy || state.projectStatus !== "ready";
   $("#editorRunButton").disabled = busy || state.projectStatus !== "ready";
   $("#editorRunFileButton").disabled = busy || state.projectStatus !== "ready";
+  $("#editorRenameButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
+  $("#editorExtractButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#consoleInput").disabled = busy;
   $("#consoleRunButton").disabled = busy;
   setKernelStatus(busy ? "starting" : "idle", busy ? label : "R idle");
@@ -3175,6 +3181,8 @@ function updateEditorChrome() {
   $("#editorRunButton").disabled = documentActionsDisabled;
   $("#editorRunFileButton").disabled = documentActionsDisabled;
   $("#saveFileButton").disabled = state.projectStatus !== "ready" || documentReadOnly;
+  $("#editorRenameButton").disabled = documentActionsDisabled;
+  $("#editorExtractButton").disabled = documentActionsDisabled;
   renderEnvironmentSummary();
 }
 
@@ -3277,6 +3285,20 @@ async function initializeEditor() {
       keybindings: [KeyMod.Shift | KeyCode.F12],
       contextMenuGroupId: "navigation",
       run: () => findProjectReferencesAtCursor(),
+    });
+    state.editor.editor.addAction({
+      id: "rho.renameSymbol",
+      label: "Rename Symbol",
+      keybindings: [KeyCode.F2],
+      contextMenuGroupId: "1_modification",
+      run: () => requestRenameSymbol(),
+    });
+    state.editor.editor.addAction({
+      id: "rho.extractFunction",
+      label: "Extract Function",
+      keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyE],
+      contextMenuGroupId: "1_modification",
+      run: () => requestExtractFunction(),
     });
     // Ctrl+Click on a word
     state.editor.editor.onMouseDown((e) => {
@@ -3400,6 +3422,8 @@ function setProjectStatus(status, unavailable = null) {
   $("#editorRunButton").disabled = disabled || state.busy;
   $("#editorRunFileButton").disabled = disabled || state.busy;
   $("#saveFileButton").disabled = disabled;
+  $("#editorRenameButton").disabled = disabled || state.busy;
+  $("#editorExtractButton").disabled = disabled || state.busy;
   $(".new-tab").disabled = disabled;
   $("#projectName").textContent = unavailable?.path?.split(/[\\/]/).filter(Boolean).at(-1) || activeProjectName();
   $("#projectTreeRoot").textContent = unavailable?.path || state.project.root || "No project";
@@ -6340,6 +6364,517 @@ async function applyLintQuickFix() {
   }
 }
 
+const REFACTOR_MAX_TARGET_FILES = 20;
+const REFACTOR_MAX_FILE_BYTES = 1024 * 1024;
+const REFACTOR_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const REFACTOR_MAX_EXTRACT_BYTES = 20_000;
+
+function refactorContentFingerprint(content) {
+  const value = String(content || "");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const bytes = new TextEncoder().encode(value).length;
+  return `fnv1a32:${(hash >>> 0).toString(16).padStart(8, "0")}:${bytes}`;
+}
+
+function validRefactorSymbol(value) {
+  const name = String(value || "");
+  return new TextEncoder().encode(name).length <= 128
+    && /^(?:[A-Za-z]|\.(?!\d))[A-Za-z0-9._]*$/.test(name);
+}
+
+function selectedRefactorSymbol() {
+  const content = currentEditorValue();
+  const offsets = currentEditorOffsets();
+  const start = Math.min(offsets.start, offsets.end);
+  const end = Math.max(offsets.start, offsets.end);
+  if (start !== end) {
+    const selected = content.slice(start, end);
+    return validRefactorSymbol(selected) ? selected : null;
+  }
+  if (state.editor.mode === "monaco" && state.editor.editor?.getModel()) {
+    const position = state.editor.editor.getPosition();
+    return state.editor.editor.getModel().getWordAtPosition(position)?.word || null;
+  }
+  let tokenStart = start;
+  let tokenEnd = start;
+  while (tokenStart > 0 && /[A-Za-z0-9._]/.test(content[tokenStart - 1])) tokenStart -= 1;
+  while (tokenEnd < content.length && /[A-Za-z0-9._]/.test(content[tokenEnd])) tokenEnd += 1;
+  const token = content.slice(tokenStart, tokenEnd);
+  return validRefactorSymbol(token) ? token : null;
+}
+
+function refactorOffsetAtLineColumn(content, line, column) {
+  if (!Number.isInteger(line) || !Number.isInteger(column) || line < 1 || column < 1) return null;
+  let offset = 0;
+  for (let currentLine = 1; currentLine < line; currentLine += 1) {
+    const next = content.indexOf("\n", offset);
+    if (next < 0) return null;
+    offset = next + 1;
+  }
+  const lineEnd = content.indexOf("\n", offset);
+  const boundedEnd = lineEnd < 0 ? content.length : lineEnd;
+  const result = offset + column - 1;
+  return result <= boundedEnd ? result : null;
+}
+
+async function refactorTargetSnapshot(path, options = {}) {
+  const { requireClean = false, projectRoot = state.project.root } = options;
+  if (state.project.root !== projectRoot) throw new Error("The active project changed while the refactor proposal was being built.");
+  if (!state.project.files.some((file) => file.path === path)) {
+    throw new Error(`Refactor target is no longer in the active project: ${path}`);
+  }
+  if (state.closedDrafts[path]) {
+    throw new Error(`Save or reopen the closed draft for ${path} before creating a refactor proposal.`);
+  }
+  if (state.activeDocument === path) syncDocumentFromEditor({ render: false, persist: false });
+  const documentState = state.documents[path] || null;
+  if (documentState?.readOnly) throw new Error(`Refactor target is read-only: ${path}`);
+  if (requireClean && documentState && documentIsDirty(documentState)) {
+    throw new Error(`Save ${path} before a project-wide rename so References and the editor use the same source.`);
+  }
+  const disk = await invoke("project_read_file", { path });
+  if (state.project.root !== projectRoot) throw new Error("The active project changed while a refactor target was loading.");
+  const diskContent = String(disk?.content || "");
+  const before = documentState ? String(documentState.content || "") : diskContent;
+  if (requireClean && before !== diskContent) {
+    throw new Error(`The editor and disk versions of ${path} differ. Save or reload before renaming.`);
+  }
+  const byteLength = new TextEncoder().encode(before).length;
+  if (byteLength > REFACTOR_MAX_FILE_BYTES) throw new Error(`Refactor target exceeds the 1 MiB file limit: ${path}`);
+  return {
+    path,
+    before,
+    savedContent: documentState?.savedContent ?? diskContent,
+    beforeFingerprint: refactorContentFingerprint(before),
+    documentVersion: documentState?.versionId ?? null,
+    wasOpen: Boolean(documentState),
+    byteLength,
+  };
+}
+
+function applyRenameLocations(content, locations, oldName, newName, path) {
+  const offsets = [];
+  const seen = new Set();
+  for (const location of locations) {
+    const offset = refactorOffsetAtLineColumn(content, Number(location.line), Number(location.column));
+    if (offset === null || content.slice(offset, offset + oldName.length) !== oldName) {
+      throw new Error(`Reference location no longer matches ${oldName} in ${path}:${location.line}.`);
+    }
+    const before = content[offset - 1] || "";
+    const after = content[offset + oldName.length] || "";
+    if (/[A-Za-z0-9._]/.test(before) || /[A-Za-z0-9._]/.test(after)) {
+      throw new Error(`Reference location is not an exact symbol token in ${path}:${location.line}.`);
+    }
+    if (seen.has(offset)) throw new Error(`Duplicate reference location in ${path}:${location.line}.`);
+    seen.add(offset);
+    offsets.push(offset);
+  }
+  let result = content;
+  for (const offset of offsets.sort((left, right) => right - left)) {
+    result = result.slice(0, offset) + newName + result.slice(offset + oldName.length);
+  }
+  return result;
+}
+
+async function buildRenameRefactorProposal(oldName, newName) {
+  if (!validRefactorSymbol(oldName)) throw new Error("Place the cursor on one ordinary R identifier to rename it.");
+  if (!validRefactorSymbol(newName)) throw new Error("Enter an ordinary R identifier with at most 128 UTF-8 bytes.");
+  if (oldName === newName) throw new Error("Choose a different name for the symbol.");
+  const projectRoot = state.project.root;
+  const response = await invoke("editor_find_project_references", { name: oldName, limit: 200 });
+  if (state.project.root !== projectRoot) throw new Error("The active project changed while References was running.");
+  if (!response || response.name !== oldName) throw new Error("References returned a mismatched symbol. Refresh and try again.");
+  if (response.incomplete || response.truncated) {
+    throw new Error("Rename is unavailable because the bounded References result is incomplete or truncated.");
+  }
+  const references = Array.isArray(response.references) ? response.references : [];
+  if (!references.length) throw new Error(`No project references were found for ${oldName}.`);
+  if (!Number.isInteger(Number(response.matched_count)) || Number(response.matched_count) !== references.length) {
+    throw new Error("References returned an inconsistent match count. Refresh and try again.");
+  }
+  const grouped = new Map();
+  for (const reference of references) {
+    if (!reference?.file || !state.project.files.some((file) => file.path === reference.file)) {
+      throw new Error("References included a file outside the current safe project list.");
+    }
+    if (!grouped.has(reference.file)) grouped.set(reference.file, []);
+    grouped.get(reference.file).push(reference);
+  }
+  if (grouped.size > REFACTOR_MAX_TARGET_FILES) {
+    throw new Error(`Rename affects ${grouped.size} files; the review limit is ${REFACTOR_MAX_TARGET_FILES}.`);
+  }
+  const targets = [];
+  let totalBytes = 0;
+  for (const path of [...grouped.keys()].sort((left, right) => left.localeCompare(right))) {
+    const snapshot = await refactorTargetSnapshot(path, { requireClean: true, projectRoot });
+    totalBytes += snapshot.byteLength;
+    if (totalBytes > REFACTOR_MAX_TOTAL_BYTES) throw new Error("Rename exceeds the 8 MiB total review limit.");
+    const after = applyRenameLocations(snapshot.before, grouped.get(path), oldName, newName, path);
+    if (after === snapshot.before) throw new Error(`Rename produced no change in ${path}.`);
+    targets.push({ ...snapshot, after, matches: grouped.get(path).length });
+  }
+  return {
+    kind: "rho.editor_refactor_proposal.v1",
+    operation: "rename_symbol",
+    projectRoot,
+    title: `Rename ${oldName} to ${newName}`,
+    oldName,
+    newName,
+    referenceCount: references.length,
+    targets,
+  };
+}
+
+function buildExtractReplacement(content, start, end, functionName) {
+  if (start < 0 || end <= start || end > content.length) throw new Error("Select one or more complete R source lines.");
+  if (start > 0 && content[start - 1] !== "\n") throw new Error("Extract Function requires a selection that starts at the beginning of a line.");
+  let effectiveEnd = end;
+  if (effectiveEnd < content.length && content[effectiveEnd] === "\n") effectiveEnd += 1;
+  if (effectiveEnd < content.length && content[effectiveEnd - 1] !== "\n") {
+    throw new Error("Extract Function requires a selection that ends at the end of a line.");
+  }
+  const selected = content.slice(start, effectiveEnd);
+  if (!selected.trim()) throw new Error("Select non-empty R source lines to extract.");
+  if (new TextEncoder().encode(selected).length > REFACTOR_MAX_EXTRACT_BYTES) {
+    throw new Error("The selected source exceeds the 20,000-byte extract limit.");
+  }
+  const bodyText = selected.endsWith("\n") ? selected.slice(0, -1) : selected;
+  if (/^\s*(?:[A-Za-z.]|\.(?!\d))[A-Za-z0-9._]*\s*(?:<-|=)\s*function\s*\(/m.test(bodyText)
+    || /^\s*(?:return\s*\(|break\b|next\b)/m.test(bodyText)) {
+    throw new Error("This conservative extract does not accept nested function declarations or return/break/next control flow.");
+  }
+  const bodyLines = bodyText.split("\n");
+  const leading = bodyLines[0].match(/^\s*/)?.[0] || "";
+  const normalizedLines = bodyLines.map((line) => line.startsWith(leading) ? line.slice(leading.length) : line);
+  const body = normalizedLines.map((line) => `${leading}  ${line}`).join("\n");
+  const replacement = `${leading}${functionName} <- function() {\n${body}\n${leading}}\n\n${leading}${functionName}()`
+    + (selected.endsWith("\n") ? "\n" : "");
+  return {
+    selected,
+    effectiveEnd,
+    after: content.slice(0, start) + replacement + content.slice(effectiveEnd),
+  };
+}
+
+async function buildExtractRefactorProposal(functionName) {
+  if (!validRefactorSymbol(functionName)) throw new Error("Enter an ordinary R function name with at most 128 UTF-8 bytes.");
+  syncDocumentFromEditor({ render: false, persist: false });
+  const documentState = activeDocument();
+  if (!documentState || documentState.readOnly || !/\.r$/i.test(documentState.path)) {
+    throw new Error("Extract Function requires an editable R source file.");
+  }
+  const offsets = currentEditorOffsets();
+  const start = Math.min(offsets.start, offsets.end);
+  const end = Math.max(offsets.start, offsets.end);
+  const projectRoot = state.project.root;
+  const snapshot = await refactorTargetSnapshot(documentState.path, { requireClean: false, projectRoot });
+  const symbolPattern = new RegExp(`(^|[^A-Za-z0-9._])${functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9._]|$)`);
+  if (symbolPattern.test(snapshot.before)) throw new Error(`${functionName} already appears in the active source. Choose another function name.`);
+  const replacement = buildExtractReplacement(snapshot.before, start, end, functionName);
+  return {
+    kind: "rho.editor_refactor_proposal.v1",
+    operation: "extract_function",
+    projectRoot,
+    title: `Extract ${functionName}()`,
+    functionName,
+    targets: [{ ...snapshot, after: replacement.after, matches: 1, selectionStart: start, selectionEnd: replacement.effectiveEnd, selectionText: replacement.selected }],
+  };
+}
+
+function boundedRefactorPreview(content, limit = 32_000) {
+  const value = String(content || "");
+  if (value.length <= limit) return value || "(empty)";
+  const half = Math.floor(limit / 2);
+  return `${value.slice(0, half)}\n... preview truncated ...\n${value.slice(-half)}`;
+}
+
+function setRefactorReviewError(message = null) {
+  state.refactor.error = message ? String(message) : null;
+  const error = $("#refactorReviewError");
+  error.textContent = state.refactor.error || "";
+  error.classList.toggle("hidden", !state.refactor.error);
+}
+
+function renderRefactorReview() {
+  const proposal = state.refactor.proposal;
+  const status = state.refactor.status;
+  $("#refactorReviewState").textContent = status;
+  $("#refactorReviewTitle").textContent = proposal?.title || "Review refactor";
+  $("#refactorReviewSummary").textContent = proposal
+    ? `${proposal.targets.length} file${proposal.targets.length === 1 ? "" : "s"} · ${proposal.operation === "rename_symbol" ? `${proposal.referenceCount} exact symbol locations` : "one whole-line selection"} · Apply changes only editor buffers; Save each dirty file separately.${proposal.operation === "extract_function" ? " Zero-argument extraction preserves lexical reads, but assignments and returns may change scope." : ""}`
+    : "No refactor proposal is available.";
+  const files = $("#refactorReviewFiles");
+  files.replaceChildren();
+  for (const target of proposal?.targets || []) {
+    const card = document.createElement("section");
+    card.className = "refactor-review-file";
+    const header = document.createElement("header");
+    const path = document.createElement("strong");
+    path.textContent = target.path;
+    const version = document.createElement("span");
+    version.textContent = `${target.matches || 1} edit${target.matches === 1 ? "" : "s"} · ${target.documentVersion === null ? target.beforeFingerprint : `doc ${target.documentVersion}`}`;
+    header.append(path, version);
+    const diff = document.createElement("div");
+    diff.className = "refactor-review-diff";
+    const before = document.createElement("div");
+    const beforeLabel = document.createElement("span");
+    beforeLabel.textContent = "Before";
+    const beforeCode = document.createElement("pre");
+    beforeCode.textContent = boundedRefactorPreview(target.before);
+    before.append(beforeLabel, beforeCode);
+    const after = document.createElement("div");
+    const afterLabel = document.createElement("span");
+    afterLabel.textContent = "After";
+    const afterCode = document.createElement("pre");
+    afterCode.textContent = boundedRefactorPreview(target.after);
+    after.append(afterLabel, afterCode);
+    diff.append(before, after);
+    card.append(header, diff);
+    files.append(card);
+  }
+  $("#refactorReviewApply").classList.toggle("hidden", status !== "review");
+  $("#refactorReviewUndo").classList.toggle("hidden", status !== "applied" || !state.refactor.undo);
+  $("#refactorReviewCancel").textContent = status === "review" ? "Cancel" : "Close";
+  setRefactorReviewError(state.refactor.error);
+  if (previewParams.get("preview") === "editor-refactor") requestAnimationFrame(recordPreviewLayoutEvidence);
+}
+
+function openRefactorReview(proposal = null, status = "review", returnFocus = document.activeElement) {
+  state.refactor.proposal = proposal;
+  state.refactor.status = status;
+  state.refactor.returnFocus = returnFocus;
+  setRefactorReviewError();
+  renderRefactorReview();
+  $("#refactorReviewDialog").classList.remove("hidden");
+  $(status === "review" ? "#refactorReviewApply" : "#refactorReviewClose").focus();
+}
+
+function closeRefactorReview() {
+  $("#refactorReviewDialog").classList.add("hidden");
+  state.refactor.returnFocus?.focus?.();
+  state.refactor.returnFocus = null;
+}
+
+async function promptRefactorName({ title, message, label, defaultValue = "" }) {
+  return showInputDialog({
+    title,
+    message,
+    label,
+    defaultValue,
+    placeholder: "new_name",
+    validate: (value) => {
+      const error = $("#genericDialogInputError");
+      if (!validRefactorSymbol(value)) {
+        error.textContent = "Use an ordinary R identifier with at most 128 UTF-8 bytes.";
+        error.classList.remove("hidden");
+        return false;
+      }
+      error.classList.add("hidden");
+      return true;
+    },
+  });
+}
+
+async function requestRenameSymbol(options = {}) {
+  const oldName = options.oldName || selectedRefactorSymbol();
+  if (!validRefactorSymbol(oldName)) {
+    toast("Place the cursor on one ordinary R identifier to rename it.", true);
+    return;
+  }
+  const newName = options.newName || await promptRefactorName({
+    title: "Rename symbol",
+    message: `Review every bounded project reference before changing ${oldName}.`,
+    label: "New symbol name",
+    defaultValue: oldName,
+  });
+  if (!newName) return;
+  openRefactorReview(null, "loading", options.returnFocus || document.activeElement);
+  try {
+    state.refactor.proposal = await buildRenameRefactorProposal(oldName, newName);
+    state.refactor.status = "review";
+    setRefactorReviewError();
+  } catch (error) {
+    state.refactor.status = "error";
+    setRefactorReviewError(error);
+  }
+  renderRefactorReview();
+}
+
+async function requestExtractFunction(options = {}) {
+  const functionName = options.functionName || await promptRefactorName({
+    title: "Extract function",
+    message: "The selected complete lines become a zero-argument lexical closure. Review scope and assignments before applying.",
+    label: "Function name",
+    defaultValue: "extracted_step",
+  });
+  if (!functionName) return;
+  openRefactorReview(null, "loading", options.returnFocus || document.activeElement);
+  try {
+    state.refactor.proposal = await buildExtractRefactorProposal(functionName);
+    state.refactor.status = "review";
+    setRefactorReviewError();
+  } catch (error) {
+    state.refactor.status = "error";
+    setRefactorReviewError(error);
+  }
+  renderRefactorReview();
+}
+
+async function validateRefactorProposal(proposal) {
+  if (!proposal || proposal.kind !== "rho.editor_refactor_proposal.v1") throw new Error("The refactor proposal is malformed.");
+  if (proposal.projectRoot !== state.project.root) throw new Error("The active project changed. Create a fresh refactor proposal.");
+  const validated = [];
+  for (const target of proposal.targets) {
+    if (!state.project.files.some((file) => file.path === target.path)) throw new Error(`Refactor target is no longer available: ${target.path}`);
+    if (state.closedDrafts[target.path]) throw new Error(`A closed draft now exists for ${target.path}. Reopen it and create a fresh proposal.`);
+    if (state.activeDocument === target.path) syncDocumentFromEditor({ render: false, persist: false });
+    const documentState = state.documents[target.path] || null;
+    if (documentState) {
+      if (target.documentVersion !== null && documentState.versionId !== target.documentVersion) {
+        throw new Error(`The document version changed for ${target.path}. Create a fresh refactor proposal.`);
+      }
+      if (documentState.content !== target.before || refactorContentFingerprint(documentState.content) !== target.beforeFingerprint) {
+        throw new Error(`The editor content changed for ${target.path}. Create a fresh refactor proposal.`);
+      }
+    } else if (target.documentVersion !== null) {
+      throw new Error(`The open document state changed for ${target.path}. Create a fresh refactor proposal.`);
+    }
+    if (proposal.operation === "rename_symbol") {
+      const disk = await invoke("project_read_file", { path: target.path });
+      if (state.project.root !== proposal.projectRoot) throw new Error("The active project changed while the proposal was being checked.");
+      if (String(disk?.content || "") !== target.before) {
+        throw new Error(`The disk content changed for ${target.path}. Reload References and try again.`);
+      }
+    }
+    validated.push({ target, documentState });
+  }
+  return validated;
+}
+
+function replaceRefactorDocumentContent(target, content) {
+  let documentState = state.documents[target.path];
+  if (!documentState) {
+    documentState = {
+      path: target.path,
+      content: target.before,
+      savedContent: target.savedContent,
+      language: target.path.toLowerCase().endsWith(".r") ? "r" : "plaintext",
+      versionId: 0,
+      lastExecutedRange: null,
+      cursorStart: 0,
+      cursorEnd: 0,
+      conflictDiskContent: null,
+    };
+    state.documents[target.path] = documentState;
+  }
+  if (state.editor.monaco) {
+    const model = ensureDocumentModel(documentState);
+    state.editor.suppressChange = true;
+    try {
+      model.pushStackElement();
+      model.pushEditOperations([], [{ range: model.getFullModelRange(), text: content, forceMoveMarkers: true }], () => null);
+      model.pushStackElement();
+    } finally {
+      state.editor.suppressChange = false;
+    }
+    documentState.content = model.getValue();
+    documentState.versionId = model.getAlternativeVersionId();
+  } else {
+    documentState.content = content;
+    documentState.versionId = (documentState.versionId || 0) + 1;
+  }
+  documentState.cursorStart = 0;
+  documentState.cursorEnd = 0;
+  documentState.conflictDiskContent = null;
+  return documentState.versionId;
+}
+
+async function applyRefactorProposal() {
+  const proposal = state.refactor.proposal;
+  const button = $("#refactorReviewApply");
+  button.disabled = true;
+  const appliedTargets = [];
+  try {
+    await validateRefactorProposal(proposal);
+    for (const target of proposal.targets) {
+      const applied = { ...target, appliedVersion: null };
+      appliedTargets.push(applied);
+      applied.appliedVersion = replaceRefactorDocumentContent(target, target.after);
+    }
+    state.activeDocument = proposal.targets[0].path;
+    renderActiveDocument();
+    state.problems = state.problems.filter((problem) => !proposal.targets.some((target) => target.path === problem.source_path && problem.origin === "lintr"));
+    state.lint.status = "idle";
+    state.refactor.undo = { projectRoot: proposal.projectRoot, proposal, targets: appliedTargets };
+    state.refactor.status = "applied";
+    setRefactorReviewError();
+    renderProblems();
+    renderRefactorReview();
+    scheduleSessionSave();
+    toast(`Refactor applied to ${proposal.targets.length} editor buffer${proposal.targets.length === 1 ? "" : "s"}. Save to persist.`);
+  } catch (error) {
+    for (const target of [...appliedTargets].reverse()) {
+      try {
+        if (target.wasOpen) {
+          replaceRefactorDocumentContent(target, target.before);
+        } else {
+          state.editor.models.get(target.path)?.dispose();
+          state.editor.models.delete(target.path);
+          delete state.documents[target.path];
+        }
+      } catch (_) { /* keep the original rejection visible */ }
+    }
+    state.refactor.status = "stale";
+    setRefactorReviewError(error);
+    renderRefactorReview();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function undoRefactorProposal() {
+  const undo = state.refactor.undo;
+  const button = $("#refactorReviewUndo");
+  if (!undo) return;
+  button.disabled = true;
+  const revertedTargets = [];
+  try {
+    if (undo.projectRoot !== state.project.root) throw new Error("The active project changed, so refactor undo was stopped.");
+    for (const target of undo.targets) {
+      if (state.activeDocument === target.path) syncDocumentFromEditor({ render: false, persist: false });
+      const documentState = state.documents[target.path];
+      if (!documentState || documentState.versionId !== target.appliedVersion || documentState.content !== target.after) {
+        throw new Error(`The editor changed after the refactor in ${target.path}; automatic undo was stopped.`);
+      }
+    }
+    for (const target of undo.targets) {
+      revertedTargets.push(target);
+      replaceRefactorDocumentContent(target, target.before);
+    }
+    state.activeDocument = undo.targets[0].path;
+    renderActiveDocument();
+    state.refactor.undo = null;
+    state.refactor.status = "undone";
+    setRefactorReviewError();
+    renderRefactorReview();
+    scheduleSessionSave();
+    toast("Refactor undone in the editor.");
+  } catch (error) {
+    for (const target of [...revertedTargets].reverse()) {
+      try { replaceRefactorDocumentContent(target, target.after); } catch (_) { /* keep the undo failure visible */ }
+    }
+    state.refactor.status = "stale";
+    setRefactorReviewError(error);
+    renderRefactorReview();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderExecution(response, request) {
   const execution = response.execution || {};
   updateIdentity(response.workspace);
@@ -7855,7 +8390,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -8047,6 +8582,34 @@ async function maybeApplyPreviewScenario() {
     setTimeout(recordPreviewLayoutEvidence, 0);
     return;
   }
+  if (scenario === "editor-refactor") {
+    state.posture = "human";
+    state.humanPreset = "code";
+    applyPostureLayout();
+    await openDocument("examples/editor-intelligence.R");
+    const refactorState = previewParams.get("state") || "rename";
+    if (refactorState === "extract") {
+      const documentState = activeDocument();
+      const start = documentState.content.indexOf("example_value");
+      const lineEnd = documentState.content.indexOf("\n", start);
+      documentState.cursorStart = start;
+      documentState.cursorEnd = lineEnd < 0 ? documentState.content.length : lineEnd;
+      applyDocumentSelection(documentState);
+      await requestExtractFunction({ functionName: "median_value", returnFocus: $("#editorExtractButton") });
+    } else {
+      await requestRenameSymbol({ oldName: "flag_low_quality", newName: "flag_low_quality_qc", returnFocus: $("#editorRenameButton") });
+      if (refactorState === "stale" && state.refactor.proposal) {
+        const target = state.refactor.proposal.targets[0];
+        replaceRefactorDocumentContent(target, `${target.before}\n# intervening editor change\n`);
+        renderActiveDocument();
+        await applyRefactorProposal();
+      } else if (refactorState === "applied" && state.refactor.proposal) {
+        await applyRefactorProposal();
+      }
+    }
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -8142,7 +8705,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -8361,6 +8924,26 @@ function recordPreviewLayoutEvidence() {
       mismatch_hidden: !evidence && previewParams.get("state") === "mismatch",
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       rects: { evidence },
+    });
+    return;
+  }
+  if (scenario === "editor-refactor") {
+    const surface = rectEvidence($("#refactorReviewDialog .refactor-review-surface"));
+    const files = rectEvidence($("#refactorReviewFiles"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      scenario,
+      status: state.refactor.status,
+      operation: state.refactor.proposal?.operation || null,
+      targets: state.refactor.proposal?.targets.length || 0,
+      error: state.refactor.error,
+      dialog_open: !$("#refactorReviewDialog").classList.contains("hidden"),
+      dirty_files: Object.values(state.documents).filter(documentIsDirty).map((document) => document.path),
+      apply_visible: !$("#refactorReviewApply").classList.contains("hidden"),
+      undo_visible: !$("#refactorReviewUndo").classList.contains("hidden"),
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      files_outside_surface: Boolean(surface && files && (files.left < surface.left || files.right > surface.right)),
+      rects: { surface, files },
     });
     return;
   }
@@ -10457,6 +11040,11 @@ $("#lintCurrentFileButton").addEventListener("click", lintCurrentFile);
 $("#lintQuickFixApply").addEventListener("click", applyLintQuickFix);
 $("#lintQuickFixCancel").addEventListener("click", closeLintQuickFix);
 $("#lintQuickFixClose").addEventListener("click", closeLintQuickFix);
+$("[data-refactor-close=\"true\"]").addEventListener("click", closeRefactorReview);
+$("#refactorReviewClose").addEventListener("click", closeRefactorReview);
+$("#refactorReviewCancel").addEventListener("click", closeRefactorReview);
+$("#refactorReviewApply").addEventListener("click", applyRefactorProposal);
+$("#refactorReviewUndo").addEventListener("click", undoRefactorProposal);
 $$('[data-lint-fix-close="true"]').forEach((element) => element.addEventListener("click", closeLintQuickFix));
 
 function renderAuditPanel() {
@@ -11093,6 +11681,8 @@ async function hydrateProject(response) {
   clearAgentEditHighlight();
   resetAgentContext();
   resetAgentLocalHelpContext();
+  $("#refactorReviewDialog").classList.add("hidden");
+  state.refactor = { status: "idle", proposal: null, undo: null, error: null, returnFocus: null };
   state.localHelp = { status: "empty", record: null, error: null };
   state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   state.fileEditProposal = null;
@@ -11316,6 +11906,8 @@ $("#startupExit").addEventListener("click", () => window.close());
 $("#runButton").addEventListener("click", runSelectionOrCurrentLine);
 $("#editorRunButton").addEventListener("click", runSelectionOrCurrentLine);
 $("#editorRunFileButton").addEventListener("click", runActiveFile);
+$("#editorRenameButton").addEventListener("click", () => requestRenameSymbol({ returnFocus: $("#editorRenameButton") }));
+$("#editorExtractButton").addEventListener("click", () => requestExtractFunction({ returnFocus: $("#editorExtractButton") }));
 $("#saveFileButton").addEventListener("click", saveActiveDocument);
 $(".new-tab").addEventListener("click", createDocument);
 $("#projectSwitcher").addEventListener("click", async () => {

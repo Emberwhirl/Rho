@@ -110,27 +110,46 @@ Open `examples/editor-intelligence.R`:
    version, and Help record; click `Open Help` and confirm the exact Help record
    reopens. Remove the badge before a second question and confirm that a
    model-only answer has no Local Help context block.
-5. Go to the definition of `flag_low_quality`, then find its project reference.
-6. Confirm the intentionally tight assignment `example_value<-...` appears in
+5. Go to the definition of `flag_low_quality`, then find its project
+   references in both `editor-intelligence.R` and `editor-refactor-use.R`.
+6. Place the cursor on `flag_low_quality`, press F2 (or use the Rename action),
+   and enter `flag_low_quality_qc`. Confirm the review shows two files and
+   three exact token locations, with no comment/string replacements. Cancel
+   once and verify both files remain clean. Review again, apply to the editor,
+   and confirm both tabs become dirty while both disk files remain unchanged.
+   Use Undo in the review and verify both original buffers return clean.
+7. Create the same rename proposal again, edit either target after the review
+   opens, then choose Apply. Confirm Rho rejects the stale document version and
+   does not change the other target. Revert the intervening edit.
+8. Review the rename once more, apply it, inspect both dirty buffers, and save
+   each file explicitly. Run Find References for `flag_low_quality_qc` and
+   confirm the definition and both calls remain discoverable.
+9. Select the complete `example_value<-stats::median(...)` line, choose Extract
+   Function, and enter `median_value`. Confirm the review shows a zero-argument
+   `median_value <- function() { ... }` followed by `median_value()`, together
+   with the scope warning. Cancel once, then apply and Undo. Apply again, save,
+   run the file, and confirm the extracted call completes; treat any changed R
+   assignment/return behavior as a failed review rather than hidden semantics.
+10. Confirm the intentionally tight assignment `example_value<-...` appears in
    Problems when `lintr` is available. Verify its range, info severity,
    `infix_spaces_linter` rule, and installed lintr version are visible.
-7. Choose `Review quick fix`. Verify the exact before/after line and the
+11. Choose `Review quick fix`. Verify the exact before/after line and the
    editor-only consequence. Cancel once and confirm the line and clean tab do
    not change. Review again and apply: confirm spaces appear, the tab becomes
    dirty, Problems no longer presents the stale fix, and the file on disk is
    unchanged until Save. Use Edit > Undo and confirm the original line and
    clean state return. Apply once more, save explicitly, and run Lint again.
-8. To exercise rejection, create the same finding again, run Lint, open its
+12. To exercise rejection, create the same finding again, run Lint, open its
    review, then edit that source line before choosing Apply. Confirm Rho rejects
    the stale proposal and asks for another Lint rather than changing or saving
    the file. Repeat after switching to another open file and verify the wrong
    file is also rejected.
-9. Add `review_flag = example_value > 2`, save, and run Lint. When the installed
+13. Add `review_flag = example_value > 2`, save, and run Lint. When the installed
    lintr profile reports `assignment_linter`, review the proposed `<-` change,
    cancel, then apply and undo it as above. Record an explicit skip when that
    linter is disabled in the installed profile.
-10. Add a comment, save with Ctrl+S, close the tab, and reopen it.
-11. Modify the same saved file in an external editor and verify Rho detects the
+14. Add a comment, save with Ctrl+S, close the tab, and reopen it.
+15. Modify the same saved file in an external editor and verify Rho detects the
    change. Then create an unsaved Rho draft, overwrite the file externally, and
    verify the draft is preserved for review rather than silently replaced.
 

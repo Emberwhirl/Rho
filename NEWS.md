@@ -84,6 +84,10 @@ this file records behavior that is already available in a released build.
   next Agent question. The selected answer shows that package/topic/version
   context separately from model prose and can reopen the exact Help record;
   model-only answers do not receive a documentation evidence block.
+- Rename Symbol and Extract Function now create bounded before/after reviews
+  tied to the active project and exact editor versions. Accepted refactors
+  change only editor buffers, keep Save explicit, and reject incomplete
+  reference scans or stale files without partially changing other targets.
 
 #### WS1: Packages and environments
 
