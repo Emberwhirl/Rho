@@ -17,5 +17,6 @@ summarize_qc <- function(data) {
 # Try completion after `stats::`, hover `median`, inspect its installed Help
 # pages, and run the reviewed visible example after testing Cancel. Then find
 # references for `flag_low_quality`. The spacing issue below should appear when
-# lintr is active.
+# lintr is active. Review it, test Cancel, Apply, Undo, and explicit Save using
+# the companion manual-acceptance steps.
 example_value<-stats::median(c(1, 3, 5))

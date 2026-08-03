@@ -2685,6 +2685,27 @@ fn validate_local_help_lookup(name: &str, package: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+fn validate_project_relative_r_path(path: &str) -> Result<()> {
+    ensure!(
+        !path.is_empty() && path.len() <= 1000 && !path.chars().any(char::is_control),
+        "Lint path must contain 1 to 1000 UTF-8 bytes without control characters"
+    );
+    ensure!(
+        !path.starts_with('/')
+            && !path.starts_with('\\')
+            && !path.contains(':')
+            && path
+                .split(['/', '\\'])
+                .all(|segment| !segment.is_empty() && segment != "." && segment != ".."),
+        "Lint path must be project-relative"
+    );
+    ensure!(
+        path.to_ascii_lowercase().ends_with(".r"),
+        "Lint path must identify one R file"
+    );
+    Ok(())
+}
+
 fn environment_repositories_expression(
     repositories: &Option<HashMap<String, String>>,
 ) -> Result<String> {
@@ -3517,9 +3538,21 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
             let path = arguments["path"]
                 .as_str()
                 .context("workspace.lint_file requires string argument `path`")?;
+            let document_version = arguments["document_version"]
+                .as_i64()
+                .context("workspace.lint_file requires integer argument `document_version`")?;
+            validate_project_relative_r_path(path)?;
+            ensure!(
+                (0..=i32::MAX as i64).contains(&document_version),
+                "workspace.lint_file requires a non-negative document version"
+            );
             Ok((
                 OperationClass::Probe,
-                format!("{bridge}$rho_lint_file({})", r_string(path)?),
+                format!(
+                    "{bridge}$rho_lint_file({}, document_version = {})",
+                    r_string(path)?,
+                    document_version
+                ),
             ))
         }
         "workspace.inspect_targets" => {
@@ -4653,6 +4686,30 @@ mod tests {
             json!({"name": "bad\nname", "package": "base"}),
         ] {
             assert!(bridge_expression("workspace.function_documentation", &arguments).is_err());
+        }
+    }
+
+    #[test]
+    fn lint_lookup_is_project_relative_version_bound_and_read_only() {
+        let (class, expression) = bridge_expression(
+            "workspace.lint_file",
+            &json!({"path": "R/analysis quoted.R", "document_version": 7}),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(
+            expression.contains("rho_lint_file(\"R/analysis quoted.R\", document_version = 7)")
+        );
+
+        for arguments in [
+            json!({"path": "", "document_version": 1}),
+            json!({"path": "../analysis.R", "document_version": 1}),
+            json!({"path": "C:/analysis.R", "document_version": 1}),
+            json!({"path": "analysis.txt", "document_version": 1}),
+            json!({"path": "analysis.R", "document_version": -1}),
+            json!({"path": "analysis.R", "document_version": null}),
+        ] {
+            assert!(bridge_expression("workspace.lint_file", &arguments).is_err());
         }
     }
 

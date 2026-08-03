@@ -1,0 +1,43 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+
+const html = fs.readFileSync("desktop/dist/index.html", "utf8");
+const js = fs.readFileSync("desktop/dist/app.js", "utf8");
+const css = fs.readFileSync("desktop/dist/styles.css", "utf8");
+
+assert.match(html, /id="lintStatus"[^>]+aria-live="polite"/);
+assert.match(html, /id="lintQuickFixDialog"[^>]+role="dialog"/);
+assert.match(html, /id="lintQuickFixBefore"/);
+assert.match(html, /id="lintQuickFixAfter"/);
+assert.match(js, /editor_lint_file[^\n]+document_version/);
+assert.match(js, /function diagnosticGroupKey\(problem\)/);
+assert.match(js, /problem\.source_path \|\| "", problem\.line_number/);
+assert.match(js, /function compareDiagnosticProblems\(left, right\)/);
+assert.match(js, /\["line_number", "column_number", "end_line_number", "end_column_number"\]/);
+assert.match(js, /sortedLintGroups/);
+assert.match(js, /group\.problems\.sort\(compareDiagnosticProblems\)/);
+assert.match(js, /Review quick fix/);
+assert.match(js, /documentState\.versionId !== proposal\.documentVersion/);
+assert.match(js, /lines\[lineNumber - 1\] !== proposal\.quickFix\.expected_line/);
+assert.match(js, /state\.project\.root !== proposal\.projectRoot/);
+assert.match(js, /state\.activeDocument !== proposal\.sourcePath/);
+assert.match(js, /The active project changed\. Run Lint again in this project\./);
+assert.match(js, /The active file changed\. Reopen the diagnostic and review it again\./);
+assert.match(js, /executeEdits\("rho-lint-quick-fix"/);
+assert.match(js, /Quick fix applied to the editor\. Save to persist it\./);
+assert.match(js, /finally \{\s*button\.disabled = false;\s*button\.textContent = "Lint";/);
+assert.match(js, /scenario === "lint-quick-fix"/);
+assert.match(js, /previewState === "unavailable" \|\| previewState === "error"/);
+assert.match(js, /previewState === "duplicate"/);
+assert.match(js, /previewState === "truncated"/);
+assert.match(js, /previewState === "stale"/);
+assert.match(js, /previewState === "changed-line"/);
+assert.doesNotMatch(js, /No lint issues found/);
+const applyStart = js.indexOf("async function applyLintQuickFix()");
+const applyEnd = js.indexOf("\nfunction renderExecution", applyStart);
+assert.ok(applyStart >= 0 && applyEnd > applyStart);
+assert.doesNotMatch(js.slice(applyStart, applyEnd), /invoke\("project_(?:write|create)_file"/);
+assert.match(css, /\.lint-fix-diff[^}]+grid-template-columns/);
+assert.match(css, /\.problem-location[^}]+overflow-wrap: anywhere/);
+
+console.log("Lint quick-fix UI contract checks passed.");

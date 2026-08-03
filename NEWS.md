@@ -75,6 +75,11 @@ this file records behavior that is already available in a released build.
   A complete visible example can be confirmed and run through the ordinary
   recorded Workspace execution path; hidden, malformed, or truncated example
   content cannot run.
+- Problems now groups stable, bounded lintr diagnostics with source ranges,
+  severity, rule, provider version, and truthful empty/error/partial states.
+  Supported mechanical fixes open an exact before/after review and apply only
+  to the unsaved editor buffer after project, file, version, and line checks;
+  Save remains a separate action.
 
 #### WS1: Packages and environments
 

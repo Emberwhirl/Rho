@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **13 open items** and **36 completed
-items**. The 13 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **12 open items** and **37 completed
+items**. The 12 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -20,11 +20,11 @@ included in that checklist count.
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS2 editor enhancement | 4 | Select one diagnostics/help/refactor package |
+| WS2 editor enhancement | 3 | Select one Help/Agent/refactor package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **13** | |
+| **Total** | **12** | |
 
-For near-term planning, this is **5 product implementation items** plus **8
+For near-term planning, this is **4 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -175,6 +175,16 @@ exact displayed example. Hidden Rd branches are omitted, and malformed or
 truncated examples cannot run. Contract review and the complete affected
 automated/browser matrix passed without closing installed-app acceptance. The
 checklist is now **13 open / 36 completed**.
+
+The authorized WS2-D1 package,
+[`active-2026-08-03-ws2-diagnostic-grouping-quick-fix-spec.md`](active-2026-08-03-ws2-diagnostic-grouping-quick-fix-spec.md),
+completed bounded normalized lintr responses, deterministic Problems grouping,
+and reviewed mechanical fixes for infix spacing, assignment, and trailing
+whitespace. Apply is bound to the active project, file, document version, and
+exact expected line, changes only the undoable editor buffer, and requires a
+separate Save. Contract review and the complete affected automated/browser
+matrix passed without closing installed-app acceptance. The checklist is now
+**12 open / 37 completed**.
 
 ## Follow-up Order
 

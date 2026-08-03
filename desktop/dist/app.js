@@ -100,6 +100,7 @@ const state = {
   compareRight: null,
   compareResult: null,
   problems: [],
+  lint: { status: "idle", response: null, proposal: null, projectRoot: null, error: null },
   agentTurns: [],
   agentActivityExpanded: new Set(),
   pendingApprovals: [],
@@ -159,7 +160,7 @@ const mockProjects = {
     ],
     contents: {
       "analysis.R": "# Project analysis\nsummary(qc)\n",
-      "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
+      "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n\nexample_value<-stats::median(c(1, 3, 5))\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
@@ -2004,11 +2005,51 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "editor_lint_file") {
+    const path = args.path || "examples/editor-intelligence.R";
+    const documentVersion = args.document_version ?? 0;
+    const previewState = previewParams.get("state") || "found";
+    const provider = { name: "lintr", version: "3.4.0", available: previewState !== "unavailable" };
+    if (previewState === "unavailable" || previewState === "error") {
+      return {
+        provider, source_path: path, source_digest: previewState === "error" ? "md5:mock" : null,
+        document_version: documentVersion, scan_scope: "file", diagnostics: [],
+        truncated: false, incomplete: true,
+        notices: [previewState === "error" ? "provider_error" : "provider_unavailable"],
+        error: previewState === "error" ? "lintr could not parse the file." : "lintr package is not installed.",
+      };
+    }
+    const expectedLine = previewState === "changed-line"
+      ? "example_value <- stats::median(c(1, 3, 5))"
+      : "example_value<-stats::median(c(1, 3, 5))";
+    const message = previewState === "long"
+      ? `Put spaces around all infix operators. ${"Long diagnostic detail. ".repeat(80)}`
+      : "Put spaces around all infix operators.";
+    const quickFix = {
+      title: "Put spaces around the operator", line_number: 7,
+      column_number: 14, end_column_number: 15, expected_line: expectedLine,
+      replacement_line: "example_value <- stats::median(c(1, 3, 5))",
+    };
+    const primary = {
+      diagnostic_id: "lintr:mock:7:14:infix_spaces_linter:1", source_path: path,
+      line_number: 7, column_number: 14, end_line_number: 7, end_column_number: 15,
+      severity: "info", message, rule: "infix_spaces_linter", producer: "lintr",
+      producer_version: "3.4.0", document_version: previewState === "stale" ? Math.max(0, documentVersion - 1) : documentVersion,
+      scan_scope: "file", quick_fix: quickFix,
+    };
+    const secondary = {
+      diagnostic_id: "lintr:mock:5:1:seq_linter:2", source_path: path,
+      line_number: 5, column_number: 1, end_line_number: 5, end_column_number: 12,
+      severity: "warning", message: "Use seq_len() instead of 1:length(...).", rule: "seq_linter",
+      producer: "lintr", producer_version: "3.4.0", document_version: documentVersion,
+      scan_scope: "file", quick_fix: null,
+    };
+    const diagnostics = previewState === "empty" ? [] : [primary, secondary];
+    if (previewState === "duplicate") diagnostics.push({ ...primary, diagnostic_id: `${primary.diagnostic_id}:duplicate` });
     return {
-      lints: [
-        { filename: "analysis.R", line_number: 5, column_number: 1, type: "style", message: "Use <-, not =, for assignment.", linter: "assignment_linter" },
-        { filename: "analysis.R", line_number: 12, column_number: 23, type: "warning", message: "Avoid 1:length(...) expressions, use seq_len.", linter: "seq_linter" },
-      ]
+      provider, source_path: path, source_digest: "md5:mock", document_version: documentVersion,
+      scan_scope: "file", diagnostics,
+      truncated: previewState === "truncated", incomplete: previewState === "truncated",
+      notices: previewState === "truncated" ? ["diagnostic_count_limit"] : [], error: null,
     };
   }
   if (command === "audit_reproducibility") {
@@ -5866,11 +5907,23 @@ function addProblem(message, call = "", options = {}) {
     workspace_id: options.workspaceId || null,
     started_at: new Date().toISOString(),
     finished_at: new Date().toISOString(),
+    diagnostic_id: options.diagnosticId || null,
+    line_number: options.lineNumber || null,
+    column_number: options.columnNumber || null,
+    end_line_number: options.endLineNumber || null,
+    end_column_number: options.endColumnNumber || null,
+    severity: options.severity || null,
+    rule: options.rule || null,
+    producer: options.producer || null,
+    producer_version: options.producerVersion || null,
+    scan_scope: options.scanScope || null,
+    quick_fix: options.quickFix || null,
+    project_root: options.projectRoot || null,
   });
   renderProblems();
 }
 
-function renderProblems() {
+function renderProblemsLegacy() {
   const list = $("#problemList");
   list.replaceChildren();
   $("#problemEmpty").classList.toggle("hidden", state.problems.length > 0);
@@ -5943,6 +5996,275 @@ function renderProblems() {
     }
     row.append(icon, content, actions);
     list.append(row);
+  }
+}
+
+function diagnosticGroupKey(problem) {
+  if (problem.origin !== "lintr") return `problem:${problem.run_id}`;
+  const message = String(problem.message || "").trim().replace(/\s+/g, " ").toLowerCase();
+  return [
+    problem.source_path || "", problem.line_number || 0, problem.column_number || 0,
+    problem.end_line_number || problem.line_number || 0,
+    problem.end_column_number || problem.column_number || 0, message,
+  ].join(":");
+}
+
+function compareDiagnosticProblems(left, right) {
+  const pathComparison = String(left.source_path || "").localeCompare(String(right.source_path || ""));
+  if (pathComparison) return pathComparison;
+  for (const field of ["line_number", "column_number", "end_line_number", "end_column_number"]) {
+    const compared = Number(left[field] || 0) - Number(right[field] || 0);
+    if (compared) return compared;
+  }
+  for (const field of ["severity", "rule", "message", "diagnostic_id"]) {
+    const compared = String(left[field] || "").localeCompare(String(right[field] || ""));
+    if (compared) return compared;
+  }
+  return 0;
+}
+
+function groupedProblems() {
+  const groups = [];
+  const byKey = new Map();
+  for (const problem of state.problems) {
+    const key = diagnosticGroupKey(problem);
+    if (!byKey.has(key)) {
+      const group = { key, problems: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    byKey.get(key).problems.push(problem);
+  }
+  for (const group of groups) {
+    if (group.problems[0]?.origin === "lintr") group.problems.sort(compareDiagnosticProblems);
+  }
+  const sortedLintGroups = groups
+    .filter((group) => group.problems[0]?.origin === "lintr")
+    .sort((left, right) => compareDiagnosticProblems(left.problems[0], right.problems[0]));
+  let lintIndex = 0;
+  return groups.map((group) => group.problems[0]?.origin === "lintr" ? sortedLintGroups[lintIndex++] : group);
+}
+
+function renderLintStatus() {
+  const status = $("#lintStatus");
+  const response = state.lint.response;
+  const visible = state.lint.status !== "idle";
+  status.classList.toggle("hidden", !visible);
+  status.classList.toggle("warning", ["error", "unavailable", "incomplete", "stale"].includes(state.lint.status));
+  if (!visible) return;
+  if (state.lint.status === "running") {
+    status.textContent = "lintr · scanning the saved active file";
+    return;
+  }
+  if (state.lint.status === "applied") {
+    status.textContent = "Quick fix applied to the unsaved editor buffer · Save to persist, then run Lint again";
+    return;
+  }
+  const provider = response?.provider;
+  const identity = provider ? `${provider.name || "lintr"} ${provider.version || "version unavailable"}` : "lintr";
+  const notices = response?.notices?.length ? ` · ${response.notices.join(", ")}` : "";
+  status.textContent = state.lint.error
+    ? `${identity} · ${state.lint.error}${notices}`
+    : `${identity} · file scope · document ${response?.document_version ?? "?"} · ${response?.diagnostics?.length || 0} diagnostics${notices}`;
+}
+
+async function openProblemSource(problem) {
+  if (!problem.source_path) return;
+  await openDocument(problem.source_path);
+  if (state.activeDocument !== problem.source_path || !problem.line_number) return;
+  if (state.editor.mode === "monaco" && state.editor.editor) {
+    state.editor.editor.revealLineInCenter(problem.line_number);
+    state.editor.editor.setPosition({ lineNumber: problem.line_number, column: problem.column_number || 1 });
+    state.editor.editor.focus();
+  }
+}
+
+function renderProblems() {
+  const list = $("#problemList");
+  list.replaceChildren();
+  renderLintStatus();
+  const groups = groupedProblems();
+  $("#problemEmpty").classList.toggle("hidden", groups.length > 0);
+  $("#problemCount").textContent = String(groups.length);
+  $("#problemCount").classList.toggle("quiet", groups.length === 0);
+  for (const group of groups) {
+    const problem = group.problems[0];
+    const row = document.createElement("div");
+    row.className = "problem-row problem-row-grouped";
+    const icon = document.createElement("span");
+    const severity = problem.severity || (problem.status === "failed" ? "error" : "info");
+    icon.className = `problem-icon ${severity}`;
+    icon.textContent = "!";
+    const content = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = problem.origin === "lintr"
+      ? problem.message
+      : problem.source_path
+        ? `Analysis stopped at ${problem.source_path}`
+        : problem.message;
+    const detail = document.createElement("p");
+    detail.textContent = problem.origin === "lintr"
+      ? ""
+      : [problem.message !== title.textContent ? problem.message : null, problem.call ? `called ${problem.call}` : null].filter(Boolean).join(" · ");
+    content.append(title, detail);
+    if (problem.origin === "lintr") {
+      const location = document.createElement("p");
+      location.className = "problem-location";
+      location.textContent = `${problem.source_path}:${problem.line_number}:${problem.column_number}`;
+      const meta = document.createElement("p");
+      meta.className = "problem-meta";
+      const producers = [...new Set(group.problems.map((item) => `${item.producer || "lintr"} ${item.producer_version || ""}`.trim()))].sort();
+      const rules = [...new Set(group.problems.map((item) => item.rule).filter(Boolean))].sort();
+      meta.textContent = `${severity} · ${producers.join(", ")} · ${rules.join(", ")} · ${problem.scan_scope || "file"}`;
+      content.append(location, meta);
+      if (group.problems.length > 1) {
+        const count = document.createElement("span");
+        count.className = "problem-group-count";
+        count.textContent = `${group.problems.length} grouped`;
+        content.append(count);
+      }
+    }
+    const actions = document.createElement("div");
+    actions.className = "problem-actions";
+    if (problem.source_path) {
+      const openSource = document.createElement("button");
+      openSource.type = "button";
+      openSource.textContent = "Go to source";
+      openSource.addEventListener("click", async () => {
+        try {
+          await openProblemSource(problem);
+        } catch (error) {
+          toast(String(error), true);
+        }
+      });
+      actions.append(openSource);
+    }
+    if (problem.origin === "lintr" && problem.quick_fix) {
+      const review = document.createElement("button");
+      review.type = "button";
+      review.textContent = "Review quick fix";
+      review.addEventListener("click", () => reviewLintQuickFix(problem));
+      actions.append(review);
+    }
+    const explain = document.createElement("button");
+    explain.type = "button";
+    explain.textContent = "Explain this problem";
+    explain.addEventListener("click", () => {
+      applyWorkbenchLayout("agent");
+      $("#agentInput").value = `Explain this R problem and suggest a fix: ${problem.message}`;
+      $("#agentInput").focus();
+    });
+    actions.append(explain);
+    if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = "Run again";
+      retry.addEventListener("click", async () => {
+        try {
+          const response = await invoke("retry_run", { runId: problem.run_id });
+          renderExecution(response, {
+            type: problem.execution_mode || "file",
+            sourcePath: problem.source_path,
+            documentVersion: problem.document_version,
+          }, prettyOrigin(problem.origin).toUpperCase());
+          await refreshEnvironment();
+          await loadRunData();
+        } catch (error) {
+          addProblem(String(error));
+          toast(String(error), true);
+        }
+      });
+      actions.append(retry);
+    }
+    row.append(icon, content, actions);
+    list.append(row);
+  }
+}
+
+function setLintQuickFixError(message = null) {
+  const error = $("#lintQuickFixError");
+  error.textContent = message || "";
+  error.classList.toggle("hidden", !message);
+}
+
+function closeLintQuickFix() {
+  $("#lintQuickFixDialog").classList.add("hidden");
+  state.lint.proposal = null;
+  setLintQuickFixError();
+}
+
+async function reviewLintQuickFix(problem) {
+  if (!problem?.quick_fix) return;
+  try {
+    await openProblemSource(problem);
+  } catch (error) {
+    toast(String(error), true);
+    return;
+  }
+  state.lint.proposal = {
+    problem,
+    projectRoot: problem.project_root,
+    sourcePath: problem.source_path,
+    documentVersion: problem.document_version,
+    quickFix: problem.quick_fix,
+  };
+  $("#lintQuickFixTitle").textContent = problem.quick_fix.title || "Review quick fix";
+  $("#lintQuickFixPath").textContent = `${problem.source_path}:${problem.quick_fix.line_number}`;
+  $("#lintQuickFixBefore").textContent = problem.quick_fix.expected_line;
+  $("#lintQuickFixAfter").textContent = problem.quick_fix.replacement_line;
+  $("#lintQuickFixNote").textContent = "Applying changes only the editor buffer. Review the exact line, then Save separately to persist it.";
+  setLintQuickFixError();
+  $("#lintQuickFixDialog").classList.remove("hidden");
+  $("#lintQuickFixApply").focus();
+}
+
+async function applyLintQuickFix() {
+  const proposal = state.lint.proposal;
+  if (!proposal) return;
+  const button = $("#lintQuickFixApply");
+  button.disabled = true;
+  try {
+    if (state.project.root !== proposal.projectRoot) throw new Error("The active project changed. Run Lint again in this project.");
+    if (state.activeDocument !== proposal.sourcePath) throw new Error("The active file changed. Reopen the diagnostic and review it again.");
+    syncDocumentFromEditor({ render: false, persist: false });
+    const documentState = activeDocument();
+    if (!documentState || documentState.versionId !== proposal.documentVersion) {
+      throw new Error("The document changed after this diagnostic was produced. Run Lint again.");
+    }
+    const lineNumber = Number(proposal.quickFix.line_number);
+    const lines = documentState.content.split("\n");
+    if (!Number.isInteger(lineNumber) || lineNumber < 1 || lineNumber > lines.length
+      || lines[lineNumber - 1] !== proposal.quickFix.expected_line) {
+      throw new Error("The source line no longer matches this quick fix. Run Lint again.");
+    }
+    if (state.editor.mode === "monaco" && state.editor.editor?.getModel()) {
+      const model = state.editor.editor.getModel();
+      state.editor.editor.pushUndoStop();
+      state.editor.editor.executeEdits("rho-lint-quick-fix", [{
+        range: new state.editor.monaco.Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber)),
+        text: proposal.quickFix.replacement_line,
+        forceMoveMarkers: true,
+      }]);
+      state.editor.editor.pushUndoStop();
+      state.editor.editor.focus();
+    } else {
+      lines[lineNumber - 1] = proposal.quickFix.replacement_line;
+      documentState.content = lines.join("\n");
+      documentState.versionId = (documentState.versionId || 0) + 1;
+      fallbackEditor().value = documentState.content;
+    }
+    syncDocumentFromEditor({ render: true, persist: true });
+    state.problems = state.problems.filter((item) => item.origin !== "lintr" || item.source_path !== proposal.sourcePath);
+    state.lint.status = "applied";
+    state.lint.error = null;
+    closeLintQuickFix();
+    renderProblems();
+    updateEditorChrome();
+    toast("Quick fix applied to the editor. Save to persist it.");
+  } catch (error) {
+    setLintQuickFixError(String(error));
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -7460,7 +7782,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7604,6 +7926,14 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "lint-quick-fix") {
+    applyWorkbenchLayout("analyze");
+    await openDocument(previewParams.get("path") || "examples/editor-intelligence.R");
+    await lintCurrentFile();
+    switchDockTab("problems");
+    setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -7699,7 +8029,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -7881,6 +8211,25 @@ function recordPreviewLayoutEvidence() {
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
       rects: { panel, content },
+    });
+    return;
+  }
+  if (scenario === "lint-quick-fix") {
+    const panel = rectEvidence($("#problemsPanel"));
+    const list = rectEvidence($("#problemList"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_dock_tab: document.querySelector("[data-dock-tab].active")?.dataset.dockTab || null,
+      lint_status: state.lint.status,
+      diagnostics: state.lint.response?.diagnostics?.length || 0,
+      groups: groupedProblems().length,
+      review_actions: $$("#problemList .problem-actions button").filter((button) => button.textContent === "Review quick fix").length,
+      dialog_open: !$("#lintQuickFixDialog").classList.contains("hidden"),
+      document_dirty: Boolean(activeDocument() && documentIsDirty(activeDocument())),
+      active_path: state.activeDocument,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      list_outside_panel: Boolean(panel && list && (list.left < panel.left || list.right > panel.right)),
+      rects: { panel, list },
     });
     return;
   }
@@ -9859,41 +10208,68 @@ $("#auditCloseButton").addEventListener("click", () => {
   else $("#auditPanel").classList.add("hidden");
 });
 
-$("#lintCurrentFileButton").addEventListener("click", async () => {
+async function lintCurrentFile() {
   const doc = activeDocument();
   if (!doc || !doc.path) return;
+  syncDocumentFromEditor({ render: false, persist: false });
+  if (documentIsDirty(doc)) {
+    toast("Save the active file before linting so diagnostics match the saved source.", true);
+    return;
+  }
   const button = $("#lintCurrentFileButton");
   button.disabled = true;
   button.textContent = "...";
+  state.lint = { status: "running", response: null, proposal: null, projectRoot: state.project.root, error: null };
+  renderProblems();
   try {
-    const result = await invoke("editor_lint_file", { path: doc.path });
+    const result = await invoke("editor_lint_file", { path: doc.path, document_version: doc.versionId ?? 0 });
+    state.lint = {
+      status: result.error ? (result.provider?.available ? "error" : "unavailable") : result.incomplete ? "incomplete" : "complete",
+      response: result,
+      proposal: null,
+      projectRoot: state.project.root,
+      error: result.error || null,
+    };
     // Remove previous lint problems
     state.problems = state.problems.filter((p) => p.origin !== "lintr");
-    const lints = result.lints || [];
+    const lints = result.diagnostics || [];
     for (const lint of lints) {
       addProblem(lint.message, lint.linter || "", {
         origin: "lintr",
-        status: lint.type === "error" ? "failed" : "completed",
-        sourcePath: lint.filename || doc.path,
-        runId: `lint_${lint.line_number}_${Date.now()}`,
+        status: lint.severity === "error" ? "failed" : "completed",
+        sourcePath: lint.source_path || doc.path,
+        runId: lint.diagnostic_id,
+        documentVersion: lint.document_version,
+        diagnosticId: lint.diagnostic_id,
+        lineNumber: lint.line_number,
+        columnNumber: lint.column_number,
+        endLineNumber: lint.end_line_number,
+        endColumnNumber: lint.end_column_number,
+        severity: lint.severity,
+        rule: lint.rule,
+        producer: lint.producer,
+        producerVersion: lint.producer_version,
+        scanScope: lint.scan_scope,
+        quickFix: lint.quick_fix,
+        projectRoot: state.project.root,
       });
     }
-    if (lints.length === 0) {
-      // No issues found — add an info entry
-      addProblem("No lint issues found.", "", {
-        origin: "lintr", status: "completed", sourcePath: doc.path,
-        runId: `lint_clean_${Date.now()}`,
-      });
-    }
+    renderProblems();
   } catch (e) {
-    addProblem(`lintr error: ${e}`, "", {
-      origin: "lintr", status: "failed", sourcePath: doc.path,
-      runId: `lint_err_${Date.now()}`,
-    });
+    state.problems = state.problems.filter((p) => p.origin !== "lintr");
+    state.lint = { status: "error", response: null, proposal: null, projectRoot: state.project.root, error: String(e) };
+    renderProblems();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Lint";
   }
-  button.disabled = false;
-  button.textContent = "Lint";
-});
+}
+
+$("#lintCurrentFileButton").addEventListener("click", lintCurrentFile);
+$("#lintQuickFixApply").addEventListener("click", applyLintQuickFix);
+$("#lintQuickFixCancel").addEventListener("click", closeLintQuickFix);
+$("#lintQuickFixClose").addEventListener("click", closeLintQuickFix);
+$$('[data-lint-fix-close="true"]').forEach((element) => element.addEventListener("click", closeLintQuickFix));
 
 function renderAuditPanel() {
   if (state.auditLoading) {

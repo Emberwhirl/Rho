@@ -1920,13 +1920,17 @@ async fn editor_function_documentation(
 }
 
 #[tauri::command]
-async fn editor_lint_file(path: String, state: State<'_, AppState>) -> Result<Value, String> {
+async fn editor_lint_file(
+    path: String,
+    document_version: i64,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
     let CoordinatorRuntime { broker, store } = &mut *context;
     let payload = json!({
-        "arguments": { "path": path },
+        "arguments": { "path": path, "document_version": document_version },
         "expected_workspace": broker.identity()
     });
     dispatch_workspace_request(

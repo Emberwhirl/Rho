@@ -1,3 +1,11 @@
+# rho.bridge 0.1.9
+
+- Added bounded, version-bound lintr diagnostics with stable IDs, normalized
+  ranges and severity, truthful partial/error states, and a fixed JSON-safe
+  response.
+- Added safe proposals for infix spacing, assignment, and trailing-whitespace
+  findings; applying a proposal remains an editor-only action in the desktop.
+
 # rho.bridge 0.1.8
 
 - Added bounded installed Rd documentation, package version, argument,
