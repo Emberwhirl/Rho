@@ -52,6 +52,8 @@ const state = {
   evidenceEntries: [],
   evidenceClaims: [],
   evidenceClaimReviews: new Map(),
+  evidenceClaimArtifacts: [],
+  evidenceClaimArtifactsError: null,
   evidenceTab: "entries",
   claimAnchorKind: "source_range",
   gitStatus: null,
@@ -369,7 +371,7 @@ function seedMockEvidenceClaims() {
   }
   if (!mockArtifacts.length) mockArtifacts.push({
     artifact_id: "artifact_claim_demo", artifact_kind: "render_output", run_id: "run_claim_demo",
-    project_root: "D:/Rho/project", output_path: "reports/claim-review-demo.html",
+    project_root: mockLastProject, output_path: "reports/claim-review-demo.html",
     source_path: "reports/claim-review-demo.qmd", execution_mode: "render", document_version: 1,
     workspace_id: "ws_mock", state_revision: 1, project_revision: 1, media_type: "text/html",
     metadata_json: "{}", provenance_complete: true, incomplete_reason: null, created_at: "2026-08-03T08:05:00Z",
@@ -389,6 +391,22 @@ function seedMockEvidenceClaims() {
   ].forEach(([status, summary, ids], index) => mockEvidenceClaims.push({
     ...base, claim_id: `cl_mock_${index + 1}`, summary, linked_evidence_ids: ids, mock_status: status,
   }));
+  mockEvidenceClaims.push({
+    ...base,
+    claim_id: "cl_mock_artifact_missing",
+    summary: "The anchored Artifact was removed after claim creation.",
+    anchor_kind: "artifact",
+    source_path: null,
+    start_line: null,
+    start_column: null,
+    end_line: null,
+    end_column: null,
+    source_sha256: null,
+    source_excerpt: null,
+    artifact_id: "artifact_claim_missing",
+    linked_evidence_ids: [101],
+    mock_status: "unresolved_source",
+  });
 }
 
 function seedMockGitReview() {
@@ -8169,6 +8187,13 @@ async function loadEvidenceEntries() {
 async function loadEvidenceClaims() {
   $("#evidenceClaimState").textContent = "Loading claims";
   try {
+    state.evidenceClaimArtifacts = await invoke("list_artifact_records", { limit: 100, session_only: false });
+    state.evidenceClaimArtifactsError = null;
+  } catch (error) {
+    state.evidenceClaimArtifacts = [];
+    state.evidenceClaimArtifactsError = String(error);
+  }
+  try {
     state.evidenceClaims = await invoke("list_evidence_claims", { limit: 100 });
     const reviews = await Promise.all(state.evidenceClaims.map(async (claim) => {
       try { return [claim.claim_id, await invoke("review_evidence_claim", { claimId: claim.claim_id })]; }
@@ -8182,6 +8207,7 @@ async function loadEvidenceClaims() {
     $("#evidenceClaimState").textContent = `Claims unavailable: ${error}`;
   }
   renderEvidenceClaims();
+  renderEvidenceClaimFormOptions();
 }
 
 function claimStatusLabel(status) {
@@ -8207,7 +8233,8 @@ function renderEvidenceClaimFormOptions() {
   if (!links.childElementCount) links.append(emptyRow("Create an Evidence entry first, or create an unlinked claim."));
   const selected = artifactSelect.value;
   artifactSelect.replaceChildren(new Option("Select Artifact", ""));
-  for (const artifact of state.artifacts || []) artifactSelect.append(new Option(artifact.output_path || artifact.artifact_id, artifact.artifact_id));
+  for (const artifact of state.evidenceClaimArtifacts || []) artifactSelect.append(new Option(artifact.output_path || artifact.artifact_id, artifact.artifact_id));
+  if (state.evidenceClaimArtifactsError) artifactSelect.append(new Option("Artifacts unavailable", "", false, false));
   artifactSelect.value = selected;
 }
 
@@ -8226,12 +8253,17 @@ async function openClaimSource(claim) {
 }
 
 async function openClaimArtifact(claim) {
-  const artifact = state.artifacts.find((item) => item.artifact_id === claim?.artifact_id);
-  if (!artifact) { toast("The anchored Artifact is no longer available.", true); return; }
-  state.selectedArtifactId = artifact.artifact_id;
-  state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
-  switchDockTab("plots");
-  renderPlots();
+  if (!claim?.artifact_id) return;
+  try {
+    const detail = await invoke("get_artifact_record", { artifact_id: claim.artifact_id });
+    if (!detail) { toast("The anchored Artifact is no longer available.", true); return; }
+    state.selectedArtifactId = claim.artifact_id;
+    state.selectedArtifactDetail = detail;
+    switchDockTab("plots");
+    renderPlots();
+  } catch (error) {
+    toast(`The anchored Artifact could not be opened: ${error}`, true);
+  }
 }
 
 function renderEvidenceClaims() {

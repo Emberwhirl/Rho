@@ -23,6 +23,13 @@ assert.match(js, /Structural review only/);
 assert.match(js, /start_column: null/);
 assert.match(js, /end_column: null/);
 assert.match(js, /claim\.end_column \?\? model\?\.getLineMaxColumn\(endLine\)/);
+assert.match(js, /state\.evidenceClaimArtifacts = await invoke\("list_artifact_records", \{ limit: 100, session_only: false \}\)/);
+assert.match(js, /for \(const artifact of state\.evidenceClaimArtifacts \|\| \[\]\)/);
+assert.match(js, /invoke\("get_artifact_record", \{ artifact_id: claim\.artifact_id \}\)/);
+assert.match(js, /artifact_claim_missing/);
+const openArtifact = js.slice(js.indexOf("async function openClaimArtifact"), js.indexOf("function renderEvidenceClaims"));
+assert.doesNotMatch(openArtifact, /state\.artifacts\.find/);
+assert.match(openArtifact, /if \(!detail\).*anchored Artifact is no longer available/);
 assert.doesNotMatch(js.slice(js.indexOf("function initEvidencePanel()"), js.indexOf("//", js.indexOf("function initEvidencePanel()") + 50)), /\bconfirm\(/);
 
 console.log("Evidence claim UI contract checks passed.");

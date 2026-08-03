@@ -172,3 +172,11 @@ syntax validation, and whitespace validation pass. Browser review opened
 `reports/claim-review-demo.qmd`, selected the complete lines 12-13 (100
 characters including the newline), and ended at line 13 column 53, the editor
 model's maximum column for that line. Repairs 2-5 remain pending.
+
+Repair 2 is implemented and verified. Claims load a dedicated all-session
+Artifact list for the current project and Open Artifact resolves its anchor
+directly through the project-scoped desktop command. In browser review, the
+ordinary Outputs view had zero current-session Artifacts while the Claim form
+still offered the older-session render record; opening it displayed the exact
+Artifact detail. A second fixture whose Artifact had been removed produced the
+explicit unavailable message. Repairs 3-5 remain pending.
