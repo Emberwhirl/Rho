@@ -412,8 +412,14 @@ impl super::Store {
             )
         } else if evidence.len() != claim.linked_evidence_ids.len()
             || evidence.iter().any(|entry| {
-                entry.doi.as_deref().is_none_or(str::is_empty)
-                    && entry.citation_json.as_deref().is_none_or(str::is_empty)
+                entry
+                    .doi
+                    .as_deref()
+                    .is_none_or(|value| value.trim().is_empty())
+                    && entry
+                        .citation_json
+                        .as_deref()
+                        .is_none_or(|value| value.trim().is_empty())
                     && entry.notes.trim().is_empty()
             })
         {
@@ -1037,6 +1043,55 @@ mod tests {
                 .unwrap()
                 .status,
             ClaimReviewStatus::MissingEvidence
+        );
+    }
+
+    #[test]
+    fn treats_whitespace_only_citation_identity_as_incomplete() {
+        let directory = TempDir::new().unwrap();
+        let mut store = crate::Store::open(directory.path().join("rho.sqlite")).unwrap();
+        let entry = store
+            .create_evidence_entry(&EvidenceEntryDraft {
+                project_root: "D:/projects/A".to_string(),
+                title: "Whitespace citation".to_string(),
+                notes: " \t".to_string(),
+                doi: Some(" \r\n".to_string()),
+                run_id: None,
+                artifact_id: None,
+            })
+            .unwrap();
+        store
+            .set_evidence_citation("D:/projects/A", entry.id, " \n\t")
+            .unwrap();
+        let claim = store
+            .create_evidence_claim(&source_claim(
+                "D:/projects/A",
+                "Whitespace metadata remains incomplete",
+                vec![entry.id],
+            ))
+            .unwrap();
+
+        assert_eq!(
+            store
+                .review_evidence_claim("D:/projects/A", &claim.claim_id, Some(true))
+                .unwrap()
+                .status,
+            ClaimReviewStatus::IncompleteEvidence
+        );
+
+        store
+            .connection
+            .execute(
+                "UPDATE evidence_entries SET notes = 'Inspectable methods note' WHERE id = ?1",
+                [entry.id],
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .review_evidence_claim("D:/projects/A", &claim.claim_id, Some(true))
+                .unwrap()
+                .status,
+            ClaimReviewStatus::Linked
         );
     }
 

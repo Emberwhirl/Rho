@@ -1,6 +1,6 @@
 # EW-CR2: Structural Claim-To-Evidence Review
 
-Status: repair implementation active after contract review; installed acceptance open
+Status: implementation and automated/browser verification complete after repair review; installed acceptance open
 
 Date: 2026-08-03
 Owner: Evidence Workspace and Claim Review
@@ -198,3 +198,19 @@ was deleted between review and navigation, the UI reports that it is no longer
 available rather than implying success. Browser review opened Evidence 101 and
 confirmed the Entries view, exact title, expanded/highlighted state, focus, and
 `aria-expanded=true`. Repair 5 remains pending.
+
+Repair 5 is implemented and verified. DOI and citation JSON now count as
+inspectable identity only when their trimmed value is nonblank; notes already
+used the same rule. The regression fixture proves whitespace-only DOI,
+citation, and notes remain `IncompleteEvidence`, then recover to `Linked` after
+an inspectable note is stored.
+
+All five authorized repairs are complete. The complete affected Rust matrix
+passed (rho-desktop 84, rho-server 33, rho-store 87), as did all 16 frontend
+contract scripts, Rust formatting, frontend syntax, and whitespace validation.
+Desktop browser review covered exact source selection, older-session and
+missing Artifact navigation, executable project-isolation and retry probes,
+and exact Evidence expansion/focus. The existing `0.4.0-dev.0` version and
+`NEWS.md` entry already own EW-CR2; these corrections do not create another
+candidate version. Installed-app acceptance remains open and no release claim
+is made.

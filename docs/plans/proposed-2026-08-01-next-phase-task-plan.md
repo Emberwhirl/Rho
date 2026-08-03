@@ -150,12 +150,12 @@ accepted 0.3.x, BH1-BH3, and RA-RC1 evidence.
 - [x] Minimal scholarly citation normalization and DOI resolution
 - [x] Project-scoped evidence entries linked to a producing run or Artifact
 - [x] Project-scoped evidence curation and search surface
-- [ ] Structural claim-to-evidence linkage and bounded review status
+- [x] Structural claim-to-evidence linkage and bounded review status
 
-EW-CR1 is complete. EW-CR2 is reopened for five bounded contract repairs after
-implementation review found source-navigation, Artifact scope, mock parity,
-Evidence expansion, and citation-completeness gaps. Its structural statuses do
-not judge scientific truth. Installed-app acceptance remains separate.
+EW-CR1 and EW-CR2 are complete at the implementation and automated/browser
+verification gates after five separately committed EW-CR2 repairs. Structural
+statuses do not judge scientific truth. Installed-app acceptance remains
+separate.
 
 ## Longer-Term Deferred Items
 
