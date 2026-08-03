@@ -8917,8 +8917,21 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
   state.previewScenarioApplied = true;
+  if (scenario === "interface-shell") {
+    state.posture = "human";
+    applyPostureLayout();
+    applyWorkbenchLayout("code");
+    $("#projectName").textContent = "D:/研究项目/单细胞 RNA-seq 质量控制与差异分析";
+    $("#plotCount").textContent = "12";
+    $("#problemCount").textContent = "3";
+    await openDocument("examples/editor-intelligence.R");
+    await openDocument("reports/claim-review-demo.qmd");
+    $("#projectName").textContent = "D:/研究项目/单细胞 RNA-seq 质量控制与差异分析";
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   if (scenario === "evidence-claims") {
     seedMockEvidenceClaims();
     state.evidenceClaimPreviewProbe = await runEvidenceClaimMockIsolationProbe();
@@ -9274,7 +9287,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -9310,6 +9323,26 @@ function recordPreviewLayoutEvidence() {
       rects: { transcript, prompt, tabs },
     };
     target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "interface-shell") {
+    const topbar = rectEvidence($(".topbar"));
+    const project = rectEvidence($("#projectSwitcher"));
+    const tabs = $$(".document-tab").map(rectEvidence);
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      posture: state.posture,
+      overflow: {
+        document_x: document.documentElement.scrollWidth > window.innerWidth,
+        topbar_x: $(".topbar").scrollWidth > $(".topbar").clientWidth,
+      },
+      labels: {
+        project_truncated: $("#projectName").scrollWidth > $("#projectName").clientWidth,
+        document_tabs: $$(".document-tab").map((tab) => tab.textContent.trim()),
+      },
+      counts: { plots: $("#plotCount").textContent, problems: $("#problemCount").textContent },
+      rects: { topbar, project, tabs },
+    });
     return;
   }
   if (scenario === "evidence-claims") {

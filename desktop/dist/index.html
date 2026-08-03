@@ -4,9 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rho</title>
-    <link rel="stylesheet" href="styles.css?v=0.2.0-dev.11" />
+    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.0&rev=m1-shell" />
   </head>
   <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></symbol>
+      <symbol id="icon-square" viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="1" /></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9Z" /></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="M12 5v14" /></symbol>
+      <symbol id="icon-file-text" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z" /><path d="M14 2v6h6" /><path d="M8 13h8" /><path d="M8 17h5" /></symbol>
+      <symbol id="icon-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3Z" /><path d="m9 12 2 2 4-4" /></symbol>
+    </svg>
     <section id="startupGate" class="startup-gate" aria-live="polite">
       <div class="startup-panel">
         <div class="startup-brand"><span class="brand-mark">R</span><strong>Rho</strong></div>
@@ -99,15 +107,15 @@
           <button data-layout="agent" type="button">Agent</button>
         </div>
         <div class="top-actions">
-          <button id="agentOpenFileButton" class="agent-only-action" type="button" title="Open a project file">File</button>
-          <button id="restartButton" class="icon-button" type="button" title="Restart Workspace R" aria-label="Restart Workspace R">↻</button>
-          <button id="interruptButton" class="icon-button danger" type="button" title="Interrupt R" aria-label="Interrupt R">■</button>
+          <button id="agentOpenFileButton" class="agent-only-action" type="button" title="Open a project file"><svg class="ui-icon" aria-hidden="true"><use href="#icon-file-text"></use></svg><span>File</span></button>
+          <button id="restartButton" class="icon-button" type="button" title="Restart Workspace R" aria-label="Restart Workspace R"><svg class="ui-icon" aria-hidden="true"><use href="#icon-rotate-ccw"></use></svg></button>
+          <button id="interruptButton" class="icon-button danger" type="button" title="Interrupt R" aria-label="Interrupt R"><svg class="ui-icon" aria-hidden="true"><use href="#icon-square"></use></svg></button>
           <button id="runButton" class="run-button" type="button" title="Run selection or document">
-            <span>▶</span><span>Run</span>
+            <svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg><span>Run</span>
           </button>
           <span id="renderJobStatus" class="render-job-status hidden"></span>
           <button id="renderCancelButton" class="render-cancel-button hidden" type="button" title="Cancel render">Cancel</button>
-          <button id="auditProjectButton" class="audit-button" type="button" title="Audit project reproducibility">Audit</button>
+          <button id="auditProjectButton" class="audit-button" type="button" title="Audit project reproducibility"><svg class="ui-icon" aria-hidden="true"><use href="#icon-shield-check"></use></svg><span>Audit</span></button>
         </div>
       </header>
 
@@ -138,7 +146,7 @@
         <div id="taskRail" class="task-rail hidden" aria-label="Task list">
           <div class="task-rail-header">
             <span>Tasks</span>
-            <button id="taskRailNew" type="button" title="New task" aria-label="New task">+</button>
+            <button id="taskRailNew" type="button" title="New task" aria-label="New task"><svg class="ui-icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button>
           </div>
           <div id="taskRailList" class="task-rail-list"></div>
         </div>
@@ -977,6 +985,6 @@ plot(
       </section>
     </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.4.0-dev.0&rev=ws4-g1.2"></script>
+    <script src="app.js?v=0.4.0-dev.0&rev=m1-shell"></script>
   </body>
 </html>
