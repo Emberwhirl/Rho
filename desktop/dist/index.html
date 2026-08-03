@@ -143,6 +143,11 @@
           <div id="taskRailList" class="task-rail-list"></div>
         </div>
         <section id="evidencePanel" class="context-content evidence-panel hidden">
+          <div class="evidence-tabs" role="tablist" aria-label="Evidence views">
+            <button class="active" data-evidence-tab="entries" type="button" role="tab" aria-selected="true">Entries</button>
+            <button data-evidence-tab="claims" type="button" role="tab" aria-selected="false">Claims <span id="evidenceClaimCount">0</span></button>
+          </div>
+          <div id="evidenceEntriesView" class="evidence-view">
           <div class="evidence-toolbar">
             <input id="evidenceSearch" type="search" placeholder="Search evidence…" aria-label="Search evidence entries" />
             <button id="refreshEvidence" type="button" title="Refresh Evidence" aria-label="Refresh Evidence">↻</button>
@@ -163,6 +168,42 @@
           <button id="evidenceNewButton" class="evidence-new-button" type="button">+ New Evidence Entry</button>
           <div id="evidenceList" class="evidence-list">
             <div class="empty-state compact-empty"><strong>No evidence entries</strong></div>
+          </div>
+          </div>
+          <div id="evidenceClaimsView" class="evidence-view hidden">
+            <div class="evidence-toolbar evidence-claim-toolbar">
+              <span id="evidenceClaimState">Claims are project-scoped</span>
+              <button id="refreshEvidenceClaims" type="button" title="Refresh Claims" aria-label="Refresh Claims">↻</button>
+            </div>
+            <div id="evidenceClaimForm" class="evidence-form hidden">
+              <input id="evidenceClaimSummary" type="text" maxlength="4096" placeholder="Claim summary" aria-label="Claim summary" />
+              <input id="evidenceClaimKind" type="text" maxlength="64" value="result" placeholder="Claim kind" aria-label="Claim kind" />
+              <div class="evidence-anchor-switch" role="group" aria-label="Claim anchor">
+                <button class="active" data-claim-anchor="source_range" type="button">Source range</button>
+                <button data-claim-anchor="artifact" type="button">Artifact</button>
+              </div>
+              <div id="evidenceSourceAnchorFields" class="evidence-anchor-fields">
+                <input id="evidenceClaimSourcePath" type="text" placeholder="reports/claim-review-demo.qmd" aria-label="Source path" />
+                <div class="evidence-range-fields">
+                  <input id="evidenceClaimStartLine" type="number" min="1" value="1" aria-label="Start line" />
+                  <input id="evidenceClaimEndLine" type="number" min="1" value="1" aria-label="End line" />
+                </div>
+              </div>
+              <div id="evidenceArtifactAnchorFields" class="evidence-anchor-fields hidden">
+                <select id="evidenceClaimArtifact" aria-label="Artifact anchor"><option value="">Select Artifact</option></select>
+              </div>
+              <fieldset class="evidence-link-fieldset">
+                <legend>Linked Evidence (up to 20)</legend>
+                <div id="evidenceClaimLinks" class="evidence-link-options"></div>
+              </fieldset>
+              <p id="evidenceClaimFormError" class="form-error hidden"></p>
+              <div class="evidence-form-actions">
+                <button id="evidenceClaimCreate" type="button">Create Claim</button>
+                <button id="evidenceClaimCancel" type="button">Cancel</button>
+              </div>
+            </div>
+            <button id="evidenceClaimNew" class="evidence-new-button" type="button">+ New Claim</button>
+            <div id="evidenceClaimList" class="evidence-list"><div class="empty-state compact-empty"><strong>No claims</strong></div></div>
           </div>
         </section>
         <section id="chunksPanel" class="context-content chunks-panel hidden">

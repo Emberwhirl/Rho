@@ -2167,7 +2167,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 /* Evidence panel */
 .evidence-panel { display: flex; flex-direction: column; }
+.evidence-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--border); }
+.evidence-tabs button { height: 34px; border: 0; border-bottom: 2px solid transparent; background: #fff; color: var(--muted); cursor: pointer; font-size: 12px; }
+.evidence-tabs button.active { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.evidence-view { min-height: 0; overflow: auto; }
 .evidence-toolbar { display: grid; grid-template-columns: 1fr 30px; gap: 5px; padding: 9px; border-bottom: 1px solid var(--border); }
+.evidence-claim-toolbar { align-items: center; color: var(--muted); font-size: 11px; }
 .evidence-toolbar input { min-width: 0; height: 29px; padding: 0 9px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
 .evidence-toolbar button { height: 29px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; color: var(--muted); }
 .evidence-toolbar button:hover { background: var(--hover); }
@@ -2184,6 +2189,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .evidence-form-actions button { min-height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; cursor: pointer; font-size: 12px; }
 .evidence-form-actions button:first-child { border-color: var(--accent); color: #fff; background: var(--accent); }
 .evidence-form-actions button:first-child:hover { background: var(--accent-strong); }
+.evidence-anchor-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.evidence-anchor-switch button { height: 30px; border: 1px solid var(--border); background: #fff; color: var(--muted); cursor: pointer; }
+.evidence-anchor-switch button.active { border-color: var(--accent); color: var(--accent-strong); background: #f2f8f7; }
+.evidence-anchor-fields { display: grid; gap: 6px; }
+.evidence-range-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.evidence-form select { width: 100%; min-height: 31px; border: 1px solid var(--border); border-radius: 4px; background: #fff; font-size: 12px; }
+.evidence-link-fieldset { min-width: 0; margin: 0; padding: 7px; border: 1px solid var(--border); border-radius: 4px; }
+.evidence-link-fieldset legend { padding: 0 4px; color: var(--muted); font-size: 10px; }
+.evidence-link-options { display: grid; gap: 5px; max-height: 116px; overflow: auto; }
+.evidence-link-option { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: start; gap: 4px; font-size: 11px; }
+.evidence-link-option input { width: auto; margin: 2px 0 0; }
+.form-error { margin: 0; color: var(--danger); font-size: 11px; line-height: 1.4; }
 .evidence-list { flex: 1; overflow-y: auto; }
 .evidence-item { padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
 .evidence-item:hover { background: var(--hover); }
@@ -2198,6 +2215,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .evidence-item-actions button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; color: var(--muted); }
 .evidence-item-actions button.danger { color: var(--danger); border-color: var(--danger); }
 .evidence-item-citation { margin-top: 5px; padding: 5px 8px; border-radius: 4px; background: #f5f8f8; font-size: 10px; color: var(--muted); line-height: 1.3; }
+.claim-item { cursor: default; }
+.claim-item-header { align-items: flex-start; }
+.claim-status { flex: 0 0 auto; padding: 2px 6px; border-radius: 3px; background: #eef3f2; color: var(--muted); font-size: 9px; text-transform: uppercase; }
+.claim-status.linked { background: #e9f7ef; color: #257044; }
+.claim-status.unresolved_source, .claim-status.incomplete_evidence { background: #fff4df; color: #8a5b00; }
+.claim-status.cross_project_rejected { background: #fdecec; color: var(--danger); }
+.claim-anchor { margin-top: 4px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.claim-detail { display: grid; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-light); }
+.claim-detail pre { max-height: 130px; margin: 0; padding: 7px; overflow: auto; border: 1px solid var(--border-light); background: #f8faf9; white-space: pre-wrap; font-size: 10px; }
+.claim-evidence-row { padding: 6px; border: 1px solid var(--border-light); background: #fff; font-size: 10px; }
+.claim-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.claim-actions button { min-height: 27px; padding: 0 8px; border: 1px solid var(--border); border-radius: 3px; background: #fff; cursor: pointer; font-size: 10px; }
+.claim-actions button.danger { color: var(--danger); border-color: var(--danger); }
 
 /* Chunk panel */
 .chunks-panel { display: flex; flex-direction: column; }

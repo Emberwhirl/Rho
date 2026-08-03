@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub(crate) const SCHEMA_VERSION: i64 = 8;
+pub(crate) const SCHEMA_VERSION: i64 = 9;
 const DEFAULT_LIMIT: usize = 50;
 #[cfg(test)]
 pub(crate) const LEGACY_UNSCOPED: &str = "legacy_unscoped";
@@ -39,7 +39,10 @@ pub use environment::{
     EnvironmentOperationRequestDraft, EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft,
     EnvironmentSnapshotRecord,
 };
-pub use evidence::{EvidenceEntry, EvidenceEntryDraft};
+pub use evidence::{
+    ClaimReviewStatus, EvidenceClaim, EvidenceClaimDraft, EvidenceClaimReview, EvidenceEntry,
+    EvidenceEntryDraft,
+};
 pub use project::{
     PlotPayloadPruneResult, ProjectRetentionSummary, RetentionPolicy, RetentionScopeSummary,
 };
@@ -64,6 +67,8 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("validation error: {0}")]
+    Validation(String),
     #[error("migration rejected: {message}")]
     MigrationRejected {
         message: String,
@@ -183,6 +188,8 @@ impl std::ops::AddAssign for MigrationRecordCounts {
 struct StoreOpenOptions {
     #[cfg(test)]
     inject_v7_failure_before_commit: bool,
+    #[cfg(test)]
+    inject_v8_failure_before_commit: bool,
 }
 
 #[derive(Debug)]
@@ -213,7 +220,7 @@ impl Store {
         if migration::database_is_empty(&self.connection)? {
             self.connection.execute_batch(migration::v8_schema_sql())?;
             self.set_schema_version(SCHEMA_VERSION)?;
-            self.assert_v8_schema()?;
+            self.assert_current_schema()?;
             self.migration_outcome = MigrationOutcome::bootstrapped_current();
             return Ok(());
         }
@@ -221,13 +228,19 @@ impl Store {
         let current = migration::read_schema_version(&self.connection)?;
         match current {
             Some(SCHEMA_VERSION) => {
-                self.assert_v8_schema()?;
+                self.assert_current_schema()?;
                 self.migration_outcome = MigrationOutcome::opened_current();
             }
             Some(7) => {
                 let backup_path =
                     migration::create_pre_migration_backup(&self.connection, path, 7)?;
                 let outcome = self.migrate_v7_to_v8(backup_path, options)?;
+                self.migration_outcome = outcome;
+            }
+            Some(8) => {
+                let backup_path =
+                    migration::create_pre_migration_backup(&self.connection, path, 8)?;
+                let outcome = self.migrate_v8_to_v9(backup_path, options)?;
                 self.migration_outcome = outcome;
             }
             Some(other) => {
@@ -265,7 +278,7 @@ impl Store {
         backup_path: Option<PathBuf>,
         _options: &StoreOpenOptions,
     ) -> Result<MigrationOutcome, StoreError> {
-        let backup_path_string = backup_path
+        let _backup_path_string = backup_path
             .as_ref()
             .map(|path| path.to_string_lossy().replace('\\', "/"));
         let transaction = self.connection.transaction()?;
@@ -275,7 +288,7 @@ impl Store {
                 message: "malformed project identity metadata".to_string(),
                 outcome: MigrationOutcome::rejected(
                     Some(7),
-                    backup_path_string,
+                    _backup_path_string,
                     counts,
                     "malformed_project_identity",
                 ),
@@ -286,6 +299,7 @@ impl Store {
         migration::rebuild_agent_turns_v8(&transaction)?;
         migration::rebuild_approval_requests_v8(&transaction)?;
         migration::rebuild_plot_artifacts_v8(&transaction)?;
+        migration::create_claim_review_schema(&transaction)?;
         transaction.execute_batch(
             "
             CREATE INDEX IF NOT EXISTS idx_runs_project_started
@@ -310,7 +324,7 @@ impl Store {
                 message: "injected migration failure".to_string(),
                 outcome: MigrationOutcome::rejected(
                     Some(7),
-                    backup_path_string,
+                    _backup_path_string,
                     counts,
                     "injected_failure",
                 ),
@@ -318,7 +332,7 @@ impl Store {
         }
 
         transaction.commit()?;
-        self.assert_v8_schema()?;
+        self.assert_current_schema()?;
         Ok(MigrationOutcome::migrated(
             7,
             backup_path
@@ -328,12 +342,50 @@ impl Store {
         ))
     }
 
+    fn migrate_v8_to_v9(
+        &mut self,
+        backup_path: Option<PathBuf>,
+        _options: &StoreOpenOptions,
+    ) -> Result<MigrationOutcome, StoreError> {
+        let _backup_path_string = backup_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().replace('\\', "/"));
+        let transaction = self.connection.transaction()?;
+        migration::create_claim_review_schema(&transaction)?;
+        transaction.execute(
+            "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [SCHEMA_VERSION.to_string()],
+        )?;
+        #[cfg(test)]
+        if _options.inject_v8_failure_before_commit {
+            return Err(StoreError::MigrationRejected {
+                message: "injected v8 migration failure".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(8),
+                    _backup_path_string,
+                    MigrationRecordCounts::default(),
+                    "injected_failure",
+                ),
+            });
+        }
+        transaction.commit()?;
+        self.assert_current_schema()?;
+        Ok(MigrationOutcome::migrated(
+            8,
+            backup_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+            MigrationRecordCounts::default(),
+        ))
+    }
+
     fn set_schema_version(&self, version: i64) -> Result<(), StoreError> {
         migration::set_schema_version(&self.connection, version)?;
         Ok(())
     }
 
-    fn assert_v8_schema(&self) -> Result<(), StoreError> {
+    fn assert_current_schema(&self) -> Result<(), StoreError> {
         migration::assert_not_null_project_identity(&self.connection, "runs")?;
         migration::assert_not_null_project_identity(&self.connection, "agent_turns")?;
         migration::assert_not_null_project_identity(&self.connection, "approval_requests")?;
@@ -342,6 +394,10 @@ impl Store {
         migration::assert_index_exists(&self.connection, "idx_agent_turns_project_started")?;
         migration::assert_index_exists(&self.connection, "idx_approval_requests_project_status")?;
         migration::assert_index_exists(&self.connection, "idx_plot_artifacts_project_created")?;
+        migration::assert_not_null_project_identity(&self.connection, "evidence_claims")?;
+        migration::assert_not_null_project_identity(&self.connection, "claim_evidence_links")?;
+        migration::assert_index_exists(&self.connection, "idx_evidence_claims_project")?;
+        migration::assert_index_exists(&self.connection, "idx_claim_evidence_links_project")?;
         Ok(())
     }
 
@@ -3082,7 +3138,7 @@ mod tests {
     }
 
     #[test]
-    fn bootstraps_empty_store_to_v8_and_reopens_idempotently() {
+    fn bootstraps_empty_store_to_v9_and_reopens_idempotently() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
 
@@ -3101,7 +3157,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v7_to_v8_and_marks_legacy_unscoped_records() {
+    fn migrates_v7_to_v9_and_marks_legacy_unscoped_records() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v7_fixture(&database);
@@ -3109,7 +3165,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(7));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(8));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(9));
         assert_eq!(store.migration_outcome().scoped_count, 4);
         assert_eq!(store.migration_outcome().legacy_unscoped_count, 4);
         assert_eq!(store.migration_outcome().rejected_count, 0);
@@ -3214,6 +3270,7 @@ mod tests {
             &database,
             StoreOpenOptions {
                 inject_v7_failure_before_commit: true,
+                ..Default::default()
             },
         )
         .unwrap_err();
@@ -3232,6 +3289,73 @@ mod tests {
             )
             .unwrap();
         assert_eq!(legacy_null_runs, 1);
+    }
+
+    fn create_v8_fixture(path: &Path) {
+        let store = Store::open(path).unwrap();
+        drop(store);
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE claim_evidence_links;
+                 DROP TABLE evidence_claims;
+                 DROP INDEX IF EXISTS idx_claim_evidence_links_project;
+                 DROP INDEX IF EXISTS idx_evidence_claims_project;",
+            )
+            .unwrap();
+        set_schema_version(&connection, 8).unwrap();
+    }
+
+    #[test]
+    fn migrates_v8_to_v9_with_backup_and_reopens() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v8_fixture(&database);
+
+        let store = Store::open(&database).unwrap();
+        assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
+        assert_eq!(store.migration_outcome().from_schema_version, Some(8));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(9));
+        assert!(Path::new(store.migration_outcome().backup_path.as_deref().unwrap()).exists());
+        assert_index_exists(&store.connection, "idx_evidence_claims_project").unwrap();
+        drop(store);
+
+        let reopened = Store::open(&database).unwrap();
+        assert_eq!(
+            reopened.migration_outcome(),
+            &MigrationOutcome::opened_current()
+        );
+    }
+
+    #[test]
+    fn rolls_back_v8_migration_after_injected_failure_and_recovers() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v8_fixture(&database);
+
+        let error = Store::open_with_options(
+            &database,
+            StoreOpenOptions {
+                inject_v8_failure_before_commit: true,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(outcome.reason_code.as_deref(), Some("injected_failure"));
+        assert!(Path::new(outcome.backup_path.as_deref().unwrap()).exists());
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(8));
+        assert!(
+            verification
+                .prepare("SELECT * FROM evidence_claims")
+                .is_err()
+        );
+        drop(verification);
+
+        let recovered = Store::open(&database).unwrap();
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(9));
     }
 
     #[test]

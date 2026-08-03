@@ -61,6 +61,17 @@ this file records behavior that is already available in a released build.
   and artifacts with configurable scope (project/run/artifact) and limits.
 - Added `audit_reproducibility` Tauri command and reproducibility audit UI panel.
 
+#### Evidence workspace and claim review
+
+- Evidence now includes project-scoped Claims linked to exact source ranges or
+  durable Artifacts and up to 20 existing Evidence entries. Structural review
+  distinguishes linked, missing Evidence, incomplete Evidence, unresolved
+  anchors, and rejected cross-project access without claiming scientific truth.
+- Claim review exposes the recorded excerpt, exact linked Evidence, and direct
+  Source, Artifact, and Evidence navigation. Claim and Evidence deletion use
+  explicit product dialogs, while stale sources and deleted links recover to a
+  truthful review status.
+
 #### WS2: Editor intelligence (Air backend)
 
 - Added Air-backed R function index, dynamic Monaco completions, and hover help.

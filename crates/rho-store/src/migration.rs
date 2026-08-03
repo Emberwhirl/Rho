@@ -257,7 +257,85 @@ pub(crate) fn v8_schema_sql() -> &'static str {
     );
     CREATE INDEX idx_evidence_entries_project
         ON evidence_entries(project_root, created_at DESC);
+    CREATE TABLE evidence_claims (
+        claim_id TEXT PRIMARY KEY,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        kind TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('source_range', 'artifact')),
+        source_path TEXT,
+        start_line INTEGER,
+        start_column INTEGER,
+        end_line INTEGER,
+        end_column INTEGER,
+        source_sha256 TEXT,
+        source_excerpt TEXT,
+        artifact_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (
+            (anchor_kind = 'source_range' AND source_path IS NOT NULL AND artifact_id IS NULL) OR
+            (anchor_kind = 'artifact' AND artifact_id IS NOT NULL AND source_path IS NULL)
+        )
+    );
+    CREATE TABLE claim_evidence_links (
+        claim_id TEXT NOT NULL,
+        evidence_id INTEGER NOT NULL,
+        project_root TEXT NOT NULL CHECK (project_root <> ''),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(claim_id, evidence_id),
+        FOREIGN KEY(claim_id) REFERENCES evidence_claims(claim_id) ON DELETE CASCADE,
+        FOREIGN KEY(evidence_id) REFERENCES evidence_entries(id) ON DELETE CASCADE
+    );
+    CREATE INDEX idx_evidence_claims_project
+        ON evidence_claims(project_root, created_at DESC);
+    CREATE INDEX idx_claim_evidence_links_project
+        ON claim_evidence_links(project_root, claim_id);
     "
+}
+
+pub(crate) fn create_claim_review_schema(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "
+        CREATE TABLE evidence_claims (
+            claim_id TEXT PRIMARY KEY,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            kind TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('source_range', 'artifact')),
+            source_path TEXT,
+            start_line INTEGER,
+            start_column INTEGER,
+            end_line INTEGER,
+            end_column INTEGER,
+            source_sha256 TEXT,
+            source_excerpt TEXT,
+            artifact_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (
+                (anchor_kind = 'source_range' AND source_path IS NOT NULL AND artifact_id IS NULL) OR
+                (anchor_kind = 'artifact' AND artifact_id IS NOT NULL AND source_path IS NULL)
+            )
+        );
+        CREATE TABLE claim_evidence_links (
+            claim_id TEXT NOT NULL,
+            evidence_id INTEGER NOT NULL,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(claim_id, evidence_id),
+            FOREIGN KEY(claim_id) REFERENCES evidence_claims(claim_id) ON DELETE CASCADE,
+            FOREIGN KEY(evidence_id) REFERENCES evidence_entries(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_evidence_claims_project
+            ON evidence_claims(project_root, created_at DESC);
+        CREATE INDEX idx_claim_evidence_links_project
+            ON claim_evidence_links(project_root, claim_id);
+        ",
+    )?;
+    Ok(())
 }
 
 pub(crate) fn create_pre_migration_backup(
@@ -619,17 +697,5 @@ pub(crate) fn assert_index_exists(
                 "invalid_v8_schema",
             ),
         })
-    }
-}
-
-pub(crate) fn invalid_v8_schema(message: String) -> StoreError {
-    StoreError::MigrationRejected {
-        message,
-        outcome: MigrationOutcome::rejected(
-            Some(SCHEMA_VERSION),
-            None,
-            MigrationRecordCounts::default(),
-            "invalid_v8_schema",
-        ),
     }
 }

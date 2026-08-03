@@ -49,6 +49,11 @@ const state = {
   selectedPlotId: null,
   selectedArtifactId: null,
   selectedArtifactDetail: null,
+  evidenceEntries: [],
+  evidenceClaims: [],
+  evidenceClaimReviews: new Map(),
+  evidenceTab: "entries",
+  claimAnchorKind: "source_range",
   gitStatus: null,
   gitReview: {
     loading: false,
@@ -345,12 +350,44 @@ const mockAgentTurns = [];
 const mockApprovalRequests = [];
 const mockEnvironmentOperationRequests = [];
 const mockEvidenceEntries = [];
+const mockEvidenceClaims = [];
 const mockRenderJobs = new Map();
 let mockRenderSequence = 0;
 let mockGitRevisionSequence = 1;
 const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+
+function seedMockEvidenceClaims() {
+  if (!mockEvidenceEntries.length) {
+    mockEvidenceEntries.push(
+      { id: 101, project_root: "D:/Rho/project", title: "Treatment response study", notes: "Methods and outcome are inspectable.", doi: "10.1000/rho.demo", run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:00:00Z", updated_at: "2026-08-03T08:00:00Z" },
+      { id: 102, project_root: "D:/Rho/project", title: "Incomplete citation", notes: "", doi: null, run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:01:00Z", updated_at: "2026-08-03T08:01:00Z" },
+    );
+  }
+  if (!mockArtifacts.length) mockArtifacts.push({
+    artifact_id: "artifact_claim_demo", artifact_kind: "render_output", run_id: "run_claim_demo",
+    project_root: "D:/Rho/project", output_path: "reports/claim-review-demo.html",
+    source_path: "reports/claim-review-demo.qmd", execution_mode: "render", document_version: 1,
+    workspace_id: "ws_mock", state_revision: 1, project_revision: 1, media_type: "text/html",
+    metadata_json: "{}", provenance_complete: true, incomplete_reason: null, created_at: "2026-08-03T08:05:00Z",
+  });
+  const base = {
+    project_root: "D:/Rho/project", kind: "result", anchor_kind: "source_range",
+    source_path: "reports/claim-review-demo.qmd", start_line: 12, start_column: 1,
+    end_line: 13, end_column: 72, source_sha256: "a".repeat(64),
+    source_excerpt: "The treatment group showed a bounded response in the demo analysis.",
+    artifact_id: null, created_at: "2026-08-03T08:10:00Z", updated_at: "2026-08-03T08:10:00Z",
+  };
+  [
+    ["linked", "Treatment response is linked to inspectable literature.", [101]],
+    ["missing_evidence", "The secondary observation still needs a citation.", []],
+    ["incomplete_evidence", "The sensitivity statement uses an incomplete citation.", [102]],
+    ["unresolved_source", "This source range changed after claim creation.", [101]],
+  ].forEach(([status, summary, ids], index) => mockEvidenceClaims.push({
+    ...base, claim_id: `cl_mock_${index + 1}`, summary, linked_evidence_ids: ids, mock_status: status,
+  }));
+}
 
 function seedMockGitReview() {
   mockGitRevisionSequence += 1;
@@ -2607,6 +2644,56 @@ async function mockInvoke(command, args) {
       return true;
     }
     return false;
+  }
+  if (command === "create_evidence_claim") {
+    const request = args.request || {};
+    if (previewParams.get("state") === "create-error") throw new Error("The selected Evidence entry is no longer available.");
+    const claim = {
+      claim_id: `cl_mock_${mockEvidenceClaims.length + 1}`,
+      project_root: "D:/Rho/project",
+      kind: request.kind,
+      summary: request.summary,
+      anchor_kind: request.anchor_kind,
+      source_path: request.source_path || null,
+      start_line: request.start_line || null,
+      start_column: request.start_column || null,
+      end_line: request.end_line || null,
+      end_column: request.end_column || null,
+      source_sha256: request.anchor_kind === "source_range" ? "a".repeat(64) : null,
+      source_excerpt: request.anchor_kind === "source_range" ? "The treatment group showed a bounded response in the demo analysis." : null,
+      artifact_id: request.artifact_id || null,
+      linked_evidence_ids: request.evidence_ids || [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    mockEvidenceClaims.unshift(claim);
+    return structuredClone(claim);
+  }
+  if (command === "list_evidence_claims") {
+    if (!mockEvidenceClaims.length && previewParams.get("preview") === "evidence-claims") seedMockEvidenceClaims();
+    return structuredClone(mockEvidenceClaims.slice(0, args.limit || 50));
+  }
+  if (command === "review_evidence_claim") {
+    const claim = mockEvidenceClaims.find((item) => item.claim_id === args.claimId || item.claim_id === args.claim_id);
+    if (!claim) throw new Error("claim was not found");
+    const scenario = claim.mock_status || "linked";
+    if (scenario === "cross_project_rejected") {
+      return { status: scenario, claim: null, evidence: [], limitations: ["The claim belongs to another project."] };
+    }
+    const evidence = mockEvidenceEntries.filter((entry) => claim.linked_evidence_ids.includes(entry.id));
+    const limitations = scenario === "linked" ? [] : [{
+      unresolved_source: "The exact claim anchor no longer resolves.",
+      missing_evidence: "No Evidence entry is linked to this claim.",
+      incomplete_evidence: "At least one linked Evidence entry lacks inspectable metadata or notes.",
+    }[scenario] || "The claim cannot be reviewed."];
+    return structuredClone({ status: scenario, claim, evidence, limitations });
+  }
+  if (command === "delete_evidence_claim") {
+    const claimId = args.claimId || args.claim_id;
+    const index = mockEvidenceClaims.findIndex((item) => item.claim_id === claimId);
+    if (index < 0) return false;
+    mockEvidenceClaims.splice(index, 1);
+    return true;
   }
   if (command === "editor_discover_chunks") {
     return {
@@ -8074,6 +8161,153 @@ async function loadEvidenceEntries() {
     state.evidenceEntries = [];
   }
   renderEvidenceList();
+  renderEvidenceClaimFormOptions();
+}
+
+async function loadEvidenceClaims() {
+  $("#evidenceClaimState").textContent = "Loading claims";
+  try {
+    state.evidenceClaims = await invoke("list_evidence_claims", { limit: 100 });
+    const reviews = await Promise.all(state.evidenceClaims.map(async (claim) => {
+      try { return [claim.claim_id, await invoke("review_evidence_claim", { claimId: claim.claim_id })]; }
+      catch (error) { return [claim.claim_id, { status: "unavailable", claim, evidence: [], limitations: [String(error)] }]; }
+    }));
+    state.evidenceClaimReviews = new Map(reviews);
+    $("#evidenceClaimState").textContent = "Structural review only";
+  } catch (error) {
+    state.evidenceClaims = [];
+    state.evidenceClaimReviews = new Map();
+    $("#evidenceClaimState").textContent = `Claims unavailable: ${error}`;
+  }
+  renderEvidenceClaims();
+}
+
+function claimStatusLabel(status) {
+  return ({ linked: "Linked", missing_evidence: "Missing evidence", unresolved_source: "Unresolved source", incomplete_evidence: "Incomplete evidence", cross_project_rejected: "Cross-project rejected", unavailable: "Unavailable" })[status] || status;
+}
+
+function renderEvidenceClaimFormOptions() {
+  const links = $("#evidenceClaimLinks");
+  const artifactSelect = $("#evidenceClaimArtifact");
+  if (!links || !artifactSelect) return;
+  links.replaceChildren();
+  for (const entry of state.evidenceEntries || []) {
+    const label = document.createElement("label");
+    label.className = "evidence-link-option";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = String(entry.id);
+    const text = document.createElement("span");
+    text.textContent = entry.doi ? `${entry.title} · ${entry.doi}` : entry.title;
+    label.append(input, text);
+    links.append(label);
+  }
+  if (!links.childElementCount) links.append(emptyRow("Create an Evidence entry first, or create an unlinked claim."));
+  const selected = artifactSelect.value;
+  artifactSelect.replaceChildren(new Option("Select Artifact", ""));
+  for (const artifact of state.artifacts || []) artifactSelect.append(new Option(artifact.output_path || artifact.artifact_id, artifact.artifact_id));
+  artifactSelect.value = selected;
+}
+
+async function openClaimSource(claim) {
+  if (!claim?.source_path) return;
+  await openDocument(claim.source_path);
+  if (!state.editor?.editor) return;
+  state.editor.editor.revealLineInCenter(claim.start_line || 1);
+  state.editor.editor.setSelection({ startLineNumber: claim.start_line || 1, startColumn: claim.start_column || 1, endLineNumber: claim.end_line || claim.start_line || 1, endColumn: claim.end_column || 1 });
+  state.editor.editor.focus();
+}
+
+async function openClaimArtifact(claim) {
+  const artifact = state.artifacts.find((item) => item.artifact_id === claim?.artifact_id);
+  if (!artifact) { toast("The anchored Artifact is no longer available.", true); return; }
+  state.selectedArtifactId = artifact.artifact_id;
+  state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+  switchDockTab("plots");
+  renderPlots();
+}
+
+function renderEvidenceClaims() {
+  const list = $("#evidenceClaimList");
+  const claims = state.evidenceClaims || [];
+  $("#evidenceClaimCount").textContent = String(claims.length);
+  list.replaceChildren();
+  if (!claims.length) { list.append(emptyRow("No claims")); return; }
+  for (const claim of claims) {
+    const review = state.evidenceClaimReviews.get(claim.claim_id) || { status: "unavailable", claim, evidence: [], limitations: [] };
+    const item = document.createElement("article");
+    item.className = "evidence-item claim-item";
+    const header = document.createElement("div");
+    header.className = "evidence-item-header claim-item-header";
+    const title = document.createElement("strong");
+    title.className = "evidence-item-title";
+    title.textContent = claim.summary;
+    const badge = document.createElement("span");
+    badge.className = `claim-status ${review.status}`;
+    badge.textContent = claimStatusLabel(review.status);
+    header.append(title, badge);
+    const anchor = document.createElement("div");
+    anchor.className = "claim-anchor";
+    anchor.textContent = claim.anchor_kind === "artifact" ? `Artifact · ${claim.artifact_id}` : `${claim.source_path}:${claim.start_line}-${claim.end_line}`;
+    const meta = document.createElement("div");
+    meta.className = "evidence-item-meta";
+    meta.textContent = `${claim.kind} · ${claim.linked_evidence_ids.length} linked Evidence ${claim.linked_evidence_ids.length === 1 ? "entry" : "entries"}`;
+    const actions = document.createElement("div");
+    actions.className = "claim-actions";
+    const inspect = document.createElement("button");
+    inspect.type = "button";
+    inspect.textContent = "Review";
+    const detail = document.createElement("div");
+    detail.className = "claim-detail hidden";
+    inspect.addEventListener("click", () => detail.classList.toggle("hidden"));
+    const openAnchor = document.createElement("button");
+    openAnchor.type = "button";
+    openAnchor.textContent = claim.anchor_kind === "artifact" ? "Open Artifact" : "Open Source";
+    openAnchor.addEventListener("click", () => claim.anchor_kind === "artifact" ? openClaimArtifact(claim) : openClaimSource(claim));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger";
+    remove.textContent = "Delete";
+    remove.addEventListener("click", async () => {
+      const accepted = await confirmAction({ title: "Delete claim?", message: "This removes the claim and its Evidence links. Evidence entries and source files are unchanged.", confirmLabel: "Delete Claim", destructive: true });
+      if (!accepted) return;
+      try { await invoke("delete_evidence_claim", { claimId: claim.claim_id }); await loadEvidenceClaims(); }
+      catch (error) { toast(`Delete failed: ${error}`, true); }
+    });
+    actions.append(inspect, openAnchor, remove);
+    if (claim.source_excerpt) {
+      const excerpt = document.createElement("pre");
+      excerpt.textContent = claim.source_excerpt;
+      detail.append(excerpt);
+    }
+    for (const limitation of review.limitations || []) {
+      const note = document.createElement("p");
+      note.className = "form-error";
+      note.textContent = limitation;
+      detail.append(note);
+    }
+    for (const entry of review.evidence || []) {
+      const row = document.createElement("div");
+      row.className = "claim-evidence-row";
+      row.textContent = [entry.title, entry.doi ? `DOI ${entry.doi}` : null, entry.notes || null].filter(Boolean).join(" · ");
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = "Open Evidence";
+      open.addEventListener("click", () => { switchEvidenceTab("entries"); document.querySelector(`.evidence-item[data-id="${entry.id}"]`)?.scrollIntoView({ block: "center" }); });
+      row.append(document.createElement("br"), open);
+      detail.append(row);
+    }
+    item.append(header, anchor, meta, actions, detail);
+    list.append(item);
+  }
+}
+
+function switchEvidenceTab(tab) {
+  state.evidenceTab = tab;
+  $$('[data-evidence-tab]').forEach((button) => { const active = button.dataset.evidenceTab === tab; button.classList.toggle("active", active); button.setAttribute("aria-selected", String(active)); });
+  $("#evidenceEntriesView").classList.toggle("hidden", tab !== "entries");
+  $("#evidenceClaimsView").classList.toggle("hidden", tab !== "claims");
+  if (tab === "claims") loadEvidenceClaims();
 }
 
 function renderEvidenceList() {
@@ -8133,10 +8367,11 @@ function renderEvidenceList() {
     delBtn.textContent = "Delete";
     delBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!confirm("Delete this evidence entry?")) return;
+      const accepted = await confirmAction({ title: "Delete Evidence entry?", message: "Claims linked only to this entry will become missing evidence. The source and Artifact records are unchanged.", confirmLabel: "Delete Entry", destructive: true });
+      if (!accepted) return;
       try {
         await invoke("delete_evidence_entry", { id: entry.id });
-        await loadEvidenceEntries();
+        await Promise.all([loadEvidenceEntries(), loadEvidenceClaims()]);
       } catch (err) { toast(`Delete failed: ${err}`, "error"); }
     });
     actions.append(delBtn);
@@ -8162,6 +8397,8 @@ function renderEvidenceList() {
 }
 
 function initEvidencePanel() {
+  $(".context-panel").append($("#evidencePanel"));
+  $$('[data-evidence-tab]').forEach((button) => button.addEventListener("click", () => switchEvidenceTab(button.dataset.evidenceTab)));
   $("#evidenceNewButton").addEventListener("click", () => {
     $("#evidenceNewForm").classList.toggle("hidden");
   });
@@ -8220,6 +8457,45 @@ function initEvidencePanel() {
     }
   });
   $("#refreshEvidence").addEventListener("click", loadEvidenceEntries);
+  $("#refreshEvidenceClaims").addEventListener("click", loadEvidenceClaims);
+  $("#evidenceClaimNew").addEventListener("click", () => { $("#evidenceClaimForm").classList.toggle("hidden"); renderEvidenceClaimFormOptions(); });
+  $("#evidenceClaimCancel").addEventListener("click", () => { $("#evidenceClaimForm").classList.add("hidden"); $("#evidenceClaimFormError").classList.add("hidden"); });
+  $$('[data-claim-anchor]').forEach((button) => button.addEventListener("click", () => {
+    state.claimAnchorKind = button.dataset.claimAnchor;
+    $$('[data-claim-anchor]').forEach((candidate) => candidate.classList.toggle("active", candidate === button));
+    $("#evidenceSourceAnchorFields").classList.toggle("hidden", state.claimAnchorKind !== "source_range");
+    $("#evidenceArtifactAnchorFields").classList.toggle("hidden", state.claimAnchorKind !== "artifact");
+  }));
+  $("#evidenceClaimCreate").addEventListener("click", async () => {
+    const error = $("#evidenceClaimFormError");
+    error.classList.add("hidden");
+    const summary = $("#evidenceClaimSummary").value.trim();
+    const sourcePath = $("#evidenceClaimSourcePath").value.trim().replaceAll("\\", "/");
+    const startLine = Number($("#evidenceClaimStartLine").value);
+    const endLine = Number($("#evidenceClaimEndLine").value);
+    const artifactId = $("#evidenceClaimArtifact").value || null;
+    if (!summary || (state.claimAnchorKind === "source_range" && (!sourcePath || startLine < 1 || endLine < startLine)) || (state.claimAnchorKind === "artifact" && !artifactId)) {
+      error.textContent = "Enter a summary and a valid source range or Artifact.";
+      error.classList.remove("hidden");
+      return;
+    }
+    const evidenceIds = $$("#evidenceClaimLinks input:checked").map((input) => Number(input.value));
+    try {
+      await invoke("create_evidence_claim", { request: {
+        kind: $("#evidenceClaimKind").value.trim() || "result", summary, anchor_kind: state.claimAnchorKind,
+        source_path: state.claimAnchorKind === "source_range" ? sourcePath : null,
+        start_line: state.claimAnchorKind === "source_range" ? startLine : null, start_column: state.claimAnchorKind === "source_range" ? 1 : null,
+        end_line: state.claimAnchorKind === "source_range" ? endLine : null, end_column: state.claimAnchorKind === "source_range" ? 1 : null,
+        artifact_id: state.claimAnchorKind === "artifact" ? artifactId : null, evidence_ids: evidenceIds,
+      }});
+      $("#evidenceClaimForm").classList.add("hidden");
+      $("#evidenceClaimSummary").value = "";
+      await loadEvidenceClaims();
+    } catch (failure) {
+      error.textContent = String(failure);
+      error.classList.remove("hidden");
+    }
+  });
 }
 
 
@@ -8529,8 +8805,20 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
   state.previewScenarioApplied = true;
+  if (scenario === "evidence-claims") {
+    seedMockEvidenceClaims();
+    state.artifacts = structuredClone(mockArtifacts);
+    applyWorkbenchLayout("analyze");
+    await switchContextTab("evidence");
+    await loadEvidenceEntries();
+    switchEvidenceTab("claims");
+    await loadEvidenceClaims();
+    if (previewParams.get("state") === "form" || previewParams.get("state") === "create-error") $("#evidenceClaimNew").click();
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
     state.posture = "agent";
@@ -8666,6 +8954,22 @@ async function maybeApplyPreviewScenario() {
       setInstalledHelpView(requestedView);
     }
     setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
+  if (scenario === "evidence-claims") {
+    const panel = rectEvidence($("#evidencePanel"));
+    const list = rectEvidence($("#evidenceClaimList"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      evidence_tab: state.evidenceTab,
+      claims: state.evidenceClaims.length,
+      statuses: Array.from(state.evidenceClaimReviews.values()).map((review) => review.status),
+      form_open: !$("#evidenceClaimForm").classList.contains("hidden"),
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      list_outside_panel: Boolean(panel && list && (list.left < panel.left || list.right > panel.right)),
+      rects: { panel, list },
+    });
     return;
   }
   if (scenario === "project-references") {

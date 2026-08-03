@@ -2,7 +2,7 @@
 
 An example-driven R project for manual acceptance and hands-on evaluation of
 the Rho workbench. It includes a deterministic single-cell QC workflow, an
-intentional correction exercise, editor/Git review examples, rendered reports,
+intentional correction exercise, editor/Git/claim review examples, rendered reports,
 and the original compact `iris` smoke workflow.
 
 ## Structure
@@ -54,6 +54,7 @@ acceptance-project/
 | `examples/editor-intelligence.R`, `examples/editor-refactor-use.R` | G3, WS2 completion/installed Help/example/reference/refactor/Agent Help context, WS9 diagnostics |
 | `examples/git-review-demo.txt` | G5 hunk stage/unstage, restore, commit |
 | `reports/cell-qc-report.Rmd` | G6, G9, G13-G14, render provenance |
+| `reports/claim-review-demo.qmd` | EW-CR2 source/Artifact anchors, Evidence links, review status and recovery |
 | `01-load-explore.R` | G2 (Console), G3 (Editor), G8 (Data Viewer), G14 (Runs) |
 | `02-modeling.R` | G3 (Editor), G14 (Problems — intentional error) |
 | `03-visualize.R` | G2 (Console), G3 (Editor), G9 (Plots) |

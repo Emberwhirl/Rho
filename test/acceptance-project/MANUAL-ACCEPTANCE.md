@@ -194,6 +194,48 @@ With the QC workflow still loaded:
 4. Open Audit with project scope, then inspect run, snapshot, problem, and
    artifact categories. Change to a run or artifact scope when available.
 
+### 5A. Review Real Claims Against Evidence
+
+Open `reports/claim-review-demo.qmd`. Keep the line numbers visible, run both R
+chunks, and Render the document so the project contains a real render-output
+Artifact. In Evidence > Entries create these two entries:
+
+1. `Treatment response study`, DOI `10.1000/rho-demo`, with notes
+   `Methods and outcome are inspectable in the demo.`
+2. `Sensitivity note awaiting citation`, with DOI and notes left blank.
+
+Then open Evidence > Claims and exercise the complete structural review:
+
+1. Create a source-range claim for the first finding paragraph, link
+   `Treatment response study`, and confirm status `Linked`. Expand Review and
+   verify the exact excerpt and Evidence metadata. Open Source and confirm the
+   editor selects the recorded lines; Open Evidence returns to the exact entry.
+2. Create a second source-range claim for the sensitivity paragraph with no
+   Evidence selected. Confirm `Missing evidence`, then delete it once: cancel
+   the product dialog first, repeat, confirm, and verify only the claim/link is
+   removed.
+3. Recreate the sensitivity claim linked to
+   `Sensitivity note awaiting citation`. Confirm `Incomplete evidence` because
+   the linked entry has no DOI, citation JSON, or notes. Delete that Evidence
+   entry and verify the durable claim recovers truthfully to `Missing evidence`
+   rather than disappearing or showing stale content.
+4. Create another linked source claim, save the file, then edit one character
+   inside its anchored paragraph and save. Refresh Claims and confirm
+   `Unresolved source`. Restore the exact original text, save, refresh, and
+   confirm the prior structural status returns.
+5. Create an Artifact-anchored claim using the rendered
+   `claim-review-demo.html` Artifact and link `Treatment response study`.
+   Confirm it is `Linked`, expand its detail, and Open Artifact to inspect the
+   exact output and provenance. Remove or move the rendered file only when the
+   surrounding Artifact workflow offers a reversible test; refresh and confirm
+   the claim reports `Unresolved source`, then re-render and verify recovery.
+
+Treat every status as record health only. `Linked` is a failed acceptance if
+the UI claims that the literature proves the result, hides the exact anchor,
+shows foreign-project content, or mutates a file/Artifact/Evidence entry while
+reviewing. Repeat the first source claim in the generated Unicode/space project
+and verify neither project can list, open, delete, or reuse the other's claim.
+
 This is the representative reproducibility check for G7, G13, and G14: the QC
 result must be understandable from files, environment evidence, runs, and
 artifacts without relying on Agent chat alone.

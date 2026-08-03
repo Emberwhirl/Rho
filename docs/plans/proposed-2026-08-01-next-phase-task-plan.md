@@ -150,11 +150,12 @@ accepted 0.3.x, BH1-BH3, and RA-RC1 evidence.
 - [x] Minimal scholarly citation normalization and DOI resolution
 - [x] Project-scoped evidence entries linked to a producing run or Artifact
 - [x] Project-scoped evidence curation and search surface
-- [ ] Structural claim-to-evidence linkage and bounded review status
+- [x] Structural claim-to-evidence linkage and bounded review status
 
-The minimal EW-CR1 package is complete. Its accepted spec explicitly excludes
-structural claim-to-evidence status; that broader semantic review remains owned
-by the proposal and is not implied by these completed items.
+EW-CR1 and EW-CR2 are complete at the implementation and automated/browser
+verification gates. EW-CR2 adds structural linkage only: `linked` means that
+the exact anchor and linked Evidence are inspectable, never that Rho has judged
+the scientific claim true. Installed-app acceptance remains separate.
 
 ## Longer-Term Deferred Items
 

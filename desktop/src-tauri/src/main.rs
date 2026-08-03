@@ -39,12 +39,14 @@ use rho_server::coordinator::{
 use rho_store::{
     AgentTurnDetail, AgentTurnDraft, AgentTurnEventDraft, AgentTurnFinish, AgentTurnSummary,
     ApprovalRequestSummary, ArtifactRecordDraft, ArtifactRecordSummary, AuditLimits, AuditResponse,
-    AuditScope, CompareRunsResponse, EnvironmentOperationRequestSummary, EvidenceEntry,
-    EvidenceEntryDraft, PlotArtifactSummary, PlotPayloadPruneResult, ProblemSummary,
-    ProjectRetentionSummary, RetentionPolicy, RunDetail, RunSummary, Store, normalize_project_root,
+    AuditScope, CompareRunsResponse, EnvironmentOperationRequestSummary, EvidenceClaim,
+    EvidenceClaimDraft, EvidenceClaimReview, EvidenceEntry, EvidenceEntryDraft,
+    PlotArtifactSummary, PlotPayloadPruneResult, ProblemSummary, ProjectRetentionSummary,
+    RetentionPolicy, RunDetail, RunSummary, Store, normalize_project_root,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock, oneshot};
 use uuid::Uuid;
@@ -392,6 +394,20 @@ struct EditorFormatRequest {
     path: String,
     source: String,
     document_version: i64,
+}
+
+#[derive(Deserialize)]
+struct EvidenceClaimCreateRequest {
+    kind: String,
+    summary: String,
+    anchor_kind: String,
+    source_path: Option<String>,
+    start_line: Option<i64>,
+    start_column: Option<i64>,
+    end_line: Option<i64>,
+    end_column: Option<i64>,
+    artifact_id: Option<String>,
+    evidence_ids: Vec<i64>,
 }
 
 #[derive(Serialize)]
@@ -2429,6 +2445,139 @@ async fn delete_evidence_entry(id: i64, state: State<'_, AppState>) -> Result<bo
     let mut store = read_store(&state).map_err(display_error)?;
     store
         .delete_evidence_entry(&project_root, id)
+        .map_err(display_error)
+}
+
+fn source_claim_snapshot(
+    root: &Path,
+    path: &str,
+    start_line: i64,
+    end_line: i64,
+) -> Result<(String, String)> {
+    ensure!(
+        start_line >= 1 && end_line >= start_line,
+        "Claim source range is invalid"
+    );
+    ensure!(
+        end_line - start_line < 200,
+        "Claim source range exceeds 200 lines"
+    );
+    let file = project_path(root, path)?;
+    ensure_editable_file(&file)?;
+    ensure_editable_file_size(&file)?;
+    let content = std::fs::read_to_string(&file)?;
+    let lines = content.lines().collect::<Vec<_>>();
+    ensure!(
+        end_line as usize <= lines.len(),
+        "Claim source range is outside the file"
+    );
+    let excerpt = lines[(start_line as usize - 1)..end_line as usize].join("\n");
+    ensure!(
+        excerpt.len() <= 16 * 1024,
+        "Claim source excerpt exceeds 16 KiB"
+    );
+    let digest = format!("{:x}", Sha256::digest(content.as_bytes()));
+    Ok((digest, excerpt))
+}
+
+#[tauri::command]
+async fn create_evidence_claim(
+    request: EvidenceClaimCreateRequest,
+    state: State<'_, AppState>,
+) -> Result<EvidenceClaim, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let (source_sha256, source_excerpt) = if request.anchor_kind == "source_range" {
+        let path = request
+            .source_path
+            .as_deref()
+            .ok_or_else(|| "Source path is required".to_string())?;
+        let (digest, excerpt) = source_claim_snapshot(
+            &root,
+            path,
+            request.start_line.unwrap_or(0),
+            request.end_line.unwrap_or(0),
+        )
+        .map_err(display_error)?;
+        (Some(digest), Some(excerpt))
+    } else {
+        (None, None)
+    };
+    let mut store = read_store(&state).map_err(display_error)?;
+    store
+        .create_evidence_claim(&EvidenceClaimDraft {
+            project_root,
+            kind: request.kind,
+            summary: request.summary,
+            anchor_kind: request.anchor_kind,
+            source_path: request.source_path.map(|path| path.replace('\\', "/")),
+            start_line: request.start_line,
+            start_column: request.start_column,
+            end_line: request.end_line,
+            end_column: request.end_column,
+            source_sha256,
+            source_excerpt,
+            artifact_id: request.artifact_id,
+            evidence_ids: request.evidence_ids,
+        })
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn list_evidence_claims(
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<EvidenceClaim>, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let store = read_store(&state).map_err(display_error)?;
+    store
+        .list_evidence_claims(&project_root, limit)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn review_evidence_claim(
+    claim_id: String,
+    state: State<'_, AppState>,
+) -> Result<EvidenceClaimReview, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let store = read_store(&state).map_err(display_error)?;
+    let claim = store
+        .get_evidence_claim(&project_root, &claim_id)
+        .map_err(display_error)?;
+    let source_resolved = claim.as_ref().and_then(|claim| {
+        if claim.anchor_kind != "source_range" {
+            return None;
+        }
+        let snapshot = source_claim_snapshot(
+            &root,
+            claim.source_path.as_deref()?,
+            claim.start_line?,
+            claim.end_line?,
+        )
+        .ok()?;
+        Some(
+            claim.source_sha256.as_deref() == Some(snapshot.0.as_str())
+                && claim.source_excerpt.as_deref() == Some(snapshot.1.as_str()),
+        )
+    });
+    store
+        .review_evidence_claim(&project_root, &claim_id, source_resolved)
+        .map_err(display_error)
+}
+
+#[tauri::command]
+async fn delete_evidence_claim(
+    claim_id: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let root = state.project_root.read().await.clone();
+    let project_root = root.to_string_lossy().replace('\\', "/");
+    let mut store = read_store(&state).map_err(display_error)?;
+    store
+        .delete_evidence_claim(&project_root, &claim_id)
         .map_err(display_error)
 }
 
@@ -4553,7 +4702,7 @@ mod tests {
         ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
         lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
         reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
-        switch_project_with_watcher_factory, write_r_probe_script,
+        source_claim_snapshot, switch_project_with_watcher_factory, write_r_probe_script,
     };
 
     use crate::project::{
@@ -4581,6 +4730,31 @@ mod tests {
         assert!(!run_is_retryable("environment.restore", "user"));
         assert!(!run_is_retryable("workspace.set_project_root", "system"));
         assert!(!run_is_retryable("workspace.bootstrap", "system"));
+    }
+
+    #[test]
+    fn source_claim_snapshot_is_bounded_and_content_bound() {
+        let directory = TempDir::new().unwrap();
+        let project_path = directory.path().join("project");
+        std::fs::create_dir_all(project_path.join("reports")).unwrap();
+        let project = project_path.canonicalize().unwrap();
+        std::fs::write(project.join("reports/demo.qmd"), "one\ntwo\nthree\n").unwrap();
+
+        let (digest, excerpt) = source_claim_snapshot(&project, "reports/demo.qmd", 2, 3).unwrap();
+        assert_eq!(digest.len(), 64);
+        assert_eq!(excerpt, "two\nthree");
+        assert!(source_claim_snapshot(&project, "../outside.qmd", 1, 1).is_err());
+        assert!(source_claim_snapshot(&project, "reports/demo.qmd", 0, 1).is_err());
+        assert!(source_claim_snapshot(&project, "reports/demo.qmd", 1, 201).is_err());
+
+        std::fs::write(
+            project.join("reports/demo.qmd"),
+            "one\ntwo changed\nthree\n",
+        )
+        .unwrap();
+        let changed = source_claim_snapshot(&project, "reports/demo.qmd", 2, 3).unwrap();
+        assert_ne!(changed.0, digest);
+        assert_ne!(changed.1, excerpt);
     }
 
     #[test]
@@ -6011,6 +6185,10 @@ fn main() {
             list_evidence_entries,
             get_evidence_entry,
             delete_evidence_entry,
+            create_evidence_claim,
+            list_evidence_claims,
+            review_evidence_claim,
+            delete_evidence_claim,
         ])
         .build(tauri::generate_context!());
     match run_result {
