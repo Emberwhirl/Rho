@@ -20,6 +20,9 @@ assert.match(js, /unresolved_source/);
 assert.match(js, /missing_evidence/);
 assert.match(js, /incomplete_evidence/);
 assert.match(js, /Structural review only/);
+assert.match(js, /start_column: null/);
+assert.match(js, /end_column: null/);
+assert.match(js, /claim\.end_column \?\? model\?\.getLineMaxColumn\(endLine\)/);
 assert.doesNotMatch(js.slice(js.indexOf("function initEvidencePanel()"), js.indexOf("//", js.indexOf("function initEvidencePanel()") + 50)), /\bconfirm\(/);
 
 console.log("Evidence claim UI contract checks passed.");

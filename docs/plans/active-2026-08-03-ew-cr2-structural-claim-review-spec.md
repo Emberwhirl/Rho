@@ -1,6 +1,6 @@
 # EW-CR2: Structural Claim-To-Evidence Review
 
-Status: implementation and automated/browser verification complete; installed acceptance open
+Status: repair implementation active after contract review; installed acceptance open
 
 Date: 2026-08-03
 Owner: Evidence Workspace and Claim Review
@@ -146,3 +146,29 @@ mock contract levels without exposing foreign content.
 Contract review found no implementation deviation. Application version remains
 `0.4.0-dev.0`, `NEWS.md` is updated, and `rho.bridge` is unchanged. Installed
 candidate execution remains user-owned and is not accepted by this evidence.
+
+## 2026-08-03 Repair Review
+
+A post-commit implementation-to-contract review invalidated the earlier
+no-deviation conclusion and reopened EW-CR2. The user authorized five separate
+repair commits:
+
+1. make line-granular source anchors select the same complete lines stored in
+   `source_excerpt`;
+2. select and navigate all current-project Artifacts rather than only the
+   current session cache;
+3. enforce project checks and executable rejection/recovery states in the
+   browser mock;
+4. make Open Evidence expand the exact linked entry;
+5. reject whitespace-only citation identity when deriving review status.
+
+The current UI source-range form is intentionally line-granular. It persists
+null columns, snapshots complete inclusive lines, and Open Source selects those
+same complete lines using the editor model's actual end-line maximum column.
+Explicit column-granular authoring remains outside this repair package.
+
+Repair 1 is implemented and verified. `test-evidence-claim-ui.mjs`, frontend
+syntax validation, and whitespace validation pass. Browser review opened
+`reports/claim-review-demo.qmd`, selected the complete lines 12-13 (100
+characters including the newline), and ended at line 13 column 53, the editor
+model's maximum column for that line. Repairs 2-5 remain pending.

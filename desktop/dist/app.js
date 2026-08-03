@@ -165,6 +165,7 @@ const mockProjects = {
       { path: "examples/editor-refactor-use.R", name: "editor-refactor-use.R", kind: "source", size_bytes: 120 },
       { path: "report.Rmd", name: "report.Rmd", kind: "source", size_bytes: 92 },
       { path: "report.qmd", name: "report.qmd", kind: "source", size_bytes: 96 },
+      { path: "reports/claim-review-demo.qmd", name: "claim-review-demo.qmd", kind: "source", size_bytes: 360 },
       { path: "scratch.R", name: "scratch.R", kind: "source", size_bytes: 420 },
     ],
     contents: {
@@ -174,6 +175,7 @@ const mockProjects = {
       "examples/editor-refactor-use.R": "review_subset <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
+      "reports/claim-review-demo.qmd": "---\ntitle: Claim review demo\nformat: html\n---\n\n# Findings\n\ncontrol <- c(4, 5, 6)\ntreatment <- c(7, 8, 9)\n\n## Result\nThe treatment group has a higher mean response.\nThis second line completes the recorded claim range.\n\nmean(treatment) - mean(control)\n",
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
     },
   },
@@ -374,8 +376,8 @@ function seedMockEvidenceClaims() {
   });
   const base = {
     project_root: "D:/Rho/project", kind: "result", anchor_kind: "source_range",
-    source_path: "reports/claim-review-demo.qmd", start_line: 12, start_column: 1,
-    end_line: 13, end_column: 72, source_sha256: "a".repeat(64),
+    source_path: "reports/claim-review-demo.qmd", start_line: 12, start_column: null,
+    end_line: 13, end_column: null, source_sha256: "a".repeat(64),
     source_excerpt: "The treatment group showed a bounded response in the demo analysis.",
     artifact_id: null, created_at: "2026-08-03T08:10:00Z", updated_at: "2026-08-03T08:10:00Z",
   };
@@ -8213,8 +8215,13 @@ async function openClaimSource(claim) {
   if (!claim?.source_path) return;
   await openDocument(claim.source_path);
   if (!state.editor?.editor) return;
-  state.editor.editor.revealLineInCenter(claim.start_line || 1);
-  state.editor.editor.setSelection({ startLineNumber: claim.start_line || 1, startColumn: claim.start_column || 1, endLineNumber: claim.end_line || claim.start_line || 1, endColumn: claim.end_column || 1 });
+  const model = state.editor.editor.getModel();
+  const startLine = Math.max(1, Math.min(Number(claim.start_line) || 1, model?.getLineCount() || 1));
+  const endLine = Math.max(startLine, Math.min(Number(claim.end_line) || startLine, model?.getLineCount() || startLine));
+  const startColumn = claim.start_column ?? 1;
+  const endColumn = claim.end_column ?? model?.getLineMaxColumn(endLine) ?? 1;
+  state.editor.editor.revealLineInCenter(startLine);
+  state.editor.editor.setSelection({ startLineNumber: startLine, startColumn, endLineNumber: endLine, endColumn });
   state.editor.editor.focus();
 }
 
@@ -8484,8 +8491,8 @@ function initEvidencePanel() {
       await invoke("create_evidence_claim", { request: {
         kind: $("#evidenceClaimKind").value.trim() || "result", summary, anchor_kind: state.claimAnchorKind,
         source_path: state.claimAnchorKind === "source_range" ? sourcePath : null,
-        start_line: state.claimAnchorKind === "source_range" ? startLine : null, start_column: state.claimAnchorKind === "source_range" ? 1 : null,
-        end_line: state.claimAnchorKind === "source_range" ? endLine : null, end_column: state.claimAnchorKind === "source_range" ? 1 : null,
+        start_line: state.claimAnchorKind === "source_range" ? startLine : null, start_column: null,
+        end_line: state.claimAnchorKind === "source_range" ? endLine : null, end_column: null,
         artifact_id: state.claimAnchorKind === "artifact" ? artifactId : null, evidence_ids: evidenceIds,
       }});
       $("#evidenceClaimForm").classList.add("hidden");
