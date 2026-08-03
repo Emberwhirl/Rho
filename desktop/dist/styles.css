@@ -2204,6 +2204,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .evidence-list { flex: 1; overflow-y: auto; }
 .evidence-item { padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
 .evidence-item:hover { background: var(--hover); }
+.evidence-item.evidence-item-focused { background: #eef6f5; box-shadow: inset 3px 0 var(--accent); }
 .evidence-item-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .evidence-item-title { font-weight: 600; font-size: 12px; }
 .evidence-item-date { color: var(--subtle); font-size: 10px; white-space: nowrap; }

@@ -8321,6 +8321,21 @@ async function openClaimArtifact(claim) {
   }
 }
 
+async function openClaimEvidence(entryId) {
+  await loadEvidenceEntries();
+  switchEvidenceTab("entries");
+  const item = document.querySelector(`.evidence-item[data-id="${entryId}"]`);
+  if (!item) {
+    toast("The linked Evidence entry is no longer available in this project.", true);
+    return;
+  }
+  $$("#evidenceList .evidence-item-focused").forEach((candidate) => candidate.classList.remove("evidence-item-focused"));
+  item.classList.add("expanded", "evidence-item-focused");
+  item.setAttribute("aria-expanded", "true");
+  item.scrollIntoView({ block: "center" });
+  item.focus({ preventScroll: true });
+}
+
 function renderEvidenceClaims() {
   const list = $("#evidenceClaimList");
   const claims = state.evidenceClaims || [];
@@ -8387,7 +8402,7 @@ function renderEvidenceClaims() {
       const open = document.createElement("button");
       open.type = "button";
       open.textContent = "Open Evidence";
-      open.addEventListener("click", () => { switchEvidenceTab("entries"); document.querySelector(`.evidence-item[data-id="${entry.id}"]`)?.scrollIntoView({ block: "center" }); });
+      open.addEventListener("click", () => openClaimEvidence(entry.id));
       row.append(document.createElement("br"), open);
       detail.append(row);
     }
@@ -8418,6 +8433,8 @@ function renderEvidenceList() {
     const item = document.createElement("div");
     item.className = "evidence-item";
     item.dataset.id = entry.id;
+    item.tabIndex = -1;
+    item.setAttribute("aria-expanded", "false");
 
     const header = document.createElement("div");
     header.className = "evidence-item-header";
@@ -8485,6 +8502,7 @@ function renderEvidenceList() {
 
     item.addEventListener("click", () => {
       item.classList.toggle("expanded");
+      item.setAttribute("aria-expanded", String(item.classList.contains("expanded")));
     });
     list.append(item);
   }

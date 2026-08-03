@@ -190,3 +190,11 @@ delete, and confirmed that foreign fixture content was absent from the current
 project UI and responses. The create-error fixture now fails once: browser
 review retained the form and five claims after rejection, then accepted the
 same retry and displayed six claims. Repairs 4-5 remain pending.
+
+Repair 4 is implemented and verified. Open Evidence reloads the current
+project Entries, switches views, resolves the exact linked ID, expands and
+highlights that row, scrolls it into view, and moves focus to it. If the entry
+was deleted between review and navigation, the UI reports that it is no longer
+available rather than implying success. Browser review opened Evidence 101 and
+confirmed the Entries view, exact title, expanded/highlighted state, focus, and
+`aria-expanded=true`. Repair 5 remains pending.
