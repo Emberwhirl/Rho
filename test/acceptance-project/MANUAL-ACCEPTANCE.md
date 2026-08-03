@@ -152,6 +152,18 @@ Open `examples/editor-intelligence.R`:
 15. Modify the same saved file in an external editor and verify Rho detects the
    change. Then create an unsaved Rho draft, overwrite the file externally, and
    verify the draft is preserved for review rather than silently replaced.
+16. After running the QC workflow, open `examples/editor-formatting.R` and
+    choose Edit > Format Document (or the editor Format action). If `styler` is
+    unavailable, verify Rho names that exact missing provider and does not use a
+    substitute. Otherwise verify the review preserves the leading comment and
+    shows the tight assignments/arguments beside the formatted result. Cancel
+    once and confirm the clean file is unchanged. Review again, apply, and
+    confirm only the editor buffer becomes dirty while the disk file remains
+    unchanged. Use Undo in the review and confirm the original clean buffer
+    returns. Apply once more, save explicitly, and run the file; expected output
+    is a one-row data frame with `threshold` equal to 20 and `cells` equal to 5.
+    Reopen the review, edit the source before Apply, and verify the stale
+    proposal is rejected without overwriting the intervening edit.
 
 Also run selected lines, the current line, and the complete file to verify that
 the visible Run action matches its scope. These examples cover G3 and the

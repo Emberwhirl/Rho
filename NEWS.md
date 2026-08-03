@@ -88,6 +88,10 @@ this file records behavior that is already available in a released build.
   tied to the active project and exact editor versions. Accepted refactors
   change only editor buffers, keep Save explicit, and reject incomplete
   reference scans or stale files without partially changing other targets.
+- Format Document now creates an exact Workspace R/styler before/after review
+  for one open R buffer. Apply, Save, and Undo remain explicit editor actions;
+  missing providers, parse errors, unchanged text, and stale proposals are
+  surfaced without silently substituting another formatter.
 
 #### WS1: Packages and environments
 

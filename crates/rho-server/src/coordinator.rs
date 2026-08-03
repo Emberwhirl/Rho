@@ -539,7 +539,7 @@ pub async fn bootstrap_bridge(
     let code = format!(
         r#"local({{
   bridge_env <- new.env(parent = asNamespace("utils"))
-  for (name in c("state.R", "execute.R", "workspace.R")) {{
+  for (name in c("state.R", "execute.R", "workspace.R", "completion.R", "lintr.R", "targets.R", "formatting.R")) {{
     sys.source(file.path({bridge_path}, "R", name), envir = bridge_env)
   }}
   options(rho.bridge.env = bridge_env)
@@ -1949,6 +1949,7 @@ fn authorize_agent_workspace_request(
         | "workspace.list_package_functions"
         | "workspace.function_help"
         | "workspace.lint_file"
+        | "workspace.format_r_source"
         | "workspace.inspect_targets"
         | "workspace.read_data_view" => Ok(()),
         "workspace.execute"
@@ -2686,9 +2687,13 @@ fn validate_local_help_lookup(name: &str, package: Option<&str>) -> Result<()> {
 }
 
 fn validate_project_relative_r_path(path: &str) -> Result<()> {
+    validate_project_relative_r_source_path(path, "Lint")
+}
+
+fn validate_project_relative_r_source_path(path: &str, label: &str) -> Result<()> {
     ensure!(
         !path.is_empty() && path.len() <= 1000 && !path.chars().any(char::is_control),
-        "Lint path must contain 1 to 1000 UTF-8 bytes without control characters"
+        "{label} path must contain 1 to 1000 UTF-8 bytes without control characters"
     );
     ensure!(
         !path.starts_with('/')
@@ -2697,11 +2702,11 @@ fn validate_project_relative_r_path(path: &str) -> Result<()> {
             && path
                 .split(['/', '\\'])
                 .all(|segment| !segment.is_empty() && segment != "." && segment != ".."),
-        "Lint path must be project-relative"
+        "{label} path must be project-relative"
     );
     ensure!(
         path.to_ascii_lowercase().ends_with(".r"),
-        "Lint path must identify one R file"
+        "{label} path must identify one R file"
     );
     Ok(())
 }
@@ -3555,6 +3560,39 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
                 ),
             ))
         }
+        "workspace.format_r_source" => {
+            let source = arguments["source"]
+                .as_str()
+                .context("workspace.format_r_source requires string argument `source`")?;
+            let path = arguments["path"]
+                .as_str()
+                .context("workspace.format_r_source requires string argument `path`")?;
+            let document_version = arguments["document_version"].as_i64().context(
+                "workspace.format_r_source requires integer argument `document_version`",
+            )?;
+            validate_project_relative_r_source_path(path, "Formatting")?;
+            ensure!(
+                source.as_bytes().len() <= 1024 * 1024,
+                "Formatting source must be at most 1 MiB"
+            );
+            ensure!(
+                !source.chars().any(|character| character == '\0'),
+                "Formatting source must not contain NUL bytes"
+            );
+            ensure!(
+                (0..=i32::MAX as i64).contains(&document_version),
+                "workspace.format_r_source requires a non-negative document version"
+            );
+            Ok((
+                OperationClass::Probe,
+                format!(
+                    "{bridge}$rho_format_r_source(source = {}, path = {}, document_version = {})",
+                    r_string(source)?,
+                    r_string(path)?,
+                    document_version
+                ),
+            ))
+        }
         "workspace.inspect_targets" => {
             let root = arguments["project_root"]
                 .as_str()
@@ -3870,6 +3908,11 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
             .get("object_name")
             .and_then(Value::as_str)
             .map(|name| format!("inspect data {name}"))
+            .unwrap_or_else(|| bridge_expression.to_string()),
+        "workspace.format_r_source" => arguments
+            .get("path")
+            .and_then(Value::as_str)
+            .map(|path| format!("format {path}"))
             .unwrap_or_else(|| bridge_expression.to_string()),
         "workspace.read_data_view" => arguments
             .get("object_name")
@@ -4720,6 +4763,33 @@ mod tests {
             json!({"path": "analysis.R", "document_version": null}),
         ] {
             assert!(bridge_expression("workspace.lint_file", &arguments).is_err());
+        }
+    }
+
+    #[test]
+    fn format_lookup_is_source_and_document_version_bound() {
+        let (class, expression) = bridge_expression(
+            "workspace.format_r_source",
+            &json!({
+                "source": "x<-1+2\n",
+                "path": "R/analysis quoted.R",
+                "document_version": 7
+            }),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::Probe));
+        assert!(expression.contains("rho_format_r_source"));
+        assert!(expression.contains("R/analysis quoted.R"));
+        assert!(expression.contains("document_version = 7"));
+
+        for arguments in [
+            json!({"source": "x <- 1", "path": "analysis.txt", "document_version": 1}),
+            json!({"source": "x <- 1", "path": "../analysis.R", "document_version": 1}),
+            json!({"source": "x\0 <- 1", "path": "analysis.R", "document_version": 1}),
+            json!({"source": "x <- 1", "path": "analysis.R", "document_version": -1}),
+            json!({"source": "x".repeat(1024 * 1024 + 1), "path": "analysis.R", "document_version": 1}),
+        ] {
+            assert!(bridge_expression("workspace.format_r_source", &arguments).is_err());
         }
     }
 

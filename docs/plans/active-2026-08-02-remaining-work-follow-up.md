@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **10 open items** and **39 completed
-items**. The 10 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **9 open items** and **40 completed
+items**. The 9 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -20,11 +20,11 @@ included in that checklist count.
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS2 editor enhancement | 1 | Implement document-version-bound formatting proposals |
+| WS2 editor enhancement | 0 | Capability complete; installed-app acceptance remains separate |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **10** | |
+| **Total** | **9** | |
 
-For near-term planning, this is **2 product implementation items** plus **8
+For near-term planning, this is **1 product implementation item** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -207,6 +207,15 @@ proposals fail before any target changes. Contract review and the complete
 frontend/browser matrix passed without closing installed-app acceptance. The
 checklist is now **10 open / 39 completed**.
 
+The authorized WS2-F1 package,
+[`active-2026-08-03-ws2-formatting-review-spec.md`](active-2026-08-03-ws2-formatting-review-spec.md),
+completed the Workspace R/styler formatting result, exact document-version-bound
+review, editor-buffer-only Apply/Save/Undo, provider-unavailable and parse-error
+states, stale recovery, mock parity, contract review, and the complete affected
+automated/browser matrix on 2026-08-03. The acceptance project now includes
+ordinary and malformed formatting examples. Installed-app acceptance remains
+open. The checklist is now **9 open / 40 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
@@ -220,7 +229,7 @@ checklist is now **10 open / 39 completed**.
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 10-item checklist and require separate
+These six directions remain outside the 9-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

@@ -156,6 +156,7 @@ const mockProjects = {
     files: [
       { path: "analysis.R", name: "analysis.R", kind: "source", size_bytes: 120 },
       { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
+      { path: "examples/editor-formatting.R", name: "editor-formatting.R", kind: "source", size_bytes: 180 },
       { path: "examples/editor-refactor-use.R", name: "editor-refactor-use.R", kind: "source", size_bytes: 120 },
       { path: "report.Rmd", name: "report.Rmd", kind: "source", size_bytes: 92 },
       { path: "report.qmd", name: "report.qmd", kind: "source", size_bytes: 96 },
@@ -164,6 +165,7 @@ const mockProjects = {
     contents: {
       "analysis.R": "# Project analysis\nsummary(qc)\n",
       "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n\nexample_value<-stats::median(c(1, 3, 5))\n",
+      "examples/editor-formatting.R": "# Formatting review keeps comments and explicit save control\nthreshold<-20\nreview_rows<-subset(data,mito_percent>threshold)\nreview_rows\n",
       "examples/editor-refactor-use.R": "review_subset <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
@@ -2059,6 +2061,42 @@ async function mockInvoke(command, args) {
       notices: previewState === "truncated" ? ["diagnostic_count_limit"] : [], error: null,
     };
   }
+  if (command === "editor_format_source") {
+    const request = args.request || args;
+    const source = String(request.source || "");
+    const path = String(request.path || "examples/editor-formatting.R");
+    const documentVersion = Number(request.document_version ?? 1);
+    const previewState = previewParams.get("state") || "formatted";
+    if (previewState === "unavailable") {
+      return {
+        kind: "rho.editor_format_result.v1", ok: false, status: "unavailable",
+        provider: "styler", provider_version: null, path, document_version: documentVersion,
+        before: source, after: null, changed: false, warnings: [],
+        error: { code: "formatter_unavailable", message: "The selected styler formatter is not installed in Workspace R." },
+      };
+    }
+    if (previewState === "error") {
+      return {
+        kind: "rho.editor_format_result.v1", ok: false, status: "error",
+        provider: "styler", provider_version: "1.2.0", path, document_version: documentVersion,
+        before: source, after: null, changed: false, warnings: [],
+        error: { code: "formatter_error", message: "The selected formatter could not parse this R source." },
+      };
+    }
+    const after = previewState === "unchanged"
+      ? source
+      : source
+        .replace(/\s*<-\s*/g, " <- ")
+        .replace(/\s*\+\s*/g, " + ")
+        .replace(/\s*>\s*/g, " > ");
+    return {
+      kind: "rho.editor_format_result.v1", ok: true,
+      status: after === source ? "unchanged" : "formatted",
+      provider: "styler", provider_version: "1.2.0", path,
+      document_version: documentVersion, before: source, after,
+      changed: after !== source, warnings: [], error: null,
+    };
+  }
   if (command === "audit_reproducibility") {
     const scopeStr = args.scope || "project";
     return {
@@ -2753,6 +2791,7 @@ function setBusy(busy, label = "R is busy") {
   $("#editorRunFileButton").disabled = busy || state.projectStatus !== "ready";
   $("#editorRenameButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#editorExtractButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
+  $("#editorFormatButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#consoleInput").disabled = busy;
   $("#consoleRunButton").disabled = busy;
   setKernelStatus(busy ? "starting" : "idle", busy ? label : "R idle");
@@ -3183,6 +3222,7 @@ function updateEditorChrome() {
   $("#saveFileButton").disabled = state.projectStatus !== "ready" || documentReadOnly;
   $("#editorRenameButton").disabled = documentActionsDisabled;
   $("#editorExtractButton").disabled = documentActionsDisabled;
+  $("#editorFormatButton").disabled = documentActionsDisabled;
   renderEnvironmentSummary();
 }
 
@@ -3299,6 +3339,13 @@ async function initializeEditor() {
       keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyE],
       contextMenuGroupId: "1_modification",
       run: () => requestExtractFunction(),
+    });
+    state.editor.editor.addAction({
+      id: "rho.formatDocument",
+      label: "Format Document",
+      keybindings: [KeyMod.Shift | KeyMod.Alt | KeyCode.KeyF],
+      contextMenuGroupId: "1_modification",
+      run: () => requestFormatDocument(),
     });
     // Ctrl+Click on a word
     state.editor.editor.onMouseDown((e) => {
@@ -3424,6 +3471,7 @@ function setProjectStatus(status, unavailable = null) {
   $("#saveFileButton").disabled = disabled;
   $("#editorRenameButton").disabled = disabled || state.busy;
   $("#editorExtractButton").disabled = disabled || state.busy;
+  $("#editorFormatButton").disabled = disabled || state.busy;
   $(".new-tab").disabled = disabled;
   $("#projectName").textContent = unavailable?.path?.split(/[\\/]/).filter(Boolean).at(-1) || activeProjectName();
   $("#projectTreeRoot").textContent = unavailable?.path || state.project.root || "No project";
@@ -6585,6 +6633,70 @@ async function buildExtractRefactorProposal(functionName) {
   };
 }
 
+const FORMAT_MAX_SOURCE_BYTES = 1024 * 1024;
+
+async function buildFormatProposal() {
+  syncDocumentFromEditor({ render: false, persist: false });
+  const documentState = activeDocument();
+  if (!documentState || documentState.readOnly || !/\.r$/i.test(documentState.path)) {
+    throw new Error("Format Document requires an editable R source file.");
+  }
+  const source = String(documentState.content || "");
+  if (new TextEncoder().encode(source).length > FORMAT_MAX_SOURCE_BYTES) {
+    throw new Error("The active R source exceeds the 1 MiB formatting limit.");
+  }
+  const projectRoot = state.project.root;
+  const documentVersion = documentState.versionId ?? 0;
+  const response = await invoke("editor_format_source", {
+    request: {
+      path: documentState.path,
+      source,
+      document_version: documentVersion,
+    },
+  });
+  if (state.project.root !== projectRoot) {
+    throw new Error("The active project changed while formatting was running.");
+  }
+  if (!response || response.kind !== "rho.editor_format_result.v1") {
+    throw new Error("The formatter returned an invalid result. Refresh and try again.");
+  }
+  if (!response.ok) {
+    const message = response.error?.message || "The formatter could not create a proposal.";
+    const error = new Error(message);
+    error.code = response.error?.code || response.status || "formatter_error";
+    throw error;
+  }
+  if (response.path !== documentState.path || Number(response.document_version) !== Number(documentVersion)) {
+    throw new Error("The formatter result is bound to a different document version. Try again.");
+  }
+  if (String(response.before || "") !== source) {
+    throw new Error("The formatter did not return the exact editor source. Try again.");
+  }
+  const after = String(response.after ?? "");
+  if (new TextEncoder().encode(after).length > FORMAT_MAX_SOURCE_BYTES) {
+    throw new Error("The formatter returned output above the 1 MiB review limit.");
+  }
+  return {
+    kind: "rho.editor_format_proposal.v1",
+    operation: "format_document",
+    projectRoot,
+    title: `Format ${documentState.path}`,
+    provider: response.provider || "styler",
+    providerVersion: response.provider_version || null,
+    warnings: Array.isArray(response.warnings) ? response.warnings : [],
+    targets: [{
+      path: documentState.path,
+      before: source,
+      after,
+      savedContent: documentState.savedContent ?? source,
+      beforeFingerprint: refactorContentFingerprint(source),
+      documentVersion,
+      wasOpen: true,
+      matches: response.changed ? 1 : 0,
+    }],
+  };
+}
+
 function boundedRefactorPreview(content, limit = 32_000) {
   const value = String(content || "");
   if (value.length <= limit) return value || "(empty)";
@@ -6602,11 +6714,14 @@ function setRefactorReviewError(message = null) {
 function renderRefactorReview() {
   const proposal = state.refactor.proposal;
   const status = state.refactor.status;
+  const formatting = proposal?.operation === "format_document";
   $("#refactorReviewState").textContent = status;
-  $("#refactorReviewTitle").textContent = proposal?.title || "Review refactor";
+  $("#refactorReviewTitle").textContent = proposal?.title || (formatting ? "Review formatting" : "Review refactor");
   $("#refactorReviewSummary").textContent = proposal
-    ? `${proposal.targets.length} file${proposal.targets.length === 1 ? "" : "s"} · ${proposal.operation === "rename_symbol" ? `${proposal.referenceCount} exact symbol locations` : "one whole-line selection"} · Apply changes only editor buffers; Save each dirty file separately.${proposal.operation === "extract_function" ? " Zero-argument extraction preserves lexical reads, but assignments and returns may change scope." : ""}`
-    : "No refactor proposal is available.";
+    ? formatting
+      ? `${proposal.provider || "styler"}${proposal.providerVersion ? ` ${proposal.providerVersion}` : ""} · exact before/after for one open document · Apply changes only the editor buffer; Save separately.${proposal.warnings?.length ? ` Warnings: ${proposal.warnings.join(" ")}` : ""}`
+      : `${proposal.targets.length} file${proposal.targets.length === 1 ? "" : "s"} · ${proposal.operation === "rename_symbol" ? `${proposal.referenceCount} exact symbol locations` : "one whole-line selection"} · Apply changes only editor buffers; Save each dirty file separately.${proposal.operation === "extract_function" ? " Zero-argument extraction preserves lexical reads, but assignments and returns may change scope." : ""}`
+    : "No formatting or refactor proposal is available.";
   const files = $("#refactorReviewFiles");
   files.replaceChildren();
   for (const target of proposal?.targets || []) {
@@ -6616,7 +6731,7 @@ function renderRefactorReview() {
     const path = document.createElement("strong");
     path.textContent = target.path;
     const version = document.createElement("span");
-    version.textContent = `${target.matches || 1} edit${target.matches === 1 ? "" : "s"} · ${target.documentVersion === null ? target.beforeFingerprint : `doc ${target.documentVersion}`}`;
+    version.textContent = `${formatting ? (target.matches ? "changed" : "unchanged") : `${target.matches || 1} edit${target.matches === 1 ? "" : "s"}`} · ${target.documentVersion === null ? target.beforeFingerprint : `doc ${target.documentVersion}`}`;
     header.append(path, version);
     const diff = document.createElement("div");
     diff.className = "refactor-review-diff";
@@ -6640,7 +6755,7 @@ function renderRefactorReview() {
   $("#refactorReviewUndo").classList.toggle("hidden", status !== "applied" || !state.refactor.undo);
   $("#refactorReviewCancel").textContent = status === "review" ? "Cancel" : "Close";
   setRefactorReviewError(state.refactor.error);
-  if (previewParams.get("preview") === "editor-refactor") requestAnimationFrame(recordPreviewLayoutEvidence);
+  if (["editor-refactor", "editor-format"].includes(previewParams.get("preview"))) requestAnimationFrame(recordPreviewLayoutEvidence);
 }
 
 function openRefactorReview(proposal = null, status = "review", returnFocus = document.activeElement) {
@@ -6724,8 +6839,25 @@ async function requestExtractFunction(options = {}) {
   renderRefactorReview();
 }
 
+async function requestFormatDocument(options = {}) {
+  openRefactorReview(null, "loading", options.returnFocus || document.activeElement);
+  try {
+    state.refactor.proposal = await buildFormatProposal();
+    state.refactor.status = state.refactor.proposal.targets.some((target) => target.before !== target.after)
+      ? "review"
+      : "unchanged";
+    setRefactorReviewError();
+  } catch (error) {
+    state.refactor.status = error?.code === "formatter_unavailable" ? "unavailable" : "error";
+    setRefactorReviewError(error);
+  }
+  renderRefactorReview();
+}
+
 async function validateRefactorProposal(proposal) {
-  if (!proposal || proposal.kind !== "rho.editor_refactor_proposal.v1") throw new Error("The refactor proposal is malformed.");
+  if (!proposal || !["rho.editor_refactor_proposal.v1", "rho.editor_format_proposal.v1"].includes(proposal.kind)) {
+    throw new Error("The editor change proposal is malformed.");
+  }
   if (proposal.projectRoot !== state.project.root) throw new Error("The active project changed. Create a fresh refactor proposal.");
   const validated = [];
   for (const target of proposal.targets) {
@@ -6749,6 +6881,9 @@ async function validateRefactorProposal(proposal) {
       if (String(disk?.content || "") !== target.before) {
         throw new Error(`The disk content changed for ${target.path}. Reload References and try again.`);
       }
+    }
+    if (proposal.operation === "format_document" && target.documentVersion === null) {
+      throw new Error(`The document version is unavailable for ${target.path}. Reopen the file and try again.`);
     }
     validated.push({ target, documentState });
   }
@@ -6795,6 +6930,7 @@ function replaceRefactorDocumentContent(target, content) {
 
 async function applyRefactorProposal() {
   const proposal = state.refactor.proposal;
+  const formatting = proposal?.operation === "format_document";
   const button = $("#refactorReviewApply");
   button.disabled = true;
   const appliedTargets = [];
@@ -6815,7 +6951,9 @@ async function applyRefactorProposal() {
     renderProblems();
     renderRefactorReview();
     scheduleSessionSave();
-    toast(`Refactor applied to ${proposal.targets.length} editor buffer${proposal.targets.length === 1 ? "" : "s"}. Save to persist.`);
+    toast(formatting
+      ? "Formatting applied to the editor buffer. Save to persist."
+      : `Refactor applied to ${proposal.targets.length} editor buffer${proposal.targets.length === 1 ? "" : "s"}. Save to persist.`);
   } catch (error) {
     for (const target of [...appliedTargets].reverse()) {
       try {
@@ -6838,17 +6976,18 @@ async function applyRefactorProposal() {
 
 async function undoRefactorProposal() {
   const undo = state.refactor.undo;
+  const formatting = undo?.proposal?.operation === "format_document";
   const button = $("#refactorReviewUndo");
   if (!undo) return;
   button.disabled = true;
   const revertedTargets = [];
   try {
-    if (undo.projectRoot !== state.project.root) throw new Error("The active project changed, so refactor undo was stopped.");
+    if (undo.projectRoot !== state.project.root) throw new Error(`The active project changed, so ${formatting ? "formatting" : "refactor"} undo was stopped.`);
     for (const target of undo.targets) {
       if (state.activeDocument === target.path) syncDocumentFromEditor({ render: false, persist: false });
       const documentState = state.documents[target.path];
       if (!documentState || documentState.versionId !== target.appliedVersion || documentState.content !== target.after) {
-        throw new Error(`The editor changed after the refactor in ${target.path}; automatic undo was stopped.`);
+        throw new Error(`The editor changed after ${formatting ? "formatting" : "the refactor"} in ${target.path}; automatic undo was stopped.`);
       }
     }
     for (const target of undo.targets) {
@@ -6862,7 +7001,7 @@ async function undoRefactorProposal() {
     setRefactorReviewError();
     renderRefactorReview();
     scheduleSessionSave();
-    toast("Refactor undone in the editor.");
+    toast(formatting ? "Formatting undone in the editor." : "Refactor undone in the editor.");
   } catch (error) {
     for (const target of [...revertedTargets].reverse()) {
       try { replaceRefactorDocumentContent(target, target.after); } catch (_) { /* keep the undo failure visible */ }
@@ -8390,7 +8529,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -8610,6 +8749,32 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "editor-format") {
+    state.posture = "human";
+    state.humanPreset = "code";
+    applyPostureLayout();
+    await openDocument("examples/editor-formatting.R");
+    const formatState = previewParams.get("state") || "formatted";
+    if (formatState === "stale") {
+      await requestFormatDocument({ returnFocus: $("#editorFormatButton") });
+      if (state.refactor.proposal) {
+        const target = state.refactor.proposal.targets[0];
+        replaceRefactorDocumentContent(target, `${target.before}\n# intervening editor change\n`);
+        renderActiveDocument();
+        await applyRefactorProposal();
+      }
+    } else {
+      await requestFormatDocument({ returnFocus: $("#editorFormatButton") });
+      if (formatState === "applied" && state.refactor.proposal) {
+        await applyRefactorProposal();
+      } else if (formatState === "undo" && state.refactor.proposal) {
+        await applyRefactorProposal();
+        await undoRefactorProposal();
+      }
+    }
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -8705,7 +8870,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -8927,7 +9092,7 @@ function recordPreviewLayoutEvidence() {
     });
     return;
   }
-  if (scenario === "editor-refactor") {
+  if (["editor-refactor", "editor-format"].includes(scenario)) {
     const surface = rectEvidence($("#refactorReviewDialog .refactor-review-surface"));
     const files = rectEvidence($("#refactorReviewFiles"));
     target.textContent = JSON.stringify({
@@ -11135,6 +11300,7 @@ function runWorkbenchMenuCommand(command) {
     "open-project": () => $("#projectSwitcher").click(),
     "new-file": () => $(".new-tab").click(),
     "save-file": () => $("#saveFileButton").click(),
+    "format-document": () => $("#editorFormatButton").click(),
     undo: () => runEditorMenuCommand("undo"),
     redo: () => runEditorMenuCommand("redo"),
     interrupt: () => $("#interruptButton").click(),
@@ -11908,6 +12074,7 @@ $("#editorRunButton").addEventListener("click", runSelectionOrCurrentLine);
 $("#editorRunFileButton").addEventListener("click", runActiveFile);
 $("#editorRenameButton").addEventListener("click", () => requestRenameSymbol({ returnFocus: $("#editorRenameButton") }));
 $("#editorExtractButton").addEventListener("click", () => requestExtractFunction({ returnFocus: $("#editorExtractButton") }));
+$("#editorFormatButton").addEventListener("click", () => requestFormatDocument({ returnFocus: $("#editorFormatButton") }));
 $("#saveFileButton").addEventListener("click", saveActiveDocument);
 $(".new-tab").addEventListener("click", createDocument);
 $("#projectSwitcher").addEventListener("click", async () => {

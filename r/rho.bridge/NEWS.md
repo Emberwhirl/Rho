@@ -1,3 +1,10 @@
+# rho.bridge 0.1.10
+
+- Added a bounded, project-relative R source formatting result using the
+  explicitly selected optional `styler` provider. Missing providers, parse
+  failures, unchanged text, warnings, and exact document metadata remain
+  visible without formatter fallback or file mutation.
+
 # rho.bridge 0.1.9
 
 - Added bounded, version-bound lintr diagnostics with stable IDs, normalized

@@ -140,7 +140,7 @@ Implemented focused packages and remaining proposal items after selecting Air:
 - [x] Agent answers linked to the resolved local Help record
 - [x] Refactoring: rename symbol and extract function as reviewable
   document-version-bound workspace edits
-- [ ] Document-version-bound formatting proposals (never auto-apply)
+- [x] Document-version-bound formatting proposals (never auto-apply)
 
 ### P3-3: EW-CR1 Evidence Workspace
 

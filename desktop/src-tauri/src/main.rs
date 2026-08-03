@@ -57,6 +57,7 @@ const BRIDGE_WORKSPACE: &str = include_str!("../../../r/rho.bridge/R/workspace.R
 const BRIDGE_COMPLETION: &str = include_str!("../../../r/rho.bridge/R/completion.R");
 const BRIDGE_LINTR: &str = include_str!("../../../r/rho.bridge/R/lintr.R");
 const BRIDGE_TARGETS: &str = include_str!("../../../r/rho.bridge/R/targets.R");
+const BRIDGE_FORMATTING: &str = include_str!("../../../r/rho.bridge/R/formatting.R");
 const AGENT_STATE: &str = include_str!("../../../r/rho.agent/R/aaa-state.R");
 const AGENT_TRANSPORT: &str = include_str!("../../../r/rho.agent/R/transport.R");
 const AGENT_ADAPTER: &str = include_str!("../../../r/rho.agent/R/aisdk_adapter.R");
@@ -384,6 +385,13 @@ struct RenderRequest {
     path: String,
     format: Option<String>,
     document_version: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct EditorFormatRequest {
+    path: String,
+    source: String,
+    document_version: i64,
 }
 
 #[derive(Serialize)]
@@ -1935,6 +1943,41 @@ async fn editor_lint_file(
     });
     dispatch_workspace_request(
         "workspace.lint_file",
+        &payload,
+        ExecutionOrigin::System,
+        session.as_ref(),
+        broker,
+        store,
+    )
+    .await
+    .map_err(display_error)
+}
+
+#[tauri::command]
+async fn editor_format_source(
+    request: EditorFormatRequest,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let session = active_session(&state).await.map_err(display_error)?;
+    let context = active_context(&state).await.map_err(display_error)?;
+    let mut context = context.lock().await;
+    let CoordinatorRuntime { broker, store } = &mut *context;
+    let EditorFormatRequest {
+        path,
+        source,
+        document_version,
+    } = request;
+    let payload = json!({
+        "arguments": {
+            "path": path.clone(),
+            "source": source,
+            "source_path": path,
+            "document_version": document_version
+        },
+        "expected_workspace": broker.identity()
+    });
+    dispatch_workspace_request(
+        "workspace.format_r_source",
         &payload,
         ExecutionOrigin::System,
         session.as_ref(),
@@ -3745,6 +3788,7 @@ fn prepare_runtime_files_with_rscript(
     write_source(&bridge_package.join("R/completion.R"), BRIDGE_COMPLETION)?;
     write_source(&bridge_package.join("R/lintr.R"), BRIDGE_LINTR)?;
     write_source(&bridge_package.join("R/targets.R"), BRIDGE_TARGETS)?;
+    write_source(&bridge_package.join("R/formatting.R"), BRIDGE_FORMATTING)?;
     write_source(&agent_package.join("R/aaa-state.R"), AGENT_STATE)?;
     write_source(&agent_package.join("R/transport.R"), AGENT_TRANSPORT)?;
     write_source(&agent_package.join("R/aisdk_adapter.R"), AGENT_ADAPTER)?;
@@ -5922,6 +5966,7 @@ fn main() {
             editor_function_help,
             editor_function_documentation,
             editor_lint_file,
+            editor_format_source,
             editor_goto_definition,
             editor_find_project_references,
             editor_discover_chunks,
