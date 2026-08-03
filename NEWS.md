@@ -80,6 +80,10 @@ this file records behavior that is already available in a released build.
   Supported mechanical fixes open an exact before/after review and apply only
   to the unsaved editor buffer after project, file, version, and line checks;
   Save remains a separate action.
+- A resolved installed Local Help record can now be attached explicitly to the
+  next Agent question. The selected answer shows that package/topic/version
+  context separately from model prose and can reopen the exact Help record;
+  model-only answers do not receive a documentation evidence block.
 
 #### WS1: Packages and environments
 

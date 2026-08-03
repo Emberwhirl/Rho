@@ -4272,13 +4272,23 @@ mod tests {
             "active_path": "R/plot.R",
             "context_source": "selection",
             "context_path": "R/plot.R",
-            "selection_text": "old_plot <- function(x) {}"
+            "selection_text": "old_plot <- function(x) {}",
+            "local_help": {
+                "kind": "rho.local_help_context.v1",
+                "project_root": "D:/Rho/project",
+                "package": "stats",
+                "help_topic": "median",
+                "package_version": "4.6.0",
+                "help_record": "C:/R/library/stats/help/median"
+            }
         });
 
         let prompt = contextual_agent_prompt("替换当前选区", &[], Some(&context), None);
         assert!(prompt.contains("\"context_source\": \"selection\""));
         assert!(prompt.contains("\"active_path\": \"R/plot.R\""));
         assert!(prompt.contains("\"selection_text\": \"old_plot <- function(x) {}\""));
+        assert!(prompt.contains("rho.local_help_context.v1"));
+        assert!(prompt.contains("help_topic"));
         assert!(prompt.contains("Current user request:\n替换当前选区"));
     }
 

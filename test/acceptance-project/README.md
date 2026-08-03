@@ -51,7 +51,7 @@ acceptance-project/
 | Script / File | Gates Verified |
 |---------------|----------------|
 | `examples/single-cell-qc/` | G2-G4, G7-G10, G13-G14, reproducibility workflow |
-| `examples/editor-intelligence.R` | G3, WS2 completion/installed Help/example/reference, WS9 diagnostics |
+| `examples/editor-intelligence.R` | G3, WS2 completion/installed Help/example/reference/Agent Help context, WS9 diagnostics |
 | `examples/git-review-demo.txt` | G5 hunk stage/unstage, restore, commit |
 | `reports/cell-qc-report.Rmd` | G6, G9, G13-G14, render provenance |
 | `01-load-explore.R` | G2 (Console), G3 (Editor), G8 (Data Viewer), G14 (Runs) |

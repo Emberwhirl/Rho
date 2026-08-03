@@ -103,27 +103,34 @@ Open `examples/editor-intelligence.R`:
    created. Open it again, confirm, and verify the exact displayed code appears
    in Console and as one user Run. If it fails, verify the error also appears
    in Problems; do not record a failed example as completed.
-4. Go to the definition of `flag_low_quality`, then find its project reference.
-5. Confirm the intentionally tight assignment `example_value<-...` appears in
+4. Return to the resolved `stats::median` Help record and choose `Ask Rho with
+   this Help`. Confirm the Help badge appears in the composer. Ask what the
+   function returns, submit, and select the completed answer. Verify the answer
+   shows a separate Local Help context block with `stats::median`, installed
+   version, and Help record; click `Open Help` and confirm the exact Help record
+   reopens. Remove the badge before a second question and confirm that a
+   model-only answer has no Local Help context block.
+5. Go to the definition of `flag_low_quality`, then find its project reference.
+6. Confirm the intentionally tight assignment `example_value<-...` appears in
    Problems when `lintr` is available. Verify its range, info severity,
    `infix_spaces_linter` rule, and installed lintr version are visible.
-6. Choose `Review quick fix`. Verify the exact before/after line and the
+7. Choose `Review quick fix`. Verify the exact before/after line and the
    editor-only consequence. Cancel once and confirm the line and clean tab do
    not change. Review again and apply: confirm spaces appear, the tab becomes
    dirty, Problems no longer presents the stale fix, and the file on disk is
    unchanged until Save. Use Edit > Undo and confirm the original line and
    clean state return. Apply once more, save explicitly, and run Lint again.
-7. To exercise rejection, create the same finding again, run Lint, open its
+8. To exercise rejection, create the same finding again, run Lint, open its
    review, then edit that source line before choosing Apply. Confirm Rho rejects
    the stale proposal and asks for another Lint rather than changing or saving
    the file. Repeat after switching to another open file and verify the wrong
    file is also rejected.
-8. Add `review_flag = example_value > 2`, save, and run Lint. When the installed
+9. Add `review_flag = example_value > 2`, save, and run Lint. When the installed
    lintr profile reports `assignment_linter`, review the proposed `<-` change,
    cancel, then apply and undo it as above. Record an explicit skip when that
    linter is disabled in the installed profile.
-9. Add a comment, save with Ctrl+S, close the tab, and reopen it.
-10. Modify the same saved file in an external editor and verify Rho detects the
+10. Add a comment, save with Ctrl+S, close the tab, and reopen it.
+11. Modify the same saved file in an external editor and verify Rho detects the
    change. Then create an unsaved Rho draft, overwrite the file externally, and
    verify the draft is preserved for review rather than silently replaced.
 

@@ -69,6 +69,7 @@ const state = {
   environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
   packageManagementDialog: { busy: false, returnFocus: null },
   localHelp: { status: "empty", record: null, error: null },
+  agentLocalHelpContext: null,
   installedHelp: { status: "empty", record: null, error: null, activeView: "overview", running: false },
   projectReferences: { status: "empty", record: null, error: null },
   selectedObjectName: null,
@@ -1933,7 +1934,8 @@ async function mockInvoke(command, args) {
   }
   if (command === "editor_function_help") {
     const name = args.name || "";
-    const previewState = previewParams.get("locationState")
+    const agentPreviewState = previewParams.get("preview") === "agent-help-link" ? previewParams.get("state") : null;
+    const previewState = previewParams.get("locationState") || previewParams.get("helpState") || agentPreviewState
       || (previewParams.get("preview") === "local-help" ? previewParams.get("state") : null)
       || "found";
     if (previewState === "error") throw new Error("Local Help bridge is unavailable.");
@@ -1964,7 +1966,9 @@ async function mockInvoke(command, args) {
   if (command === "editor_function_documentation") {
     const name = args.name || "lm";
     const packageName = args.package || "stats";
-    const previewState = previewParams.get("state") || "found";
+    const previewState = previewParams.get("helpState")
+      || (previewParams.get("preview") === "agent-help-link" ? previewParams.get("state") : null)
+      || "found";
     if (previewState === "error") throw new Error("Installed Rd documentation could not be read.");
     if (previewState === "unavailable") {
       return { name, package: packageName, package_version: "4.6.0", help_topic: null, found: false, title: null, description: null, usage: null, arguments: [], details: null, value: null, example: { code: null, executable: false, omitted_tags: [], parse_error: null }, vignettes: [], truncated: false, incomplete: false, notices: [] };
@@ -4502,6 +4506,73 @@ function renderAgentContextBadge() {
   badge.classList.remove("hidden");
 }
 
+function normalizedAgentLocalHelpContext() {
+  const location = state.localHelp.record;
+  const documentation = state.installedHelp.record;
+  if (state.projectStatus !== "ready" || !state.project.root
+    || state.localHelp.status !== "found" || state.installedHelp.status !== "found"
+    || !location?.found || location.ambiguous || location.truncated
+    || !location.package || !location.help_topic || !location.help_record
+    || !documentation?.found || documentation.package !== location.package
+    || documentation.name !== location.name) return null;
+  const bounded = (value, limit) => {
+    if (value === null || value === undefined) return null;
+    const text = String(value);
+    return text.length <= limit ? text : `${text.slice(0, Math.max(0, limit - 3))}...`;
+  };
+  return {
+    kind: "rho.local_help_context.v1",
+    project_root: state.project.root,
+    name: bounded(location.name, 128),
+    package: bounded(location.package, 128),
+    help_topic: bounded(location.help_topic, 128),
+    help_record: bounded(location.help_record, 1000),
+    package_version: bounded(documentation.package_version, 100),
+    title: bounded(documentation.title, 500),
+    usage: bounded(documentation.usage, 2000),
+    description: bounded(documentation.description, 2000),
+    incomplete: Boolean(documentation.incomplete),
+    truncated: Boolean(documentation.truncated),
+    notices: Array.isArray(documentation.notices) ? documentation.notices.slice(0, 20).map((item) => bounded(item, 100)) : [],
+  };
+}
+
+function renderAgentHelpContextBadge() {
+  const badge = $("#agentHelpContextBadge");
+  const context = state.agentLocalHelpContext;
+  badge.classList.toggle("hidden", !context);
+  if (context) $("#agentHelpContextLabel").textContent = `Help: ${context.package}::${context.help_topic}`;
+}
+
+function resetAgentLocalHelpContext() {
+  state.agentLocalHelpContext = null;
+  renderAgentHelpContextBadge();
+}
+
+function attachLocalHelpToAgent() {
+  const context = normalizedAgentLocalHelpContext();
+  if (!context) {
+    toast("Only a complete, unambiguous Local Help record can be attached.", true);
+    return;
+  }
+  state.agentLocalHelpContext = context;
+  applyWorkbenchLayout("agent");
+  renderAgentHelpContextBadge();
+  $("#agentInput").focus();
+  toast(`Attached ${context.package}::${context.help_topic} Local Help to the next Agent question.`);
+}
+
+function renderLocalHelpAgentAction(container) {
+  const context = normalizedAgentLocalHelpContext();
+  if (!context) return;
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "local-help-agent-action";
+  action.textContent = "Ask Rho with this Help";
+  action.addEventListener("click", attachLocalHelpToAgent);
+  container.append(action);
+}
+
 function renderProjectSkills() {
   const panel = $("#projectSkillsPanel");
   const trust = $("#projectSkillsTrust");
@@ -5505,6 +5576,7 @@ function renderAgentTimeline() {
       fullMessage.className = "timeline-final-message";
       fullMessage.textContent = turn.final_message;
       content.append(fullMessage);
+      appendAgentLocalHelpEvidence(content, state.selectedTurnDetail);
     }
     const events = selected && state.selectedTurnDetail?.events?.length
       ? state.selectedTurnDetail.events
@@ -6905,6 +6977,7 @@ function renderLocalHelp() {
     ].filter(Boolean).join(" ");
     content.append(warning);
   }
+  renderLocalHelpAgentAction(content);
   renderInstalledHelp(content);
 }
 
@@ -7782,7 +7855,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "agent-first-direct") {
     const previewState = previewParams.get("state") || "default";
@@ -7934,6 +8007,46 @@ async function maybeApplyPreviewScenario() {
     setTimeout(recordPreviewLayoutEvidence, 0);
     return;
   }
+  if (scenario === "agent-help-link") {
+    applyWorkbenchLayout("agent");
+    await showLocalHelp("lm", "stats");
+    const helpState = previewParams.get("state") || "linked";
+    if (helpState === "attached") {
+      attachLocalHelpToAgent();
+    } else if (helpState === "linked" || helpState === "partial" || helpState === "mismatch") {
+      const context = normalizedAgentLocalHelpContext();
+      if (context) {
+        if (helpState === "partial") {
+          context.incomplete = true;
+          context.notices = ["example_byte_limit"];
+        }
+        if (helpState === "mismatch") context.project_root = "D:/other-project";
+      }
+      const linkedTurn = createMockAgentTurn({
+        prompt: "Explain this API using the installed Help context.",
+        mode: "ask",
+        model: "DeepSeek V4 Flash",
+        editorContext: { project_root: state.project.root, local_help: context },
+      });
+      linkedTurn.final_message = helpState === "partial"
+        ? "The installed Help identifies stats::lm, but this bounded record is partial; inspect the missing sections before relying on the explanation."
+        : "The attached installed Help identifies stats::lm and its usage. I can explain the API, while the Local Help block below remains the source record to inspect.";
+      const linkedAnswer = linkedTurn.events.find((event) => event.event_type === "chat.message_completed");
+      if (linkedAnswer) linkedAnswer.body = linkedTurn.final_message;
+      await loadAgentData();
+    } else if (helpState === "model-only") {
+      createMockAgentTurn({
+        prompt: "Explain this API from your general knowledge.",
+        mode: "ask",
+        model: "DeepSeek V4 Flash",
+        editorContext: { project_root: state.project.root, local_help: null },
+      });
+      await loadAgentData();
+    }
+    switchAgentSurface("direct");
+    setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
   applyWorkbenchLayout("analyze");
   if (scenario === "console-logs") {
     addTerminalCommand("summary(iris$Sepal.Length)");
@@ -8029,7 +8142,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -8230,6 +8343,24 @@ function recordPreviewLayoutEvidence() {
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       list_outside_panel: Boolean(panel && list && (list.left < panel.left || list.right > panel.right)),
       rects: { panel, list },
+    });
+    return;
+  }
+  if (scenario === "agent-help-link") {
+    const evidence = rectEvidence($(".agent-help-evidence"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      scenario,
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      help_status: state.localHelp.status,
+      attachment_visible: !$("#agentHelpContextBadge").classList.contains("hidden"),
+      linked_answer: Boolean(evidence),
+      model_only_has_evidence: Boolean(evidence) && previewParams.get("state") === "model-only",
+      partial: Boolean(localHelpContextFromTurn(state.selectedTurnDetail)?.incomplete
+        || localHelpContextFromTurn(state.selectedTurnDetail)?.truncated),
+      mismatch_hidden: !evidence && previewParams.get("state") === "mismatch",
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      rects: { evidence },
     });
     return;
   }
@@ -9353,6 +9484,7 @@ function buildAgentEditorContext() {
       active_path: null,
       context_source: state.agentContextSource,
       context_path: state.agentContextPath,
+      local_help: state.agentLocalHelpContext,
     };
   }
   const offsets = currentEditorOffsets();
@@ -9377,6 +9509,7 @@ function buildAgentEditorContext() {
     file_tail: content.slice(Math.max(0, content.length - 2000)),
     context_source: state.agentContextSource,
     context_path: state.agentContextPath,
+    local_help: state.agentLocalHelpContext,
   };
 }
 
@@ -9387,6 +9520,60 @@ function parseJsonObject(value) {
   } catch (_) {
     return null;
   }
+}
+
+function localHelpContextFromTurn(detail) {
+  const event = detail?.events?.find((item) => item.event_type === "agent.user_prompt");
+  const context = parseJsonObject(event?.details_json)?.editor_context?.local_help;
+  if (!context || context.kind !== "rho.local_help_context.v1"
+    || !context.project_root || context.project_root !== state.project.root
+    || !context.name || !context.package || !context.help_topic || !context.help_record
+    || String(context.name).length > 128 || String(context.package).length > 128
+    || String(context.help_topic).length > 128 || String(context.help_record).length > 1000) return null;
+  return context;
+}
+
+async function openAgentLocalHelpContext(context) {
+  if (!context) return;
+  try {
+    await showLocalHelp(context.name, context.package);
+    toast(`Opened ${context.package}::${context.help_topic} Local Help.`);
+  } catch (error) {
+    toast(String(error), true);
+  }
+}
+
+function appendAgentLocalHelpEvidence(container, detail) {
+  const context = localHelpContextFromTurn(detail);
+  if (!context) return;
+  const block = document.createElement("aside");
+  block.className = "agent-help-evidence";
+  const header = document.createElement("div");
+  header.className = "agent-help-evidence-header";
+  const title = document.createElement("strong");
+  title.textContent = "Local Help context";
+  const badge = document.createElement("span");
+  badge.className = "revision-badge";
+  badge.textContent = context.incomplete || context.truncated ? "partial" : "resolved";
+  header.append(title, badge);
+  const identity = document.createElement("p");
+  identity.className = "agent-help-evidence-identity";
+  identity.textContent = `${context.package}::${context.help_topic}${context.package_version ? ` · ${context.package_version}` : ""}`;
+  const record = document.createElement("code");
+  record.textContent = context.help_record;
+  const note = document.createElement("p");
+  note.textContent = context.incomplete || context.truncated
+    ? "The answer received a bounded installed Help record; inspect the partial state before relying on missing sections."
+    : "This is installed documentation context supplied to this turn, separate from the model's explanation.";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.textContent = "Open Help";
+  open.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openAgentLocalHelpContext(context);
+  });
+  block.append(header, identity, record, note, open);
+  container.append(block);
 }
 
 function selectedFileEditProposal() {
@@ -9794,6 +9981,7 @@ async function sendAgentPrompt() {
       editorContext,
     });
     resetAgentContext();
+    resetAgentLocalHelpContext();
     state.activeAgentTurnId = response?.turn_id || null;
     await Promise.all([loadAgentData(), loadRunData()]);
   } catch (error) {
@@ -10904,6 +11092,9 @@ async function hydrateProject(response) {
   hideAgentFileMentions();
   clearAgentEditHighlight();
   resetAgentContext();
+  resetAgentLocalHelpContext();
+  state.localHelp = { status: "empty", record: null, error: null };
+  state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   state.fileEditProposal = null;
   state.fileEditUndo = null;
   state.agentWorkSurface = "none";
@@ -11480,6 +11671,11 @@ $("#dataViewerViewSelect").addEventListener("change", () => {
   state.dataViewer.sortColumn = null;
   state.dataViewer.sortDirection = null;
   loadDataViewPage({ rowOffset: 0, columnOffset: 0 });
+});
+$("#agentHelpContextRemove").addEventListener("click", (event) => {
+  event.stopPropagation();
+  resetAgentLocalHelpContext();
+  toast("Removed Local Help context from the next Agent question.");
 });
 $("#dataViewerFilter").addEventListener("input", () => {
   state.dataViewer.query = $("#dataViewerFilter").value;

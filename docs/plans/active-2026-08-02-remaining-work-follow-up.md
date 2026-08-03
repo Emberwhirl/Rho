@@ -8,8 +8,8 @@ Source of truth: [`proposed-2026-08-01-next-phase-task-plan.md`](proposed-2026-0
 
 ## Current Count
 
-The reconciled next-phase checklist has **12 open items** and **37 completed
-items**. The 12 open items are concrete acceptance or capability gaps. Six
+The reconciled next-phase checklist has **11 open items** and **38 completed
+items**. The 11 open items are concrete acceptance or capability gaps. Six
 additional longer-term directions remain deliberately deferred and are not
 included in that checklist count.
 
@@ -20,11 +20,11 @@ included in that checklist count.
 | WS3 table interaction | 0 | Capability complete; installed-app acceptance remains separate |
 | Render job robustness | 0 | Capability complete; installed-app acceptance remains separate |
 | WS1 package/environment completion | 0 | Capability complete; installed-app acceptance remains separate |
-| WS2 editor enhancement | 3 | Select one Help/Agent/refactor package |
+| WS2 editor enhancement | 2 | Select one refactor/formatting package |
 | Structural claim-to-evidence review | 1 | Activate the semantic linkage contract |
-| **Total** | **12** | |
+| **Total** | **11** | |
 
-For near-term planning, this is **4 product implementation items** plus **8
+For near-term planning, this is **3 product implementation items** plus **8
 acceptance/release items**. The latter comprise six manual validations, one
 distribution decision, and one affected-suite rerun. The manual validations
 are now staged under `test/acceptance-project/`; staging the instructions and
@@ -186,6 +186,16 @@ separate Save. Contract review and the complete affected automated/browser
 matrix passed without closing installed-app acceptance. The checklist is now
 **12 open / 37 completed**.
 
+The authorized WS2-AH1 package,
+[`active-2026-08-03-ws2-agent-local-help-link-spec.md`](active-2026-08-03-ws2-agent-local-help-link-spec.md),
+completed the explicit resolved-Help-to-Agent flow. A user can attach one
+qualified installed Help snapshot to the next question; the selected answer
+shows package, topic, installed version, and Help record separately from model
+prose, with an exact Open Help action. Model-only, partial, malformed, and
+foreign-project contexts fail closed. Contract review and the complete
+affected automated/browser matrix passed without closing installed-app
+acceptance. The checklist is now **11 open / 38 completed**.
+
 ## Follow-up Order
 
 1. Keep the six manual acceptance checks queued in
@@ -199,7 +209,7 @@ matrix passed without closing installed-app acceptance. The checklist is now
 
 ## Longer-term Deferred Directions
 
-These six directions remain outside the 14-item checklist and require separate
+These six directions remain outside the 11-item checklist and require separate
 authorization: WS6A pipeline execution, debugging, package-development jobs,
 interface modernization Phase 2+, cross-platform beta, and remote execution.
 

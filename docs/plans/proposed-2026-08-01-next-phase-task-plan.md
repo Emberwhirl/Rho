@@ -137,7 +137,7 @@ Implemented focused packages and remaining proposal items after selecting Air:
 - [x] Full installed-version Help: arguments, examples, vignettes, package
   version, and recorded execution of a selected example
 - [x] Deterministic diagnostic grouping and reviewable quick fixes
-- [ ] Agent answers linked to the resolved local Help record
+- [x] Agent answers linked to the resolved local Help record
 - [ ] Refactoring: rename symbol and extract function as reviewable
   document-version-bound workspace edits
 - [ ] Document-version-bound formatting proposals (never auto-apply)
