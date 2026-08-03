@@ -54,6 +54,7 @@ const state = {
   evidenceClaimReviews: new Map(),
   evidenceClaimArtifacts: [],
   evidenceClaimArtifactsError: null,
+  evidenceClaimPreviewProbe: null,
   evidenceTab: "entries",
   claimAnchorKind: "source_range",
   gitStatus: null,
@@ -360,24 +361,37 @@ let mockRenderSequence = 0;
 let mockGitRevisionSequence = 1;
 const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
+let mockEvidenceClaimCreateFailure = null;
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
 
 function seedMockEvidenceClaims() {
+  const currentProject = mockLastProject;
+  const foreignProject = Object.keys(mockProjects).find((root) => root !== currentProject) || `${currentProject}-foreign`;
   if (!mockEvidenceEntries.length) {
     mockEvidenceEntries.push(
-      { id: 101, project_root: "D:/Rho/project", title: "Treatment response study", notes: "Methods and outcome are inspectable.", doi: "10.1000/rho.demo", run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:00:00Z", updated_at: "2026-08-03T08:00:00Z" },
-      { id: 102, project_root: "D:/Rho/project", title: "Incomplete citation", notes: "", doi: null, run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:01:00Z", updated_at: "2026-08-03T08:01:00Z" },
+      { id: 101, project_root: currentProject, title: "Treatment response study", notes: "Methods and outcome are inspectable.", doi: "10.1000/rho.demo", run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:00:00Z", updated_at: "2026-08-03T08:00:00Z" },
+      { id: 102, project_root: currentProject, title: "Incomplete citation", notes: "", doi: null, run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:01:00Z", updated_at: "2026-08-03T08:01:00Z" },
+      { id: 199, project_root: foreignProject, title: "FOREIGN PRIVATE EVIDENCE", notes: "Must not cross the project boundary.", doi: null, run_id: null, artifact_id: null, citation_json: null, created_at: "2026-08-03T08:02:00Z", updated_at: "2026-08-03T08:02:00Z" },
     );
   }
-  if (!mockArtifacts.length) mockArtifacts.push({
-    artifact_id: "artifact_claim_demo", artifact_kind: "render_output", run_id: "run_claim_demo",
-    project_root: mockLastProject, output_path: "reports/claim-review-demo.html",
-    source_path: "reports/claim-review-demo.qmd", execution_mode: "render", document_version: 1,
-    workspace_id: "ws_mock", state_revision: 1, project_revision: 1, media_type: "text/html",
-    metadata_json: "{}", provenance_complete: true, incomplete_reason: null, created_at: "2026-08-03T08:05:00Z",
-  });
+  if (!mockArtifacts.length) mockArtifacts.push(
+    {
+      artifact_id: "artifact_claim_demo", artifact_kind: "render_output", run_id: "run_claim_demo",
+      project_root: currentProject, output_path: "reports/claim-review-demo.html",
+      source_path: "reports/claim-review-demo.qmd", execution_mode: "render", document_version: 1,
+      workspace_id: "ws_mock", state_revision: 1, project_revision: 1, media_type: "text/html",
+      metadata_json: "{}", provenance_complete: true, incomplete_reason: null, created_at: "2026-08-03T08:05:00Z",
+    },
+    {
+      artifact_id: "artifact_claim_foreign", artifact_kind: "render_output", run_id: "run_claim_foreign",
+      project_root: foreignProject, output_path: "private/foreign-result.html",
+      source_path: "private/foreign-analysis.qmd", execution_mode: "render", document_version: 1,
+      workspace_id: "ws_foreign", state_revision: 1, project_revision: 1, media_type: "text/html",
+      metadata_json: "{}", provenance_complete: true, incomplete_reason: null, created_at: "2026-08-03T08:06:00Z",
+    },
+  );
   const base = {
-    project_root: "D:/Rho/project", kind: "result", anchor_kind: "source_range",
+    project_root: currentProject, kind: "result", anchor_kind: "source_range",
     source_path: "reports/claim-review-demo.qmd", start_line: 12, start_column: null,
     end_line: 13, end_column: null, source_sha256: "a".repeat(64),
     source_excerpt: "The treatment group showed a bounded response in the demo analysis.",
@@ -407,6 +421,37 @@ function seedMockEvidenceClaims() {
     linked_evidence_ids: [101],
     mock_status: "unresolved_source",
   });
+  mockEvidenceClaims.push({
+    ...base,
+    claim_id: "cl_mock_foreign",
+    project_root: foreignProject,
+    summary: "FOREIGN PRIVATE CLAIM",
+    linked_evidence_ids: [199],
+    mock_status: "linked",
+  });
+}
+
+async function runEvidenceClaimMockIsolationProbe() {
+  const before = mockEvidenceClaims.length;
+  const probe = { current_project: mockLastProject };
+  try {
+    await mockInvoke("create_evidence_claim", { request: { kind: "result", summary: "foreign evidence probe", anchor_kind: "source_range", source_path: "analysis.R", start_line: 1, end_line: 1, evidence_ids: [199] } });
+    probe.foreign_evidence_rejected = false;
+  } catch { probe.foreign_evidence_rejected = true; }
+  try {
+    await mockInvoke("create_evidence_claim", { request: { kind: "result", summary: "foreign artifact probe", anchor_kind: "artifact", artifact_id: "artifact_claim_foreign", evidence_ids: [] } });
+    probe.foreign_artifact_rejected = false;
+  } catch { probe.foreign_artifact_rejected = true; }
+  probe.mutations_unchanged = mockEvidenceClaims.length === before;
+  try {
+    await mockInvoke("review_evidence_claim", { claimId: "cl_mock_foreign" });
+    probe.foreign_review_rejected = false;
+  } catch { probe.foreign_review_rejected = true; }
+  probe.foreign_delete_rejected = await mockInvoke("delete_evidence_claim", { claimId: "cl_mock_foreign" }) === false;
+  const visibleClaims = await mockInvoke("list_evidence_claims", { limit: 100 });
+  const visibleEvidence = await mockInvoke("list_evidence_entries", { limit: 100 });
+  probe.foreign_content_hidden = !JSON.stringify({ visibleClaims, visibleEvidence }).includes("FOREIGN PRIVATE");
+  return probe;
 }
 
 function seedMockGitReview() {
@@ -2562,7 +2607,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "get_artifact_record") {
     const artifactId = args.artifact_id ?? args.artifactId;
-    return mockArtifactView(mockArtifacts.find((artifact) => artifact.artifact_id === artifactId) || null);
+    return mockArtifactView(mockArtifacts.find((artifact) => artifact.project_root === mockLastProject && artifact.artifact_id === artifactId) || null);
   }
   if (command === "clear_artifact_records") {
     const before = mockArtifacts.length;
@@ -2626,7 +2671,7 @@ async function mockInvoke(command, args) {
   if (command === "create_evidence_entry") {
     const entry = {
       id: Date.now(),
-      project_root: "D:/Rho/project",
+      project_root: mockLastProject,
       title: args.title,
       notes: args.notes || "",
       doi: args.doi || null,
@@ -2641,7 +2686,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "list_evidence_entries") {
     const limit = args.limit || 50;
-    let results = structuredClone(mockEvidenceEntries);
+    let results = structuredClone(mockEvidenceEntries.filter((entry) => entry.project_root === mockLastProject));
     if (args.search) {
       const term = args.search.toLowerCase();
       results = results.filter(
@@ -2654,11 +2699,11 @@ async function mockInvoke(command, args) {
   }
   if (command === "get_evidence_entry") {
     return structuredClone(
-      mockEvidenceEntries.find((e) => e.id === args.id) || null
+      mockEvidenceEntries.find((entry) => entry.project_root === mockLastProject && entry.id === args.id) || null
     );
   }
   if (command === "delete_evidence_entry") {
-    const idx = mockEvidenceEntries.findIndex((e) => e.id === args.id);
+    const idx = mockEvidenceEntries.findIndex((entry) => entry.project_root === mockLastProject && entry.id === args.id);
     if (idx >= 0) {
       mockEvidenceEntries.splice(idx, 1);
       return true;
@@ -2667,10 +2712,20 @@ async function mockInvoke(command, args) {
   }
   if (command === "create_evidence_claim") {
     const request = args.request || {};
-    if (previewParams.get("state") === "create-error") throw new Error("The selected Evidence entry is no longer available.");
+    if (mockEvidenceClaimCreateFailure) {
+      const failure = mockEvidenceClaimCreateFailure;
+      mockEvidenceClaimCreateFailure = null;
+      throw new Error(failure);
+    }
+    const evidenceIds = Array.isArray(request.evidence_ids) ? request.evidence_ids : [];
+    const evidence = evidenceIds.map((id) => mockEvidenceEntries.find((entry) => entry.project_root === mockLastProject && entry.id === id));
+    if (evidence.some((entry) => !entry)) throw new Error("The selected Evidence entry is no longer available in this project.");
+    if (request.anchor_kind === "artifact" && !mockArtifacts.some((artifact) => artifact.project_root === mockLastProject && artifact.artifact_id === request.artifact_id)) {
+      throw new Error("The selected Artifact is no longer available in this project.");
+    }
     const claim = {
       claim_id: `cl_mock_${mockEvidenceClaims.length + 1}`,
-      project_root: "D:/Rho/project",
+      project_root: mockLastProject,
       kind: request.kind,
       summary: request.summary,
       anchor_kind: request.anchor_kind,
@@ -2682,7 +2737,7 @@ async function mockInvoke(command, args) {
       source_sha256: request.anchor_kind === "source_range" ? "a".repeat(64) : null,
       source_excerpt: request.anchor_kind === "source_range" ? "The treatment group showed a bounded response in the demo analysis." : null,
       artifact_id: request.artifact_id || null,
-      linked_evidence_ids: request.evidence_ids || [],
+      linked_evidence_ids: evidenceIds,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -2691,16 +2746,16 @@ async function mockInvoke(command, args) {
   }
   if (command === "list_evidence_claims") {
     if (!mockEvidenceClaims.length && previewParams.get("preview") === "evidence-claims") seedMockEvidenceClaims();
-    return structuredClone(mockEvidenceClaims.slice(0, args.limit || 50));
+    return structuredClone(mockEvidenceClaims.filter((claim) => claim.project_root === mockLastProject).slice(0, args.limit || 50));
   }
   if (command === "review_evidence_claim") {
-    const claim = mockEvidenceClaims.find((item) => item.claim_id === args.claimId || item.claim_id === args.claim_id);
+    const claim = mockEvidenceClaims.find((item) => item.project_root === mockLastProject && (item.claim_id === args.claimId || item.claim_id === args.claim_id));
     if (!claim) throw new Error("claim was not found");
     const scenario = claim.mock_status || "linked";
     if (scenario === "cross_project_rejected") {
       return { status: scenario, claim: null, evidence: [], limitations: ["The claim belongs to another project."] };
     }
-    const evidence = mockEvidenceEntries.filter((entry) => claim.linked_evidence_ids.includes(entry.id));
+    const evidence = mockEvidenceEntries.filter((entry) => entry.project_root === mockLastProject && claim.linked_evidence_ids.includes(entry.id));
     const limitations = scenario === "linked" ? [] : [{
       unresolved_source: "The exact claim anchor no longer resolves.",
       missing_evidence: "No Evidence entry is linked to this claim.",
@@ -2710,7 +2765,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "delete_evidence_claim") {
     const claimId = args.claimId || args.claim_id;
-    const index = mockEvidenceClaims.findIndex((item) => item.claim_id === claimId);
+    const index = mockEvidenceClaims.findIndex((item) => item.project_root === mockLastProject && item.claim_id === claimId);
     if (index < 0) return false;
     mockEvidenceClaims.splice(index, 1);
     return true;
@@ -8848,7 +8903,11 @@ async function maybeApplyPreviewScenario() {
   state.previewScenarioApplied = true;
   if (scenario === "evidence-claims") {
     seedMockEvidenceClaims();
-    state.artifacts = structuredClone(mockArtifacts);
+    state.evidenceClaimPreviewProbe = await runEvidenceClaimMockIsolationProbe();
+    if (previewParams.get("state") === "create-error") {
+      mockEvidenceClaimCreateFailure = "The selected Evidence entry is no longer available.";
+    }
+    state.artifacts = structuredClone(mockArtifacts.filter((artifact) => artifact.project_root === mockLastProject));
     applyWorkbenchLayout("analyze");
     await switchContextTab("evidence");
     await loadEvidenceEntries();
@@ -8993,22 +9052,6 @@ async function maybeApplyPreviewScenario() {
       setInstalledHelpView(requestedView);
     }
     setTimeout(recordPreviewLayoutEvidence, 0);
-    return;
-  }
-  if (scenario === "evidence-claims") {
-    const panel = rectEvidence($("#evidencePanel"));
-    const list = rectEvidence($("#evidenceClaimList"));
-    target.textContent = JSON.stringify({
-      viewport: { width: window.innerWidth, height: window.innerHeight },
-      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
-      evidence_tab: state.evidenceTab,
-      claims: state.evidenceClaims.length,
-      statuses: Array.from(state.evidenceClaimReviews.values()).map((review) => review.status),
-      form_open: !$("#evidenceClaimForm").classList.contains("hidden"),
-      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      list_outside_panel: Boolean(panel && list && (list.left < panel.left || list.right > panel.right)),
-      rects: { panel, list },
-    });
     return;
   }
   if (scenario === "project-references") {
@@ -9213,7 +9256,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format"].includes(scenario)) return;
+  if (!["agent-first-direct", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -9249,6 +9292,23 @@ function recordPreviewLayoutEvidence() {
       rects: { transcript, prompt, tabs },
     };
     target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "evidence-claims") {
+    const panel = rectEvidence($("#evidencePanel"));
+    const list = rectEvidence($("#evidenceClaimList"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      evidence_tab: state.evidenceTab,
+      claims: state.evidenceClaims.length,
+      statuses: Array.from(state.evidenceClaimReviews.values()).map((review) => review.status),
+      form_open: !$("#evidenceClaimForm").classList.contains("hidden"),
+      project_isolation: state.evidenceClaimPreviewProbe,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      list_outside_panel: Boolean(panel && list && (list.left < panel.left || list.right > panel.right)),
+      rects: { panel, list },
+    });
     return;
   }
   if (scenario === "git-review") {

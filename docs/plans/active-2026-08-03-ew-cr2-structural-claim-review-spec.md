@@ -180,3 +180,13 @@ ordinary Outputs view had zero current-session Artifacts while the Claim form
 still offered the older-session render record; opening it displayed the exact
 Artifact detail. A second fixture whose Artifact had been removed produced the
 explicit unavailable message. Repairs 3-5 remain pending.
+
+Repair 3 is implemented and verified. Browser/mock Evidence, Artifact, and
+Claim commands now bind reads and mutations to the active mock project. Claim
+creation validates every linked Evidence ID and the Artifact anchor before
+inserting anything. The executable preview probe rejected foreign Evidence and
+Artifact creation with no record-count change, rejected foreign review and
+delete, and confirmed that foreign fixture content was absent from the current
+project UI and responses. The create-error fixture now fails once: browser
+review retained the form and five claims after rejection, then accepted the
+same retry and displayed six claims. Repairs 4-5 remain pending.

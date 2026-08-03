@@ -27,6 +27,15 @@ assert.match(js, /state\.evidenceClaimArtifacts = await invoke\("list_artifact_r
 assert.match(js, /for \(const artifact of state\.evidenceClaimArtifacts \|\| \[\]\)/);
 assert.match(js, /invoke\("get_artifact_record", \{ artifact_id: claim\.artifact_id \}\)/);
 assert.match(js, /artifact_claim_missing/);
+assert.match(js, /entry\.project_root === mockLastProject/);
+assert.match(js, /artifact\.project_root === mockLastProject && artifact\.artifact_id === request\.artifact_id/);
+assert.match(js, /claim\.project_root === mockLastProject/);
+assert.match(js, /mockEvidenceClaimCreateFailure = null/);
+assert.match(js, /foreign_evidence_rejected/);
+assert.match(js, /foreign_artifact_rejected/);
+assert.match(js, /mutations_unchanged/);
+assert.match(js, /foreign_content_hidden/);
+assert.match(js, /project_isolation: state\.evidenceClaimPreviewProbe/);
 const openArtifact = js.slice(js.indexOf("async function openClaimArtifact"), js.indexOf("function renderEvidenceClaims"));
 assert.doesNotMatch(openArtifact, /state\.artifacts\.find/);
 assert.match(openArtifact, /if \(!detail\).*anchored Artifact is no longer available/);
