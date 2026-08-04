@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- A single Agent or Console execution no longer records the same Plot twice
+  when Workspace R emits duplicate display events; distinct Plots from the
+  same execution remain separate and ordered.
 - Agent-first now follows a complete Task, Runs, Outputs, and Review loop:
   Plots and saved results are discoverable without switching to Human-first,
   and selecting one opens a large review surface with human-readable source,

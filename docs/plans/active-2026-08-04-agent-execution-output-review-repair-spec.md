@@ -38,6 +38,21 @@ Regression invariants:
 - a Plot or saved output already owned by the active project is discoverable
   and inspectable in Agent-first without switching posture.
 
+### Duplicate Plot defect amendment (2026-08-05)
+
+Installed-app review found that one successful Act `run_r` execution producing
+one Plot can persist two byte-identical Plot records. The duplicate is visible
+consistently in Outputs, Run Review, and Plot history, so it must be corrected
+at the event-to-persistence boundary rather than hidden in one frontend view.
+
+For one Workspace R execution, Plot extraction must normalize each supported
+payload first and persist each identical `(media_type, normalized payload)` at
+most once, preserving the first-seen order. Distinct normalized payloads must
+remain distinct Plot records. Malformed payload rejection, project ownership,
+Run provenance, retention, and frontend projection are unchanged. This bounded
+D1/R2 repair does not introduce a new schema or reinterpret duplicates across
+different executions.
+
 ## Reference Decision
 
 The authorized interface follows the original posture design's documented
@@ -186,6 +201,9 @@ identity, or approval-lane conflict is introduced.
   opening, project reset, keyboard access, and 900 x 700 layout;
 - Rust unit test that extracts and asserts the exact Ask/Plan/Act prompt policy,
   including direct Act execution and no false execution claim;
+- Rust regression tests that two identical normalized display payloads in one
+  execution yield one Plot, while two distinct payloads yield two Plots and
+  equivalent padded/unpadded PNG payloads share one identity;
 - retain approval success, rejection/stale, failure, cancellation, and
   unsupported-model tests at existing ownership boundaries;
 - `node --check desktop/dist/app.js` and all affected frontend scripts;
@@ -260,3 +278,14 @@ updated. Application version remains `0.4.0-dev.0`; it must advance before a
 different distributable candidate is produced. R package versions are
 unchanged. Exact installed-app execution and visual acceptance are NOT RUN, so
 this contract remains active and no release-readiness claim is made.
+
+The 2026-08-05 duplicate-Plot defect amendment is implemented and automated
+verification is complete. Plot extraction now deduplicates the normalized
+`(media_type, payload)` identity within one execution while preserving the
+first-seen order and all distinct payloads. Focused Rust tests cover duplicate,
+equivalent padded/unpadded PNG, distinct, and malformed payloads. The Rtools GNU
+Rust workspace, Agent output-review and scientific-surface frontend contracts,
+`rho.agent` (45 passes), Rust formatting, and diff checks passed. Installed
+acceptance must still confirm that one Act request producing one image adds
+exactly one item to Outputs, one Plot to the producing Run Review, and one
+Plot-history record.

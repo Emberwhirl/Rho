@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
@@ -4013,6 +4013,7 @@ fn artifact_provenance_status(
 
 fn extract_plot_payloads(events: &[CorrelatedKernelEvent]) -> Vec<(String, String)> {
     let mut plots = Vec::new();
+    let mut seen = HashSet::new();
     for event in events {
         let Ok(value) = serde_json::to_value(event) else {
             continue;
@@ -4032,11 +4033,12 @@ fn extract_plot_payloads(events: &[CorrelatedKernelEvent]) -> Vec<(String, Strin
             } else {
                 payload.clone()
             };
-            plots.push((
-                media_type.to_string(),
-                serde_json::to_string(&json!({ media_type: payload }))
-                    .unwrap_or_else(|_| "{}".to_string()),
-            ));
+            let media_type = media_type.to_string();
+            let payload_json = serde_json::to_string(&json!({ &media_type: payload }))
+                .unwrap_or_else(|_| "{}".to_string());
+            if seen.insert((media_type.clone(), payload_json.clone())) {
+                plots.push((media_type, payload_json));
+            }
             break;
         }
     }
@@ -4325,6 +4327,46 @@ mod tests {
             let payload: Value = serde_json::from_str(&plots[0].1).unwrap();
             assert_eq!(payload["image/png"], expected);
         }
+    }
+
+    #[test]
+    fn deduplicates_identical_plot_payloads_within_one_execution() {
+        let events = ["iVBORw0KGgo=", "iVBORw0KGgo"]
+            .into_iter()
+            .map(|encoded| CorrelatedKernelEvent {
+                parent_id: Some("request-plot".to_string()),
+                event: KernelEvent::DisplayData {
+                    data: json!({ "image/png": encoded }),
+                },
+            })
+            .collect::<Vec<_>>();
+
+        let plots = extract_plot_payloads(&events);
+
+        assert_eq!(plots.len(), 1);
+        let payload: Value = serde_json::from_str(&plots[0].1).unwrap();
+        assert_eq!(payload["image/png"], "iVBORw0KGgo=");
+    }
+
+    #[test]
+    fn preserves_distinct_plot_payloads_within_one_execution() {
+        let events = ["iVBORw0KGgo=", "iVBORw0KGg=="]
+            .into_iter()
+            .map(|encoded| CorrelatedKernelEvent {
+                parent_id: Some("request-plot".to_string()),
+                event: KernelEvent::DisplayData {
+                    data: json!({ "image/png": encoded }),
+                },
+            })
+            .collect::<Vec<_>>();
+
+        let plots = extract_plot_payloads(&events);
+
+        assert_eq!(plots.len(), 2);
+        let first: Value = serde_json::from_str(&plots[0].1).unwrap();
+        let second: Value = serde_json::from_str(&plots[1].1).unwrap();
+        assert_eq!(first["image/png"], "iVBORw0KGgo=");
+        assert_eq!(second["image/png"], "iVBORw0KGg==");
     }
 
     #[test]

@@ -162,7 +162,10 @@ column and should create a source-linked Problem.
    execution is authorized, the Agent calls the R execution tool in this turn.
    It must not only print code or ask whether you want it to run. If exact
    approval is requested instead of session authorization, approve it once and
-   verify execution follows; rejection must not produce a success claim.
+   verify execution follows; rejection must not produce a success claim. Note
+   the Outputs count before and after this request: producing this one image
+   must increase it by exactly one, even if Workspace R emits duplicate display
+   events.
 8. Open Agent-first Runs. Confirm the scientific R action appears before
    quieter `Background activity` such as workspace refreshes. Its row must use
    a readable action label and show status, Agent origin, source or workspace,
@@ -175,7 +178,9 @@ column and should create a source-linked Problem.
    title, source, time, and `Ready to review` state. Click it and confirm Review
    becomes the dominant surface, the image is visibly large, and `Open
    producing run` returns to the exact Agent execution. Use `Back to Outputs`
-   and confirm selection is preserved.
+   and confirm selection is preserved. Confirm the producing Run Review shows
+   exactly one Plot and Human-first Plot history gained exactly one record for
+   this request; duplicate cards or history entries fail this gate.
 10. Export that Plot from Human-first Plots to
     `artifacts/agent-qc-review.png`, return to Agent-first Outputs, and confirm
     both the Plot and saved output are listed. Click the saved output and
