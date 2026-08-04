@@ -101,6 +101,9 @@ acceptance, still open and run the individual files below.
 3. `examples/single-cell-qc/03-visualize-qc.R`
    - Expected: a library-complexity scatter plot followed by a mitochondrial
      percentage boxplot.
+   - In Plots Session, confirm the count is `2`, both images are visible, and
+     the Session Retention summary also reports `2 plot rows`; an empty preview
+     beside a nonzero Retention count is a failure.
    - Use Plots Session/History, reopen the first plot, and inspect source
      provenance back to this script.
 

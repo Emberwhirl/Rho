@@ -2026,13 +2026,14 @@ async fn list_plot_artifacts(
     state: State<'_, AppState>,
 ) -> Result<Vec<PlotArtifactSummary>, String> {
     let root = state.project_root.read().await.clone();
+    let project_root = durable_project_root(&root);
     let context = active_context(&state).await.map_err(display_error)?;
     let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
     read_store(&state)
         .map_err(display_error)?
         .list_plot_artifacts(
             limit,
-            Some(root.to_string_lossy().as_ref()),
+            Some(&project_root),
             Some(&workspace_id),
             session_only.unwrap_or(true),
         )
@@ -2331,12 +2332,13 @@ async fn clear_plot_artifacts(
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     let root = state.project_root.read().await.clone();
+    let project_root = durable_project_root(&root);
     let context = active_context(&state).await.map_err(display_error)?;
     let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
     let mut store = read_store(&state).map_err(display_error)?;
     let deleted = store
         .clear_plot_artifacts(
-            Some(root.to_string_lossy().as_ref()),
+            Some(&project_root),
             Some(&workspace_id),
             session_only.unwrap_or(true),
         )
@@ -2602,12 +2604,13 @@ async fn prune_plot_payloads(
     state: State<'_, AppState>,
 ) -> Result<PlotPayloadPruneResult, String> {
     let root = state.project_root.read().await.clone();
+    let project_root = durable_project_root(&root);
     let context = active_context(&state).await.map_err(display_error)?;
     let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
     let mut store = read_store(&state).map_err(display_error)?;
     store
         .prune_plot_artifact_payloads(
-            Some(root.to_string_lossy().as_ref()),
+            Some(&project_root),
             Some(&workspace_id),
             session_only.unwrap_or(true),
         )
@@ -2623,7 +2626,7 @@ async fn get_project_retention_summary(
     state: State<'_, AppState>,
 ) -> Result<ProjectRetentionView, String> {
     let root = state.project_root.read().await.clone();
-    let project_root = root.to_string_lossy().replace('\\', "/");
+    let project_root = durable_project_root(&root);
     let context = active_context(&state).await.map_err(display_error)?;
     let workspace_id = context.lock().await.broker.identity().workspace_id.clone();
     let summary = read_store(&state)
@@ -3447,6 +3450,10 @@ async fn active_context(state: &AppState) -> Result<Arc<Mutex<CoordinatorRuntime
 fn read_store(state: &AppState) -> Result<Store> {
     let config = runtime_config(state)?;
     Store::open(&config.store_path).context("opening Rho event store")
+}
+
+fn durable_project_root(root: &Path) -> String {
+    normalize_project_root(root.to_string_lossy().as_ref())
 }
 
 async fn start_workspace(state: &AppState) -> Result<WorkspaceStatus> {
@@ -4721,11 +4728,11 @@ mod tests {
         RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
         bounded_diagnostic, classify_startup_error, configure_user_startup,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
-        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
-        finish_render_job, has_png_signature, lockfile_inventory_arguments, parse_r_runtime_probe,
-        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
-        safe_delete_project_file, source_claim_snapshot, switch_project_with_watcher_factory,
-        workspace_project_root_code, write_r_probe_script,
+        durable_project_root, ensure_artifact_export_target, ensure_supported_r_version,
+        existing_startup_file, finish_render_job, has_png_signature, lockfile_inventory_arguments,
+        parse_r_runtime_probe, project_switch_blocker, reconcile_render_job,
+        render_job_is_terminal, run_is_retryable, safe_delete_project_file, source_claim_snapshot,
+        switch_project_with_watcher_factory, workspace_project_root_code, write_r_probe_script,
     };
 
     use crate::project::{
@@ -4735,7 +4742,8 @@ mod tests {
     use rho_server::coordinator::PendingApprovalRegistry;
     use rho_store::{
         AgentTurnDraft, ApprovalRequestDraft, ArtifactRecordSummary,
-        EnvironmentOperationRequestDraft, RunDraft, Store, normalize_project_root,
+        EnvironmentOperationRequestDraft, PlotArtifactDraft, RunDraft, Store,
+        normalize_project_root,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -4804,6 +4812,121 @@ mod tests {
         assert_eq!(
             workspace_project_root_code(Path::new(r"E:\路径 含 空格\project")).unwrap(),
             r#"setwd("E:/路径 含 空格/project")"#
+        );
+    }
+
+    #[test]
+    fn durable_project_root_matches_store_identity_on_windows() {
+        assert_eq!(
+            durable_project_root(Path::new(r"E:\YuNotebooks\project\")),
+            "E:/YuNotebooks/project"
+        );
+        assert_eq!(
+            durable_project_root(Path::new(r"\\?\E:\YuNotebooks\project\")),
+            "//?/E:/YuNotebooks/project"
+        );
+        assert_eq!(
+            durable_project_root(Path::new(r"\\?\UNC\server\share\project\")),
+            "//?/UNC/server/share/project"
+        );
+    }
+
+    #[test]
+    fn plot_queries_share_the_normalized_windows_project_key() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        let raw_root = Path::new(r"\\?\E:\Rho\project\");
+        let project_root = durable_project_root(raw_root);
+        let workspace_id = "desktop_plot_session";
+        store.set_project_root(Some(&project_root)).unwrap();
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_windows_root".to_string(),
+                run_id: "run_windows_root".to_string(),
+                project_root: Some(project_root.clone()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some(workspace_id.to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: "{\"image/png\":\"aGVsbG8=\"}".to_string(),
+                provenance_complete: true,
+            })
+            .unwrap();
+        let other_project_root = "//?/E:/Rho/other-project";
+        let other_payload = "{\"image/png\":\"b3RoZXI=\"}";
+        store
+            .create_plot_artifact(&PlotArtifactDraft {
+                plot_id: "plot_other_project".to_string(),
+                run_id: "run_other_project".to_string(),
+                project_root: Some(other_project_root.to_string()),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: Some(workspace_id.to_string()),
+                state_revision: Some(1),
+                project_revision: Some(1),
+                media_type: "image/png".to_string(),
+                payload_json: other_payload.to_string(),
+                provenance_complete: true,
+            })
+            .unwrap();
+
+        assert!(
+            store
+                .list_plot_artifacts(
+                    Some(10),
+                    Some(raw_root.to_string_lossy().as_ref()),
+                    Some(workspace_id),
+                    true,
+                )
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .list_plot_artifacts(Some(10), Some(&project_root), Some(workspace_id), true,)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .project_retention_summary(&project_root, Some(workspace_id))
+                .unwrap()
+                .session
+                .plot_history_count,
+            1
+        );
+        assert_eq!(
+            store
+                .prune_plot_artifact_payloads(Some(&project_root), Some(workspace_id), true,)
+                .unwrap()
+                .pruned_count,
+            1
+        );
+        assert_eq!(
+            store
+                .clear_plot_artifacts(Some(&project_root), Some(workspace_id), true,)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .list_plot_artifacts(Some(10), Some(other_project_root), Some(workspace_id), true,)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .get_plot_artifact(other_project_root, "plot_other_project")
+                .unwrap()
+                .unwrap()
+                .payload_json,
+            other_payload
         );
     }
 

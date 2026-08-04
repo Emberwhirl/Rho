@@ -13,6 +13,9 @@ this file records behavior that is already available in a released build.
 - Plot previews and PNG export now accept Ark's unpadded base64 image payloads;
   new Plot history is stored with canonical padding and invalid images fail
   visibly instead of leaving a blank panel.
+- Plot Session/History queries now use the same normalized Windows project key
+  as persisted Plot records, so existing previews are listed instead of showing
+  an empty panel while Retention reports stored rows.
 - Console input now supports Up/Down command-history browsing with draft
   restoration.
 - Selecting Act now immediately enables its session R-execution authorization
