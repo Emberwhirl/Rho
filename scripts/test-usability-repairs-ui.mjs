@@ -16,7 +16,15 @@ assert.match(js, /sourceKind === "console" \? "Open Console" : "Go to source"/);
 assert.match(js, /unavailable\.textContent = "Source unavailable"/);
 assert.match(js, /switchDockTab\("console"\);[\s\S]*consoleInput/);
 assert.match(js, /scenario === "usability-problems"/);
-assert.match(js, /"usability-problems"\]\.includes\(scenario\)/);
+assert.match(js, /"usability-problems"(?:, "[^"]+")*\]\.includes\(scenario\)/);
 assert.match(css, /\.problem-source-unavailable/);
+
+assert.match(js, /function isDocumentSaveShortcut\(event\)/);
+assert.match(js, /event\.ctrlKey \|\| event\.metaKey/);
+assert.match(js, /KeyMod\.CtrlCmd \| KeyCode\.KeyS, \(\) => saveActiveDocument\(\)/);
+assert.match(js, /function saveShortcutOwnedByInput\(target\)/);
+assert.match(js, /\[role="dialog"\]:not\(\.hidden\)/);
+assert.match(js, /isDocumentSaveShortcut\(event\) && !event\.defaultPrevented/);
+assert.match(js, /scenario === "usability-save"/);
 
 console.log("Usability repair UI contract checks passed.");

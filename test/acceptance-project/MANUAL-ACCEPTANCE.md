@@ -209,7 +209,13 @@ Open `examples/editor-intelligence.R`:
    lintr profile reports `assignment_linter`, review the proposed `<-` change,
    cancel, then apply and undo it as above. Record an explicit skip when that
    linter is disabled in the installed profile.
-14. Add a comment, save with Ctrl+S, close the tab, and reopen it.
+14. Add a comment in the main editor, save with Ctrl+S (Cmd+S on macOS), close
+    the tab, and reopen it to confirm the saved text persists and the dirty dot
+    clears. Make another edit, click the document tab so focus is outside the
+    editor, and confirm Ctrl+S still saves the active document. Finally, make a
+    third edit, focus Console or a dialog text field, press Ctrl+S, and confirm
+    that unrelated input keeps ownership of the shortcut and the file remains
+    dirty until you return to the editor and save.
 15. Modify the same saved file in an external editor and verify Rho detects the
    change. Then create an unsaved Rho draft, overwrite the file externally, and
    verify the draft is preserved for review rather than silently replaced.

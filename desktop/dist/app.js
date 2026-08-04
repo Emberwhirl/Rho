@@ -2979,6 +2979,21 @@ function activeDocument() {
   return state.documents[state.activeDocument] || null;
 }
 
+function isDocumentSaveShortcut(event) {
+  return (event.ctrlKey || event.metaKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === "s";
+}
+
+function saveShortcutOwnedByInput(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function saveShortcutOwnedByDialog() {
+  return Boolean(document.querySelector('[role="dialog"]:not(.hidden)'));
+}
+
 function activeProjectName() {
   return state.project.root.split(/[\\/]/).filter(Boolean).at(-1) || "Rho Project";
 }
@@ -3482,6 +3497,7 @@ async function initializeEditor() {
     });
     const KeyMod = state.editor.monaco.KeyMod;
     const KeyCode = state.editor.monaco.KeyCode;
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyS, () => saveActiveDocument());
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => runSelectionOrCurrentLine());
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, () => runActiveFile());
     state.editor.editor.addCommand(KeyCode.F12, () => gotoDefinitionAtCursor());
@@ -9117,7 +9133,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "interface-shell") {
     state.posture = "human";
@@ -9442,6 +9458,22 @@ async function maybeApplyPreviewScenario() {
     ];
     renderProblems();
     switchDockTab("problems");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  if (scenario === "usability-save") {
+    state.posture = "human";
+    state.humanPreset = "code";
+    applyPostureLayout();
+    await openDocument("analysis.R");
+    const documentState = activeDocument();
+    replaceRefactorDocumentContent(
+      { path: documentState.path, before: documentState.content, savedContent: documentState.savedContent },
+      `${documentState.content.trimEnd()}\n# Unsaved shortcut review\n`,
+    );
+    documentState.cursorStart = documentState.content.length;
+    documentState.cursorEnd = documentState.content.length;
+    renderActiveDocument();
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -12932,7 +12964,7 @@ window.addEventListener("beforeunload", () => {
   flushSessionSnapshot().catch(() => {});
 });
 $("#editor").addEventListener("keydown", (event) => {
-  if (event.ctrlKey && event.key.toLowerCase() === "s") {
+  if (isDocumentSaveShortcut(event)) {
     event.preventDefault();
     saveActiveDocument();
     return;
@@ -13433,6 +13465,12 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
+  if (isDocumentSaveShortcut(event) && !event.defaultPrevented) {
+    if (saveShortcutOwnedByInput(event.target) || saveShortcutOwnedByDialog()) return;
+    event.preventDefault();
+    saveActiveDocument();
+    return;
+  }
   if (event.key === "Tab" && state.product.dialog) {
     const { surface } = productDialogElements(state.product.dialog);
     const focusable = Array.from(surface.querySelectorAll('button:not([disabled]):not(.hidden), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));

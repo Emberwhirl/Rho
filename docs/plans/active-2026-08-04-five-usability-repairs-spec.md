@@ -1,7 +1,8 @@
 # Five Workbench Usability Repairs
 
 Status: active; five bounded work packages authorized; UX-FIX1 implemented and
-automated/browser verified; installed-app acceptance open
+UX-FIX2 implemented and automated/browser verified; installed-app acceptance
+open
 
 Date: 2026-08-04
 Authorization: user reported five installed-app usability defects and requested
@@ -66,6 +67,16 @@ the implemented repair is recorded in `NEWS.md`.
 
 Acceptance: a dirty project file saves once, becomes clean, and persists; an
 unavailable/read-only/no-document state performs no write and remains truthful.
+
+Implementation evidence (2026-08-04): Monaco, the basic editor, and the active
+workbench document context now route the platform save chord through the
+existing guarded `saveActiveDocument()` path. Inputs and visible dialogs retain
+their own shortcut ownership. The `usability-save` browser scenario verified
+that Console does not save a dirty file, Monaco and document-tab contexts do,
+and the saved content remains after close/reopen. Focused and adjacent editor
+checks passed. Installed-app confirmation remains open. No application version
+bump was made because this is not yet a new distributed development candidate;
+the implemented repair is recorded in `NEWS.md`.
 
 ## UX-FIX3: Clearer File Explorer Hierarchy
 
@@ -142,7 +153,7 @@ For every package:
 | Package | Implementation | Automated/browser evidence | Manual gate |
 | --- | --- | --- | --- |
 | UX-FIX1 | complete | passed 2026-08-04 | installed app open |
-| UX-FIX2 | not started | not run | open |
+| UX-FIX2 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX3 | not started | not run | open |
 | UX-FIX4 | not started | not run | open |
 | UX-FIX5 | not started | not run | open |

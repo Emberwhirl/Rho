@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- The editor now handles `Ctrl+S` on Windows and Linux and `Cmd+S` on macOS in
+  Monaco, the basic editor, and the active document context without stealing
+  the shortcut from dialogs or unrelated inputs.
 - Problems now treats `<console>` as an execution surface rather than a missing
   file, opens and focuses Console directly, and marks deleted sources as
   unavailable without a misleading navigation attempt.
