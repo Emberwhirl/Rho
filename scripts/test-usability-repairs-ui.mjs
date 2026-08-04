@@ -49,7 +49,7 @@ assert.match(js, /appendRuns\("Background activity", backgroundRuns, true\)/);
 assert.match(js, /function loadAgentReviewRunDetail\(runId\)/);
 assert.match(js, /invoke\("get_run_detail", \{ runId \}\)/);
 assert.match(js, /function renderAgentRunReview\(content, run\)/);
-for (const label of ["Requested work", "What happened", "Review evidence", "Limitations", "Technical provenance"]) {
+for (const label of ["Requested work", "What happened", "Review evidence", "Limitations", "Source and timing"]) {
   assert.match(js, new RegExp(`appendAgentReviewGroup\\(content, "${label}"\\)`));
 }
 assert.match(js, /state\.plots\.filter\(\(plot\) => plot\.run_id === runId\)/);

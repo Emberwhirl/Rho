@@ -153,7 +153,7 @@
           <div class="tree-section">OUTPUTS</div>
           <button id="plotsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">▧</span><span>plots</span><span id="plotOutputCount" class="tree-count">0</span></button>
           <div id="plotOutputList" class="plot-output-list"></div>
-          <button id="artifactsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">⎘</span><span>artifacts</span><span id="artifactOutputCount" class="tree-count">0</span></button>
+          <button id="artifactsShortcut" class="tree-item output-root" type="button"><span class="file-icon plot">⎘</span><span>saved outputs</span><span id="artifactOutputCount" class="tree-count">0</span></button>
           <div id="artifactOutputList" class="plot-output-list"></div>
         </div>
         <div id="runsPanel" class="side-content hidden">
@@ -208,7 +208,7 @@
               <input id="evidenceClaimKind" type="text" maxlength="64" value="result" placeholder="Claim kind" aria-label="Claim kind" />
               <div class="evidence-anchor-switch" role="group" aria-label="Claim anchor">
                 <button class="active" data-claim-anchor="source_range" type="button">Source range</button>
-                <button data-claim-anchor="artifact" type="button">Artifact</button>
+                <button data-claim-anchor="artifact" type="button">Saved output</button>
               </div>
               <div id="evidenceSourceAnchorFields" class="evidence-anchor-fields">
                 <input id="evidenceClaimSourcePath" type="text" placeholder="reports/claim-review-demo.qmd" aria-label="Source path" />
@@ -218,7 +218,7 @@
                 </div>
               </div>
               <div id="evidenceArtifactAnchorFields" class="evidence-anchor-fields hidden">
-                <select id="evidenceClaimArtifact" aria-label="Artifact anchor"><option value="">Select Artifact</option></select>
+                <select id="evidenceClaimArtifact" aria-label="Saved output anchor"><option value="">Select saved output</option></select>
               </div>
               <fieldset class="evidence-link-fieldset">
                 <legend>Linked Evidence (up to 20)</legend>
@@ -336,46 +336,56 @@ plot(
               </div>
               <div class="plot-clear-actions">
                 <button id="plotExportButton" type="button" title="Export selected plot as PNG">Export PNG</button>
-                <button id="pruneSessionPlotsButton" type="button" title="Free session plot preview storage">Free session previews</button>
-                <button id="pruneProjectPlotsButton" type="button" title="Free project plot preview storage">Free project previews</button>
-                <button id="clearSessionPlotsButton" type="button" title="Delete session plot history">Delete session plots</button>
-                <button id="clearProjectPlotsButton" type="button" title="Delete current project plot history">Delete project plots</button>
+                <details class="plot-manage-menu">
+                  <summary>Manage</summary>
+                  <div class="plot-manage-actions">
+                    <strong>Plot history</strong>
+                    <button id="pruneSessionPlotsButton" type="button" title="Free session plot preview storage">Free session previews</button>
+                    <button id="pruneProjectPlotsButton" type="button" title="Free project plot preview storage">Free project previews</button>
+                    <button id="clearSessionPlotsButton" type="button" title="Delete session plot history">Delete session plots</button>
+                    <button id="clearProjectPlotsButton" type="button" title="Delete current project plot history">Delete project plots</button>
+                  </div>
+                </details>
               </div>
             </div>
-            <div id="plotEmpty" class="empty-state surface-state" data-state="empty"><svg class="surface-state-icon ui-icon" aria-hidden="true"><use href="#icon-image"></use></svg><strong>No plots yet</strong><p id="plotEmptyDetail">Run plotting code in Workspace R to create a preview.</p></div>
-            <img id="plotImage" class="plot-image hidden" alt="Latest R plot" />
-            <div id="plotHistory" class="plot-history"></div>
-            <section class="artifact-panel">
-              <div class="artifact-panel-header">
-                <strong>Artifacts</strong>
+            <div class="plot-main">
+              <div class="plot-stage" aria-label="Selected plot preview">
+                <div id="plotEmpty" class="empty-state surface-state" data-state="empty"><svg class="surface-state-icon ui-icon" aria-hidden="true"><use href="#icon-image"></use></svg><strong>No plots yet</strong><p id="plotEmptyDetail">Run plotting code in Workspace R to create a preview.</p></div>
+                <img id="plotImage" class="plot-image hidden" alt="Selected R plot" />
+              </div>
+              <aside class="plot-navigator" aria-label="Available plots">
+                <div class="plot-navigator-header"><strong>Plots</strong><span id="plotNavigatorCount" class="count quiet">0</span></div>
+                <div id="plotHistory" class="plot-history"></div>
+              </aside>
+            </div>
+            <details id="artifactPanel" class="artifact-panel">
+              <summary class="artifact-panel-summary">
+                <span><strong>Saved outputs</strong><small>Exported plot, table, and report files</small></span>
+                <span id="savedOutputCount" class="count quiet">0</span>
+              </summary>
+              <div class="artifact-panel-body">
+                <div class="artifact-panel-header">
+                  <p>Review files saved from this project. Deleting a record does not delete its file.</p>
                 <div class="plot-clear-actions">
                   <button id="clearSessionArtifactsButton" type="button" title="Delete session output records">Delete session records</button>
                   <button id="clearProjectArtifactsButton" type="button" title="Delete current project output records">Delete project records</button>
                 </div>
               </div>
-              <section id="retentionSummaryCard" class="retention-summary-card" aria-label="Retention summary">
-                <div class="retention-summary-header">
-                  <strong>Retention</strong>
-                  <span id="retentionScopeBadge" class="revision-badge">session</span>
-                </div>
-                <div id="retentionSummaryMetrics" class="environment-contract">Retention summary is unavailable.</div>
-                <div id="retentionPolicyList" class="retention-policy-list"></div>
-              </section>
-              <div id="artifactEmpty" class="empty-state compact-empty hidden"><strong>No artifacts yet</strong></div>
+              <div id="artifactEmpty" class="empty-state compact-empty hidden"><strong>No saved outputs yet</strong></div>
               <div id="artifactRecordList" class="artifact-record-list"></div>
               <div id="artifactDetailCard" class="render-result-card hidden">
                 <div class="render-result-header">
-                  <strong id="artifactDetailTitle">Artifact</strong>
-                  <span id="artifactDetailState" class="revision-badge">idle</span>
+                  <strong id="artifactDetailTitle">Saved output</strong>
+                  <span id="artifactDetailState" class="revision-badge">Not selected</span>
                 </div>
-                <div id="artifactDetailSummary" class="environment-contract">Select an exported artifact to inspect its provenance.</div>
+                <div id="artifactDetailSummary" class="environment-contract">Select a saved file to review its source and availability.</div>
                 <div id="artifactDetailPath" class="environment-hint"></div>
-                <div id="artifactDetailMeta" class="environment-hint"></div>
                 <div class="render-result-actions">
                   <button id="artifactOpenSourceButton" type="button">Open source</button>
                 </div>
               </div>
-            </section>
+              </div>
+            </details>
           </div>
           <div id="problemsPanel" class="dock-content problems-panel hidden">
             <div id="lintStatus" class="lint-status hidden" aria-live="polite"></div>
@@ -433,7 +443,6 @@ plot(
               <button id="agentRuntimeRetryButton" class="agent-clear-button hidden" type="button" title="Retry Agent runtime check">Retry Agent</button>
               <button id="agentCancelButton" class="agent-cancel-button hidden" type="button" title="Cancel Agent turn" aria-label="Cancel Agent turn">■</button>
               <button id="clearAgentHistoryButton" class="agent-clear-button" type="button" title="Delete Agent history">Delete history</button>
-              <span id="revisionBadge" class="revision-badge">rev 1</span>
             </div>
           </div>
           <div id="agentTimeline" class="agent-timeline" aria-live="polite">
@@ -445,7 +454,6 @@ plot(
           <div id="approvalPanel" class="approval-panel review-surface hidden" role="region" aria-labelledby="approvalPanelTitle">
             <div class="approval-header">
               <div><span class="review-kind agent-review-kind"><svg class="ui-icon" aria-hidden="true"><use href="#icon-bot"></use></svg>Agent approval</span><strong id="approvalPanelTitle">Workspace mutation</strong></div>
-              <code id="approvalRequestId" class="technical-meta">request</code>
             </div>
             <p id="approvalSummary" class="approval-summary">Review the exact tool request before Workspace R changes.</p>
             <div id="approvalRevision" class="approval-revision"></div>
@@ -654,7 +662,7 @@ plot(
                 <div id="renderResultPath" class="environment-hint"></div>
                 <div class="render-result-actions">
                   <button id="renderOpenSourceButton" type="button">Open Source</button>
-                  <button id="renderReviewArtifactButton" type="button">Review Artifact</button>
+                  <button id="renderReviewArtifactButton" type="button">Review saved output</button>
                   <button id="renderShowProblemsButton" type="button">Show Problems</button>
                   <button id="renderShowPlotsButton" type="button">Show Plots</button>
                 </div>
@@ -725,8 +733,6 @@ plot(
       <footer class="statusbar">
         <div><span id="kernelDot" class="kernel-dot starting"></span><span id="kernelStatus">Starting R…</span></div>
         <div class="status-spacer"></div>
-        <span id="stateRevision">state 1</span>
-        <span id="projectRevision">project 0</span>
         <span id="rVersion">R</span>
         <span>UTF-8</span>
         <span>Ln <b id="cursorLine">1</b>, Col <b id="cursorColumn">1</b></span>
@@ -947,7 +953,7 @@ plot(
           <button id="environmentOperationClose" type="button" aria-label="Close environment operation review">✕</button>
         </div>
         <p id="environmentOperationDialogNote" class="product-dialog-note">
-          Review the exact renv action, project root, revisions, and bounded drift preview before the broker mutates the project environment.
+          Review the requested environment action and package changes before approving it.
         </p>
         <div class="environment-operation-grid">
           <div class="environment-operation-section">

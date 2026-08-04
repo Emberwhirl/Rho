@@ -8,9 +8,14 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Plots now make the selected image the dominant review surface, place a
+  numbered navigator beside it, and keep Saved outputs collapsed until opened.
+  Plot and output rows now use plain-language source, timing, availability, and
+  review states; internal run, workspace, revision, payload, quota, and media
+  details remain available to the application but are no longer default UI.
 - Agent-first Runs now prioritizes scientific work over background workspace
   bookkeeping, and Run Review presents the request, R code, outcome, linked
-  Plots/Artifacts/Problems, limitations, and provenance in a human-reviewable
+  Plots/Saved outputs/Problems, limitations, and source details in a human-reviewable
   report.
 - Selecting Console now places the caret in its enabled input automatically, so
   typing can begin immediately after a user or programmatic tab switch.
@@ -48,7 +53,7 @@ this file records behavior that is already available in a released build.
   truthful Workspace R restart reconciliation. A missing ephemeral job is no
   longer reported as successful completion.
 - Completed background renders now populate Last Render with the exact output,
-  producing run, and provenance state, plus a Review Artifact action bound to
+  producing run, and source state, plus a Review saved output action bound to
   the durable `render_output` record actually created by the coordinator.
 
 #### WB1: Read-only public Workbench Protocol
@@ -69,7 +74,7 @@ this file records behavior that is already available in a released build.
 #### UX4: Agent-first posture
 
 - Added an Agent-first posture centered on task interaction, with contextual
-  file, run, Artifact, and audit work surfaces opened only when requested.
+  file, run, saved output, and audit work surfaces opened only when requested.
 - Task rail with mode badges (Ask/Plan/Act), status dots, and preview text.
 - Direct surface with Agent flow, Monitor (run list), and Review (findings)
   panels.

@@ -47,7 +47,6 @@ const state = {
   objects: [],
   plots: [],
   artifacts: [],
-  retentionSummary: null,
   plotScope: "session",
   selectedPlotId: null,
   selectedArtifactId: null,
@@ -2971,9 +2970,6 @@ function setBusy(busy, label = "R is busy") {
 function updateIdentity(workspace) {
   if (!workspace) return;
   state.revision = { ...state.revision, ...workspace };
-  $("#stateRevision").textContent = `state ${state.revision.state_revision ?? 0}`;
-  $("#projectRevision").textContent = `project ${state.revision.project_revision ?? 0}`;
-  $("#revisionBadge").textContent = `rev ${state.revision.state_revision ?? 0}`;
 }
 
 function documentIsDirty(document) {
@@ -4285,7 +4281,7 @@ function runTitle(run) {
   if (run.request_type === "workspace.snapshot") return "Workspace snapshot";
   if (run.request_type === "workspace.inspect_object") return `Inspect · ${run.code_preview}`;
   if (run.request_type === "workspace.bootstrap") return "Workspace bootstrap";
-  return run.code_preview || run.request_type || "Run";
+  return run.code_preview || "R action";
 }
 
 function isBackgroundRun(run) {
@@ -4296,6 +4292,22 @@ function humanRunTitle(run) {
   if (run?.request_type === "workspace.snapshot") return "Refreshing workspace context";
   if (run?.request_type === "workspace.bootstrap") return "Preparing Workspace R";
   return runTitle(run);
+}
+
+function humanExecutionMode(run) {
+  const mode = run?.execution_mode || run?.request_type || "";
+  return {
+    console: "Console",
+    selection: "Selected code",
+    line: "Current line",
+    file: "File",
+    render: "Document render",
+    chunk: "Document chunk",
+    help_example: "Help example",
+    "workspace.snapshot": "Workspace refresh",
+    "workspace.inspect_object": "Object inspection",
+    "workspace.bootstrap": "Workspace startup",
+  }[mode] || "R execution";
 }
 
 function runEvidence(runId) {
@@ -4310,7 +4322,7 @@ function runEvidenceLabel(runId) {
   const evidence = runEvidence(runId);
   const labels = [];
   if (evidence.plots.length) labels.push(`${evidence.plots.length} plot${evidence.plots.length === 1 ? "" : "s"}`);
-  if (evidence.artifacts.length) labels.push(`${evidence.artifacts.length} artifact${evidence.artifacts.length === 1 ? "" : "s"}`);
+  if (evidence.artifacts.length) labels.push(`${evidence.artifacts.length} saved output${evidence.artifacts.length === 1 ? "" : "s"}`);
   if (evidence.problems.length) labels.push(`${evidence.problems.length} problem${evidence.problems.length === 1 ? "" : "s"}`);
   return labels.join(" · ");
 }
@@ -4321,19 +4333,17 @@ function activeRunRecord() {
 
 async function loadRunData() {
   try {
-    const [runs, problems, plots, artifacts, retentionSummary] = await Promise.all([
+    const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
       invoke("list_problems", { limit: 50 }),
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
-      invoke("get_project_retention_summary"),
     ]);
     loadGitStatus();
     state.runs = runs || [];
     state.problems = problems || [];
     state.plots = plots || [];
     state.artifacts = artifacts || [];
-    state.retentionSummary = retentionSummary || null;
     if (!state.plots.some((plot) => plot.plot_id === state.selectedPlotId)) {
       state.selectedPlotId = state.plots[0]?.plot_id || null;
     }
@@ -5118,7 +5128,16 @@ function showAgentProjectFilePicker(contextSource = "project_file") {
 
 function approvalLabel(approval) {
   if (!approval) return "";
-  return `${approval.tool} · ${approval.request_id}`;
+  return agentToolLabel(approval.tool);
+}
+
+function agentToolLabel(tool) {
+  return {
+    run_r: "Run R code",
+    inspect_r_object: "Inspect R object",
+    get_workspace_snapshot: "Inspect workspace",
+    propose_file_edit: "Propose file edit",
+  }[tool] || "Agent action";
 }
 
 function parseApprovalArguments(argumentsJson) {
@@ -5960,7 +5979,7 @@ function renderAgentTimeline() {
     headingRow.append(heading, createStateChip(prettyAgentStatus(turn.status), turn.status));
     const paragraph = document.createElement("p");
     paragraph.className = "timeline-meta technical-meta";
-    paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${turn.model || "model unavailable"}${turn.pending_request_id ? ` · request ${turn.pending_request_id}` : ""}`;
+    paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${turn.model || "model unavailable"}`;
     content.append(headingRow, paragraph);
     const detail = truncateText(turn.error_message || turn.final_message || "", 140);
     if (detail && !selected) {
@@ -6119,7 +6138,6 @@ function renderApprovalPanel() {
   $("#approvalPanel").classList.toggle("hidden", !approval);
   $("#approvalPanel").dataset.state = approval ? "waiting" : "empty";
   if (!approval) {
-    $("#approvalRequestId").textContent = "request";
     $("#approvalSummary").textContent = "Review the exact tool request before Workspace R changes.";
     $("#approvalRevision").textContent = "";
     $("#approvalCode").textContent = "";
@@ -6128,19 +6146,19 @@ function renderApprovalPanel() {
   }
   const argumentsObject = parseApprovalArguments(approval.arguments_json);
   const turn = state.agentTurns.find((item) => item.turn_id === approval.turn_id) || null;
-  $("#approvalPanelTitle").textContent = `${approval.tool} in Workspace R`;
-  $("#approvalRequestId").textContent = approval.request_id;
-  $("#approvalSummary").textContent = `${approval.tool} wants to mutate Workspace R in ${prettyAgentMode(turn?.mode || "act")} mode. Review the exact code before approving.`;
-  const staleHint = approval.state_revision !== state.revision.state_revision
-    || approval.project_revision !== state.revision.project_revision
-    ? ` · current state ${state.revision.state_revision ?? "?"}/${state.revision.project_revision ?? "?"}`
-    : "";
-  $("#approvalRevision").textContent = `captured ${approval.workspace_id || "?"} · state ${approval.state_revision ?? "?"} · project ${approval.project_revision ?? "?"}${staleHint}`;
+  const toolLabel = agentToolLabel(approval.tool);
+  $("#approvalPanelTitle").textContent = toolLabel;
+  $("#approvalSummary").textContent = `The Agent wants to ${toolLabel.toLowerCase()} in ${prettyAgentMode(turn?.mode || "act")} mode. Review the exact code before approving.`;
+  const requestIsStale = approval.state_revision !== state.revision.state_revision
+    || approval.project_revision !== state.revision.project_revision;
+  $("#approvalRevision").textContent = requestIsStale
+    ? "Workspace content changed after this request. Review the code again before deciding."
+    : "This request matches the current workspace.";
   const code = approval.code || argumentsObject.code || approval.arguments_json;
   $("#approvalCode").textContent = code || "";
   $("#approvalCode").classList.toggle("hidden", !code);
-  $("#approvalApprove").textContent = `Approve ${approval.tool}`;
-  $("#approvalReject").textContent = `Reject ${approval.tool}`;
+  $("#approvalApprove").textContent = `Approve ${toolLabel.toLowerCase()}`;
+  $("#approvalReject").textContent = `Reject ${toolLabel.toLowerCase()}`;
   $("#approvalCancel").textContent = "Cancel pending";
   $("#approvalPanel").dataset.requestId = approval.request_id;
   $("#approvalPanel").dataset.label = approvalLabel(approval);
@@ -6209,7 +6227,7 @@ function renderRuns() {
     const actionRow = document.createElement("div");
     actionRow.className = "compare-action-row";
     const btn = document.createElement("button");
-    btn.textContent = `Compare ${state.compareLeft.slice(0,8)}... ↔ ${state.compareRight.slice(0,8)}...`;
+    btn.textContent = "Compare selected runs";
     btn.addEventListener("click", doCompareRuns);
     actionRow.append(btn);
     panel.append(actionRow);
@@ -6252,8 +6270,8 @@ function renderRuns() {
     title.textContent = runTitle(run);
     titleLine.append(title, createStateChip(prettyStatus(run.status), run.status));
     const detail = document.createElement("small");
-    detail.className = "run-meta technical-meta";
-    detail.textContent = `${prettyOrigin(run.origin)}${run.run_id ? ` · run ${run.run_id}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`;
+    detail.className = "run-meta";
+    detail.textContent = [prettyOrigin(run.origin), run.source_path, formatTimestamp(run.started_at), run.error_message].filter(Boolean).join(" · ");
     content.append(titleLine, detail);
     row.append(marker, content);
     if (["queued", "running", "waiting"].includes(run.status)) {
@@ -6340,25 +6358,54 @@ function renderCompareResult() {
   summary.append(closeBtn);
   card.append(summary);
 
+  const sectionLabels = {
+    "Identity & Execution": "Run",
+    "Source & Request": "Source",
+    Artifacts: "Saved outputs",
+  };
+  const fieldLabels = {
+    status: "Status",
+    origin: "Started by",
+    request_type: "Action",
+    source_path: "Source",
+    snapshot_available: "Environment captured",
+    error_message: "Error",
+    artifact_count: "Saved outputs",
+  };
+  const hiddenFields = new Set(["parent_run_id", "code_digest"]);
+  const stateLabels = {
+    same: "Same",
+    different: "Different",
+    unknown: "Unavailable",
+    not_applicable: "Not applicable",
+  };
+
   for (const section of (result.sections || [])) {
     const sec = document.createElement("div");
     sec.className = "compare-section open";
 
     const header = document.createElement("div");
     header.className = "compare-section-header";
-    header.textContent = section.label;
+    header.textContent = sectionLabels[section.label] || section.label;
     header.addEventListener("click", () => sec.classList.toggle("open"));
 
     const body = document.createElement("div");
     body.className = "compare-section-body";
 
-    for (const field of (section.fields || [])) {
+    for (const field of (section.fields || []).filter((item) => !hiddenFields.has(item.field))) {
       const row = document.createElement("div");
       row.className = "compare-field";
-      row.innerHTML =
-        `<span class="compare-field-label">${field.field}</span>` +
-        `<span class="compare-field-state ${field.state}">${field.state}</span>` +
-        `<span class="compare-field-value">${[field.left_value, field.right_value].filter(v => v != null).join(" \u2194 ") || "-"}</span>`;
+      const label = document.createElement("span");
+      label.className = "compare-field-label";
+      label.textContent = fieldLabels[field.field] || "Detail";
+      const comparisonState = document.createElement("span");
+      comparisonState.className = `compare-field-state ${field.state}`;
+      comparisonState.textContent = stateLabels[field.state] || "Review";
+      const value = document.createElement("span");
+      value.className = "compare-field-value";
+      const values = [field.left_value, field.right_value].filter((item) => item !== null && item !== undefined);
+      value.textContent = values.join(" \u2194 ") || "-";
+      row.append(label, comparisonState, value);
       body.append(row);
     }
 
@@ -7448,14 +7495,14 @@ function renderDisplay(data) {
     $("#plotEmpty").classList.remove("hidden");
     const emptyLabel = $("#plotEmpty strong");
     if (emptyLabel) {
-      emptyLabel.textContent = payload["rho/pruned"] ? "Preview pruned" : "Plot preview unavailable";
+      emptyLabel.textContent = payload["rho/pruned"] ? "Preview no longer stored" : "Plot preview unavailable";
     }
     return;
   }
   const image = $("#plotImage");
   image.onerror = () => {
     if (image.src === source) {
-      showPlotSurfaceState("failed", "Plot preview unavailable", "The PNG payload could not be decoded by the image renderer.");
+      showPlotSurfaceState("failed", "Plot preview unavailable", "The plot image could not be displayed.");
     }
   };
   image.src = source;
@@ -7478,9 +7525,26 @@ function artifactKindLabel(kind) {
 }
 
 function artifactStateLabel(detail) {
-  if (!detail) return "idle";
-  if (!detail.file_available) return "missing";
-  return detail.artifact?.provenance_complete ? "ready" : "incomplete provenance";
+  if (!detail) return "Not selected";
+  if (!detail.file_available) return "File missing";
+  return detail.artifact?.provenance_complete ? "Available" : "Needs source details";
+}
+
+function pathFileName(path) {
+  return String(path || "").replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || "Untitled output";
+}
+
+function plotSourceLabel(plot) {
+  const sourcePath = String(plot?.source_path || "");
+  if (!sourcePath || sourcePath === "<console>") return "Created from Console";
+  if (/^<[^<>]+>$/.test(sourcePath)) return "Created from R";
+  return `Created from ${pathFileName(sourcePath)}`;
+}
+
+function plotReviewState(plot) {
+  if (plotPayloadPruned(plot)) return "Preview removed to save space";
+  if (!plotHasRenderablePayload(plot)) return "Preview unavailable";
+  return plot.provenance_complete ? "Ready to review" : "Source details unavailable";
 }
 
 function formatTimestamp(value) {
@@ -7529,11 +7593,10 @@ function renderArtifactDetail() {
   card.className = "render-result-card";
   if (!detail?.artifact) {
     card.classList.add("hidden");
-    $("#artifactDetailTitle").textContent = "Artifact";
-    $("#artifactDetailState").textContent = "idle";
-    $("#artifactDetailSummary").textContent = "Select an exported artifact to inspect its provenance.";
+    $("#artifactDetailTitle").textContent = "Saved output";
+    $("#artifactDetailState").textContent = "Not selected";
+    $("#artifactDetailSummary").textContent = "Select a saved file to review where it came from and whether it is still available.";
     $("#artifactDetailPath").textContent = "";
-    $("#artifactDetailMeta").textContent = "";
     action.disabled = true;
     return;
   }
@@ -7541,65 +7604,19 @@ function renderArtifactDetail() {
   card.classList.remove("hidden");
   if (!detail.file_available) card.classList.add("error");
   else if (artifact.provenance_complete) card.classList.add("success");
-  $("#artifactDetailTitle").textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`;
+  $("#artifactDetailTitle").textContent = pathFileName(artifact.output_path);
   $("#artifactDetailState").textContent = artifactStateLabel(detail);
   $("#artifactDetailSummary").textContent = detail.file_available
     ? (artifact.provenance_complete
-      ? "File is available on disk and linked to captured provenance."
-      : `File is available on disk, but provenance is incomplete${artifact.incomplete_reason ? `: ${artifact.incomplete_reason}` : "."}`)
-    : "File is missing from the recorded path. Re-render or export again to recreate it.";
-  $("#artifactDetailPath").textContent = `Output ${detail.output_absolute_path} · created ${formatTimestamp(artifact.created_at)}`;
-  $("#artifactDetailMeta").textContent = [
-    artifact.run_id ? `run ${artifact.run_id}` : "run unavailable",
-    artifact.source_path ? `source ${artifact.source_path}` : "source unavailable",
-    artifact.document_version !== null && artifact.document_version !== undefined ? `doc rev ${artifact.document_version}` : "doc rev unavailable",
-    artifact.workspace_id ? `workspace ${artifact.workspace_id}` : null,
-    artifact.state_revision !== null && artifact.state_revision !== undefined ? `state ${artifact.state_revision}` : null,
-    artifact.project_revision !== null && artifact.project_revision !== undefined ? `project ${artifact.project_revision}` : null,
-    artifact.media_type ? `media ${artifact.media_type}` : null,
-  ].filter(Boolean).join(" · ");
-  action.disabled = !artifact.source_path;
-}
-
-function renderRetentionSummary() {
-  const metrics = $("#retentionSummaryMetrics");
-  const policyList = $("#retentionPolicyList");
-  const scopeBadge = $("#retentionScopeBadge");
-  if (!metrics || !policyList || !scopeBadge) return;
-  policyList.replaceChildren();
-  const summary = state.retentionSummary;
-  const scopeName = state.plotScope === "session" ? "session" : "project";
-  scopeBadge.textContent = scopeName;
-  if (!summary) {
-    metrics.textContent = "Retention summary is unavailable.";
-    return;
-  }
-  const scope = state.plotScope === "session" ? summary.session : summary.project;
-  metrics.textContent = [
-    `${scope.plot_history_count} plot rows`,
-    `${formatBytes(scope.plot_payload_bytes || 0)} plot payload`,
-    `${scope.artifact_record_count} artifact rows`,
-    `${formatBytes(scope.artifact_metadata_bytes || 0)} artifact metadata`,
+      ? `This ${artifactKindLabel(artifact.artifact_kind).toLowerCase()} is available and linked to its source.`
+      : "The file is available, but Rho could not capture all of its source details.")
+    : "This saved file is no longer at its recorded location. Export or render it again to recreate it.";
+  $("#artifactDetailPath").textContent = [
+    `Saved to ${detail.output_absolute_path}`,
+    artifact.source_path ? `Created from ${artifact.source_path}` : "Created from Workspace R",
+    formatTimestamp(artifact.created_at),
   ].join(" · ");
-  [
-    ["Plot rows (max)", summary.policy?.max_plot_history_rows != null ? String(summary.policy.max_plot_history_rows) : "no limit"],
-    ["Plot payload (max)", summary.policy?.max_plot_payload_bytes != null ? formatBytes(summary.policy.max_plot_payload_bytes) : "no limit"],
-    ["Artifact rows (max)", summary.policy?.max_artifact_record_rows != null ? String(summary.policy.max_artifact_record_rows) : "no limit"],
-    ["Artifact metadata (max)", summary.policy?.max_artifact_metadata_bytes != null ? formatBytes(summary.policy.max_artifact_metadata_bytes) : "no limit"],
-    ["Prune order", summary.policy?.prune_order || "oldest_first"],
-    ["Auto prune", summary.policy?.auto_prune_enabled ? "Enabled" : "Not enabled"],
-  ].forEach(([label, value]) => {
-    const row = document.createElement("div");
-    row.className = "retention-policy-item";
-    const name = document.createElement("strong");
-    name.className = "retention-policy-label";
-    name.textContent = label;
-    const text = document.createElement("span");
-    text.className = "retention-policy-value";
-    text.textContent = value;
-    row.append(name, text);
-    policyList.append(row);
-  });
+  action.disabled = !artifact.source_path;
 }
 
 function renderArtifactRecords() {
@@ -7607,8 +7624,8 @@ function renderArtifactRecords() {
   const outputList = $("#artifactOutputList");
   list.replaceChildren();
   outputList.replaceChildren();
-  renderRetentionSummary();
   $("#artifactOutputCount").textContent = String(state.artifacts.length);
+  $("#savedOutputCount").textContent = String(state.artifacts.length);
   const empty = $("#artifactEmpty");
   empty.classList.toggle("hidden", state.artifacts.length > 0);
   for (const artifact of state.artifacts) {
@@ -7617,13 +7634,13 @@ function renderArtifactRecords() {
     row.type = "button";
     row.className = `plot-history-row artifact-row ${selected ? "active" : ""}`;
     const title = document.createElement("strong");
-    title.textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`;
+    title.textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${pathFileName(artifact.output_path)}`;
     const line1 = document.createElement("p");
-    line1.textContent = `${artifact.media_type || "artifact"} · ${formatTimestamp(artifact.created_at)}`;
+    line1.textContent = `${artifact.source_path ? `Created from ${artifact.source_path}` : "Created from Workspace R"} · ${formatTimestamp(artifact.created_at)}`;
     const line2 = document.createElement("p");
     line2.textContent = artifact.provenance_complete
-      ? `${artifact.source_path || "No source"} · run ${artifact.run_id || "unlinked"}`
-      : `Provenance incomplete${artifact.incomplete_reason ? ` · ${artifact.incomplete_reason}` : ""}`;
+      ? "Source details captured"
+      : "Some source details are unavailable";
     row.append(title, line1, line2);
     row.addEventListener("click", async () => {
       state.selectedArtifactId = artifact.artifact_id;
@@ -7631,9 +7648,10 @@ function renderArtifactRecords() {
         state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
-        toast(`Artifact detail is unavailable: ${error}`, true);
+        toast(`Saved output details are unavailable: ${error}`, true);
       }
       renderPlots();
+      $("#artifactPanel").open = true;
       if (state.posture === "agent") openAgentWorkSurface("artifact");
     });
     list.append(row);
@@ -7653,9 +7671,10 @@ function renderArtifactRecords() {
         state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
-        toast(`Artifact detail is unavailable: ${error}`, true);
+        toast(`Saved output details are unavailable: ${error}`, true);
       }
       renderPlots();
+      $("#artifactPanel").open = true;
       if (state.posture === "agent") openAgentWorkSurface("artifact");
     });
     outputList.append(output);
@@ -7683,6 +7702,7 @@ function renderPlots() {
   $$('[data-plot-scope]').forEach((button) => button.classList.toggle("active", button.dataset.plotScope === state.plotScope));
   $("#plotCount").textContent = String(plots.length);
   $("#plotOutputCount").textContent = String(plots.length);
+  $("#plotNavigatorCount").textContent = String(plots.length);
   $("#plotExportButton").disabled = !(selectedPlot && plotHasRenderablePayload(selectedPlot));
   if (!plots.length) {
     showPlotSurfaceState("empty", "No plots yet", "Run plotting code in Workspace R to create a preview.");
@@ -7696,11 +7716,13 @@ function renderPlots() {
     if (payload?.["rho/pruned"]) {
       showPlotSurfaceState(
         "warning",
-        "Preview pruned",
-        "Preview storage was reclaimed; the plot history record and exported files remain available.",
+        "Preview no longer stored",
+        "Rho freed this preview to save space. The plot remains in history and saved files are unchanged.",
       );
     } else if (payload?.["image/png"] || payload?.["image/svg+xml"] || payload?.["rho/mock-image"]) {
       renderDisplay(payload);
+      const selectedIndex = plots.findIndex((plot) => plot.plot_id === selectedPlot?.plot_id);
+      $("#plotImage").alt = `Plot ${Math.max(0, selectedIndex) + 1}, ${plotSourceLabel(selectedPlot || plots[0])}`;
     } else {
       throw new Error("Unsupported plot payload");
     }
@@ -7708,34 +7730,46 @@ function renderPlots() {
     showPlotSurfaceState(
       "failed",
       "Plot preview unavailable",
-      "The recorded plot remains in history, but its preview payload could not be displayed.",
+      "The plot remains in history, but its preview data could not be displayed.",
     );
   }
-  for (const plot of plots) {
+  for (const [index, plot] of plots.entries()) {
     const selected = plot.plot_id === selectedPlot?.plot_id;
-    const pruned = plotPayloadPruned(plot);
     const row = document.createElement("button");
     row.type = "button";
     row.className = `plot-history-row ${selected ? "active" : ""}`;
-    const title = document.createElement("strong");
-    title.textContent = plot.source_path || plot.run_id;
-    const line1 = document.createElement("p");
-    line1.textContent = `${plot.execution_mode || "plot"} · run ${plot.run_id} · ${pruned ? "preview pruned" : `state ${plot.state_revision ?? "?"}`}`;
-    const line2 = document.createElement("p");
-    if (pruned) {
-      line2.textContent = "Preview storage reclaimed; plot history row and exported files remain.";
+    const thumbnail = document.createElement("span");
+    thumbnail.className = "plot-history-thumbnail";
+    const thumbnailSource = plotImageSource(parseJsonObject(plot.payload_json));
+    if (thumbnailSource) {
+      const image = document.createElement("img");
+      image.src = thumbnailSource;
+      image.alt = "";
+      thumbnail.append(image);
     } else {
-      line2.textContent = plot.provenance_complete
-        ? `Source ${plot.source_path || "available"} · rev ${plot.document_version ?? "?"}`
-        : "Provenance incomplete";
+      const fallback = document.createElement("svg");
+      fallback.className = "ui-icon";
+      fallback.setAttribute("aria-hidden", "true");
+      fallback.innerHTML = '<use href="#icon-image"></use>';
+      thumbnail.append(fallback);
     }
-    row.append(title, line1, line2);
+    const content = document.createElement("span");
+    content.className = "plot-history-content";
+    const title = document.createElement("strong");
+    title.textContent = `Plot ${index + 1}`;
+    const line1 = document.createElement("p");
+    line1.textContent = plotSourceLabel(plot);
+    const line2 = document.createElement("p");
+    line2.textContent = `${plotReviewState(plot)} · ${formatTimestamp(plot.created_at)}`;
+    content.append(title, line1, line2);
+    row.append(thumbnail, content);
     row.addEventListener("click", () => {
       state.selectedPlotId = plot.plot_id;
       try {
         renderDisplay(parseJsonObject(plot.payload_json));
+        $("#plotImage").alt = `Plot ${index + 1}, ${plotSourceLabel(plot)}`;
       } catch {
-        toast("Plot payload is unavailable.", true);
+        toast("This plot preview is unavailable.", true);
       }
       renderPlots();
     });
@@ -7745,9 +7779,11 @@ function renderPlots() {
     output.type = "button";
     output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
     const outputLabel = document.createElement("span");
-    outputLabel.textContent = plot.source_path || plot.execution_mode || "Console plot";
+    outputLabel.textContent = !plot.source_path || plot.source_path === "<console>"
+      ? `Console plot ${index + 1}`
+      : plot.source_path;
     const outputIndex = document.createElement("small");
-    outputIndex.textContent = plot.plot_id.split("_").at(-1) || "plot";
+    outputIndex.textContent = `Plot ${index + 1}`;
     output.append(outputLabel, outputIndex);
     output.addEventListener("click", () => {
       switchDockTab("plots");
@@ -7755,7 +7791,7 @@ function renderPlots() {
       try {
         renderDisplay(parseJsonObject(plot.payload_json));
       } catch {
-        toast("Plot payload is unavailable.", true);
+        toast("This plot preview is unavailable.", true);
       }
       renderPlots();
     });
@@ -8544,9 +8580,9 @@ function renderEvidenceClaimFormOptions() {
   }
   if (!links.childElementCount) links.append(emptyRow("Create an Evidence entry first, or create an unlinked claim."));
   const selected = artifactSelect.value;
-  artifactSelect.replaceChildren(new Option("Select Artifact", ""));
+  artifactSelect.replaceChildren(new Option("Select saved output", ""));
   for (const artifact of state.evidenceClaimArtifacts || []) artifactSelect.append(new Option(artifact.output_path || artifact.artifact_id, artifact.artifact_id));
-  if (state.evidenceClaimArtifactsError) artifactSelect.append(new Option("Artifacts unavailable", "", false, false));
+  if (state.evidenceClaimArtifactsError) artifactSelect.append(new Option("Saved outputs unavailable", "", false, false));
   artifactSelect.value = selected;
 }
 
@@ -8568,13 +8604,14 @@ async function openClaimArtifact(claim) {
   if (!claim?.artifact_id) return;
   try {
     const detail = await invoke("get_artifact_record", { artifact_id: claim.artifact_id });
-    if (!detail) { toast("The anchored Artifact is no longer available.", true); return; }
+    if (!detail) { toast("The linked saved output is no longer available.", true); return; }
     state.selectedArtifactId = claim.artifact_id;
     state.selectedArtifactDetail = detail;
     switchDockTab("plots");
+    $("#artifactPanel").open = true;
     renderPlots();
   } catch (error) {
-    toast(`The anchored Artifact could not be opened: ${error}`, true);
+    toast(`The linked saved output could not be opened: ${error}`, true);
   }
 }
 
@@ -8614,7 +8651,10 @@ function renderEvidenceClaims() {
     header.append(title, badge);
     const anchor = document.createElement("div");
     anchor.className = "claim-anchor";
-    anchor.textContent = claim.anchor_kind === "artifact" ? `Artifact · ${claim.artifact_id}` : `${claim.source_path}:${claim.start_line}-${claim.end_line}`;
+    const anchoredOutput = state.evidenceClaimArtifacts.find((artifact) => artifact.artifact_id === claim.artifact_id);
+    anchor.textContent = claim.anchor_kind === "artifact"
+      ? `Saved output · ${anchoredOutput?.output_path ? pathFileName(anchoredOutput.output_path) : "unavailable"}`
+      : `${claim.source_path}:${claim.start_line}-${claim.end_line}`;
     const meta = document.createElement("div");
     meta.className = "evidence-item-meta";
     meta.textContent = `${claim.kind} · ${claim.linked_evidence_ids.length} linked Evidence ${claim.linked_evidence_ids.length === 1 ? "entry" : "entries"}`;
@@ -8628,7 +8668,7 @@ function renderEvidenceClaims() {
     inspect.addEventListener("click", () => detail.classList.toggle("hidden"));
     const openAnchor = document.createElement("button");
     openAnchor.type = "button";
-    openAnchor.textContent = claim.anchor_kind === "artifact" ? "Open Artifact" : "Open Source";
+    openAnchor.textContent = claim.anchor_kind === "artifact" ? "Open saved output" : "Open Source";
     openAnchor.addEventListener("click", () => claim.anchor_kind === "artifact" ? openClaimArtifact(claim) : openClaimSource(claim));
     const remove = document.createElement("button");
     remove.type = "button";
@@ -8718,13 +8758,13 @@ function renderEvidenceList() {
     if (entry.run_id) {
       const tag = document.createElement("span");
       tag.className = "evidence-tag";
-      tag.textContent = `Run: ${entry.run_id}`;
+      tag.textContent = "Linked to a run";
       meta.append(tag);
     }
     if (entry.artifact_id) {
       const tag = document.createElement("span");
       tag.className = "evidence-tag";
-      tag.textContent = `Artifact: ${entry.artifact_id}`;
+      tag.textContent = "Linked to a saved output";
       meta.append(tag);
     }
 
@@ -8735,7 +8775,7 @@ function renderEvidenceList() {
     delBtn.textContent = "Delete";
     delBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      const accepted = await confirmAction({ title: "Delete Evidence entry?", message: "Claims linked only to this entry will become missing evidence. The source and Artifact records are unchanged.", confirmLabel: "Delete Entry", destructive: true });
+      const accepted = await confirmAction({ title: "Delete Evidence entry?", message: "Claims linked only to this entry will become missing evidence. Source files and saved-output records are unchanged.", confirmLabel: "Delete Entry", destructive: true });
       if (!accepted) return;
       try {
         await invoke("delete_evidence_entry", { id: entry.id });
@@ -8844,7 +8884,7 @@ function initEvidencePanel() {
     const endLine = Number($("#evidenceClaimEndLine").value);
     const artifactId = $("#evidenceClaimArtifact").value || null;
     if (!summary || (state.claimAnchorKind === "source_range" && (!sourcePath || startLine < 1 || endLine < startLine)) || (state.claimAnchorKind === "artifact" && !artifactId)) {
-      error.textContent = "Enter a summary and a valid source range or Artifact.";
+      error.textContent = "Enter a summary and a valid source range or saved output.";
       error.classList.remove("hidden");
       return;
     }
@@ -9123,13 +9163,13 @@ function renderLastRenderCard() {
   $("#renderResultSummary").textContent = render.ok
     ? render.artifactAvailable
       ? render.fileAvailable === false
-        ? `Rendered ${render.sourcePath || "document"}; the Artifact file is missing.`
-        : `Rendered ${render.sourcePath || "document"}; Artifact provenance is ${render.provenanceComplete ? "complete" : "incomplete"}.`
-      : `Rendered ${render.sourcePath || "document"}; Artifact detail is unavailable.`
+        ? `Rendered ${render.sourcePath || "document"}, but the saved file is missing.`
+        : `Rendered ${render.sourcePath || "document"}; source details are ${render.provenanceComplete ? "available" : "incomplete"}.`
+      : `Rendered ${render.sourcePath || "document"}; saved-output details are unavailable.`
     : `${render.message || "Render failed."}`;
   $("#renderResultPath").textContent = render.ok
-    ? `Output: ${render.outputPath || "unavailable"}${render.runId ? ` · run ${render.runId}` : ""}`
-    : `Source: ${render.sourcePath || "unknown"}${render.phase ? ` · phase ${render.phase}` : ""}`;
+    ? `Saved to ${render.outputPath || "an unavailable location"}`
+    : `Source: ${render.sourcePath || "unknown"}`;
   $("#renderOpenSourceButton").disabled = !render.sourcePath;
   $("#renderReviewArtifactButton").disabled = !render.artifactAvailable;
   $("#renderShowProblemsButton").disabled = !latestRenderProblem();
@@ -9597,6 +9637,14 @@ async function maybeApplyPreviewScenario() {
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
+  if (scenario === "wp3-artifacts" && previewParams.get("state") === "console-plots") {
+    await invoke("execute_r", { request: { code: "plot(1:10)", source_path: "<console>", execution_mode: "console" } });
+    await invoke("execute_r", { request: { code: "hist(rnorm(100))", source_path: "<console>", execution_mode: "console" } });
+    await loadRunData();
+    switchDockTab("plots");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   await invoke("execute_r", {
     request: {
       code: "plot(qc$reads, qc$detected)",
@@ -10010,6 +10058,8 @@ function recordPreviewLayoutEvidence() {
   }
   if (scenario === "wp3-artifacts") {
     const history = rectEvidence($("#plotHistory"));
+    const plotStage = rectEvidence($(".plot-stage"));
+    const plotNavigator = rectEvidence($(".plot-navigator"));
     const artifactPanel = rectEvidence($(".artifact-panel"));
     const artifactList = rectEvidence($("#artifactRecordList"));
     const artifactDetail = rectEvidence($("#artifactDetailCard"));
@@ -10026,6 +10076,8 @@ function recordPreviewLayoutEvidence() {
       plot_surface: {
         state: $("#plotEmpty").classList.contains("hidden") ? "preview" : $("#plotEmpty").dataset.state,
         title: $("#plotEmpty strong").textContent,
+        navigator_titles: $$("#plotHistory .plot-history-content strong").map((element) => element.textContent),
+        saved_outputs_open: $("#artifactPanel").open,
       },
       selected_artifact: state.selectedArtifactDetail?.artifact
         ? {
@@ -10039,7 +10091,7 @@ function recordPreviewLayoutEvidence() {
         history_with_artifact_panel: rectsOverlap(history, artifactPanel),
         artifact_list_with_detail: rectsOverlap(artifactList, artifactDetail),
       },
-      rects: { history, artifactPanel, artifactList, artifactDetail },
+      rects: { history, plotStage, plotNavigator, artifactPanel, artifactList, artifactDetail },
     };
     target.textContent = JSON.stringify(evidence);
     return;
@@ -10083,13 +10135,7 @@ function formatEnvironmentOperationSummary(request) {
 
 function formatEnvironmentOperationMeta(request) {
   if (!request) return "";
-  const parts = [
-    request.project_root,
-    request.preview_sha256 ? `preview ${request.preview_sha256}` : null,
-    request.before_snapshot_id ? `before ${request.before_snapshot_id}` : null,
-    request.run_id ? `run ${request.run_id}` : null,
-  ];
-  return parts.filter(Boolean).join(" · ");
+  return request.project_root || "";
 }
 
 function renderEnvironmentOperationCard() {
@@ -10127,17 +10173,13 @@ function renderEnvironmentOperationCard() {
 function formatEnvironmentOperationArguments(request) {
   const args = parseEnvironmentOperationPayload(request?.arguments_json, {});
   return [
-    `request: ${request?.request_name || "unknown"}`,
-    `project_root: ${request?.project_root || args.project_root || "unknown"}`,
-    `workspace_id: ${request?.workspace_id || "unknown"}`,
-    `state_revision: ${request?.state_revision ?? "unknown"}`,
-    `project_revision: ${request?.project_revision ?? "unknown"}`,
-    `before_snapshot_id: ${request?.before_snapshot_id || "none"}`,
-    `bioconductor: ${args.bioconductor || "null"}`,
-    `repositories: ${(args.repositories && Object.keys(args.repositories).length) ? JSON.stringify(args.repositories, null, 2) : "null"}`,
-    `package: ${args.package || "none"}`,
-    `project_library: ${args.project_library || "none"}`,
-  ].join("\n");
+    `Action: ${environmentOperationLabel(request?.request_name)}`,
+    `Project: ${request?.project_root || args.project_root || "unknown"}`,
+    args.package ? `Package: ${args.package}` : null,
+    args.project_library ? `Project library: ${args.project_library}` : null,
+    args.bioconductor ? `Bioconductor: ${args.bioconductor}` : null,
+    `Repositories: ${(args.repositories && Object.keys(args.repositories).length) ? Object.values(args.repositories).join(", ") : "project defaults"}`,
+  ].filter(Boolean).join("\n");
 }
 
 function formatEnvironmentOperationPreview(request) {
@@ -10148,28 +10190,24 @@ function formatEnvironmentOperationPreview(request) {
   const diff = preview.diff || {};
   if (preview.package) {
     return [
-      `project_dir: ${preview.project_dir || request?.project_root || "unknown"}`,
-      `project_library: ${preview.project_library || "unknown"}`,
-      `action: ${preview.disposition || preview.operation || "unknown"}`,
-      `package: ${preview.package}`,
-      `installed_version: ${preview.installed_version || "not installed"}`,
-      `locked_version: ${preview.locked_version || "not locked"}`,
-      `repositories: ${Object.keys(preview.repositories || {}).length ? JSON.stringify(preview.repositories, null, 2) : "none"}`,
-      `warnings: ${(preview.warnings || []).join(" | ") || "none"}`,
+      `Project: ${preview.project_dir || request?.project_root || "unknown"}`,
+      `Planned change: ${preview.disposition || preview.operation || "unknown"} ${preview.package}`,
+      `Installed version: ${preview.installed_version || "not installed"}`,
+      `Lockfile version: ${preview.locked_version || "not locked"}`,
+      `Project library: ${preview.project_library || "unknown"}`,
+      `Warnings: ${(preview.warnings || []).join(" | ") || "none"}`,
     ].join("\n");
   }
   const diffLines = (diff.values || []).map((item) =>
-    `${item.direction}: ${item.name} (lockfile ${item.lockfile_version || "missing"} · library ${item.library_version || "missing"})`
+    `${item.name}: lockfile ${item.lockfile_version || "missing"}, installed ${item.library_version || "missing"}`
   );
   return [
-    `project_dir: ${preview.project_dir || request?.project_root || "unknown"}`,
-    `renv.status: ${renv.status || "unknown"}`,
-    `renv.synchronization: ${renv.synchronization || "unknown"}`,
-    `renv_status.ok: ${String(renvStatus.ok)}`,
-    `renv_status.synchronized: ${String(renvStatus.synchronized)}`,
-    `warnings: ${(renvStatus.warnings || []).join(" | ") || "none"}`,
-    `messages: ${(renvStatus.messages || []).join(" | ") || "none"}`,
-    `diff: ${diffLines.length ? diffLines.join("\n") : "no bounded drift detected"}`,
+    `Project: ${preview.project_dir || request?.project_root || "unknown"}`,
+    `Environment status: ${renv.status || (renvStatus.ok ? "ready" : "needs attention")}`,
+    `Lockfile and library: ${renv.synchronization || (renvStatus.synchronized ? "in sync" : "different")}`,
+    `Warnings: ${(renvStatus.warnings || []).join(" | ") || "none"}`,
+    `Messages: ${(renvStatus.messages || []).join(" | ") || "none"}`,
+    `Changes: ${diffLines.length ? diffLines.join("\n") : "no package differences detected"}`,
   ].join("\n");
 }
 
@@ -10184,8 +10222,8 @@ function renderEnvironmentOperationDialog() {
   $("#environmentOperationDialogTitle").textContent = environmentOperationLabel(request.request_name);
   setStateChip($("#environmentOperationDialogState"), prettyEnvironmentOperationStatus(request.status), request.status);
   $("#environmentOperationDialogNote").textContent = request.request_name?.startsWith("environment.package_")
-    ? "Review the exact package, project library, repositories, revisions, and partial-write warning before the broker changes the project environment."
-    : "Review the exact renv action, project root, revisions, and bounded drift preview before the broker mutates the project environment.";
+    ? "Review the package, project library, repositories, and partial-write warning before changing the project environment."
+    : "Review the requested renv action and package changes before changing the project environment.";
   $("#environmentOperationArguments").textContent = formatEnvironmentOperationArguments(request);
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
@@ -10324,8 +10362,7 @@ function dataViewerWindowMeta(page) {
     `rows ${rowStart}-${rowEnd} of ${page.total_rows || 0}`,
     page.query ? `${page.total_rows || 0} matches from ${page.source_total_rows || 0} rows` : null,
     `cols ${columnStart}-${columnEnd} of ${page.total_columns || 0}`,
-    `payload ${formatBytes(page.payload_bytes || 0)}`,
-    page.truncated ? `truncated: ${page.truncation_reason || "yes"}` : "truncated: no",
+    page.truncated ? "More data exists outside this view" : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -10977,7 +11014,7 @@ function startRenderPoll(jobId, path) {
           try {
             artifactDetail = await invoke("get_artifact_record", { artifact_id: job.artifact_id });
           } catch (error) {
-            addLog("SYSTEM", `Render Artifact detail is unavailable: ${error}`);
+          addLog("SYSTEM", `Saved render-output details are unavailable: ${error}`);
           }
         }
         if (artifactDetail?.artifact) {
@@ -10996,7 +11033,7 @@ function startRenderPoll(jobId, path) {
           fileAvailable: artifactDetail?.file_available ?? null,
           mediaType: artifactDetail?.artifact?.media_type || job.media_type || null,
         });
-        toast(artifactDetail?.artifact ? "Render completed · Artifact ready" : "Render completed");
+        toast(artifactDetail?.artifact ? "Render completed · saved output ready" : "Render completed");
         renderEnvironmentSummary();
         setTimeout(() => statusEl.classList.add("hidden"), 3000);
         return;
@@ -11769,13 +11806,13 @@ function appendRunPlotEvidence(container, plot) {
   const heading = document.createElement("strong");
   heading.textContent = "Plot produced";
   const meta = document.createElement("p");
-  meta.textContent = `${plot.source_path || "Console"} · ${plot.execution_mode || "R execution"}`;
+  meta.textContent = `${plotSourceLabel(plot)} · ${humanExecutionMode(plot)}`;
   card.append(heading, meta);
   const payload = parseJsonObject(plot.payload_json);
   const source = plotImageSource(payload);
   if (source) {
     const image = document.createElement("img");
-    image.alt = `Plot produced by run ${plot.run_id}`;
+    image.alt = `Plot produced by ${plotSourceLabel(plot).toLowerCase()}`;
     image.src = source;
     image.addEventListener("error", () => {
       const error = document.createElement("p");
@@ -11787,8 +11824,8 @@ function appendRunPlotEvidence(container, plot) {
     const limitation = document.createElement("p");
     limitation.className = "agent-review-limitation";
     limitation.textContent = payload["rho/pruned"]
-      ? "Plot preview storage was reclaimed; the durable history record remains."
-      : "Plot record exists without a renderable preview.";
+      ? "Rho no longer stores this preview, but the plot remains in history."
+      : "The plot remains in history, but its preview is unavailable.";
     card.append(limitation);
   }
   container.append(card);
@@ -11812,7 +11849,7 @@ function renderAgentRunReview(content, run) {
   const request = appendAgentReviewGroup(content, "Requested work");
   appendAgentReviewSection(request, "Action", humanRunTitle(run));
   appendAgentReviewSection(request, "Source", run.source_path || "Console / workspace");
-  appendAgentReviewSection(request, "Execution mode", run.execution_mode || run.request_type);
+  appendAgentReviewSection(request, "Run scope", humanExecutionMode(run));
   appendAgentReviewSection(request, "R code", record.code || run.code_preview);
 
   const outcome = appendAgentReviewGroup(content, "What happened");
@@ -11864,8 +11901,8 @@ function renderAgentRunReview(content, run) {
   const limitations = [];
   if (["queued", "running", "waiting"].includes(run.status)) limitations.push("This run is still in progress; its outcome and evidence may change.");
   if (state.agentReviewRunError) limitations.push(`Detailed execution output is unavailable: ${state.agentReviewRunError}`);
-  if (!state.agentReviewRunLoading && !evidence.plots.length && !evidence.artifacts.length && !evidence.problems.length) limitations.push("No durable Plot, Artifact, or Problem is linked to this run.");
-  if (evidence.plots.some((plot) => !plot.provenance_complete) || evidence.artifacts.some((artifact) => !artifact.provenance_complete)) limitations.push("Some output provenance is incomplete.");
+  if (!state.agentReviewRunLoading && !evidence.plots.length && !evidence.artifacts.length && !evidence.problems.length) limitations.push("No durable Plot, saved output, or Problem is linked to this run.");
+  if (evidence.plots.some((plot) => !plot.provenance_complete) || evidence.artifacts.some((artifact) => !artifact.provenance_complete)) limitations.push("Some output source details are unavailable.");
   if (limitations.length) {
     const group = appendAgentReviewGroup(content, "Limitations");
     for (const text of limitations) {
@@ -11876,12 +11913,10 @@ function renderAgentRunReview(content, run) {
     }
   }
 
-  const provenance = appendAgentReviewGroup(content, "Technical provenance");
-  appendAgentReviewSection(provenance, "Run ID", run.run_id);
-  appendAgentReviewSection(provenance, "Origin", prettyOrigin(run.origin));
-  appendAgentReviewSection(provenance, "Started", formatTimestamp(run.started_at));
-  appendAgentReviewSection(provenance, "Finished", run.finished_at ? formatTimestamp(run.finished_at) : "Not finished");
-  appendAgentReviewSection(provenance, "Revisions", `state ${run.state_revision_before ?? "?"} -> ${run.state_revision_after ?? "?"}; project ${run.project_revision_before ?? "?"} -> ${run.project_revision_after ?? "?"}`);
+  const timing = appendAgentReviewGroup(content, "Source and timing");
+  appendAgentReviewSection(timing, "Started by", prettyOrigin(run.origin));
+  appendAgentReviewSection(timing, "Started", formatTimestamp(run.started_at));
+  appendAgentReviewSection(timing, "Finished", run.finished_at ? formatTimestamp(run.finished_at) : "Not finished");
 }
 
 function appendAuditEvidence(container, evidence) {
@@ -11920,7 +11955,7 @@ function renderAgentAuditWorkspace(content) {
   appendAgentReviewSection(
     summary,
     "Coverage",
-    `Scanned ${coverage.files_scanned || 0} files, ${coverage.runs_considered || 0} runs, ${coverage.artifacts_considered || 0} artifacts`,
+    `Scanned ${coverage.files_scanned || 0} files, ${coverage.runs_considered || 0} runs, ${coverage.artifacts_considered || 0} saved outputs`,
   );
   if (result.truncated) appendAgentReviewSection(summary, "Limitations", (result.truncation_reasons || []).join("; ") || "Result is incomplete.");
   content.append(summary);
@@ -11970,7 +12005,7 @@ function renderAgentReviewWorkspace() {
   const kind = state.agentWorkSurface;
   const content = $("#agentReviewWorkspaceContent");
   content.replaceChildren();
-  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "artifact" ? "Artifact" : "Run";
+  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "artifact" ? "Saved output" : "Run";
 
   if (kind === "audit") {
     $("#agentReviewWorkspaceTitle").textContent = "Reproducibility audit";
@@ -11982,20 +12017,18 @@ function renderAgentReviewWorkspace() {
   summary.className = "agent-review-summary";
   if (kind === "artifact") {
     const artifact = normalizedArtifactDetail();
-    $("#agentReviewWorkspaceTitle").textContent = artifact?.output_path || "Artifact review";
+    $("#agentReviewWorkspaceTitle").textContent = artifact?.output_path || "Saved output review";
     if (!artifact) {
-      content.innerHTML = '<div class="agent-review-empty">Select an Artifact to review.</div>';
+      content.innerHTML = '<div class="agent-review-empty">Select a saved output to review.</div>';
       return;
     }
-    appendAgentReviewSection(summary, "Kind", artifact.artifact_kind || "unknown");
-    appendAgentReviewSection(summary, "Producing run", artifact.run_id);
-    appendAgentReviewSection(summary, "Output", artifact.output_path);
-    appendAgentReviewSection(summary, "Source", artifact.source_path);
-    appendAgentReviewSection(summary, "Provenance", artifact.provenance_complete ? "complete" : "incomplete");
-    appendAgentReviewSection(summary, "Reason", artifact.incomplete_reason);
+    appendAgentReviewSection(summary, "Saved output", `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`);
+    appendAgentReviewSection(summary, "Created from", artifact.source_path || "Workspace R");
+    appendAgentReviewSection(summary, "Source details", artifact.provenance_complete ? "Available" : "Incomplete");
+    appendAgentReviewSection(summary, "Needs attention", artifact.incomplete_reason);
   } else {
     const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
-    $("#agentReviewWorkspaceTitle").textContent = run ? `Run ${run.run_id.slice(0, 12)}` : "Run review";
+    $("#agentReviewWorkspaceTitle").textContent = run ? humanRunTitle(run) : "Run review";
     if (!run) {
       content.innerHTML = '<div class="agent-review-empty">Select a run from Runs to review it.</div>';
       return;
@@ -12121,7 +12154,7 @@ function renderMonitorPanel() {
       meta.textContent = [prettyOrigin(run.origin), run.source_path, runEvidenceLabel(run.run_id), formatTimestamp(run.started_at)].filter(Boolean).join(" · ");
       body.append(title, meta);
       item.append(marker, body, createStateChip(prettyStatus(run.status), run.status));
-      item.setAttribute("aria-label", `Review ${run.request_type} run ${run.run_id}`);
+      item.setAttribute("aria-label", `Review ${humanRunTitle(run)}`);
       item.addEventListener("click", () => {
         state.agentReviewRunId = run.run_id;
         openAgentWorkSurface("run");
@@ -12145,27 +12178,27 @@ function renderReviewPanel() {
   // Show selected run or artifact detail
   const run = state.runs.find((r) => r.run_id === state.activeRunId);
   if (run) {
-    $("#reviewTitle").textContent = `Run: ${run.run_id.slice(0, 12)}`;
-    addReviewSection(content, "Status", run.status);
-    addReviewSection(content, "Origin", run.origin);
-    addReviewSection(content, "Request", run.request_type);
+    $("#reviewTitle").textContent = humanRunTitle(run);
+    addReviewSection(content, "Status", prettyStatus(run.status));
+    addReviewSection(content, "Started by", prettyOrigin(run.origin));
+    addReviewSection(content, "Action", humanRunTitle(run));
     if (run.source_path) addReviewSection(content, "Source", run.source_path);
     return;
   }
 
   // Show selected artifact detail
   if (state.selectedArtifactDetail) {
-    const a = state.selectedArtifactDetail;
-    $("#reviewTitle").textContent = `Artifact: ${a.artifact_id?.slice(0, 12) || "unknown"}`;
-    addReviewSection(content, "Kind", a.artifact_kind || "unknown");
-    if (a.run_id) addReviewSection(content, "Producing Run", a.run_id);
-    if (a.output_path) addReviewSection(content, "Path", a.output_path);
-    addReviewSection(content, "Provenance", a.provenance_complete ? "complete" : "incomplete");
-    if (a.incomplete_reason) addReviewSection(content, "Reason", a.incomplete_reason);
+    const a = normalizedArtifactDetail();
+    $("#reviewTitle").textContent = a?.output_path ? pathFileName(a.output_path) : "Saved output";
+    addReviewSection(content, "Kind", artifactKindLabel(a?.artifact_kind));
+    if (a?.output_path) addReviewSection(content, "Saved to", a.output_path);
+    if (a?.source_path) addReviewSection(content, "Created from", a.source_path);
+    addReviewSection(content, "Source details", a?.provenance_complete ? "Available" : "Incomplete");
+    if (a?.incomplete_reason) addReviewSection(content, "Needs attention", a.incomplete_reason);
     return;
   }
 
-  content.innerHTML = '<div style="color:var(--muted);font-size:12px">Select a run or artifact to inspect.</div>';
+  content.innerHTML = '<div style="color:var(--muted);font-size:12px">Select a run or saved output to inspect.</div>';
 }
 
 function addReviewSection(container, label, value) {
@@ -12298,7 +12331,7 @@ function renderAuditPanel() {
   $("#auditScope").textContent = r.scope || "project";
 
   const cov = r.coverage || {};
-  let covText = "Scanned " + (cov.files_scanned || 0) + " files, " + (cov.runs_considered || 0) + " runs, " + (cov.artifacts_considered || 0) + " artifacts";
+  let covText = "Scanned " + (cov.files_scanned || 0) + " files, " + (cov.runs_considered || 0) + " runs, " + (cov.artifacts_considered || 0) + " saved outputs";
   if (cov.files_skipped) covText += " (" + cov.files_skipped + " skipped)";
   $("#auditCoverage").textContent = covText;
 
@@ -12942,6 +12975,7 @@ async function hydrateProject(response) {
   state.agentReviewRunError = null;
   state.selectedArtifactId = null;
   state.selectedArtifactDetail = null;
+  $("#artifactPanel").open = false;
   state.documents = {};
   state.closedDrafts = {};
   state.expandedDirectories.clear();
@@ -13631,16 +13665,17 @@ $("#renderReviewArtifactButton").addEventListener("click", async () => {
   if (!state.lastRender?.artifactAvailable || !artifactId) return;
   try {
     const detail = await invoke("get_artifact_record", { artifact_id: artifactId });
-    if (!detail?.artifact) throw new Error("Render Artifact is unavailable");
+    if (!detail?.artifact) throw new Error("Saved render output is unavailable");
     state.selectedArtifactId = detail.artifact.artifact_id;
     state.selectedArtifactDetail = detail;
     switchDockTab("plots");
+    $("#artifactPanel").open = true;
     renderArtifactRecords();
     if (state.posture === "agent") openAgentWorkSurface("artifact");
   } catch (error) {
     state.lastRender.artifactAvailable = false;
     renderLastRenderCard();
-    toast(`Render Artifact is unavailable: ${error}`, true);
+    toast(`Saved render output is unavailable: ${error}`, true);
   }
 });
 $("#renderShowProblemsButton").addEventListener("click", () => {
@@ -13652,7 +13687,10 @@ $("#renderShowPlotsButton").addEventListener("click", () => {
   switchDockTab("plots");
 });
 $("#plotsShortcut").addEventListener("click", () => switchDockTab("plots"));
-$("#artifactsShortcut").addEventListener("click", () => switchDockTab("plots"));
+$("#artifactsShortcut").addEventListener("click", () => {
+  switchDockTab("plots");
+  $("#artifactPanel").open = true;
+});
 $("#plotExportButton").addEventListener("click", exportActivePlot);
 async function prunePlotPayloads(sessionOnly) {
   const scope = sessionOnly ? "this session" : "this project";
@@ -13664,7 +13702,7 @@ async function prunePlotPayloads(sessionOnly) {
   try {
     const result = await invoke("prune_plot_payloads", { session_only: sessionOnly });
     await loadRunData();
-    toast(`Freed preview storage for ${scope}. Pruned ${result?.pruned_count || 0} plot payloads and reclaimed ${formatBytes(result?.reclaimed_bytes || 0)}.`);
+    toast(`Freed previews for ${scope}. ${result?.pruned_count || 0} plot preview${result?.pruned_count === 1 ? " is" : "s are"} no longer stored.`);
   } catch (error) {
     toast(`Could not free preview storage: ${error}`, true);
   }

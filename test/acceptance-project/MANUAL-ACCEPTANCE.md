@@ -71,8 +71,8 @@ Open `examples/rho-workbench-tour.R` in Human-first Code layout.
    and missing cells. Search `manual review`, sort `score`, change page size,
    use Tab navigation, and verify visible-page export reflects the active query.
 4. Open Plots Session and History. Confirm the boxplot is visible, reopen it
-   from History, and inspect source provenance back to this file.
-5. Inspect the successful Run and its timing/source/revision. Select and run
+   from History, and inspect source details back to this file.
+5. Inspect the successful Run and its timing/source. Select and run
    only the final commented `stop(...)` line after removing its comment marker;
    confirm one source-linked Problem and failed Run, then use Go to source and
    Run again.
@@ -114,10 +114,17 @@ acceptance, still open and run the individual files below.
    - Expected: a library-complexity scatter plot followed by a mitochondrial
      percentage boxplot.
    - In Plots Session, confirm the count is `2`, both images are visible, and
-     the Session Retention summary also reports `2 plot rows`; an empty preview
-     beside a nonzero Retention count is a failure.
+     the numbered Plot navigator is shown on the right. Select Plot 1 and Plot 2
+     in turn; the selected image must remain dominant, and each row must show a
+     useful source, time, and preview state. There must be no page-level
+     horizontal scroll.
+   - Confirm Saved outputs is closed when Plots is first opened. Open it with
+     the summary row and verify that it describes exported files in plain
+     language. Use Manage only when you need to free previews or delete plot
+     history; deleting a record must not claim to delete the file.
    - Use Plots Session/History, reopen the first plot, and inspect source
-     provenance back to this script.
+     details back to this script. A missing or incomplete source must be stated
+     plainly rather than replaced by an internal identifier.
 
 This flow exercises Console, files, editor execution, Environment, Evidence,
 Data Viewer, Plots, Runs, and Problems with actual project output rather than
@@ -157,12 +164,12 @@ column and should create a source-linked Problem.
    time, and a `plot` evidence cue without requiring raw request identifiers.
 9. Open that Run. Review must show the requested work, exact R code, outcome,
    output/messages/warnings/errors when present, and the Plot produced by the
-   exact same Run ID. Confirm the plot is visibly reviewable in place, then
-   inspect Technical provenance. Do not accept a Review that only says
+   exact same run result. Confirm the plot is visibly reviewable in place, then
+   inspect Source and timing. Do not accept a Review that only says
    `system`, `workspace.snapshot`, or `running` while hiding the scientific
    action.
 10. Review the earlier failed `04-fix-me.R` Run and a completed Run that
-    produced no Plot, Artifact, or Problem. Expected: the failed Run exposes
+    produced no Plot, saved output, or Problem. Expected: the failed Run exposes
     its error and linked Problem; the completed Run explicitly says that no
     durable output evidence is linked. While any Agent run is active, inspect
     it and confirm Review says the result may still change and does not claim
@@ -272,10 +279,10 @@ editor intelligence, reviewed-edit, and diagnostic capabilities.
 2. Open `reports/iris-analysis.Rmd`; confirm `unclosed-demo` is warned as an
    unclosed chunk and that `model` options are parsed.
 3. Open `reports/iris-summary.qmd`; Render it when Quarto is installed.
-4. Follow any render diagnostic back to source and inspect Plots/Artifacts,
+4. Follow any render diagnostic back to source and inspect Plots/Saved outputs,
    Runs, and Audit after completion.
 
-This covers Chunks, Render, Artifacts, Audit, Runs, and render Problems. Record
+This covers Chunks, Render, Saved outputs, Audit, Runs, and render Problems. Record
 missing external R Markdown or Quarto prerequisites as skips rather than passes.
 
 ## 6. Inspect Environment, Evidence, Runs, And Audit
@@ -286,15 +293,16 @@ With the QC workflow still loaded:
 2. Inspect R version, library paths, Bioconductor, `renv` presence/state, and
    installed package paging under Evidence.
 3. Select the successful analysis run and the deliberate failed run. Confirm
-   their status, source, timing, project, and revision remain distinguishable.
+   their status, source, and timing remain distinguishable, and that the rows do
+   not require raw workspace or revision values to understand what happened.
 4. Open Audit with project scope, then inspect run, snapshot, problem, and
-   artifact categories. Change to a run or artifact scope when available.
+   saved-output categories. Change to a run or saved-output scope when available.
 
 ### 6A. Review Real Claims Against Evidence
 
 Open `reports/claim-review-demo.qmd`. Keep the line numbers visible, run both R
 chunks, and Render the document so the project contains a real render-output
-Artifact. In Evidence > Entries create these two entries:
+saved output. In Evidence > Entries create these two entries:
 
 1. `Treatment response study`, DOI `10.1000/rho-demo`, with notes
    `Methods and outcome are inspectable in the demo.`
@@ -319,21 +327,21 @@ Then open Evidence > Claims and exercise the complete structural review:
    inside its anchored paragraph and save. Refresh Claims and confirm
    `Unresolved source`. Restore the exact original text, save, refresh, and
    confirm the prior structural status returns.
-5. Create an Artifact-anchored claim using the rendered
-   `claim-review-demo.html` Artifact and link `Treatment response study`.
-   Confirm it is `Linked`, expand its detail, and Open Artifact to inspect the
-   exact output and provenance. Remove or move the rendered file only when the
-   surrounding Artifact workflow offers a reversible test; refresh and confirm
+5. Create a saved-output-anchored claim using the rendered
+   `claim-review-demo.html` saved output and link `Treatment response study`.
+   Confirm it is `Linked`, expand its detail, and Open saved output to inspect the
+   exact output and source details. Remove or move the rendered file only when the
+   surrounding saved-output workflow offers a reversible test; refresh and confirm
    the claim reports `Unresolved source`, then re-render and verify recovery.
 
 Treat every status as record health only. `Linked` is a failed acceptance if
 the UI claims that the literature proves the result, hides the exact anchor,
-shows foreign-project content, or mutates a file/Artifact/Evidence entry while
+shows foreign-project content, or mutates a file, saved output, or Evidence entry while
 reviewing. Repeat the first source claim in the generated Unicode/space project
 and verify neither project can list, open, delete, or reuse the other's claim.
 
 This is the representative reproducibility check: the QC result must be
-understandable from files, environment evidence, runs, and artifacts without
+understandable from files, environment evidence, runs, and saved outputs without
 relying on Agent chat alone.
 
 ## 7. Review And Commit Selected Git Changes
@@ -388,10 +396,10 @@ Run these checks against the same installed candidate after the workflow above;
 the preview URLs are references for the expected states, not acceptance proof.
 
 1. In Agent-first, start at `Task` with an existing draft. Confirm the editor
-   and execution dock are hidden until an explicit file/run/Artifact/audit
+   and execution dock are hidden until an explicit file/run/saved-output/audit
    action. Open `examples/editor-intelligence.R`, use `Back to Task`, and
    verify the draft and active document return unchanged.
-2. Open a Run, Artifact, and Audit in turn. Confirm Review is the dominant
+2. Open a Run, saved output, and Audit in turn. Confirm Review is the dominant
    surface, structured facts remain visible, and an audit evidence path opens
    the exact source file without discarding the audit result. Repeat with an
    incomplete audit and record the truthful limitation.
@@ -427,7 +435,7 @@ Complete these focused checks using the same generated projects:
    project.
 2. Submit an R Markdown or Quarto render, cancel one job, restart Rho, and
    confirm the job reaches a truthful terminal state and links to the existing
-   render Artifact. Follow a failure back to source.
+   render saved output. Follow a failure back to source.
 3. Inspect lockfile versus installed packages and source roles. Review one
    package install/update/remove request, reject it once, then accept it and
    confirm Environment evidence changes only in the active project.
@@ -448,7 +456,7 @@ changed PATH/package setting immediately after its step.
    confirm the durable Run becomes `interrupted`, the prompt recovers, and a
    subsequent `1 + 1` succeeds.
 2. Trigger a Workspace R error, restart Workspace R, and confirm the project,
-   open documents, Runs, Problems, Evidence, Artifacts, audit records, and
+   open documents, Runs, Problems, Evidence, Saved outputs, audit records, and
    Agent draft remain available with truthful new-session state.
 3. Create an Agent approval, then change the relevant project/document
    revision before approving. Confirm stale approval is rejected and nothing
@@ -498,9 +506,9 @@ not replaced by this guide.
 | Representative QC and reproducibility workflow | 2, 5, 6 |
 | Agent Ask/Plan/Act, approval, file proposal, activity, model management | 3, 8A, 9 |
 | Completion, Help/examples, references, refactor, diagnostics, formatting | 4, 8B |
-| Chunks, R Markdown/Quarto, cancellation/restart, Artifact linkage | 5, 8B, 9 |
+| Chunks, R Markdown/Quarto, cancellation/restart, saved-output linkage | 5, 8B, 9 |
 | Environment inventory/source/mutation review and Evidence | 6, 8B |
-| Claims, Audit, source/Artifact recovery, project isolation | 6A, 8, 8A |
+| Claims, Audit, source/saved-output recovery, project isolation | 6A, 8, 8A |
 | Git hunk/file review, rejection, restore, commit, conflict | 7 |
 | Persistence, project switching, Unicode, large/oversized boundaries | 8 |
 | M1-M3 hierarchy, state surfaces, keyboard, 100%/125% scaling | 8A |
