@@ -58,6 +58,7 @@ changes.
 - Active Agent entry and Direct-surface polish: [`plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md`](plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md)
 - Active Agent-first intuitive modernization: [`plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md`](plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md)
 - Active Agent-first adaptive work surface: [`plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md`](plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md)
+- Active Plot payload normalization repair: [`plans/active-2026-08-04-plot-payload-normalization-repair-spec.md`](plans/active-2026-08-04-plot-payload-normalization-repair-spec.md)
 - Active guarded Git review: [`plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md`](plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md)
 - Verified adversarial Git hardening: [`plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md`](plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md)
 - Verified Git repository replacement handling: [`plans/active-2026-08-03-ws4-repository-replacement-spec.md`](plans/active-2026-08-03-ws4-repository-replacement-spec.md)

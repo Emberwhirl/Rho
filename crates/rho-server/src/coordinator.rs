@@ -4023,6 +4023,14 @@ fn extract_plot_payloads(events: &[CorrelatedKernelEvent]) -> Vec<(String, Strin
             let Some(payload) = data.get(media_type) else {
                 continue;
             };
+            let payload = if media_type == "image/png" {
+                let Some(encoded) = payload.as_str().and_then(normalize_base64_padding) else {
+                    continue;
+                };
+                Value::String(encoded)
+            } else {
+                payload.clone()
+            };
             plots.push((
                 media_type.to_string(),
                 serde_json::to_string(&json!({ media_type: payload }))
@@ -4032,6 +4040,29 @@ fn extract_plot_payloads(events: &[CorrelatedKernelEvent]) -> Vec<(String, Strin
         }
     }
     plots
+}
+
+fn normalize_base64_padding(value: &str) -> Option<String> {
+    let compact = value
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>();
+    let core = compact.trim_end_matches('=');
+    let padding_length = compact.len() - core.len();
+    if core.is_empty()
+        || core.contains('=')
+        || padding_length > 2
+        || (padding_length > 0 && compact.len() % 4 != 0)
+        || !core
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
+        || core.len() % 4 == 1
+    {
+        return None;
+    }
+    let mut normalized = core.to_string();
+    normalized.extend(std::iter::repeat_n('=', (4 - core.len() % 4) % 4));
+    Some(normalized)
 }
 
 fn ensure_no_kernel_errors(events: &[CorrelatedKernelEvent]) -> Result<()> {
@@ -4273,6 +4304,39 @@ mod tests {
 
         let error = ensure_no_kernel_errors(&events).unwrap_err();
         assert!(error.to_string().contains("no package called 'jsonlite'"));
+    }
+
+    #[test]
+    fn normalizes_unpadded_png_plot_payloads_before_persistence() {
+        for (encoded, expected) in [
+            ("iVBORw0KGgo=", "iVBORw0KGgo="),
+            ("iVBORw0KGgo", "iVBORw0KGgo="),
+            ("iVBORw0KGg", "iVBORw0KGg=="),
+        ] {
+            let events = vec![CorrelatedKernelEvent {
+                parent_id: Some("request-plot".to_string()),
+                event: KernelEvent::DisplayData {
+                    data: json!({ "image/png": encoded }),
+                },
+            }];
+            let plots = extract_plot_payloads(&events);
+            assert_eq!(plots.len(), 1);
+            let payload: Value = serde_json::from_str(&plots[0].1).unwrap();
+            assert_eq!(payload["image/png"], expected);
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_png_plot_payloads() {
+        for encoded in ["A", "not=base64", "%%%", "iVBORw0KGgo==", "abc===="] {
+            let events = vec![CorrelatedKernelEvent {
+                parent_id: Some("request-plot".to_string()),
+                event: KernelEvent::DisplayData {
+                    data: json!({ "image/png": encoded }),
+                },
+            }];
+            assert!(extract_plot_payloads(&events).is_empty());
+        }
     }
 
     #[test]

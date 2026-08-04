@@ -961,6 +961,20 @@ fn has_png_signature(bytes: &[u8]) -> bool {
     bytes.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10])
 }
 
+fn decode_plot_png_base64(encoded: &str) -> Result<Vec<u8>> {
+    let mut normalized = encoded
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>();
+    ensure!(!normalized.is_empty(), "PNG plot payload is empty");
+    let remainder = normalized.len() % 4;
+    ensure!(remainder != 1, "PNG plot payload has invalid base64 length");
+    normalized.extend(std::iter::repeat_n('=', (4 - remainder) % 4));
+    BASE64_STANDARD
+        .decode(normalized)
+        .context("decoding PNG plot payload")
+}
+
 fn quote_delimited_cell(value: Option<&str>, delimiter: char) -> String {
     let text = value.unwrap_or_default();
     if !text.contains('"')
@@ -2051,7 +2065,7 @@ async fn export_plot_artifact(
         .and_then(Value::as_str)
         .context("PNG plot payload is unavailable")
         .map_err(display_error)?;
-    let bytes = BASE64_STANDARD.decode(encoded).map_err(display_error)?;
+    let bytes = decode_plot_png_base64(encoded).map_err(display_error)?;
     if !has_png_signature(&bytes) {
         return Err("Plot PNG payload has an invalid signature".to_string());
     }
@@ -4706,12 +4720,12 @@ mod tests {
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RenderJobState,
         RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
         bounded_diagnostic, classify_startup_error, configure_user_startup,
-        data_view_artifact_metadata, data_view_delimited_text, ensure_artifact_export_target,
-        ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
-        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
-        reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
-        source_claim_snapshot, switch_project_with_watcher_factory, workspace_project_root_code,
-        write_r_probe_script,
+        data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
+        ensure_artifact_export_target, ensure_supported_r_version, existing_startup_file,
+        finish_render_job, has_png_signature, lockfile_inventory_arguments, parse_r_runtime_probe,
+        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
+        safe_delete_project_file, source_claim_snapshot, switch_project_with_watcher_factory,
+        workspace_project_root_code, write_r_probe_script,
     };
 
     use crate::project::{
@@ -5599,6 +5613,20 @@ mod tests {
     fn validates_png_signature() {
         assert!(has_png_signature(&[137, 80, 78, 71, 13, 10, 26, 10, 0, 1]));
         assert!(!has_png_signature(b"not-a-png"));
+    }
+
+    #[test]
+    fn decodes_padded_and_unpadded_plot_png_payloads() {
+        assert_eq!(
+            decode_plot_png_base64("iVBORw0KGgo=").unwrap(),
+            b"\x89PNG\r\n\x1a\n"
+        );
+        assert_eq!(
+            decode_plot_png_base64("iVBORw0KGgo").unwrap(),
+            b"\x89PNG\r\n\x1a\n"
+        );
+        assert!(decode_plot_png_base64("A").is_err());
+        assert!(decode_plot_png_base64("not=base64").is_err());
     }
 
     fn render_job_fixture(job_id: &str, project_root: &str, status: &str) -> RenderJobState {

@@ -39,6 +39,11 @@ assert.match(js, /payload\?\.\["image\/png"\]/);
 assert.match(js, /parseJsonObject\(plot\?\.payload_json\)\?\.\["rho\/pruned"\]/);
 assert.match(js, /function executionHasRenderablePlot\(response\)/);
 assert.match(js, /event\?\.type === "display_data"/);
+assert.match(js, /function normalizeBase64Padding\(value\)/);
+assert.match(js, /core\.length % 4 === 1/);
+assert.match(js, /paddingLength && compact\.length % 4 !== 0/);
+assert.match(js, /data:image\/png;base64,\$\{encoded\}/);
+assert.match(js, /image\.onerror = \(\) =>/);
 assert.match(
   js,
   /if \(executionHasRenderablePlot\(response\)\) plotExecutionId = response\.execution_id \|\| null;[\s\S]*if \(plotExecutionId\) \{[\s\S]*item\.run_id === plotExecutionId[\s\S]*switchDockTab\("plots"\);/,

@@ -1683,6 +1683,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "execute_r") {
     const request = args.request || {};
+    const unpaddedMockPng = MOCK_PNG_BASE64.replace(/=+$/, "");
     state.revision.state_revision += 1;
     state.objects = [
       { name: "qc", classes: ["data.frame"], dimensions: [12, 3], size_bytes: 2184, typeof: "list" },
@@ -1711,7 +1712,7 @@ async function mockInvoke(command, args) {
         state_revision: state.revision.state_revision,
         project_revision: state.revision.project_revision,
         media_type: "image/png",
-        payload_json: JSON.stringify({ "image/png": MOCK_PNG_BASE64, "rho/mock-image": "assets/demo-plot.png" }),
+        payload_json: JSON.stringify({ "image/png": unpaddedMockPng }),
         provenance_complete: Boolean(request.source_path ?? request.sourcePath ?? null),
         created_at: new Date().toISOString(),
       });
@@ -1728,7 +1729,7 @@ async function mockInvoke(command, args) {
         error: request.code?.includes("stop(") ? { message: "boom", call: "stop(\"boom\")" } : null,
         traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
       },
-      events: [{ event: { type: "display_data", data: { "image/png": MOCK_PNG_BASE64, "rho/mock-image": "assets/demo-plot.png" } } }],
+      events: [{ event: { type: "display_data", data: { "image/png": unpaddedMockPng } } }],
       workspace: state.revision,
     };
   }
@@ -7292,16 +7293,32 @@ function executionHasRenderablePlot(response) {
   return asMessageList(response?.events).some((wrapped) => {
     const event = wrapped.event || wrapped;
     const data = event?.type === "display_data" ? event.data : null;
-    return Boolean(data?.["image/png"] || data?.["image/svg+xml"] || data?.["rho/mock-image"]);
+    return Boolean(plotImageSource(data));
   });
+}
+
+function normalizeBase64Padding(value) {
+  const compact = String(value || "").replace(/\s/g, "");
+  const match = /^([A-Za-z0-9+/]*)(={0,2})$/.exec(compact);
+  const core = match?.[1] || "";
+  const paddingLength = match?.[2]?.length || 0;
+  if (!core || core.length % 4 === 1 || (paddingLength && compact.length % 4 !== 0)) return null;
+  return core.padEnd(core.length + ((4 - core.length % 4) % 4), "=");
+}
+
+function plotImageSource(data) {
+  const payload = data && typeof data === "object" ? data : {};
+  if (payload["image/png"]) {
+    const encoded = normalizeBase64Padding(payload["image/png"]);
+    return encoded ? `data:image/png;base64,${encoded}` : null;
+  }
+  if (payload["image/svg+xml"]) return `data:image/svg+xml;base64,${payload["image/svg+xml"]}`;
+  return payload["rho/mock-image"] || null;
 }
 
 function renderDisplay(data) {
   const payload = data && typeof data === "object" ? data : {};
-  let source = null;
-  if (payload?.["image/png"]) source = `data:image/png;base64,${payload["image/png"]}`;
-  if (payload?.["image/svg+xml"]) source = `data:image/svg+xml;base64,${payload["image/svg+xml"]}`;
-  if (payload?.["rho/mock-image"]) source = payload["rho/mock-image"];
+  const source = plotImageSource(payload);
   if (!source) {
     $("#plotImage").classList.add("hidden");
     $("#plotEmpty").classList.remove("hidden");
@@ -7311,8 +7328,14 @@ function renderDisplay(data) {
     }
     return;
   }
-  $("#plotImage").src = source;
-  $("#plotImage").classList.remove("hidden");
+  const image = $("#plotImage");
+  image.onerror = () => {
+    if (image.src === source) {
+      showPlotSurfaceState("failed", "Plot preview unavailable", "The PNG payload could not be decoded by the image renderer.");
+    }
+  };
+  image.src = source;
+  image.classList.remove("hidden");
   $("#plotEmpty").classList.add("hidden");
   const emptyLabel = $("#plotEmpty strong");
   if (emptyLabel) emptyLabel.textContent = "No plots yet";

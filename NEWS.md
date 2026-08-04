@@ -10,6 +10,9 @@ this file records behavior that is already available in a released build.
 
 - Running R code that creates a plot now opens Plots and selects the plot from
   that exact execution instead of updating a hidden preview.
+- Plot previews and PNG export now accept Ark's unpadded base64 image payloads;
+  new Plot history is stored with canonical padding and invalid images fail
+  visibly instead of leaving a blank panel.
 - Selecting Act now immediately enables its session R-execution authorization
   checkbox when the Agent is idle and the selected model supports tools.
 - Windows project roots passed to Workspace R now omit the internal `\\?\`
