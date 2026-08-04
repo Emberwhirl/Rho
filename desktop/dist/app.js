@@ -2964,6 +2964,7 @@ function setBusy(busy, label = "R is busy") {
   $("#editorRenameButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#editorExtractButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#editorFormatButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
+  $("#editorCheckCodeButton").disabled = busy || state.projectStatus !== "ready" || Boolean(activeDocument()?.readOnly);
   $("#consoleInput").disabled = busy;
   $("#consoleRunButton").disabled = busy;
   setKernelStatus(busy ? "starting" : "idle", busy ? label : "R idle");
@@ -3411,6 +3412,7 @@ function updateEditorChrome() {
   $("#editorRenameButton").disabled = documentActionsDisabled;
   $("#editorExtractButton").disabled = documentActionsDisabled;
   $("#editorFormatButton").disabled = documentActionsDisabled;
+  $("#editorCheckCodeButton").disabled = documentActionsDisabled || !activeDocument()?.path?.toLowerCase().endsWith(".r");
   renderEnvironmentSummary();
 }
 
@@ -6592,7 +6594,7 @@ function renderLintStatus() {
     return;
   }
   if (state.lint.status === "applied") {
-    status.textContent = "Quick fix applied to the unsaved editor buffer · Save to persist, then run Lint again";
+    status.textContent = "Quick fix applied to the unsaved editor buffer · Save to persist, then Check code again";
     return;
   }
   const provider = response?.provider;
@@ -6785,18 +6787,18 @@ async function applyLintQuickFix() {
   const button = $("#lintQuickFixApply");
   button.disabled = true;
   try {
-    if (state.project.root !== proposal.projectRoot) throw new Error("The active project changed. Run Lint again in this project.");
+    if (state.project.root !== proposal.projectRoot) throw new Error("The active project changed. Check code again in this project.");
     if (state.activeDocument !== proposal.sourcePath) throw new Error("The active file changed. Reopen the diagnostic and review it again.");
     syncDocumentFromEditor({ render: false, persist: false });
     const documentState = activeDocument();
     if (!documentState || documentState.versionId !== proposal.documentVersion) {
-      throw new Error("The document changed after this diagnostic was produced. Run Lint again.");
+      throw new Error("The document changed after this diagnostic was produced. Check code again.");
     }
     const lineNumber = Number(proposal.quickFix.line_number);
     const lines = documentState.content.split("\n");
     if (!Number.isInteger(lineNumber) || lineNumber < 1 || lineNumber > lines.length
       || lines[lineNumber - 1] !== proposal.quickFix.expected_line) {
-      throw new Error("The source line no longer matches this quick fix. Run Lint again.");
+      throw new Error("The source line no longer matches this quick fix. Check code again.");
     }
     if (state.editor.mode === "monaco" && state.editor.editor?.getModel()) {
       const model = state.editor.editor.getModel();
@@ -12530,12 +12532,12 @@ async function lintCurrentFile() {
   if (!doc || !doc.path) return;
   syncDocumentFromEditor({ render: false, persist: false });
   if (documentIsDirty(doc)) {
-    toast("Save the active file before linting so diagnostics match the saved source.", true);
+    toast("Save the active file before checking code so diagnostics match the saved source.", true);
     return;
   }
-  const button = $("#lintCurrentFileButton");
+  const button = $("#editorCheckCodeButton");
   button.disabled = true;
-  button.textContent = "...";
+  button.setAttribute("aria-busy", "true");
   state.lint = { status: "running", response: null, proposal: null, projectRoot: state.project.root, error: null };
   renderProblems();
   try {
@@ -12577,12 +12579,12 @@ async function lintCurrentFile() {
     state.lint = { status: "error", response: null, proposal: null, projectRoot: state.project.root, error: String(e) };
     renderProblems();
   } finally {
-    button.disabled = false;
-    button.textContent = "Lint";
+    button.removeAttribute("aria-busy");
+    updateEditorChrome();
   }
 }
 
-$("#lintCurrentFileButton").addEventListener("click", lintCurrentFile);
+$("#editorCheckCodeButton").addEventListener("click", lintCurrentFile);
 $("#lintQuickFixApply").addEventListener("click", applyLintQuickFix);
 $("#lintQuickFixCancel").addEventListener("click", closeLintQuickFix);
 $("#lintQuickFixClose").addEventListener("click", closeLintQuickFix);

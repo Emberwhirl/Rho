@@ -28,6 +28,7 @@ for (const icon of [
 assert.match(html, /class="editor-actions" role="toolbar" aria-label="Editor actions"/);
 for (const id of [
   "editorFormatButton",
+  "editorCheckCodeButton",
   "editorRenameButton",
   "editorExtractButton",
   "saveFileButton",

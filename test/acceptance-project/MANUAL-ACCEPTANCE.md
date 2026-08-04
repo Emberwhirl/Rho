@@ -269,13 +269,15 @@ Open `examples/editor-intelligence.R`:
    not change. Review again and apply: confirm spaces appear, the tab becomes
    dirty, Problems no longer presents the stale fix, and the file on disk is
    unchanged until Save. Use Edit > Undo and confirm the original line and
-   clean state return. Apply once more, save explicitly, and run Lint again.
-12. To exercise rejection, create the same finding again, run Lint, open its
+    clean state return. Apply once more, save explicitly, and choose Check code
+    again from the editor toolbar.
+12. To exercise rejection, create the same finding again, choose Check code,
+    open its
    review, then edit that source line before choosing Apply. Confirm Rho rejects
-   the stale proposal and asks for another Lint rather than changing or saving
+    the stale proposal and asks for another Check code run rather than changing or saving
    the file. Repeat after switching to another open file and verify the wrong
    file is also rejected.
-13. Add `review_flag = example_value > 2`, save, and run Lint. When the installed
+13. Add `review_flag = example_value > 2`, save, and choose Check code. When the installed
    lintr profile reports `assignment_linter`, review the proposed `<-` change,
    cancel, then apply and undo it as above. Record an explicit skip when that
    linter is disabled in the installed profile.

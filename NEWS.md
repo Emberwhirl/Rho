@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- The active-file `lintr` action is now the `Check code` icon in the editor
+  toolbar, where file-level actions belong; the unrelated execution-dock action
+  has been removed and running no longer shifts toolbar geometry.
 - Checking the active R file now sends the required document-version argument
   through the real Tauri command shape, so installed builds reach `lintr`
   instead of reporting a missing `documentVersion` key.

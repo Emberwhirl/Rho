@@ -188,3 +188,15 @@ acceptance is NOT RUN. No application or R package version changed because the
 provider response contract is unchanged and this is not a new candidate.
 
 The remaining three authorized packages are pending.
+
+### WS2-LINT-ENTRY-1
+
+Implemented and verified 2026-08-05. `Check code` is a fixed-size accessible
+icon in the editor toolbar, is disabled outside an editable active R file, and
+retains its geometry while busy. The old dock-wide Lint action and old rerun
+wording are removed. JavaScript syntax, Lint quick-fix, workbench hierarchy,
+scientific-surface contracts, browser placement and successful invocation, and
+`git diff --check` passed. Installed acceptance is NOT RUN. No version bump was
+made because this is not yet a new distributable candidate.
+
+The remaining two authorized packages are pending.
