@@ -7288,6 +7288,14 @@ function renderExecution(response, request) {
   }
 }
 
+function executionHasRenderablePlot(response) {
+  return asMessageList(response?.events).some((wrapped) => {
+    const event = wrapped.event || wrapped;
+    const data = event?.type === "display_data" ? event.data : null;
+    return Boolean(data?.["image/png"] || data?.["image/svg+xml"] || data?.["rho/mock-image"]);
+  });
+}
+
 function renderDisplay(data) {
   const payload = data && typeof data === "object" ? data : {};
   let source = null;
@@ -7613,6 +7621,7 @@ async function executeCode(request) {
   if (state.busy || !request?.code?.trim()) return;
   setBusy(true);
   addTerminalCommand(request.code);
+  let plotExecutionId = null;
   try {
     const response = await invoke("execute_r", {
       request: {
@@ -7625,6 +7634,7 @@ async function executeCode(request) {
     const documentState = activeDocument();
     if (documentState && request.type !== "console") documentState.lastExecutedRange = request.range || null;
     renderExecution(response, request);
+    if (executionHasRenderablePlot(response)) plotExecutionId = response.execution_id || null;
     await refreshEnvironment();
   } catch (error) {
     const message = String(error);
@@ -7633,6 +7643,12 @@ async function executeCode(request) {
     toast(message, true);
   } finally {
     await loadRunData();
+    if (plotExecutionId) {
+      const plot = state.plots.find((item) => item.run_id === plotExecutionId);
+      if (plot) state.selectedPlotId = plot.plot_id;
+      renderPlots();
+      switchDockTab("plots");
+    }
     setBusy(false);
     if (!$("#consolePanel").classList.contains("hidden")) $("#consoleInput").focus();
   }

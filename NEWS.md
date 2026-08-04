@@ -8,6 +8,8 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Running R code that creates a plot now opens Plots and selects the plot from
+  that exact execution instead of updating a hidden preview.
 - Selecting Act now immediately enables its session R-execution authorization
   checkbox when the Agent is idle and the selected model supports tools.
 - Windows project roots passed to Workspace R now omit the internal `\\?\`

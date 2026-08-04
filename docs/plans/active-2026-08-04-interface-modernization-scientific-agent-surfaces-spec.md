@@ -86,6 +86,9 @@ handlers and retain current stale/rejection/failure behavior.
 
 - Plot empty and invalid-preview states are distinct and visible while plot
   history/provenance remains available.
+- A completed direct user execution that returns a renderable plot selects the
+  newest plot belonging to that exact execution and opens Plots. An execution
+  without a renderable plot does not take the user away from Console.
 - Problems use distinct Info/Warning/Error markers and preserve source,
   producer, rule, grouping, and actions.
 - Environment snapshot/render capability states are scannable without hiding
@@ -148,6 +151,16 @@ not change. M3 cannot change release readiness or close `0.3.x` manual gates.
 
 ## Implementation And Evidence
 
+### Direct plot reveal defect repair
+
+Authorized by the user's installed-app report on 2026-08-04. The existing
+execution and persistence path received plot events and stored plot history,
+but the frontend rendered them into a hidden Plots panel while leaving the
+user on Console. The bounded R1 repair may reveal Plots only when the direct
+execution response contains a supported image payload, and must bind the
+selection to that response's exact execution ID. It does not change Workspace
+R, plot persistence, provenance, execution authority, or background flows.
+
 M3 is implemented in the static desktop frontend:
 
 - Runs and Agent activity use one presentation-only state mapping with local
@@ -190,6 +203,16 @@ repository preview:
   decision, switched Environment detail to one column, and produced no page,
   panel, or dialog overflow or overlap;
 - no Rho console error was recorded in the final Plot recovery probe.
+
+Direct Plot reveal repair evidence passed 2026-08-04:
+
+- `node --check desktop/dist/app.js`, the focused scientific-surface contract,
+  the Console/Logs contract, and `git diff --check` passed;
+- `Rscript examples/single-cell-qc/run-complete-workflow.R` completed with 217
+  of 240 cells passing, five high-mitochondrial cells, and two plot calls;
+- in the browser mock, submitting `plot(1:5, 1:5)` from Console changed the
+  Plot count from zero to one, selected Plots, displayed `Latest R plot`, and
+  retained the exact Console run as source provenance.
 
 Post-verification review found no command, schema, persistence, approval-lane,
 execution-authority, project-isolation, or recovery-action change. The

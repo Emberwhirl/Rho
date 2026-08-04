@@ -37,6 +37,13 @@ assert.match(js, /showPlotSurfaceState\(\s*"failed",\s*"Plot preview unavailable
 assert.match(js, /JSON\.parse\(\(selectedPlot \|\| plots\[0\]\)\.payload_json \|\| "null"\)/);
 assert.match(js, /payload\?\.\["image\/png"\]/);
 assert.match(js, /parseJsonObject\(plot\?\.payload_json\)\?\.\["rho\/pruned"\]/);
+assert.match(js, /function executionHasRenderablePlot\(response\)/);
+assert.match(js, /event\?\.type === "display_data"/);
+assert.match(
+  js,
+  /if \(executionHasRenderablePlot\(response\)\) plotExecutionId = response\.execution_id \|\| null;[\s\S]*if \(plotExecutionId\) \{[\s\S]*item\.run_id === plotExecutionId[\s\S]*switchDockTab\("plots"\);/,
+  "A direct execution that returns a plot must select that run's plot and reveal Plots",
+);
 assert.match(html, /id="problemEmpty"[^>]*data-state="completed"/);
 assert.match(js, /icon\.textContent = \{ error: "E", warning: "W", info: "i" \}/);
 assert.match(css, /\.problem-icon\.error/);
