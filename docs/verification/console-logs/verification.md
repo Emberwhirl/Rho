@@ -1,6 +1,6 @@
 # Console And Logs Separation Verification
 
-Date: 2026-08-02
+Date: 2026-08-02; command-history extension verified 2026-08-04
 Contract: `docs/plans/active-2026-08-02-console-logs-separation-spec.md`
 Scope: CL1 frontend implementation and browser/mock behavior
 
@@ -22,6 +22,8 @@ The focused contract check proves that:
 - the mixed `addConsole` helper is absent;
 - dock switching includes Console, Logs, Plots, and Problems;
 - the deterministic `console-logs` preview remains available.
+- Console history is bounded, stores submitted Console expressions only, and
+  handles Up/Down browsing with draft restoration.
 
 ## Deterministic Browser Evidence
 
@@ -47,6 +49,12 @@ the input returned to enabled when execution completed. Problems remained `0`.
 
 Switching to Logs showed separate `SYSTEM` startup/runtime rows and an `AGENT`
 row. Switching back to Console preserved the transcript and visible prompt.
+
+The 2026-08-04 command-history browser check submitted `1+1` and `2+2`, then
+verified Up produced `2+2` followed by `1+1`, Down returned to `2+2`, and a
+second Down restored the unsent draft `draft`. Submitting consecutive `2+2`
+again did not create a duplicate history entry, and editing a recalled command
+to `2+2 # changed` exited browsing without Down overwriting the edit.
 
 At `900 x 700`, the responsive screenshot showed Console, Logs, Plots, and
 Problems labels, the transcript, and the prompt without overlap or clipped

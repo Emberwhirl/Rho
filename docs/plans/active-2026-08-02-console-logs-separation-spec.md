@@ -50,6 +50,10 @@ parsing terminal text as scientific or diagnostic truth.
    global execution busy state is active.
 5. Enter submits a non-empty expression through the existing `execute_r` path.
    Empty submissions do nothing.
+6. The Console input keeps a bounded in-session history of submitted non-empty
+   expressions. Up/Down browse older/newer entries; editing a recalled entry
+   exits browsing, and Down past the newest entry restores the draft that was
+   present before browsing. Consecutive duplicate commands are stored once.
 
 ### Logs
 
@@ -155,3 +159,10 @@ Evidence is recorded in
 `docs/verification/console-logs/verification.md`. No contract deviation was
 found. Installed-app/manual acceptance remains open, so this document remains
 `active-` and makes no release-readiness claim.
+
+The user authorized the bounded R1 command-history extension on 2026-08-04.
+It is frontend session state only: at most 100 non-empty Console submissions,
+with consecutive duplicate suppression, Up/Down browsing, draft restoration,
+and edit-to-exit behavior. Syntax, focused contract, and browser interaction
+checks passed; backend execution, persistence, project identity, and Console/
+Logs routing are unchanged. Installed-app confirmation remains open.

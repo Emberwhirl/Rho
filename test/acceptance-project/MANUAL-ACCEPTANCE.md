@@ -358,6 +358,9 @@ the preview URLs are references for the expected states, not acceptance proof.
    submitted command and R result remain together in Console. Switch to Logs
    and confirm startup, runtime, Agent, interrupt/restart, and render status
    are separate rows; switch back without losing the transcript.
+   Enter `2 + 2`, type but do not submit `draft`, then use Up/Up/Down/Down.
+   Confirm the input shows `2 + 2`, `1 + 1`, `2 + 2`, and finally restores
+   `draft`. Edit a recalled command and confirm Down does not discard the edit.
 4. Exercise one Agent approval, one file-edit proposal, and one Environment
    review. Reject each once, then accept only the intended proposal. Create a
    stale or failed review where available and confirm it remains visible and

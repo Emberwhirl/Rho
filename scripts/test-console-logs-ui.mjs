@@ -28,6 +28,13 @@ assert.doesNotMatch(js, /\baddConsole\(/, "Mixed Console append helper must be r
 assert.match(js, /\["console", "logs", "plots", "problems"\]/);
 assert.match(js, /addTerminalCommand\(request\.code\)/);
 assert.match(js, /addTerminalOutput\(execution\.stdout\)/);
+assert.match(js, /consoleHistory: \[\]/);
+assert.match(js, /function rememberConsoleCommand\(code\)/);
+assert.match(js, /function browseConsoleHistory\(direction\)/);
+assert.match(js, /event\.key === "ArrowUp"/);
+assert.match(js, /event\.key === "ArrowDown"/);
+assert.match(js, /input\.value = state\.consoleDraft/);
+assert.match(js, /rememberConsoleCommand\(value\)/);
 assert.match(js, /addLog\("AGENT", `run_r >/);
 assert.match(js, /addLog\("SYSTEM", `Workspace restarted/);
 assert.match(js, /scenario === "console-logs"/);

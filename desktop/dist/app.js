@@ -13,6 +13,9 @@ const state = {
   startupPrepared: false,
   product: { appInfo: null, updateResult: null, updateBusy: false, dialog: null, returnFocus: null },
   busy: false,
+  consoleHistory: [],
+  consoleHistoryIndex: -1,
+  consoleDraft: "",
   agentMode: "ask",
   actAutoApprove: false,
   posture: "human",
@@ -4081,6 +4084,39 @@ function addTerminalCommand(code) {
   const value = String(code || "");
   if (!value.trim()) return;
   addTerminalOutput(`> ${value.replace(/\n/g, "\n+ ")}`, "command");
+}
+
+function rememberConsoleCommand(code) {
+  const value = String(code || "").trim();
+  if (!value) return;
+  if (state.consoleHistory.at(-1) !== value) state.consoleHistory.push(value);
+  if (state.consoleHistory.length > 100) state.consoleHistory.shift();
+  state.consoleHistoryIndex = -1;
+  state.consoleDraft = "";
+}
+
+function browseConsoleHistory(direction) {
+  const input = $("#consoleInput");
+  if (!state.consoleHistory.length) return;
+  if (state.consoleHistoryIndex === -1) {
+    if (direction > 0) return;
+    state.consoleDraft = input.value;
+    state.consoleHistoryIndex = state.consoleHistory.length - 1;
+  } else {
+    const next = state.consoleHistoryIndex + direction;
+    if (next < 0) {
+      state.consoleHistoryIndex = 0;
+    } else if (next >= state.consoleHistory.length) {
+      state.consoleHistoryIndex = -1;
+      input.value = state.consoleDraft;
+      input.setSelectionRange(input.value.length, input.value.length);
+      return;
+    } else {
+      state.consoleHistoryIndex = next;
+    }
+  }
+  input.value = state.consoleHistory[state.consoleHistoryIndex];
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 
 function addLog(origin, text, kind = "") {
@@ -12790,10 +12826,25 @@ $("#consoleTerminal").addEventListener("click", (event) => {
 });
 $("#consoleRunButton").addEventListener("click", () => {
   const value = $("#consoleInput").value;
+  rememberConsoleCommand(value);
   $("#consoleInput").value = "";
   executeCode({ code: value, type: "console", sourcePath: "<console>", documentVersion: null, range: null });
 });
+$("#consoleInput").addEventListener("input", (event) => {
+  state.consoleHistoryIndex = -1;
+  state.consoleDraft = event.target.value;
+});
 $("#consoleInput").addEventListener("keydown", (event) => {
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    browseConsoleHistory(-1);
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    browseConsoleHistory(1);
+    return;
+  }
   if (event.key === "Enter") {
     event.preventDefault();
     $("#consoleRunButton").click();

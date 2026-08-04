@@ -13,6 +13,8 @@ this file records behavior that is already available in a released build.
 - Plot previews and PNG export now accept Ark's unpadded base64 image payloads;
   new Plot history is stored with canonical padding and invalid images fail
   visibly instead of leaving a blank panel.
+- Console input now supports Up/Down command-history browsing with draft
+  restoration.
 - Selecting Act now immediately enables its session R-execution authorization
   checkbox when the Agent is idle and the selected model supports tools.
 - Windows project roots passed to Workspace R now omit the internal `\\?\`
