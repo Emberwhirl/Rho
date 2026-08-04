@@ -147,9 +147,30 @@ column and should create a source-linked Problem.
 6. Rerun the file. Expected: it completes and displays the cells requiring
    mitochondrial review (5 cells in the deterministic fixture). Inspect the
    final answer once and expand Show activity to review tool events.
+7. In Agent Act, ask for a real reviewable plot:
+
+   `Using the existing cell_qc data, run R code that plots library_size against detected_genes, colored by sample. Do not edit files.`
+
+8. Open Agent-first Runs. Confirm the scientific R action appears before
+   quieter `Background activity` such as workspace refreshes. Its row must use
+   a readable action label and show status, Agent origin, source or workspace,
+   time, and a `plot` evidence cue without requiring raw request identifiers.
+9. Open that Run. Review must show the requested work, exact R code, outcome,
+   output/messages/warnings/errors when present, and the Plot produced by the
+   exact same Run ID. Confirm the plot is visibly reviewable in place, then
+   inspect Technical provenance. Do not accept a Review that only says
+   `system`, `workspace.snapshot`, or `running` while hiding the scientific
+   action.
+10. Review the earlier failed `04-fix-me.R` Run and a completed Run that
+    produced no Plot, Artifact, or Problem. Expected: the failed Run exposes
+    its error and linked Problem; the completed Run explicitly says that no
+    durable output evidence is linked. While any Agent run is active, inspect
+    it and confirm Review says the result may still change and does not claim
+    completion. Record screenshots of all three states.
 
 This covers Agent modes, Agent-first work surfaces, Problems, the
-reviewable-edit contract, rejection, acceptance, and rerun recovery. Valid
+reviewable-edit contract, human-readable Run evidence, rejection, acceptance,
+and rerun recovery. Valid
 model credentials and `aisdk` are prerequisites;
 record an explicit skip if they are unavailable.
 

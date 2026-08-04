@@ -8,6 +8,10 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Agent-first Runs now prioritizes scientific work over background workspace
+  bookkeeping, and Run Review presents the request, R code, outcome, linked
+  Plots/Artifacts/Problems, limitations, and provenance in a human-reviewable
+  report.
 - Selecting Console now places the caret in its enabled input automatically, so
   typing can begin immediately after a user or programmatic tab switch.
 - Project folders are now visually distinct from files through familiar folder

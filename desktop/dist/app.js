@@ -128,6 +128,9 @@ const state = {
   agentPollTimer: null,
   activeRunId: null,
   agentReviewRunId: null,
+  agentReviewRunDetail: null,
+  agentReviewRunLoading: false,
+  agentReviewRunError: null,
   agentConsoleHydrated: false,
   renderedAgentRunIds: new Set(),
   revision: { state_revision: 1, project_revision: 0 },
@@ -169,6 +172,7 @@ const mockProjects = {
       { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
       { path: "examples/editor-formatting.R", name: "editor-formatting.R", kind: "source", size_bytes: 180 },
       { path: "examples/editor-refactor-use.R", name: "editor-refactor-use.R", kind: "source", size_bytes: 120 },
+      { path: "examples/single-cell-qc/03-visualize-qc.R", name: "03-visualize-qc.R", kind: "source", size_bytes: 164 },
       { path: "report.Rmd", name: "report.Rmd", kind: "source", size_bytes: 92 },
       { path: "report.qmd", name: "report.qmd", kind: "source", size_bytes: 96 },
       { path: "reports/claim-review-demo.qmd", name: "claim-review-demo.qmd", kind: "source", size_bytes: 360 },
@@ -178,6 +182,7 @@ const mockProjects = {
       "analysis.R": "# Project analysis\nsummary(qc)\n",
       "examples/editor-intelligence.R": "flag_low_quality <- function(features, mito_percent, doublet_score) {\n  features < 300 | mito_percent > 20 | doublet_score > 0.30\n}\n\ndata$needs_review <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n\nexample_value<-stats::median(c(1, 3, 5))\n",
       "examples/editor-formatting.R": "# Formatting review keeps comments and explicit save control\nthreshold<-20\nreview_rows<-subset(data,mito_percent>threshold)\nreview_rows\n",
+      "examples/single-cell-qc/03-visualize-qc.R": "library(ggplot2)\nggplot(qc, aes(library_size, mitochondrial_percent)) + geom_point()\n",
       "examples/editor-refactor-use.R": "review_subset <- flag_low_quality(data$n_features, data$mito_percent, data$doublet_score)\n",
       "report.Rmd": "---\ntitle: QC report\noutput: html_document\n---\n\n```{r}\nsummary(qc)\n```\n",
       "report.qmd": "---\ntitle: QC report\nformat: html\n---\n\n```{r}\nsummary(qc)\n```\n",
@@ -4281,6 +4286,33 @@ function runTitle(run) {
   if (run.request_type === "workspace.inspect_object") return `Inspect · ${run.code_preview}`;
   if (run.request_type === "workspace.bootstrap") return "Workspace bootstrap";
   return run.code_preview || run.request_type || "Run";
+}
+
+function isBackgroundRun(run) {
+  return run?.origin === "system" || ["workspace.snapshot", "workspace.bootstrap"].includes(run?.request_type);
+}
+
+function humanRunTitle(run) {
+  if (run?.request_type === "workspace.snapshot") return "Refreshing workspace context";
+  if (run?.request_type === "workspace.bootstrap") return "Preparing Workspace R";
+  return runTitle(run);
+}
+
+function runEvidence(runId) {
+  return {
+    plots: state.plots.filter((plot) => plot.run_id === runId),
+    artifacts: state.artifacts.filter((artifact) => artifact.run_id === runId),
+    problems: state.problems.filter((problem) => problem.run_id === runId),
+  };
+}
+
+function runEvidenceLabel(runId) {
+  const evidence = runEvidence(runId);
+  const labels = [];
+  if (evidence.plots.length) labels.push(`${evidence.plots.length} plot${evidence.plots.length === 1 ? "" : "s"}`);
+  if (evidence.artifacts.length) labels.push(`${evidence.artifacts.length} artifact${evidence.artifacts.length === 1 ? "" : "s"}`);
+  if (evidence.problems.length) labels.push(`${evidence.problems.length} problem${evidence.problems.length === 1 ? "" : "s"}`);
+  return labels.join(" · ");
 }
 
 function activeRunRecord() {
@@ -9226,6 +9258,52 @@ async function maybeApplyPreviewScenario() {
       } else {
         openAgentWorkSurface("run");
       }
+    } else if (["review-plot", "review-running", "review-failed", "review-no-evidence"].includes(previewState)) {
+      const failedReview = previewState === "review-failed";
+      const run = recordMockRun({
+        runId: "run_agent_qc_plot",
+        origin: "agent",
+        status: previewState === "review-running" ? "running" : failedReview ? "failed" : "completed",
+        code: "ggplot(qc, aes(library_size, mitochondrial_percent)) + geom_point()",
+        sourcePath: "examples/single-cell-qc/03-visualize-qc.R",
+        executionMode: "file",
+        documentVersion: 1,
+        errorMessage: failedReview ? "object 'mitochondrial_percent' not found" : null,
+        errorCall: failedReview ? "geom_point()" : null,
+      });
+      if (previewState === "review-running") {
+        run.finished_at = null;
+        run.value_text = null;
+      }
+      if (previewState === "review-plot") {
+        run.stdout = "12 cells plotted";
+        run.value_text = "<ggplot>";
+        mockPlots.unshift({
+          plot_id: "plot_agent_qc_review",
+          run_id: run.run_id,
+          project_root: mockLastProject,
+          source_path: run.source_path,
+          execution_mode: "file",
+          document_version: 1,
+          workspace_id: "desktop_mock",
+          state_revision: state.revision.state_revision,
+          project_revision: state.revision.project_revision,
+          media_type: "image/png",
+          payload_json: JSON.stringify({ "image/png": MOCK_PNG_BASE64 }),
+          provenance_complete: true,
+          created_at: run.started_at,
+        });
+      }
+      recordMockRun({
+        runId: "run_workspace_refresh",
+        origin: "system",
+        status: "running",
+        requestType: "workspace.snapshot",
+        operationClass: "read_only",
+      });
+      await loadRunData();
+      state.agentReviewRunId = run.run_id;
+      switchAgentSurface("monitor");
     } else if (previewState === "audit" || previewState === "audit-failure") {
       state.auditResult = previewState === "audit-failure"
         ? {
@@ -11628,6 +11706,7 @@ function openAgentWorkSurface(kind) {
   state.agentSurface = kind === "file" ? "direct" : "review";
   applyAgentSurface(state.agentSurface);
   syncAgentWorkSurfaceLayout();
+  if (kind === "run") loadAgentReviewRunDetail(state.agentReviewRunId);
   scheduleSessionSave();
 }
 
@@ -11650,6 +11729,159 @@ function appendAgentReviewSection(container, label, value) {
   content.textContent = String(value);
   section.append(heading, content);
   container.append(section);
+}
+
+async function loadAgentReviewRunDetail(runId) {
+  state.agentReviewRunDetail = null;
+  state.agentReviewRunError = null;
+  if (!runId) return;
+  state.agentReviewRunLoading = true;
+  renderAgentReviewWorkspace();
+  try {
+    const detail = await invoke("get_run_detail", { runId });
+    if (state.agentReviewRunId !== runId) return;
+    state.agentReviewRunDetail = detail || null;
+    if (!detail) state.agentReviewRunError = "Detailed execution output is no longer available.";
+  } catch (error) {
+    if (state.agentReviewRunId !== runId) return;
+    state.agentReviewRunError = String(error);
+  } finally {
+    if (state.agentReviewRunId === runId) {
+      state.agentReviewRunLoading = false;
+      renderAgentReviewWorkspace();
+    }
+  }
+}
+
+function appendAgentReviewGroup(container, title) {
+  const group = document.createElement("section");
+  group.className = "agent-review-group";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  group.append(heading);
+  container.append(group);
+  return group;
+}
+
+function appendRunPlotEvidence(container, plot) {
+  const card = document.createElement("article");
+  card.className = "agent-review-evidence-card plot-evidence";
+  const heading = document.createElement("strong");
+  heading.textContent = "Plot produced";
+  const meta = document.createElement("p");
+  meta.textContent = `${plot.source_path || "Console"} · ${plot.execution_mode || "R execution"}`;
+  card.append(heading, meta);
+  const payload = parseJsonObject(plot.payload_json);
+  const source = plotImageSource(payload);
+  if (source) {
+    const image = document.createElement("img");
+    image.alt = `Plot produced by run ${plot.run_id}`;
+    image.src = source;
+    image.addEventListener("error", () => {
+      const error = document.createElement("p");
+      error.textContent = "Plot record exists, but its preview could not be decoded.";
+      image.replaceWith(error);
+    });
+    card.append(image);
+  } else {
+    const limitation = document.createElement("p");
+    limitation.className = "agent-review-limitation";
+    limitation.textContent = payload["rho/pruned"]
+      ? "Plot preview storage was reclaimed; the durable history record remains."
+      : "Plot record exists without a renderable preview.";
+    card.append(limitation);
+  }
+  container.append(card);
+}
+
+function renderAgentRunReview(content, run) {
+  const detail = state.agentReviewRunDetail?.run_id === run.run_id ? state.agentReviewRunDetail : null;
+  const record = detail || run;
+  const evidence = runEvidence(run.run_id);
+
+  const overview = document.createElement("div");
+  overview.className = "agent-review-overview";
+  const title = document.createElement("strong");
+  title.textContent = humanRunTitle(run);
+  const status = createStateChip(prettyStatus(run.status), run.status);
+  const summary = document.createElement("p");
+  summary.textContent = `${prettyOrigin(run.origin)} · ${run.source_path || "Console / workspace"} · ${formatTimestamp(run.started_at)}`;
+  overview.append(title, status, summary);
+  content.append(overview);
+
+  const request = appendAgentReviewGroup(content, "Requested work");
+  appendAgentReviewSection(request, "Action", humanRunTitle(run));
+  appendAgentReviewSection(request, "Source", run.source_path || "Console / workspace");
+  appendAgentReviewSection(request, "Execution mode", run.execution_mode || run.request_type);
+  appendAgentReviewSection(request, "R code", record.code || run.code_preview);
+
+  const outcome = appendAgentReviewGroup(content, "What happened");
+  appendAgentReviewSection(outcome, "Outcome", prettyStatus(run.status));
+  appendAgentReviewSection(outcome, "Output", [record.stdout, record.value_text].filter(Boolean).join("\n"));
+  appendAgentReviewSection(outcome, "Messages", stringValues(record.messages).join("\n"));
+  appendAgentReviewSection(outcome, "Warnings", stringValues(record.warnings).join("\n"));
+  appendAgentReviewSection(outcome, "Error", record.error_message || run.error_message);
+  appendAgentReviewSection(outcome, "Traceback", stringValues(record.traceback).join("\n"));
+  if (state.agentReviewRunLoading) {
+    const loading = document.createElement("p");
+    loading.className = "agent-review-loading";
+    loading.setAttribute("role", "status");
+    loading.textContent = "Loading detailed execution output...";
+    outcome.append(loading);
+  }
+
+  const evidenceGroup = appendAgentReviewGroup(content, "Review evidence");
+  for (const plot of evidence.plots) appendRunPlotEvidence(evidenceGroup, plot);
+  for (const artifact of evidence.artifacts) {
+    const card = document.createElement("article");
+    card.className = "agent-review-evidence-card";
+    const label = document.createElement("strong");
+    label.textContent = artifactKindLabel(artifact.artifact_kind);
+    const path = document.createElement("p");
+    path.textContent = artifact.output_path || "Output path unavailable";
+    card.append(label, path);
+    evidenceGroup.append(card);
+  }
+  for (const problem of evidence.problems) {
+    const card = document.createElement("article");
+    card.className = "agent-review-evidence-card problem-evidence";
+    const label = document.createElement("strong");
+    label.textContent = `${problem.severity || "Problem"}: ${problem.message || "Execution problem"}`;
+    const source = document.createElement("p");
+    source.textContent = problem.source_path || "No source recorded";
+    card.append(label, source);
+    evidenceGroup.append(card);
+  }
+  if (run.source_path && state.project.files.some((file) => file.path === run.source_path)) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "agent-review-source-action";
+    open.textContent = `Open ${run.source_path}`;
+    open.addEventListener("click", () => openDocument(run.source_path));
+    evidenceGroup.append(open);
+  }
+
+  const limitations = [];
+  if (["queued", "running", "waiting"].includes(run.status)) limitations.push("This run is still in progress; its outcome and evidence may change.");
+  if (state.agentReviewRunError) limitations.push(`Detailed execution output is unavailable: ${state.agentReviewRunError}`);
+  if (!state.agentReviewRunLoading && !evidence.plots.length && !evidence.artifacts.length && !evidence.problems.length) limitations.push("No durable Plot, Artifact, or Problem is linked to this run.");
+  if (evidence.plots.some((plot) => !plot.provenance_complete) || evidence.artifacts.some((artifact) => !artifact.provenance_complete)) limitations.push("Some output provenance is incomplete.");
+  if (limitations.length) {
+    const group = appendAgentReviewGroup(content, "Limitations");
+    for (const text of limitations) {
+      const item = document.createElement("p");
+      item.className = "agent-review-limitation";
+      item.textContent = text;
+      group.append(item);
+    }
+  }
+
+  const provenance = appendAgentReviewGroup(content, "Technical provenance");
+  appendAgentReviewSection(provenance, "Run ID", run.run_id);
+  appendAgentReviewSection(provenance, "Origin", prettyOrigin(run.origin));
+  appendAgentReviewSection(provenance, "Started", formatTimestamp(run.started_at));
+  appendAgentReviewSection(provenance, "Finished", run.finished_at ? formatTimestamp(run.finished_at) : "Not finished");
+  appendAgentReviewSection(provenance, "Revisions", `state ${run.state_revision_before ?? "?"} -> ${run.state_revision_after ?? "?"}; project ${run.project_revision_before ?? "?"} -> ${run.project_revision_after ?? "?"}`);
 }
 
 function appendAuditEvidence(container, evidence) {
@@ -11768,11 +12000,8 @@ function renderAgentReviewWorkspace() {
       content.innerHTML = '<div class="agent-review-empty">Select a run from Runs to review it.</div>';
       return;
     }
-    appendAgentReviewSection(summary, "Status", run.status);
-    appendAgentReviewSection(summary, "Origin", run.origin);
-    appendAgentReviewSection(summary, "Request", run.request_type);
-    appendAgentReviewSection(summary, "Source", run.source_path);
-    appendAgentReviewSection(summary, "Error", run.error_message);
+    renderAgentRunReview(content, run);
+    return;
   }
   content.append(summary);
 }
@@ -11869,24 +12098,42 @@ function renderMonitorPanel() {
   const list = $("#monitorRunList");
   list.replaceChildren();
 
-  const activeRuns = state.runs.filter((r) => ["running", "waiting"].includes(r.status));
-  const recentRuns = state.runs.filter((r) => !["running", "waiting"].includes(r.status)).slice(0, 5);
+  const visibleRuns = state.runs.slice(0, 12);
+  const scientificRuns = visibleRuns.filter((run) => !isBackgroundRun(run));
+  const backgroundRuns = visibleRuns.filter(isBackgroundRun);
 
-  for (const run of [...activeRuns, ...recentRuns]) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "monitor-run-item";
-    const icon = run.status === "running" ? "⟳" : run.status === "completed" ? "✓" : run.status === "failed" ? "✗" : "·";
-    item.innerHTML = `<span>${icon}</span><span>${run.origin}</span><span>${run.request_type}</span><span style="color:var(--muted);margin-left:auto;font-size:10px">${run.started_at?.slice(11, 19) || ""}</span>`;
-    item.setAttribute("aria-label", `Review ${run.request_type} run ${run.run_id}`);
-    item.addEventListener("click", () => {
-      state.agentReviewRunId = run.run_id;
-      openAgentWorkSurface("run");
-    });
-    list.append(item);
-  }
+  const appendRuns = (headingText, runs, quiet = false) => {
+    if (!runs.length) return;
+    const heading = document.createElement("div");
+    heading.className = `monitor-run-group${quiet ? " quiet" : ""}`;
+    heading.textContent = headingText;
+    list.append(heading);
+    for (const run of runs) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `monitor-run-item${quiet ? " background" : ""}`;
+      const marker = createStateMarker(run.status, prettyStatus(run.status));
+      const body = document.createElement("span");
+      body.className = "monitor-run-body";
+      const title = document.createElement("strong");
+      title.textContent = humanRunTitle(run);
+      const meta = document.createElement("small");
+      meta.textContent = [prettyOrigin(run.origin), run.source_path, runEvidenceLabel(run.run_id), formatTimestamp(run.started_at)].filter(Boolean).join(" · ");
+      body.append(title, meta);
+      item.append(marker, body, createStateChip(prettyStatus(run.status), run.status));
+      item.setAttribute("aria-label", `Review ${run.request_type} run ${run.run_id}`);
+      item.addEventListener("click", () => {
+        state.agentReviewRunId = run.run_id;
+        openAgentWorkSurface("run");
+      });
+      list.append(item);
+    }
+  };
 
-  if (!activeRuns.length && !recentRuns.length) {
+  appendRuns("Scientific work", scientificRuns);
+  appendRuns("Background activity", backgroundRuns, true);
+
+  if (!visibleRuns.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No runs yet.</div>';
   }
 }
@@ -12690,6 +12937,9 @@ async function hydrateProject(response) {
   state.auditLoading = false;
   state.activeRunId = null;
   state.agentReviewRunId = null;
+  state.agentReviewRunDetail = null;
+  state.agentReviewRunLoading = false;
+  state.agentReviewRunError = null;
   state.selectedArtifactId = null;
   state.selectedArtifactDetail = null;
   state.documents = {};

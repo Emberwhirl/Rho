@@ -1,7 +1,7 @@
 # Five Workbench Usability Repairs
 
-Status: active; five bounded work packages authorized; UX-FIX1 through UX-FIX4
-implemented and automated/browser verified; installed-app acceptance open
+Status: active; five bounded work packages authorized and implemented with
+automated/browser verification; installed-app acceptance open
 
 Date: 2026-08-04
 Authorization: user reported five installed-app usability defects and requested
@@ -145,6 +145,21 @@ can locate the request, successful R action, resulting Plot, relevant Run, and
 any limitation without reading raw protocol values. Empty, running, failed,
 completed, and no-evidence states remain truthful.
 
+Implementation evidence (2026-08-04): Agent-first Runs now separates
+scientific work from quieter background activity and derives concise origin,
+source, status, time, and Plot/Artifact/Problem cues from existing records.
+Opening a Run asynchronously loads its durable detail and presents requested
+work, R code, outcome, output channels, exact-Run evidence, limitations, and
+secondary technical provenance. Plot evidence uses the existing payload parser
+and renderer path with explicit unavailable/pruned fallbacks. Deterministic
+browser scenarios verified completed Plot evidence, running, failed, and
+completed-without-evidence states, plus desktop and 900 x 700 Review geometry
+without page overflow. Focused and adjacent frontend checks passed. No schema,
+execution, correlation, approval, or audit semantics changed. Installed-app
+confirmation remains open. No application version bump was made because this
+is not yet a new distributed development candidate; the implemented repair is
+recorded in `NEWS.md`.
+
 ## Cross-review
 
 WP3 remains authority for Runs and Problems; WP3 scientific workflow remains
@@ -176,4 +191,4 @@ For every package:
 | UX-FIX2 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX3 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX4 | complete | passed 2026-08-04 | installed busy-state probe open |
-| UX-FIX5 | not started | not run | open |
+| UX-FIX5 | complete | passed 2026-08-04 | installed app open |

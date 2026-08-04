@@ -42,4 +42,20 @@ assert.match(js, /function switchDockTab\(name\)[\s\S]+if \(name === "console"\)
 assert.match(js, /requestAnimationFrame\(\(\) => \{[\s\S]+!input\.disabled[\s\S]+consolePanel[\s\S]+input\.focus\(\)/);
 assert.doesNotMatch(js, /switchDockTab\("console"\);\s*requestAnimationFrame\(\(\) => \$\("#consoleInput"\)\.focus\(\)\)/);
 
+assert.match(js, /function isBackgroundRun\(run\)/);
+assert.match(js, /workspace\.snapshot"\) return "Refreshing workspace context"/);
+assert.match(js, /appendRuns\("Scientific work", scientificRuns\)/);
+assert.match(js, /appendRuns\("Background activity", backgroundRuns, true\)/);
+assert.match(js, /function loadAgentReviewRunDetail\(runId\)/);
+assert.match(js, /invoke\("get_run_detail", \{ runId \}\)/);
+assert.match(js, /function renderAgentRunReview\(content, run\)/);
+for (const label of ["Requested work", "What happened", "Review evidence", "Limitations", "Technical provenance"]) {
+  assert.match(js, new RegExp(`appendAgentReviewGroup\\(content, "${label}"\\)`));
+}
+assert.match(js, /state\.plots\.filter\(\(plot\) => plot\.run_id === runId\)/);
+assert.match(js, /plotImageSource\(payload\)/);
+assert.match(js, /previewState === "review-plot"/);
+assert.match(css, /\.agent-review-evidence-card img/);
+assert.match(css, /\.monitor-run-group\.quiet/);
+
 console.log("Usability repair UI contract checks passed.");
