@@ -124,6 +124,11 @@ Manual installed-app acceptance remains open until a candidate demonstrates:
 4. Workspace R errors remain visible in Console and Problems;
 5. switching among Console, Logs, Plots, and Problems does not lose state.
 
+The executable candidate workflow and evidence fields are consolidated in
+`docs/acceptance/manual-acceptance-checklist.md` (G20.4) and
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A). These items remain
+NOT RUN until the user records evidence against one exact installed candidate.
+
 ## Version, NEWS, And Lifecycle
 
 - Application version: defer a bump until the next named integration

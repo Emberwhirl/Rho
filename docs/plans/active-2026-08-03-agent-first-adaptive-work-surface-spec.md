@@ -77,6 +77,11 @@ or replaces the secondary Agent detail without page-level horizontal overflow.
 
 ## States And Acceptance
 
+The installed-candidate workflow for these states is consolidated in
+`docs/acceptance/manual-acceptance-checklist.md` (G12 and G20.8) and
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A). The checklist is
+queued and currently NOT RUN; browser/mock evidence does not close it.
+
 | State | Required behavior |
 |---|---|
 | Empty/default | no persistent editor or execution dock; composer is the primary action |

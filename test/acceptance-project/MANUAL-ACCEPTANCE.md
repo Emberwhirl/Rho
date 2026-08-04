@@ -1,6 +1,7 @@
 # Rho Example-driven Manual Acceptance
 
-Status: queued for user execution against an exact installed candidate
+Status: queued for user execution against an exact installed candidate; all
+manual gates below are currently NOT RUN
 
 This guide turns the full acceptance checklist into one realistic scientific
 workflow. Run it against an exact installed candidate and record evidence in
@@ -284,6 +285,58 @@ WS4 reviewable mutation flow, including rejection and destructive confirmation.
 
 This covers G4, G12, G15-G17, and G19. Project switching must not mix files,
 runs, Evidence, Agent state, or Workspace R working directories.
+
+## 7A. Verify The Current Modernized Surfaces
+
+Run these checks against the same installed candidate after the workflow above;
+the preview URLs are references for the expected states, not acceptance proof.
+
+1. In Agent-first, start at `Task` with an existing draft. Confirm the editor
+   and execution dock are hidden until an explicit file/run/Artifact/audit
+   action. Open `examples/editor-intelligence.R`, use `Back to Task`, and
+   verify the draft and active document return unchanged.
+2. Open a Run, Artifact, and Audit in turn. Confirm Review is the dominant
+   surface, structured facts remain visible, and an audit evidence path opens
+   the exact source file without discarding the audit result. Repeat with an
+   incomplete audit and record the truthful limitation.
+3. In the execution dock, enter `1 + 1`, then run
+   `source("examples/single-cell-qc/01-generate-qc-data.R")`. Confirm the
+   submitted command and R result remain together in Console. Switch to Logs
+   and confirm startup, runtime, Agent, interrupt/restart, and render status
+   are separate rows; switch back without losing the transcript.
+4. Exercise one Agent approval, one file-edit proposal, and one Environment
+   review. Reject each once, then accept only the intended proposal. Create a
+   stale or failed review where available and confirm it remains visible and
+   does not mutate the project.
+5. Repeat Human-first and Agent-first at Windows 100% and 125% display scale,
+   then at `900 x 700`, `1024 x 680`, and `1920 x 1080`. Use keyboard-only
+   navigation for posture, tabs, menus, dialogs, close/back, and composer.
+   Record any clipping, overlap, focus loss, unreadable hierarchy, or page
+   level horizontal scroll with a screenshot.
+
+These steps cover the installed gates for M1-M3, Console/Logs, UX4-AWS1, and
+the state surfaces in G20. The deterministic browser references are:
+`?preview=interface-shell`, `?preview=console-logs`, and
+`?preview=agent-first-direct&state=file|run|artifact|audit|audit-failure`.
+
+## 7B. Focused Scientific And Developer Checks
+
+Complete the applicable items in G21 using the same generated projects:
+
+1. Search, sort, paginate, and inspect missing/type values in Data Viewer;
+   export only the visible page and confirm the result belongs to the active
+   project.
+2. Submit an R Markdown or Quarto render, cancel one job, restart Rho, and
+   confirm the job reaches a truthful terminal state and links to the existing
+   render Artifact. Follow a failure back to source.
+3. Inspect lockfile versus installed packages and source roles. Review one
+   package install/update/remove request, reject it once, then accept it and
+   confirm Environment evidence changes only in the active project.
+4. Exercise completion, hover/Local Help, an installed example, a bounded
+   rename or extract proposal, and a formatting preview. Make one stale or
+   parse-error case fail closed without changing the file.
+5. Complete the claim-review examples in section 5A and the Git flow in
+   section 6; these are the manual evidence for EW-CR2 and WS4.
 
 ## 8. Record The Result
 

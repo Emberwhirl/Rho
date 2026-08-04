@@ -16,6 +16,9 @@ Cross-reviewed against:
 Implementation status: focused Phase 1, Phase 2, and Phase 3 packages were
 separately authorized and implemented with automated/browser verification on
 2026-08-04; their installed-app and display-scale acceptance remains open.
+The remaining manual steps are consolidated in
+`docs/acceptance/manual-acceptance-checklist.md` (G20) and
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A), currently NOT RUN.
 Phase 4 and later work still require a separately authorized implementation
 package and must preserve the implemented posture and persistence authorities.
 

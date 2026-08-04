@@ -21,8 +21,13 @@ Status: not run
 | Single-cell QC analysis and Data Viewer | Not run | |
 | Plots, render, Runs, Problems | Not run | |
 | Agent Ask/Plan/Act and reviewed correction | Not run | |
+| Agent-first Task/file/run/Artifact/audit surfaces | Not run | |
+| Console/Logs installed separation | Not run | |
+| M1-M3 hierarchy, state surfaces, keyboard, 100%/125% scale | Not run | |
 | Editor completion, Help, references, diagnostics | Not run | |
 | Environment, Evidence, Audit, reproducibility | Not run | |
+| Data Viewer query/type states and render recovery/linkage | Not run | |
+| Environment package review and rejection/recovery | Not run | |
 | Git hunk stage/unstage, restore, commit | Not run | |
 | Persistence, switching, responsive layout | Not run | |
 | Unicode and spaces path | Not run | |

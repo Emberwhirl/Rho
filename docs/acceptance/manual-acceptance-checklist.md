@@ -1,10 +1,11 @@
-# Rho 0.4.0-dev.0 Manual Acceptance Checklist
+# Rho Manual Acceptance Checklist
 
-> **安装包**: `target\release\bundle\nsis\Rho_0.4.0-dev.0_x64-setup.exe`
-> **SHA-256**: `08D92BD42DCB1C40A29B3AE9266E984D18CC4D820DC76C8320DD9F358568C837`
-> **日期**: 2026-08-02
+> **候选版本**: 待填写（必须是包含当前 Console/Logs、Agent-first 和 M1-M3 的同一安装候选）
+> **安装包**: 待填写
+> **SHA-256**: 待填写
+> **日期**: 2026-08-04（清单更新；人工验收尚未运行）
 > **前提**: Windows 10/11 x64, R 4.4+, WebView2 Runtime
-> **状态**: 该安装包早于本轮 Console/Logs 和 Agent 界面修改，不是当前集成状态的最终验收候选。重建候选后必须同步更新版本、路径和 SHA-256，再开始记录人工证据。
+> **状态**: 未运行。填写 exact candidate 后，再按 `test/acceptance-project/MANUAL-ACCEPTANCE.md` 的实例流程执行；不得用 browser/mock 证据替代安装后验收。
 
 每个检查项标记: 通过 / 失败 / 跳过（附原因）
 
@@ -193,15 +194,15 @@
 
 ---
 
-## G12: Agent-First Posture（三栏布局）
+## G12: Agent-First Posture（交互优先）
 
-- [ ] **G12.1** 在顶部 Human / Agent 双选控件中选择 Agent，确认 Agent 被明确选中且宽屏布局为 task-rail + agent-flow + work-surface
-- [ ] **G12.2** 确认左侧 task rail 显示 Agent 任务列表，含模式徽章（Ask/Plan/Act）、状态圆点、预览文本
-- [ ] **G12.3** 确认中间 agent-flow 使用 Task / Runs / Review 导航，三者可切换且返回 Task 后输入内容仍保留
-- [ ] **G12.4** 在 Agent-First 模式下运行一个 Agent 回合，确认任务列表中新增条目
-- [ ] **G12.5** 在输入框保留未发送内容，切换回 Human 再回到 Agent，确认输入、活动文件和所选任务均保留
+- [ ] **G12.1** 在顶部 Human / Agent 双选控件中选择 Agent，确认默认是一个以 Ask Rho 为主的 Task 交互面，不常驻编辑器和执行 dock
+- [ ] **G12.2** 确认已有任务时才出现紧凑 task rail；Task / Runs / Review 可切换，返回 Task 后草稿仍保留
+- [ ] **G12.3** 打开一个文本文件，确认进入带 Back to Task 的文件工作面；关闭后回到 Task，原文件、草稿和任务上下文不丢失
+- [ ] **G12.4** 打开一个 Run 或 Artifact，确认 Review 显示结构化详情，Agent 对话缩小但仍可继续追问
+- [ ] **G12.5** 打开 Audit，确认审计事实是主内容；点击 project-relative 证据路径可打开准确文件并保留审计上下文
 - [ ] **G12.6** 确认 Project Skills 默认收起，Human-only 布局按钮不在 Agent 姿态中占位
-- [ ] **G12.7** 将窗口缩小到 900 x 700，确认 task rail 自动退出、Git 冲突条收成提示、无元素重叠或水平滚动
+- [ ] **G12.7** 将窗口缩小到 900 x 700，确认 task rail 先隐藏、主要操作仍可用、无元素重叠或水平滚动
 - [ ] **G12.8** 选择已完成任务，确认最终回答只显示一次；点击 Show activity / Hide activity 可展开和收起工具事件
 
 ---
@@ -288,6 +289,41 @@
 
 ---
 
+## G20: 当前界面现代化与状态面
+
+> 本组用于 M1-M3、Console/Logs 和 Agent-first adaptive work surface 的安装后验收。
+> 浏览器预览 URL 只用于定位预期状态，不计为通过：
+> `?preview=interface-shell`、`?preview=console-logs`、
+> `?preview=agent-first-direct&state=file|run|artifact|audit|audit-failure`、
+> `?preview=wp3-artifacts&state=invalid-plot`、
+> `?preview=environment-package&state=stale`、
+> `?preview=lint-quick-fix&state=duplicate`。
+
+- [ ] **G20.1** 在 Windows 100% 缩放检查 Human-first 和 Agent-first：层级、项目名、菜单、tab、计数、按钮均可读且无裁切
+- [ ] **G20.2** 在 Windows 125% 缩放重复 G20.1，并确认焦点轮廓、图标、文本和弹出菜单没有重叠或溢出
+- [ ] **G20.3** 用键盘完成 Human/Agent、Task/Runs/Review、Console/Logs/Plots/Problems、菜单、对话框和关闭/返回操作
+- [ ] **G20.4** 在 Console 输入 `1 + 1` 和 `source("examples/single-cell-qc/01-generate-qc-data.R")`，确认代码、结果在同一连续终端；启动、Agent、重启、渲染状态只在 Logs
+- [ ] **G20.5** 逐一打开 Agent 审批、文件编辑 proposal、Environment review，确认 Approve/Reject、Accept/Reject 和 stale/failure 状态可审计且不越权
+- [ ] **G20.6** 打开 Runs、Problems、Environment、Plots 的 empty/loading/success/warning/error/unavailable 状态，确认状态文本真实且颜色不是唯一信号
+- [ ] **G20.7** 用长项目名、Unicode 路径、长 tab 名和长错误文本重复操作，确认截断可理解、控件稳定、没有页面级横向滚动
+- [ ] **G20.8** 在 Agent-first 中分别打开 file、run、Artifact、audit、audit-failure 工作面，确认返回 Task 不丢草稿、任务、活动文件或审计结果
+
+---
+
+## G21: 已实现科学/开发包的安装后抽查
+
+> 这些项目已完成自动化/浏览器验证，但 exact-candidate 的人工安装验收仍未记录。
+> 按项目内 `MANUAL-ACCEPTANCE.md` 执行，以下为必须覆盖的结果摘要。
+
+- [ ] **G21.1** Data Viewer：对 `cell_qc` 或 `iris` 搜索、排序、分页、Tab 导航和缺失/类型显示；确认导出/可见页行为与当前项目一致
+- [ ] **G21.2** Render：提交 R Markdown/Quarto，观察 cancellation、restart 后 reconciliation、成功 Artifact linkage 和失败/不完整状态
+- [ ] **G21.3** Environment：检查 lockfile/installed union、直接/传递依赖 source；执行一次单包 install/update/remove review，拒绝一次并验证恢复
+- [ ] **G21.4** Help/refactor/format：从 `stats::median` 体验 completion、hover、Local Help、example run、rename/extract/format preview；验证 stale/parse-error 不修改文件
+- [ ] **G21.5** Evidence/Claims：完成 linked、missing、incomplete、unresolved source 和 Artifact recovery 例子，确认项目隔离
+- [ ] **G21.6** Git：在生成的独立仓库完成 hunk stage/unstage、取消与确认 Restore、commit 和真实 conflict review；不得在 Rho 源仓库操作
+
+---
+
 ## 结果汇总
 
 | Gate | 通过 | 失败 | 跳过 | 备注 |
@@ -312,6 +348,8 @@
 | G17: UI 现代化 | /8 | | | |
 | G18: Help & About | /2 | | | |
 | G19: 边界情况 | /6 | | | |
+| G20: 当前界面现代化与状态面 | /8 | | | |
+| G21: 已实现科学/开发包抽查 | /6 | | | |
 
 ---
 

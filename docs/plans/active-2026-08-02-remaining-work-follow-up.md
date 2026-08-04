@@ -231,10 +231,13 @@ the current count to **8 open / 41 completed**.
 
 ## Follow-up Order
 
-1. Keep the six manual acceptance checks queued in
-   `test/acceptance-project/MANUAL-ACCEPTANCE.md` until the user runs them
+1. Keep the consolidated manual acceptance suite queued in
+   `test/acceptance-project/MANUAL-ACCEPTANCE.md` and
+   `docs/acceptance/manual-acceptance-checklist.md` until the user runs it
    against an exact candidate; separately record the distribution decision and
-   affected-suite rerun.
+   affected-suite rerun. The current suite includes the original six P1 checks,
+   Agent-first/Console/Logs, M1-M3 display-scale review, and focused installed
+   checks for the completed scientific/developer packages.
 2. Run the affected-suite acceptance item against the chosen exact candidate;
    do not substitute the package-level matrix for candidate evidence.
 3. Reconcile this count whenever an owning acceptance gate closes or

@@ -2,8 +2,15 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-03
+Review date: 2026-08-04
 Scope: unfinished or acceptance-active specifications, plans, and release gates
+
+Manual acceptance ownership: the candidate-level execution record is
+`docs/acceptance/manual-acceptance-checklist.md`; the runnable example workflow
+and evidence template are `test/acceptance-project/MANUAL-ACCEPTANCE.md` and
+`test/acceptance-project/acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`.
+These records are queued and currently NOT RUN; they do not replace exact
+release-candidate or package-specific acceptance gates.
 
 ## Purpose
 
@@ -354,6 +361,10 @@ demonstrated gap and separate approval; `aisdk.bioc` remains deferred beyond
 `0.3.x`.
 
 ## Remaining Open Gates
+
+All installed-app/UI items below are intentionally consolidated under the
+candidate checklist and example workflow named above. Completing automated or
+browser evidence does not check them off.
 
 - complete the `0.3.x` representative-project reproducibility workflow
   and manual three-viewport UI acceptance;
