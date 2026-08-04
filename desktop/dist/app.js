@@ -2997,6 +2997,10 @@ function saveShortcutOwnedByDialog() {
   return Boolean(document.querySelector('[role="dialog"]:not(.hidden)'));
 }
 
+function keepsNativeContextMenu(target) {
+  return Boolean(target?.closest?.(".monaco-editor, input, textarea, select, [contenteditable='true']"));
+}
+
 function activeProjectName() {
   return state.project.root.split(/[\\/]/).filter(Boolean).at(-1) || "Rho Project";
 }
@@ -14082,6 +14086,10 @@ document.addEventListener("keydown", (event) => {
     closeProductDialog();
     clearAgentEditHighlight();
   }
+});
+document.addEventListener("contextmenu", (event) => {
+  if (event.defaultPrevented || keepsNativeContextMenu(event.target)) return;
+  event.preventDefault();
 });
 window.addEventListener("resize", () => {
   for (const panel of ["left", "right", "dock"]) {

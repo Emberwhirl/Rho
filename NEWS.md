@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Ordinary workbench surfaces no longer expose the WebView page context menu
+  with irrelevant Refresh and Save as actions; Monaco and editable form
+  controls retain their useful context operations.
 - A single Agent or Console execution no longer records the same Plot twice
   when Workspace R emits duplicate display events; distinct Plots from the
   same execution remain separate and ordered.
