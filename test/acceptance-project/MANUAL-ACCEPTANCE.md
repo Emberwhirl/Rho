@@ -260,8 +260,10 @@ Open `examples/editor-intelligence.R`:
    run the file, and confirm the extracted call completes; treat any changed R
    assignment/return behavior as a failed review rather than hidden semantics.
 10. Confirm the intentionally tight assignment `example_value<-...` appears in
-   Problems when `lintr` is available. Verify its range, info severity,
-   `infix_spaces_linter` rule, and installed lintr version are visible.
+    Problems when `lintr` is available. Verify its range, info severity,
+    `infix_spaces_linter` rule, and installed lintr version are visible. An
+    `invalid args` or missing `documentVersion` message fails this gate because
+    it means the installed command was not reached.
 11. Choose `Review quick fix`. Verify the exact before/after line and the
    editor-only consequence. Cancel once and confirm the line and clean tab do
    not change. Review again and apply: confirm spaces appear, the tab becomes

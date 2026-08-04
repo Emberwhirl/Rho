@@ -176,3 +176,15 @@ NOT RUN. No version bump was made because this is not yet a new distributable
 candidate.
 
 The remaining four authorized packages are pending.
+
+### WS2-LINT-CALL-1
+
+Implemented and verified 2026-08-05. The real invocation and browser mock now
+share Tauri's `documentVersion` key. The focused test requires that exact call
+and rejects the former snake-case top-level argument. JavaScript syntax, Lint
+quick-fix contracts, the Rust project-relative/version-bound Lint test, browser
+diagnostic and Quick Fix interaction, and `git diff --check` passed. Installed
+acceptance is NOT RUN. No application or R package version changed because the
+provider response contract is unchanged and this is not a new candidate.
+
+The remaining three authorized packages are pending.

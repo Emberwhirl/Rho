@@ -2127,7 +2127,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "editor_lint_file") {
     const path = args.path || "examples/editor-intelligence.R";
-    const documentVersion = args.document_version ?? 0;
+    const documentVersion = args.documentVersion ?? 0;
     const previewState = previewParams.get("state") || "found";
     const provider = { name: "lintr", version: "3.4.0", available: previewState !== "unavailable" };
     if (previewState === "unavailable" || previewState === "error") {
@@ -12539,7 +12539,7 @@ async function lintCurrentFile() {
   state.lint = { status: "running", response: null, proposal: null, projectRoot: state.project.root, error: null };
   renderProblems();
   try {
-    const result = await invoke("editor_lint_file", { path: doc.path, document_version: doc.versionId ?? 0 });
+    const result = await invoke("editor_lint_file", { path: doc.path, documentVersion: doc.versionId ?? 0 });
     state.lint = {
       status: result.error ? (result.provider?.available ? "error" : "unavailable") : result.incomplete ? "incomplete" : "complete",
       response: result,

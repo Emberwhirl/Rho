@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Checking the active R file now sends the required document-version argument
+  through the real Tauri command shape, so installed builds reach `lintr`
+  instead of reporting a missing `documentVersion` key.
 - Ordinary workbench surfaces no longer expose the WebView page context menu
   with irrelevant Refresh and Save as actions; Monaco and editable form
   controls retain their useful context operations.
