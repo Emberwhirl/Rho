@@ -4099,9 +4099,8 @@ function addLog(origin, text, kind = "") {
 function addTimeline(title, body, status = "completed", code = null) {
   const row = document.createElement("div");
   row.className = `timeline-item ${status}`;
-  const marker = document.createElement("span");
-  marker.className = "timeline-marker";
-  marker.textContent = status === "completed" ? "✓" : status === "error" ? "!" : "·";
+  const marker = createStateMarker(status, `${title}: ${prettyStatus(status)}`);
+  marker.classList.add("timeline-marker");
   const content = document.createElement("div");
   const heading = document.createElement("strong");
   heading.textContent = title;
@@ -4139,6 +4138,62 @@ function prettyStatus(status) {
     interrupted: "Interrupted",
     crashed: "Crashed",
   }[status] || status || "Unknown";
+}
+
+function presentationState(status) {
+  if (["completed", "success", "approved", "ready", "matched"].includes(status)) return "completed";
+  if (["running", "busy"].includes(status)) return "running";
+  if (["queued", "waiting", "requested", "pending"].includes(status)) return "waiting";
+  if (["cancelled", "interrupted", "rejected", "policy_denied"].includes(status)) return "cancelled";
+  if (["failed", "error", "crashed", "stale", "unavailable", "invalid"].includes(status)) return "failed";
+  if (["warning", "incomplete", "unsynchronized"].includes(status)) return "warning";
+  return "neutral";
+}
+
+function stateIconId(status) {
+  return {
+    completed: "check",
+    running: "clock-3",
+    waiting: "clock-3",
+    cancelled: "ban",
+    failed: "circle-x",
+    warning: "triangle-alert",
+    neutral: "info",
+  }[presentationState(status)];
+}
+
+function createStateMarker(status, label) {
+  const tone = presentationState(status);
+  const marker = document.createElement("span");
+  marker.className = `state-marker state-${tone}`;
+  marker.setAttribute("role", "img");
+  marker.setAttribute("aria-label", label || prettyStatus(status));
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("class", "ui-icon");
+  icon.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#icon-${stateIconId(status)}`);
+  icon.append(use);
+  marker.append(icon);
+  return marker;
+}
+
+function createStateChip(label, status = "neutral") {
+  const chip = document.createElement("span");
+  chip.className = `state-chip state-${presentationState(status)}`;
+  chip.textContent = label;
+  chip.title = label;
+  return chip;
+}
+
+function setStateChip(element, label, status) {
+  element.className = `state-chip state-${presentationState(status)}`;
+  element.textContent = label;
+  element.title = label;
+}
+
+function renderStatusItems(element, items) {
+  element.replaceChildren(...items.filter((item) => item?.label).map((item) => createStateChip(item.label, item.status)));
 }
 
 function runStatusTone(status) {
@@ -5794,15 +5849,18 @@ function renderAgentTimeline() {
     const row = document.createElement("div");
     row.className = `timeline-item ${agentStatusTone(turn.status)} timeline-parent${selected ? " is-selected" : ""}`;
     row.dataset.turnId = turn.turn_id;
-    const marker = document.createElement("span");
-    marker.className = "timeline-marker";
-    marker.textContent = agentStatusTone(turn.status) === "completed" ? "✓" : agentStatusTone(turn.status) === "error" ? "!" : "·";
+    const marker = createStateMarker(turn.status, prettyAgentStatus(turn.status));
+    marker.classList.add("timeline-marker");
     const content = document.createElement("div");
+    const headingRow = document.createElement("div");
+    headingRow.className = "timeline-heading-row";
     const heading = document.createElement("strong");
-    heading.textContent = `${prettyAgentMode(turn.mode)} · ${turn.prompt_preview}`;
+    heading.textContent = turn.prompt_preview;
+    headingRow.append(heading, createStateChip(prettyAgentStatus(turn.status), turn.status));
     const paragraph = document.createElement("p");
-    paragraph.textContent = `${prettyAgentStatus(turn.status)} · ${turn.model || "model?"}${turn.pending_request_id ? ` · ${turn.pending_request_id}` : ""}`;
-    content.append(heading, paragraph);
+    paragraph.className = "timeline-meta technical-meta";
+    paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${turn.model || "model unavailable"}${turn.pending_request_id ? ` · request ${turn.pending_request_id}` : ""}`;
+    content.append(headingRow, paragraph);
     const detail = truncateText(turn.error_message || turn.final_message || "", 140);
     if (detail && !selected) {
       const detailLine = document.createElement("p");
@@ -5848,9 +5906,8 @@ function renderAgentTimeline() {
       for (const event of events) {
         const child = document.createElement("div");
         child.className = `timeline-item ${agentStatusTone(event.status)} timeline-child`;
-        const childMarker = document.createElement("span");
-        childMarker.className = "timeline-marker";
-        childMarker.textContent = agentStatusTone(event.status) === "completed" ? "✓" : agentStatusTone(event.status) === "error" ? "!" : "·";
+        const childMarker = createStateMarker(event.status, prettyAgentStatus(event.status));
+        childMarker.classList.add("timeline-marker");
         const childContent = document.createElement("div");
         const childHeading = document.createElement("strong");
         childHeading.textContent = agentTimelineEventTitle(event);
@@ -5859,6 +5916,7 @@ function renderAgentTimeline() {
         if (event.request_id) meta.push(event.request_id);
         if (meta.length) {
           const metaLine = document.createElement("p");
+          metaLine.className = "timeline-meta technical-meta";
           metaLine.textContent = meta.join(" · ");
           childContent.append(metaLine);
         }
@@ -5958,6 +6016,7 @@ $("#taskRailNew").addEventListener("click", startNewAgentTask);
 function renderApprovalPanel() {
   const approval = state.pendingApprovals.find((item) => item.turn_id === state.selectedTurnId) || state.pendingApprovals[0] || null;
   $("#approvalPanel").classList.toggle("hidden", !approval);
+  $("#approvalPanel").dataset.state = approval ? "waiting" : "empty";
   if (!approval) {
     $("#approvalRequestId").textContent = "request";
     $("#approvalSummary").textContent = "Review the exact tool request before Workspace R changes.";
@@ -5968,6 +6027,7 @@ function renderApprovalPanel() {
   }
   const argumentsObject = parseApprovalArguments(approval.arguments_json);
   const turn = state.agentTurns.find((item) => item.turn_id === approval.turn_id) || null;
+  $("#approvalPanelTitle").textContent = `${approval.tool} in Workspace R`;
   $("#approvalRequestId").textContent = approval.request_id;
   $("#approvalSummary").textContent = `${approval.tool} wants to mutate Workspace R in ${prettyAgentMode(turn?.mode || "act")} mode. Review the exact code before approving.`;
   const staleHint = approval.state_revision !== state.revision.state_revision
@@ -6023,9 +6083,9 @@ function renderRuns() {
 
   // compare toggle header
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:3px 7px;border-bottom:1px solid #e4e8e9;";
+  header.className = "run-list-header";
   const label = document.createElement("span");
-  label.style.cssText = "font-size:11px;font-weight:600;color:var(--muted);";
+  label.className = "run-list-title";
   label.textContent = `Runs (${state.runs.length})`;
   const toggleBtn = document.createElement("button");
   toggleBtn.type = "button";
@@ -6080,14 +6140,20 @@ function renderRuns() {
       row.append(select);
     }
 
-    const marker = document.createElement("span");
-    marker.className = `run-state ${runStatusTone(run.status)}`.trim();
+    const marker = createStateMarker(run.status, prettyStatus(run.status));
+    marker.classList.add("run-state");
+    const runTone = runStatusTone(run.status);
+    if (runTone) marker.classList.add(runTone);
     const content = document.createElement("span");
+    const titleLine = document.createElement("span");
+    titleLine.className = "run-title-line";
     const title = document.createElement("strong");
     title.textContent = runTitle(run);
+    titleLine.append(title, createStateChip(prettyStatus(run.status), run.status));
     const detail = document.createElement("small");
-    detail.textContent = `${prettyOrigin(run.origin)} · ${prettyStatus(run.status)}${run.error_message ? ` · ${run.error_message}` : ""}`;
-    content.append(title, detail);
+    detail.className = "run-meta technical-meta";
+    detail.textContent = `${prettyOrigin(run.origin)}${run.run_id ? ` · run ${run.run_id}` : ""}${run.error_message ? ` · ${run.error_message}` : ""}`;
+    content.append(titleLine, detail);
     row.append(marker, content);
     if (["queued", "running", "waiting"].includes(run.status)) {
       const cancel = document.createElement("button");
@@ -6404,7 +6470,9 @@ function renderProblems() {
     const icon = document.createElement("span");
     const severity = problem.severity || (problem.status === "failed" ? "error" : "info");
     icon.className = `problem-icon ${severity}`;
-    icon.textContent = "!";
+    icon.setAttribute("role", "img");
+    icon.setAttribute("aria-label", `${severity} problem`);
+    icon.textContent = { error: "E", warning: "W", info: "i" }[severity] || "i";
     const content = document.createElement("div");
     const title = document.createElement("strong");
     title.textContent = problem.origin === "lintr"
@@ -7223,9 +7291,9 @@ function renderExecution(response, request) {
 function renderDisplay(data) {
   const payload = data && typeof data === "object" ? data : {};
   let source = null;
-  if (payload["image/png"]) source = `data:image/png;base64,${payload["image/png"]}`;
-  if (payload["image/svg+xml"]) source = `data:image/svg+xml;base64,${payload["image/svg+xml"]}`;
-  if (payload["rho/mock-image"]) source = payload["rho/mock-image"];
+  if (payload?.["image/png"]) source = `data:image/png;base64,${payload["image/png"]}`;
+  if (payload?.["image/svg+xml"]) source = `data:image/svg+xml;base64,${payload["image/svg+xml"]}`;
+  if (payload?.["rho/mock-image"]) source = payload["rho/mock-image"];
   if (!source) {
     $("#plotImage").classList.add("hidden");
     $("#plotEmpty").classList.remove("hidden");
@@ -7291,12 +7359,12 @@ function parseJsonObject(value) {
 }
 
 function plotPayloadPruned(plot) {
-  return Boolean(parseJsonObject(plot?.payload_json)["rho/pruned"]);
+  return Boolean(parseJsonObject(plot?.payload_json)?.["rho/pruned"]);
 }
 
 function plotHasRenderablePayload(plot) {
   const payload = parseJsonObject(plot?.payload_json);
-  return Boolean(payload["image/png"] || payload["image/svg+xml"] || payload["rho/mock-image"]);
+  return Boolean(payload?.["image/png"] || payload?.["image/svg+xml"] || payload?.["rho/mock-image"]);
 }
 
 function renderArtifactDetail() {
@@ -7440,6 +7508,16 @@ function renderArtifactRecords() {
   renderArtifactDetail();
 }
 
+function showPlotSurfaceState(stateName, title, detail) {
+  const empty = $("#plotEmpty");
+  empty.dataset.state = stateName;
+  empty.querySelector("strong").textContent = title;
+  $("#plotEmptyDetail").textContent = detail;
+  empty.querySelector("use").setAttribute("href", stateName === "failed" ? "#icon-triangle-alert" : "#icon-image");
+  empty.classList.remove("hidden");
+  $("#plotImage").classList.add("hidden");
+}
+
 function renderPlots() {
   const history = $("#plotHistory");
   const outputList = $("#plotOutputList");
@@ -7452,19 +7530,31 @@ function renderPlots() {
   $("#plotOutputCount").textContent = String(plots.length);
   $("#plotExportButton").disabled = !(selectedPlot && plotHasRenderablePayload(selectedPlot));
   if (!plots.length) {
-    const emptyLabel = $("#plotEmpty strong");
-    if (emptyLabel) emptyLabel.textContent = "No plots yet";
-    $("#plotEmpty").classList.remove("hidden");
-    $("#plotImage").classList.add("hidden");
+    showPlotSurfaceState("empty", "No plots yet", "Run plotting code in Workspace R to create a preview.");
     renderArtifactRecords();
     return;
   }
   $("#plotEmpty").classList.add("hidden");
   try {
-    const payload = parseJsonObject((selectedPlot || plots[0]).payload_json);
-    renderDisplay(payload);
+    const payload = JSON.parse((selectedPlot || plots[0]).payload_json || "null");
+    if (!payload || typeof payload !== "object") throw new Error("Invalid plot payload");
+    if (payload?.["rho/pruned"]) {
+      showPlotSurfaceState(
+        "warning",
+        "Preview pruned",
+        "Preview storage was reclaimed; the plot history record and exported files remain available.",
+      );
+    } else if (payload?.["image/png"] || payload?.["image/svg+xml"] || payload?.["rho/mock-image"]) {
+      renderDisplay(payload);
+    } else {
+      throw new Error("Unsupported plot payload");
+    }
   } catch {
-    $("#plotImage").classList.add("hidden");
+    showPlotSurfaceState(
+      "failed",
+      "Plot preview unavailable",
+      "The recorded plot remains in history, but its preview payload could not be displayed.",
+    );
   }
   for (const plot of plots) {
     const selected = plot.plot_id === selectedPlot?.plot_id;
@@ -8808,8 +8898,8 @@ function renderEnvironmentSummary() {
   const environment = state.environment;
   renderEnvironmentOperationCard();
   if (!environment) {
-    $("#environmentContract").textContent = "Environment snapshot unavailable.";
-    $("#renderCapability").textContent = "Render tooling not checked yet.";
+    renderStatusItems($("#environmentContract"), [{ label: "Snapshot unavailable", status: "unavailable" }]);
+    renderStatusItems($("#renderCapability"), [{ label: "Render tooling not checked", status: "neutral" }]);
     $("#renderDocumentHint").textContent = renderDocumentHintText();
     $("#renderDocumentButton").disabled = true;
     renderLastRenderCard();
@@ -8819,15 +8909,21 @@ function renderEnvironmentSummary() {
   const bioc = environment.bioconductor || {};
   const render = environment.render || {};
   const attached = (environment.attached_packages?.values || []).map((item) => `${item.name}${item.version ? ` ${item.version}` : ""}`).join(", ");
-  $("#environmentContract").textContent = [
-    `renv ${renv.status || "unknown"}`,
-    bioc.version ? `Bioc ${bioc.version}` : `Bioc ${bioc.status || "unknown"}`,
-    attached ? `packages ${attached}` : null,
-  ].filter(Boolean).join(" · ");
-  $("#renderCapability").textContent = [
-    render.can_render_qmd ? "Quarto ready" : "Quarto unavailable",
-    render.can_render_rmd ? "R Markdown ready" : "R Markdown unavailable",
-  ].join(" · ");
+  const renvStatus = renv.status || "unknown";
+  const renvTone = renvStatus === "synchronized"
+    ? "completed"
+    : /unavailable|error|invalid/.test(renvStatus)
+      ? "failed"
+      : "warning";
+  renderStatusItems($("#environmentContract"), [
+    { label: `renv ${renvStatus}`, status: renvTone },
+    { label: bioc.version ? `Bioc ${bioc.version}` : `Bioc ${bioc.status || "unknown"}`, status: bioc.version ? "completed" : "neutral" },
+    { label: attached ? `Packages ${attached}` : "No packages attached", status: "neutral" },
+  ]);
+  renderStatusItems($("#renderCapability"), [
+    { label: render.can_render_qmd ? "Quarto ready" : "Quarto unavailable", status: render.can_render_qmd ? "completed" : "unavailable" },
+    { label: render.can_render_rmd ? "R Markdown ready" : "R Markdown unavailable", status: render.can_render_rmd ? "completed" : "unavailable" },
+  ]);
   $("#renderDocumentHint").textContent = renderDocumentHintText();
   const path = state.activeDocument || "";
   const renderable = activeDocumentCanRender();
@@ -8849,7 +8945,7 @@ function renderLastRenderCard() {
   if (!render) {
     card.classList.add("hidden");
     $("#renderResultTitle").textContent = "Last Render";
-    $("#renderResultState").textContent = "idle";
+    setStateChip($("#renderResultState"), "Idle", "neutral");
     $("#renderResultSummary").textContent = "No render has been run yet.";
     $("#renderResultPath").textContent = "";
     for (const id of ["renderOpenSourceButton", "renderReviewArtifactButton", "renderShowProblemsButton", "renderShowPlotsButton"]) {
@@ -8860,7 +8956,7 @@ function renderLastRenderCard() {
   card.classList.remove("hidden");
   card.classList.add(render.ok ? "success" : "error");
   $("#renderResultTitle").textContent = render.tool ? `Last Render · ${render.tool}` : "Last Render";
-  $("#renderResultState").textContent = render.ok ? "completed" : (render.phase || "failed");
+  setStateChip($("#renderResultState"), render.ok ? "Completed" : prettyStatus(render.phase || "failed"), render.ok ? "completed" : "failed");
   $("#renderResultSummary").textContent = render.ok
     ? render.artifactAvailable
       ? render.fileAvailable === false
@@ -8957,9 +9053,14 @@ async function maybeApplyPreviewScenario() {
     state.posture = "agent";
     state.agentSurface = "direct";
     if (previewState !== "empty") {
+      const approvalPreview = previewState === "approval";
+      const fileProposalPreview = previewState === "file-proposal";
+      state.agentMode = approvalPreview ? "act" : "ask";
       await invoke("run_agent", {
-        prompt: "Review the current QC analysis and identify the next decision.",
-        mode: "ask",
+        prompt: fileProposalPreview
+          ? "Review @analysis.R and propose a concise QC summary at the current cursor."
+          : "Review the current QC analysis and identify the next decision.",
+        mode: state.agentMode,
       });
       await loadAgentData();
     }
@@ -9210,6 +9311,28 @@ async function maybeApplyPreviewScenario() {
   }
   if (scenario === "wp2-data-viewer") {
     await inspectEnvironmentObject(previewParams.get("object") || "qc");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  if (scenario === "wp3-artifacts" && previewParams.get("state") === "invalid-plot") {
+    state.plots = [{
+      plot_id: "plot_invalid_preview",
+      run_id: "run_invalid_preview",
+      project_root: mockLastProject,
+      source_path: "analysis.R",
+      execution_mode: "file",
+      document_version: 1,
+      workspace_id: "desktop_mock",
+      state_revision: state.revision.state_revision,
+      project_revision: state.revision.project_revision,
+      media_type: "image/png",
+      payload_json: "{invalid plot payload",
+      provenance_complete: true,
+      created_at: new Date().toISOString(),
+    }];
+    state.selectedPlotId = state.plots[0].plot_id;
+    renderPlots();
+    switchDockTab("plots");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -9602,6 +9725,13 @@ function recordPreviewLayoutEvidence() {
         review_workspace: !$("#agentReviewWorkspace").classList.contains("hidden"),
         human_layout_presets: getComputedStyle($(".work-modes")).display !== "none",
         act_authorization: !$(".act-authorization").classList.contains("hidden"),
+        approval: !$("#approvalPanel").classList.contains("hidden"),
+        file_proposal: !$("#fileEditPanel").classList.contains("hidden"),
+      },
+      states: {
+        turn: $("#agentTimeline .timeline-heading-row .state-chip")?.textContent || null,
+        approval: $("#approvalPanel").dataset.state || null,
+        file_proposal: $("#fileEditPanel").dataset.state || null,
       },
       widths: {
         task_rail: taskRail?.width || 0,
@@ -9610,7 +9740,10 @@ function recordPreviewLayoutEvidence() {
       },
       overlaps: {
         composer_with_work_surface: rectsOverlap(composer, workSurface),
+        approval_with_composer: rectsOverlap(rectEvidence($("#approvalPanel")), composer),
+        file_proposal_with_composer: rectsOverlap(rectEvidence($("#fileEditPanel")), composer),
       },
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     });
     return;
   }
@@ -9628,6 +9761,10 @@ function recordPreviewLayoutEvidence() {
       counts: {
         plots: state.plots.length,
         artifacts: state.artifacts.length,
+      },
+      plot_surface: {
+        state: $("#plotEmpty").classList.contains("hidden") ? "preview" : $("#plotEmpty").dataset.state,
+        title: $("#plotEmpty strong").textContent,
       },
       selected_artifact: state.selectedArtifactDetail?.artifact
         ? {
@@ -9710,7 +9847,7 @@ function renderEnvironmentOperationCard() {
   if (!request) {
     card.classList.add("hidden");
     $("#environmentOperationTitle").textContent = "Environment Operation";
-    $("#environmentOperationState").textContent = "idle";
+    setStateChip($("#environmentOperationState"), "Idle", "neutral");
     $("#environmentOperationSummary").textContent = "No environment operation has been requested yet.";
     $("#environmentOperationMeta").textContent = "";
     $("#environmentOperationReviewButton").disabled = true;
@@ -9720,7 +9857,7 @@ function renderEnvironmentOperationCard() {
   const tone = environmentOperationTone(request.status);
   if (tone) card.classList.add(tone);
   $("#environmentOperationTitle").textContent = environmentOperationLabel(request.request_name);
-  $("#environmentOperationState").textContent = prettyEnvironmentOperationStatus(request.status);
+  setStateChip($("#environmentOperationState"), prettyEnvironmentOperationStatus(request.status), request.status);
   $("#environmentOperationSummary").textContent = formatEnvironmentOperationSummary(request);
   $("#environmentOperationMeta").textContent = formatEnvironmentOperationMeta(request);
   $("#environmentOperationReviewButton").disabled = dialogBusy;
@@ -9784,7 +9921,7 @@ function renderEnvironmentOperationDialog() {
   }
   dialog.classList.remove("hidden");
   $("#environmentOperationDialogTitle").textContent = environmentOperationLabel(request.request_name);
-  $("#environmentOperationDialogState").textContent = prettyEnvironmentOperationStatus(request.status);
+  setStateChip($("#environmentOperationDialogState"), prettyEnvironmentOperationStatus(request.status), request.status);
   $("#environmentOperationDialogNote").textContent = request.request_name?.startsWith("environment.package_")
     ? "Review the exact package, project library, repositories, revisions, and partial-write warning before the broker changes the project environment."
     : "Review the exact renv action, project root, revisions, and bounded drift preview before the broker mutates the project environment.";
@@ -10914,6 +11051,8 @@ function renderFileEditPanel() {
   const visible = Boolean(proposal);
   $("#fileEditPanel").classList.toggle("hidden", !visible);
   if (!visible) return;
+  $("#fileEditPanel").dataset.state = decision || "waiting";
+  $("#fileEditPanelTitle").textContent = `${fileEditOperationLabel(proposal.operation)} proposal`;
   $("#fileEditPath").textContent = proposal.path;
   const summaryState = decision === "accepted"
     ? "Already applied"

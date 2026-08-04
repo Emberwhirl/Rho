@@ -8,16 +8,16 @@ Related design: `docs/design/proposed-2026-07-26-rstudio-inspired-workflow-desig
 
 Cross-reviewed against:
 
-- `docs/plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md`;
+- `docs/plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md`;
 - `docs/plans/proposed-2026-07-20-human-agent-workbench-posture-design.md`;
 - `docs/plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`;
 - `docs/design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`.
 
-Implementation status: focused Phase 1 and Phase 2 packages were separately
-authorized and implemented with automated/browser verification on 2026-08-04;
-their installed-app and display-scale acceptance remains open. Phase 3 and
-later work still require a separately authorized implementation package and
-must preserve the implemented posture and persistence authorities.
+Implementation status: focused Phase 1, Phase 2, and Phase 3 packages were
+separately authorized and implemented with automated/browser verification on
+2026-08-04; their installed-app and display-scale acceptance remains open.
+Phase 4 and later work still require a separately authorized implementation
+package and must preserve the implemented posture and persistence authorities.
 
 ## Purpose
 
@@ -243,6 +243,10 @@ Acceptance:
 - the editor retains a useful working area in every supported viewport.
 
 ### Phase 3: Scientific and Agent Surfaces
+
+Focused status: M3 implemented and verified under
+`active-2026-08-04-interface-modernization-scientific-agent-surfaces-spec.md`;
+installed acceptance remains open.
 
 Objective: give operational state and review decisions a coherent presentation.
 

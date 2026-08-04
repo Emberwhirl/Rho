@@ -35,7 +35,7 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-07-25-0.3x-scientific-workflow-handoff.md` | active; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
+| `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
 | `design/active-2026-07-25-about-and-update-check-design.md` | implementation active; live and installed acceptance open | About/update V1 and Pages gates | its own live/installed acceptance; inclusion in `0.2.0` needs a revised candidate contract |
@@ -50,7 +50,8 @@ semantics.
 | `plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | second-round Agent-first navigation, progressive activity disclosure, and presentation density | internal posture/surface values and all authority boundaries preserved; installed-app acceptance remains open |
 | `plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md` | active; UX4-AWS1 implementation and automated/browser verification complete 2026-08-03 | simple default Agent-first Task surface and explicitly opened file/run/Artifact/audit work surfaces over existing entities | installed-app acceptance remains open; no new Task schema or audit scope |
 | `plans/active-2026-08-04-interface-modernization-foundation-shell-spec.md` | active; M1 implementation and automated/browser verification complete 2026-08-04 | presentation-only semantic tokens, shared controls, local icons, shell hierarchy, tab roles, focus, and responsive geometry | installed-app/display-scale acceptance open; themes and workflow-surface redesign remain proposed |
-| `plans/active-2026-08-04-interface-modernization-workbench-hierarchy-spec.md` | active; M2 implementation and automated/browser verification complete 2026-08-04 | Human-first editor hierarchy, existing tab and panel geometry presentation, and correct restoration of the existing `human_preset` value | installed-app/display-scale acceptance remains separate; Phase 3 and themes remain proposed |
+| `plans/active-2026-08-04-interface-modernization-workbench-hierarchy-spec.md` | active; M2 implementation and automated/browser verification complete 2026-08-04 | Human-first editor hierarchy, existing tab and panel geometry presentation, and correct restoration of the existing `human_preset` value | installed-app/display-scale acceptance remains separate; themes remain proposed |
+| `plans/active-2026-08-04-interface-modernization-scientific-agent-surfaces-spec.md` | active; M3 implementation and automated/browser verification complete 2026-08-04 | presentation-only status language, scientific/Agent state hierarchy, and distinction among existing review lanes | installed/display-scale acceptance remains separate; `0.3.x` manual gates remain open; Phase 4 remains proposed |
 | `plans/active-2026-08-02-console-logs-separation-spec.md` | active; CL1 implemented and automated/browser evidence passed | frontend-only separation of the Workspace R Console transcript from operational and Agent Logs | installed-app/manual acceptance remains open and separate |
 | `plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | guarded local Git review, hunk/file stage/unstage, confirmed restore, and commit UI over the supervised CLI | installed-app acceptance remains open; repository replacement/adversarial hardening remain separate |
 | `plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md` | active; WS4-G2 implementation, review, and automated verification complete 2026-08-03 | fail-closed repository/path/output admission and adversarial backend fixtures for the existing supervised Git workflow | repository replacement remains separate; no UI, schema, remote, or credential scope |
@@ -77,7 +78,7 @@ semantics.
 | `design/proposed-2026-07-26-evidence-workspace-and-claim-review-design.md` | proposed; independently cross-reviewed | project-scoped scholarly evidence entries, citation normalization, claim-to-evidence linkage, and bounded claim-review semantics | `0.3.x` milestone acceptance, BH1-BH3 acceptance, RA-RC1 acceptance, and a separately authorized EW-CR1 handoff |
 | `design/proposed-2026-07-26-rstudio-inspired-workflow-design.md` | proposed umbrella direction; partially implemented through separately accepted packages; reconciled 2026-08-02 | post-`0.3.x` scientific capability direction across WS1-WS7 | remaining WS1/WS2/WS3/WS4/WS5/WS6/WS6A scope and all WS7 work require separate focused authorization; implementation and manual acceptance remain distinct |
 | `plans/proposed-2026-07-20-human-agent-workbench-posture-design.md` | proposed | Human/Agent posture and Direct/Monitor/Review information architecture | open decisions close and a separate posture package is approved |
-| `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed umbrella; focused M1/M2 implemented with automated/browser verification 2026-08-04 | visual tokens, icons, component presentation, responsive behavior, themes | M1/M2 installed/display-scale acceptance remains open; scientific-surface redesign, themes, and later phases require separate approval |
+| `plans/proposed-2026-07-26-interface-modernization-plan.md` | proposed umbrella; focused M1-M3 implemented with automated/browser verification 2026-08-04 | visual tokens, icons, component presentation, responsive behavior, themes | installed/display-scale acceptance remains open; Phase 4 requires separate approval |
 | `plans/proposed-2026-08-01-next-phase-task-plan.md` | proposed coordination plan; focused P2/P3 packages reconciled 2026-08-02 | current decomposition of remaining acceptance gates and proposal gaps | each unchecked work package requires a focused handoff; P1 gates remain blocking |
 | `architecture/proposed-aisdk-family-change-proposals.md` | proposed and deferred | catalog of possible upstream seams | a concrete current gap and separate cross-repository approval exist |
 
@@ -107,6 +108,13 @@ hierarchy work. The separate M2 contract owns Human-first editor hierarchy,
 existing tab/panel geometry presentation, and correction of the existing
 `human_preset` restoration path without adding persistence or top-level state.
 Scientific/Agent workflow-surface redesign and themes remain unauthorized.
+
+The focused M3 contract may restyle and reorganize projections of existing
+Runs, Problems, Plots, Environment, Agent events, approvals, and file-edit
+proposals. It cannot redefine their status values, persistence, revisions,
+mutation consequences, approval ownership, or recovery actions. Direct UI
+environment requests and Agent approvals remain visibly and operationally
+separate. Phase 4 remains unauthorized.
 
 The intuitive-interaction proposal may improve task-level wording, empty
 states, Run scope, result handoff, and recovery without defining another

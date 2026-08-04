@@ -213,4 +213,5 @@ and browser gates pass, the implementation is reviewed against this contract,
 deviations and evidence are recorded, and the scoped files are committed.
 
 The document remains `active-` while installed-app and display-scale manual
-acceptance are open. M2 completion does not authorize or complete Phase 3.
+acceptance are open. M2 did not itself authorize Phase 3; M3 was subsequently
+authorized and implemented under its separate focused contract.

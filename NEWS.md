@@ -254,6 +254,11 @@ this file records behavior that is already available in a released build.
 
 ### UX: Interaction improvements
 
+- Runs, Agent activity, Problems, Environment, Render, and Plot surfaces now
+  share clearer text-backed operational states and bounded technical metadata.
+- Agent approvals, file-edit proposals, and direct Environment requests now
+  use distinct review surfaces, while invalid Plot previews remain visible as
+  failed previews without losing their history records.
 - Empty-project states now read `Open an R project to begin` and
   `Open a project to get started` instead of internal terminology.
 - Product dialogs replaced browser `prompt()` and `confirm()` for
