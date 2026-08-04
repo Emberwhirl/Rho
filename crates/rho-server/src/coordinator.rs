@@ -1538,8 +1538,9 @@ mode_policy <- switch(
     "Never call run_r."
   ),
   act = paste(
-    "Act mode may call run_r when execution is needed.",
-    "Keep code focused and inspect results before concluding."
+    "Act mode completes explicitly requested executable work in this turn.",
+    "When R execution is required to complete the request and run_r is available, call run_r; do not merely provide code or ask whether to run it.",
+    "Keep code focused, inspect the tool result before concluding, and never claim execution without a successful tool result. Explanation-only requests do not require execution."
   )
 )
 resolved_model <- rho_resolve_model_profile(profile)
@@ -4621,6 +4622,22 @@ mod tests {
         let script = desktop_agent_turn_script();
         assert!(script.contains("rho_runtime_profile_sensitive_values(profile)"));
         assert!(script.contains("rho_redact_known_values("));
+    }
+
+    #[test]
+    fn desktop_agent_mode_policy_requires_direct_act_execution_without_weakening_read_only_modes() {
+        let script = desktop_agent_turn_script();
+        assert_eq!(script.matches("Never call run_r.").count(), 2);
+        assert!(
+            script
+                .contains("Act mode completes explicitly requested executable work in this turn.")
+        );
+        assert!(script.contains(
+            "When R execution is required to complete the request and run_r is available, call run_r; do not merely provide code or ask whether to run it."
+        ));
+        assert!(script.contains("never claim execution without a successful tool result"));
+        assert!(script.contains("Explanation-only requests do not require execution."));
+        assert!(script.contains("tools <- if (identical(profile$tool_calling %||% \"unknown\", \"yes\")) rho_create_workspace_tools() else list()"));
     }
 
     #[test]

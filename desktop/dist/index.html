@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rho</title>
-    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.0&rev=m3-scientific-review-v3" />
+    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.0&rev=m3-scientific-review-v3&agent=output-review-v3" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -412,6 +412,7 @@ plot(
         <div id="agentSurfaceTabs" class="panel-tabs surface-tabs hidden" role="tablist" aria-label="Agent work surfaces">
           <button class="active" data-agent-surface="direct" type="button" role="tab" aria-selected="true">Task</button>
           <button data-agent-surface="monitor" type="button" role="tab" aria-selected="false">Runs</button>
+          <button data-agent-surface="outputs" type="button" role="tab" aria-selected="false">Outputs <span id="agentOutputCount" class="count">0</span></button>
           <button data-agent-surface="review" type="button" role="tab" aria-selected="false">Review</button>
         </div>
         <div id="agentMonitorPanel" class="context-content hidden">
@@ -421,6 +422,12 @@ plot(
             <button id="monitorInterrupt" class="danger" type="button">Interrupt R</button>
             <button id="monitorRestart" type="button">Restart Workspace R</button>
           </div>
+        </div>
+        <div id="agentOutputsPanel" class="context-content agent-outputs-panel hidden" aria-label="Agent outputs">
+          <header class="agent-outputs-header">
+            <div><strong>Outputs</strong><p>Plots and saved results from this project.</p></div>
+          </header>
+          <div id="agentOutputsList" class="agent-outputs-list"></div>
         </div>
         <div id="agentReviewPanel" class="context-content hidden">
           <div class="review-header"><strong id="reviewTitle">Inspect</strong></div>
@@ -1012,6 +1019,6 @@ plot(
       </section>
     </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3"></script>
+    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3&agent=output-review-v3"></script>
   </body>
 </html>

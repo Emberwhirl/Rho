@@ -158,24 +158,51 @@ column and should create a source-linked Problem.
 
    `Using the existing cell_qc data, run R code that plots library_size against detected_genes, colored by sample. Do not edit files.`
 
+   Expected: because this is a direct executable request in Act and session R
+   execution is authorized, the Agent calls the R execution tool in this turn.
+   It must not only print code or ask whether you want it to run. If exact
+   approval is requested instead of session authorization, approve it once and
+   verify execution follows; rejection must not produce a success claim.
 8. Open Agent-first Runs. Confirm the scientific R action appears before
    quieter `Background activity` such as workspace refreshes. Its row must use
    a readable action label and show status, Agent origin, source or workspace,
    time, and a `plot` evidence cue without requiring raw request identifiers.
-9. Open that Run. Review must show the requested work, exact R code, outcome,
+   Inspect all visible paths: none may begin with `\\?\` or `//?/`. Background
+   package, lockfile, environment, and workspace refreshes must use readable
+   labels and must not expose expressions such as
+   `getOption("rho.bridge.env")$rho_list_lockfile_packages(...)`.
+9. Open `Outputs`. Confirm the new Plot is present with a thumbnail, numbered
+   title, source, time, and `Ready to review` state. Click it and confirm Review
+   becomes the dominant surface, the image is visibly large, and `Open
+   producing run` returns to the exact Agent execution. Use `Back to Outputs`
+   and confirm selection is preserved.
+10. Export that Plot from Human-first Plots to
+    `artifacts/agent-qc-review.png`, return to Agent-first Outputs, and confirm
+    both the Plot and saved output are listed. Click the saved output and
+    verify Review shows its plain-language kind, project-relative destination,
+    source, file availability, producing Run, and source action. Temporarily
+    rename the exported file outside Rho, refresh/reopen the project, and
+    confirm the output remains listed as missing rather than falsely openable;
+    restore the file before continuing.
+11. Open the producing Run. Review must show the requested work, exact R code, outcome,
    output/messages/warnings/errors when present, and the Plot produced by the
    exact same run result. Confirm the plot is visibly reviewable in place, then
    inspect Source and timing. Do not accept a Review that only says
    `system`, `workspace.snapshot`, or `running` while hiding the scientific
    action.
-10. Review the earlier failed `04-fix-me.R` Run and a completed Run that
+12. Review the earlier failed `04-fix-me.R` Run and a completed Run that
     produced no Plot, saved output, or Problem. Expected: the failed Run exposes
     its error and linked Problem; the completed Run explicitly says that no
     durable output evidence is linked. While any Agent run is active, inspect
     it and confirm Review says the result may still change and does not claim
     completion. Record screenshots of all three states.
+13. In a disposable copy of the project, free session Plot previews and confirm
+    Outputs retains each pruned Plot with `Preview removed to save space`.
+    Selecting it must explain that the preview is unavailable without claiming
+    the Plot or an exported file was deleted.
 
-This covers Agent modes, Agent-first work surfaces, Problems, the
+This covers Agent modes, direct Act execution, Agent-first Outputs and Review,
+display-path cleanup, background Run projection, Problems, the
 reviewable-edit contract, human-readable Run evidence, rejection, acceptance,
 and rerun recovery. Valid
 model credentials and `aisdk` are prerequisites;

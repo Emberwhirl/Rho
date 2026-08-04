@@ -21,6 +21,7 @@ const state = {
   posture: "human",
   agentSurface: "direct",
   agentWorkSurface: "none",
+  agentSelectedOutput: null,
   humanPreset: "code",
   auditResult: null,
   auditLoading: false,
@@ -491,6 +492,7 @@ function mockGitStagedRevision() {
   return `index-${mockGitRevisionSequence}-${mockGitReview.staged.map((file) => `${file.path}:${file.hunks.length}`).join("|")}`;
 }
 const MOCK_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5z8AAAAASUVORK5CYII=";
+const MOCK_PLOT_DATA_URL = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="840" height="480" viewBox="0 0 840 480"><rect width="840" height="480" fill="white"/><path d="M72 36v376h720M72 412l720-376" fill="none" stroke="#d9e1e0" stroke-width="2"/><g fill="#187a70" opacity=".8"><circle cx="150" cy="340" r="9"/><circle cx="220" cy="310" r="10"/><circle cx="286" cy="286" r="8"/><circle cx="350" cy="242" r="11"/><circle cx="430" cy="225" r="9"/><circle cx="505" cy="174" r="10"/><circle cx="580" cy="148" r="8"/><circle cx="660" cy="112" r="11"/><circle cx="735" cy="82" r="9"/></g><g fill="#536467" font-family="Arial,sans-serif"><text x="350" y="458" font-size="18">Library size</text><text x="-292" y="24" font-size="18" transform="rotate(-90)">Mitochondrial percent</text><text x="72" y="26" font-size="22" font-weight="700">Single-cell QC review</text></g></svg>')}`;
 
 const MOCK_BASE_PACKAGES = [
   { name: "base",     version: "4.6.1", library: "C:/R/R-4.6.1/library",     priority: "base",     built: "4.6.1" },
@@ -807,7 +809,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
         timestamp: startedAt,
         event_type: "agent.run_started",
         title: "Agent started",
-        body: mode === "act" ? "Act mode may request execution after approval." : `${mode[0].toUpperCase()}${mode.slice(1)} mode is running in read-only broker policy.`,
+        body: mode === "act" ? "Act mode completes requested work through authorized tools." : `${mode[0].toUpperCase()}${mode.slice(1)} mode is running in read-only broker policy.`,
         status: "running",
         tool: null,
         request_id: null,
@@ -3657,11 +3659,11 @@ function setProjectStatus(status, unavailable = null) {
   $("#editorFormatButton").disabled = disabled || state.busy;
   $(".new-tab").disabled = disabled;
   $("#projectName").textContent = unavailable?.path?.split(/[\\/]/).filter(Boolean).at(-1) || activeProjectName();
-  $("#projectTreeRoot").textContent = unavailable?.path || state.project.root || "No project";
+  $("#projectTreeRoot").textContent = displayPath(unavailable?.path || state.project.root) || "No project";
   $("#projectBanner").classList.toggle("hidden", status === "ready");
   $("#projectBannerTitle").textContent = status === "unavailable" ? "Project unavailable" : "Open an R project to begin";
   $("#projectBannerMessage").textContent = unavailable
-    ? `${unavailable.path} · ${unavailable.reason}`
+    ? `${displayPath(unavailable.path)} · ${unavailable.reason}`
     : "Select a project directory to connect a workspace.";
   $("#projectFileList").classList.toggle("hidden", status !== "ready");
   $("#projectEmptyState").classList.toggle("hidden", status === "ready");
@@ -3941,7 +3943,7 @@ function renderActiveDocument() {
   renderDocumentTabs();
   updateEditorChrome();
   if (state.posture === "agent" && state.agentWorkSurface === "file") {
-    $("#agentFileSurfaceTitle").textContent = documentState.path;
+    $("#agentFileSurfaceTitle").textContent = displayPath(documentState.path);
   }
 }
 
@@ -4275,9 +4277,9 @@ function runStatusTone(status) {
 }
 
 function runTitle(run) {
-  if (run.execution_mode === "selection" && run.source_path) return `Selection · ${run.source_path}`;
-  if (run.execution_mode === "line" && run.source_path) return `Line · ${run.source_path}`;
-  if (run.execution_mode === "file" && run.source_path) return `File · ${run.source_path}`;
+  if (run.execution_mode === "selection" && run.source_path) return `Selection · ${displayPath(run.source_path)}`;
+  if (run.execution_mode === "line" && run.source_path) return `Line · ${displayPath(run.source_path)}`;
+  if (run.execution_mode === "file" && run.source_path) return `File · ${displayPath(run.source_path)}`;
   if (run.request_type === "workspace.snapshot") return "Workspace snapshot";
   if (run.request_type === "workspace.inspect_object") return `Inspect · ${run.code_preview}`;
   if (run.request_type === "workspace.bootstrap") return "Workspace bootstrap";
@@ -4291,6 +4293,11 @@ function isBackgroundRun(run) {
 function humanRunTitle(run) {
   if (run?.request_type === "workspace.snapshot") return "Refreshing workspace context";
   if (run?.request_type === "workspace.bootstrap") return "Preparing Workspace R";
+  const preview = String(run?.code_preview || run?.code || "");
+  if (/rho_list_lockfile_packages|lockfile.*packages/i.test(preview)) return "Refreshing lockfile status";
+  if (/rho_list_installed_packages|installed.*packages/i.test(preview)) return "Refreshing package inventory";
+  if (/rho_environment_(?:evidence|operation)|environment.*evidence/i.test(preview)) return "Refreshing project environment";
+  if (run?.origin === "system") return "Background workspace task";
   return runTitle(run);
 }
 
@@ -6271,7 +6278,7 @@ function renderRuns() {
     titleLine.append(title, createStateChip(prettyStatus(run.status), run.status));
     const detail = document.createElement("small");
     detail.className = "run-meta";
-    detail.textContent = [prettyOrigin(run.origin), run.source_path, formatTimestamp(run.started_at), run.error_message].filter(Boolean).join(" · ");
+    detail.textContent = [prettyOrigin(run.origin), displayPath(run.source_path), formatTimestamp(run.started_at), run.error_message].filter(Boolean).join(" · ");
     content.append(titleLine, detail);
     row.append(marker, content);
     if (["queued", "running", "waiting"].includes(run.status)) {
@@ -6462,7 +6469,7 @@ function renderProblemsLegacy() {
     const content = document.createElement("div");
     const title = document.createElement("strong");
     title.textContent = problem.source_path
-      ? `Analysis stopped at ${problem.source_path}`
+      ? `Analysis stopped at ${displayPath(problem.source_path)}`
       : problem.message;
     const detail = document.createElement("p");
     detail.textContent = [
@@ -6653,7 +6660,7 @@ function renderProblems() {
     if (problem.origin === "lintr") {
       const location = document.createElement("p");
       location.className = "problem-location";
-      location.textContent = `${problem.source_path}:${problem.line_number}:${problem.column_number}`;
+      location.textContent = `${displayPath(problem.source_path)}:${problem.line_number}:${problem.column_number}`;
       const meta = document.createElement("p");
       meta.className = "problem-meta";
       const producers = [...new Set(group.problems.map((item) => `${item.producer || "lintr"} ${item.producer_version || ""}`.trim()))].sort();
@@ -6686,7 +6693,7 @@ function renderProblems() {
       const unavailable = document.createElement("span");
       unavailable.className = "problem-source-unavailable";
       unavailable.textContent = "Source unavailable";
-      unavailable.title = `The project file is no longer available: ${problem.source_path}`;
+      unavailable.title = `The project file is no longer available: ${displayPath(problem.source_path)}`;
       actions.append(unavailable);
     }
     if (problem.origin === "lintr" && problem.quick_fix) {
@@ -6759,7 +6766,7 @@ async function reviewLintQuickFix(problem) {
     quickFix: problem.quick_fix,
   };
   $("#lintQuickFixTitle").textContent = problem.quick_fix.title || "Review quick fix";
-  $("#lintQuickFixPath").textContent = `${problem.source_path}:${problem.quick_fix.line_number}`;
+  $("#lintQuickFixPath").textContent = `${displayPath(problem.source_path)}:${problem.quick_fix.line_number}`;
   $("#lintQuickFixBefore").textContent = problem.quick_fix.expected_line;
   $("#lintQuickFixAfter").textContent = problem.quick_fix.replacement_line;
   $("#lintQuickFixNote").textContent = "Applying changes only the editor buffer. Review the exact line, then Save separately to persist it.";
@@ -7530,8 +7537,16 @@ function artifactStateLabel(detail) {
   return detail.artifact?.provenance_complete ? "Available" : "Needs source details";
 }
 
+function displayPath(value) {
+  return String(value || "")
+    .replace(/^\\\\\?\\UNC\\/i, "\\\\")
+    .replace(/^\\\\\?\\/i, "")
+    .replace(/^\/\/\?\/UNC\//i, "//")
+    .replace(/^\/\/\?\//i, "");
+}
+
 function pathFileName(path) {
-  return String(path || "").replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || "Untitled output";
+  return displayPath(path).replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || "Untitled output";
 }
 
 function plotSourceLabel(plot) {
@@ -7612,8 +7627,8 @@ function renderArtifactDetail() {
       : "The file is available, but Rho could not capture all of its source details.")
     : "This saved file is no longer at its recorded location. Export or render it again to recreate it.";
   $("#artifactDetailPath").textContent = [
-    `Saved to ${detail.output_absolute_path}`,
-    artifact.source_path ? `Created from ${artifact.source_path}` : "Created from Workspace R",
+    `Saved to ${displayPath(detail.output_absolute_path)}`,
+    artifact.source_path ? `Created from ${displayPath(artifact.source_path)}` : "Created from Workspace R",
     formatTimestamp(artifact.created_at),
   ].join(" · ");
   action.disabled = !artifact.source_path;
@@ -7636,7 +7651,7 @@ function renderArtifactRecords() {
     const title = document.createElement("strong");
     title.textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${pathFileName(artifact.output_path)}`;
     const line1 = document.createElement("p");
-    line1.textContent = `${artifact.source_path ? `Created from ${artifact.source_path}` : "Created from Workspace R"} · ${formatTimestamp(artifact.created_at)}`;
+    line1.textContent = `${artifact.source_path ? `Created from ${displayPath(artifact.source_path)}` : "Created from Workspace R"} · ${formatTimestamp(artifact.created_at)}`;
     const line2 = document.createElement("p");
     line2.textContent = artifact.provenance_complete
       ? "Source details captured"
@@ -7660,7 +7675,7 @@ function renderArtifactRecords() {
     output.type = "button";
     output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
     const outputLabel = document.createElement("span");
-    outputLabel.textContent = artifact.output_path;
+    outputLabel.textContent = displayPath(artifact.output_path);
     const outputIndex = document.createElement("small");
     outputIndex.textContent = artifactKindLabel(artifact.artifact_kind);
     output.append(outputLabel, outputIndex);
@@ -7707,6 +7722,7 @@ function renderPlots() {
   if (!plots.length) {
     showPlotSurfaceState("empty", "No plots yet", "Run plotting code in Workspace R to create a preview.");
     renderArtifactRecords();
+    renderAgentOutputs();
     return;
   }
   $("#plotEmpty").classList.add("hidden");
@@ -7781,7 +7797,7 @@ function renderPlots() {
     const outputLabel = document.createElement("span");
     outputLabel.textContent = !plot.source_path || plot.source_path === "<console>"
       ? `Console plot ${index + 1}`
-      : plot.source_path;
+      : displayPath(plot.source_path);
     const outputIndex = document.createElement("small");
     outputIndex.textContent = `Plot ${index + 1}`;
     output.append(outputLabel, outputIndex);
@@ -7798,6 +7814,7 @@ function renderPlots() {
     outputList.append(output);
   }
   renderArtifactRecords();
+  renderAgentOutputs();
 }
 
 async function executeCode(request) {
@@ -8094,9 +8111,9 @@ function renderLocalHelp() {
     content.append(signature);
   }
   appendLocalHelpLocation(content, "Local Help record", record.help_record);
-  appendLocalHelpLocation(content, "Package root", record.package_root);
-  appendLocalHelpLocation(content, "Library root", record.library_root);
-  appendLocalHelpLocation(content, "Source reference", record.source_path ? `${record.source_path}${record.source_line ? `:${record.source_line}` : ""}` : null);
+  appendLocalHelpLocation(content, "Package root", displayPath(record.package_root));
+  appendLocalHelpLocation(content, "Library root", displayPath(record.library_root));
+  appendLocalHelpLocation(content, "Source reference", record.source_path ? `${displayPath(record.source_path)}${record.source_line ? `:${record.source_line}` : ""}` : null);
   if (record.ambiguous || record.truncated) {
     const warning = document.createElement("p");
     warning.className = "local-help-warning";
@@ -9255,7 +9272,7 @@ async function maybeApplyPreviewScenario() {
     const previewState = previewParams.get("state") || "default";
     state.posture = "agent";
     state.agentSurface = "direct";
-    if (previewState !== "empty") {
+    if (!["empty", "outputs-empty"].includes(previewState)) {
       const approvalPreview = previewState === "approval";
       const fileProposalPreview = previewState === "file-proposal";
       state.agentMode = approvalPreview ? "act" : "ask";
@@ -9271,7 +9288,62 @@ async function maybeApplyPreviewScenario() {
     $("#agentInput").value = previewState === "empty"
       ? ""
       : "Compare the flagged samples with the current thresholds";
-    if (previewState === "file") {
+    if (previewState === "paths") {
+      recordMockRun({
+        runId: "run_extended_path_display",
+        origin: "user",
+        status: "completed",
+        code: "summary(qc)",
+        sourcePath: "//?/E:/Research/analysis.R",
+        executionMode: "file",
+        documentVersion: 1,
+      });
+      recordMockRun({
+        runId: "run_internal_lockfile_refresh",
+        origin: "system",
+        status: "completed",
+        code: 'getOption("rho.bridge.env")$rho_list_lockfile_packages("//?/E:/Research")',
+        requestType: "workspace.environment_query",
+        operationClass: "read_only",
+      });
+      await loadRunData();
+      switchAgentSurface("monitor");
+    } else if (previewState === "outputs-empty") {
+      switchAgentSurface("outputs");
+    } else if (["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact"].includes(previewState)) {
+      const run = recordMockRun({
+        runId: "run_agent_output_review",
+        origin: "agent",
+        status: "completed",
+        code: "plot(qc$library_size, qc$mitochondrial_percent)",
+        sourcePath: "examples/single-cell-qc/03-visualize-qc.R",
+        executionMode: "file",
+        documentVersion: 1,
+      });
+      const plot = {
+        plot_id: "plot_agent_output_review",
+        run_id: run.run_id,
+        project_root: mockLastProject,
+        source_path: run.source_path,
+        execution_mode: "file",
+        document_version: 1,
+        workspace_id: "desktop_mock",
+        state_revision: state.revision.state_revision,
+        project_revision: state.revision.project_revision,
+        media_type: "image/png",
+        payload_json: JSON.stringify(previewState === "outputs-pruned" ? { "rho/pruned": true } : { "rho/mock-image": MOCK_PLOT_DATA_URL }),
+        provenance_complete: true,
+        created_at: run.started_at,
+      };
+      mockPlots.unshift(plot);
+      await loadRunData();
+      if (previewState === "outputs-artifact") {
+        await invoke("export_plot_artifact", { request: { plot_id: plot.plot_id, path: "artifacts/qc-review.png" } });
+        await loadRunData();
+      }
+      switchAgentSurface("outputs");
+      if (previewState === "outputs-plot") await openAgentOutput("plot", plot.plot_id);
+    } else if (previewState === "file") {
       await openDocument("analysis.R");
     } else if (previewState === "run" || previewState === "artifact") {
       const previewRun = await invoke("execute_r", {
@@ -10032,6 +10104,8 @@ function recordPreviewLayoutEvidence() {
         editor: Boolean(workSurface && workSurface.width > 0 && workSurface.height > 0),
         execution_dock: getComputedStyle($(".execution-dock")).display !== "none",
         review_workspace: !$("#agentReviewWorkspace").classList.contains("hidden"),
+        outputs: !$("#agentOutputsPanel").classList.contains("hidden"),
+        reviewed_plot: Boolean($("#agentReviewWorkspaceContent .agent-review-plot-stage img")),
         human_layout_presets: getComputedStyle($(".work-modes")).display !== "none",
         act_authorization: !$(".act-authorization").classList.contains("hidden"),
         approval: !$("#approvalPanel").classList.contains("hidden"),
@@ -10041,6 +10115,8 @@ function recordPreviewLayoutEvidence() {
         turn: $("#agentTimeline .timeline-heading-row .state-chip")?.textContent || null,
         approval: $("#approvalPanel").dataset.state || null,
         file_proposal: $("#fileEditPanel").dataset.state || null,
+        output_count: $$("#agentOutputsList .agent-output-card").length,
+        output_titles: $$("#agentOutputsList .agent-output-body strong").map((element) => element.textContent),
       },
       widths: {
         task_rail: taskRail?.width || 0,
@@ -10174,7 +10250,7 @@ function formatEnvironmentOperationArguments(request) {
   const args = parseEnvironmentOperationPayload(request?.arguments_json, {});
   return [
     `Action: ${environmentOperationLabel(request?.request_name)}`,
-    `Project: ${request?.project_root || args.project_root || "unknown"}`,
+    `Project: ${displayPath(request?.project_root || args.project_root) || "unknown"}`,
     args.package ? `Package: ${args.package}` : null,
     args.project_library ? `Project library: ${args.project_library}` : null,
     args.bioconductor ? `Bioconductor: ${args.bioconductor}` : null,
@@ -10190,7 +10266,7 @@ function formatEnvironmentOperationPreview(request) {
   const diff = preview.diff || {};
   if (preview.package) {
     return [
-      `Project: ${preview.project_dir || request?.project_root || "unknown"}`,
+      `Project: ${displayPath(preview.project_dir || request?.project_root) || "unknown"}`,
       `Planned change: ${preview.disposition || preview.operation || "unknown"} ${preview.package}`,
       `Installed version: ${preview.installed_version || "not installed"}`,
       `Lockfile version: ${preview.locked_version || "not locked"}`,
@@ -10202,7 +10278,7 @@ function formatEnvironmentOperationPreview(request) {
     `${item.name}: lockfile ${item.lockfile_version || "missing"}, installed ${item.library_version || "missing"}`
   );
   return [
-    `Project: ${preview.project_dir || request?.project_root || "unknown"}`,
+    `Project: ${displayPath(preview.project_dir || request?.project_root) || "unknown"}`,
     `Environment status: ${renv.status || (renvStatus.ok ? "ready" : "needs attention")}`,
     `Lockfile and library: ${renv.synchronization || (renvStatus.synchronized ? "in sync" : "different")}`,
     `Warnings: ${(renvStatus.warnings || []).join(" | ") || "none"}`,
@@ -11708,6 +11784,7 @@ function normalizedArtifactDetail() {
 
 function reviewWorkSurfaceKind() {
   if (state.auditLoading || state.auditResult) return "audit";
+  if (state.agentSelectedOutput?.kind === "plot" && state.plots.some((plot) => plot.plot_id === state.agentSelectedOutput.id)) return "plot";
   if (normalizedArtifactDetail()) return "artifact";
   return "run";
 }
@@ -11715,10 +11792,10 @@ function reviewWorkSurfaceKind() {
 function syncAgentWorkSurfaceLayout() {
   const shell = $(".app-shell");
   const isAgent = state.posture === "agent";
-  const kind = ["file", "run", "artifact", "audit"].includes(state.agentWorkSurface)
+  const kind = ["file", "run", "plot", "artifact", "audit"].includes(state.agentWorkSurface)
     ? state.agentWorkSurface
     : "none";
-  const isReview = ["run", "artifact", "audit"].includes(kind);
+  const isReview = ["run", "plot", "artifact", "audit"].includes(kind);
 
   shell.classList.toggle("agent-work-open", isAgent && kind !== "none");
   shell.classList.toggle("agent-work-file", isAgent && kind === "file");
@@ -11729,7 +11806,9 @@ function syncAgentWorkSurfaceLayout() {
   $("#taskRail").classList.toggle("hidden", !(isAgent && kind === "none" && state.agentTurns.length > 0));
   $("#agentFileSurfaceHeader").classList.toggle("hidden", !(isAgent && kind === "file"));
   $("#agentReviewWorkspace").classList.toggle("hidden", !(isAgent && isReview));
-  $("#agentFileSurfaceTitle").textContent = state.activeDocument || "No file selected";
+  $("#agentFileSurfaceTitle").textContent = displayPath(state.activeDocument) || "No file selected";
+  $("#agentReviewSurfaceClose").textContent = ["plot", "artifact"].includes(kind) ? "Back to Outputs" : "Back to Task";
+  $("#agentReviewSurfaceClose").setAttribute("aria-label", ["plot", "artifact"].includes(kind) ? "Close review and return to Outputs" : "Close review and return to Task");
   if (isAgent && isReview) renderAgentReviewWorkspace();
   requestAnimationFrame(() => layoutEditor());
 }
@@ -11748,12 +11827,15 @@ function openAgentWorkSurface(kind) {
 }
 
 function closeAgentWorkSurface() {
+  const returnToOutputs = ["plot", "artifact"].includes(state.agentWorkSurface);
   state.agentWorkSurface = "none";
-  state.agentSurface = "direct";
-  applyAgentSurface("direct");
+  state.agentSelectedOutput = null;
+  state.agentSurface = returnToOutputs ? "outputs" : "direct";
+  applyAgentSurface(state.agentSurface);
   syncAgentWorkSurfaceLayout();
   scheduleSessionSave();
-  $("#agentInput").focus();
+  if (returnToOutputs) $("#agentOutputsList .agent-output-card.active")?.focus();
+  else $("#agentInput").focus();
 }
 
 function appendAgentReviewSection(container, label, value) {
@@ -11842,13 +11924,13 @@ function renderAgentRunReview(content, run) {
   title.textContent = humanRunTitle(run);
   const status = createStateChip(prettyStatus(run.status), run.status);
   const summary = document.createElement("p");
-  summary.textContent = `${prettyOrigin(run.origin)} · ${run.source_path || "Console / workspace"} · ${formatTimestamp(run.started_at)}`;
+  summary.textContent = `${prettyOrigin(run.origin)} · ${displayPath(run.source_path) || "Console / workspace"} · ${formatTimestamp(run.started_at)}`;
   overview.append(title, status, summary);
   content.append(overview);
 
   const request = appendAgentReviewGroup(content, "Requested work");
   appendAgentReviewSection(request, "Action", humanRunTitle(run));
-  appendAgentReviewSection(request, "Source", run.source_path || "Console / workspace");
+  appendAgentReviewSection(request, "Source", displayPath(run.source_path) || "Console / workspace");
   appendAgentReviewSection(request, "Run scope", humanExecutionMode(run));
   appendAgentReviewSection(request, "R code", record.code || run.code_preview);
 
@@ -11875,7 +11957,7 @@ function renderAgentRunReview(content, run) {
     const label = document.createElement("strong");
     label.textContent = artifactKindLabel(artifact.artifact_kind);
     const path = document.createElement("p");
-    path.textContent = artifact.output_path || "Output path unavailable";
+    path.textContent = displayPath(artifact.output_path) || "Output path unavailable";
     card.append(label, path);
     evidenceGroup.append(card);
   }
@@ -11885,7 +11967,7 @@ function renderAgentRunReview(content, run) {
     const label = document.createElement("strong");
     label.textContent = `${problem.severity || "Problem"}: ${problem.message || "Execution problem"}`;
     const source = document.createElement("p");
-    source.textContent = problem.source_path || "No source recorded";
+    source.textContent = displayPath(problem.source_path) || "No source recorded";
     card.append(label, source);
     evidenceGroup.append(card);
   }
@@ -11893,7 +11975,7 @@ function renderAgentRunReview(content, run) {
     const open = document.createElement("button");
     open.type = "button";
     open.className = "agent-review-source-action";
-    open.textContent = `Open ${run.source_path}`;
+    open.textContent = `Open ${displayPath(run.source_path)}`;
     open.addEventListener("click", () => openDocument(run.source_path));
     evidenceGroup.append(open);
   }
@@ -11924,12 +12006,12 @@ function appendAuditEvidence(container, evidence) {
   evidenceRow.className = "agent-audit-evidence";
   for (const item of evidence || []) {
     const path = String(item.path || "");
-    const label = `${item.kind || "evidence"}: ${path || item.excerpt || "available"}`;
+    const label = `${item.kind || "evidence"}: ${displayPath(path) || item.excerpt || "available"}`;
     const canOpen = path && state.project.files.some((file) => file.path === path);
     const element = document.createElement(canOpen ? "button" : "span");
     if (canOpen) {
       element.type = "button";
-      element.setAttribute("aria-label", `Open audit evidence ${path}`);
+      element.setAttribute("aria-label", `Open audit evidence ${displayPath(path)}`);
       element.addEventListener("click", () => openDocument(path));
     }
     element.textContent = label;
@@ -12001,11 +12083,67 @@ function renderAgentAuditWorkspace(content) {
   }
 }
 
+function renderAgentPlotWorkspace(content, plot) {
+  const review = document.createElement("div");
+  review.className = "agent-review-plot";
+  const stage = document.createElement("div");
+  stage.className = "agent-review-plot-stage";
+  const payload = parseJsonObject(plot.payload_json);
+  const source = plotImageSource(payload);
+  if (source) {
+    const image = document.createElement("img");
+    image.src = source;
+    image.alt = `Review ${plotSourceLabel(plot).toLowerCase()}`;
+    image.addEventListener("error", () => {
+      stage.textContent = "The Plot record exists, but its preview could not be decoded.";
+      stage.classList.add("agent-review-limitation");
+    });
+    stage.append(image);
+  } else {
+    const limitation = document.createElement("p");
+    limitation.className = "agent-review-limitation";
+    limitation.textContent = payload["rho/pruned"]
+      ? "Rho removed this preview to save space. The Plot remains in history."
+      : "The Plot remains in history, but its preview is unavailable.";
+    stage.append(limitation);
+  }
+  review.append(stage);
+
+  const meta = document.createElement("div");
+  meta.className = "agent-review-output-meta";
+  appendAgentReviewSection(meta, "Created from", displayPath(plot.source_path) || "Console / workspace");
+  appendAgentReviewSection(meta, "Created", formatTimestamp(plot.created_at));
+  appendAgentReviewSection(meta, "Review state", plotReviewState(plot));
+  review.append(meta);
+
+  const actions = document.createElement("div");
+  actions.className = "agent-review-actions";
+  if (plot.run_id && state.runs.some((run) => run.run_id === plot.run_id)) {
+    const run = document.createElement("button");
+    run.type = "button";
+    run.textContent = "Open producing run";
+    run.addEventListener("click", () => {
+      state.agentReviewRunId = plot.run_id;
+      openAgentWorkSurface("run");
+    });
+    actions.append(run);
+  }
+  if (plot.source_path && state.project.files.some((file) => file.path === plot.source_path)) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = `Open ${displayPath(plot.source_path)}`;
+    open.addEventListener("click", () => openDocument(plot.source_path));
+    actions.append(open);
+  }
+  if (actions.childElementCount) review.append(actions);
+  content.append(review);
+}
+
 function renderAgentReviewWorkspace() {
   const kind = state.agentWorkSurface;
   const content = $("#agentReviewWorkspaceContent");
   content.replaceChildren();
-  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "artifact" ? "Saved output" : "Run";
+  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "plot" ? "Plot" : kind === "artifact" ? "Saved output" : "Run";
 
   if (kind === "audit") {
     $("#agentReviewWorkspaceTitle").textContent = "Reproducibility audit";
@@ -12013,19 +12151,56 @@ function renderAgentReviewWorkspace() {
     return;
   }
 
+  if (kind === "plot") {
+    const plot = state.plots.find((item) => item.plot_id === state.agentSelectedOutput?.id)
+      || state.plots.find((item) => item.plot_id === state.selectedPlotId);
+    $("#agentReviewWorkspaceTitle").textContent = plot
+      ? `Plot ${Math.max(0, state.plots.findIndex((item) => item.plot_id === plot.plot_id)) + 1}`
+      : "Plot review";
+    if (!plot) {
+      content.innerHTML = '<div class="agent-review-empty">This Plot is no longer available in the active project.</div>';
+      return;
+    }
+    renderAgentPlotWorkspace(content, plot);
+    return;
+  }
+
   const summary = document.createElement("div");
   summary.className = "agent-review-summary";
   if (kind === "artifact") {
     const artifact = normalizedArtifactDetail();
-    $("#agentReviewWorkspaceTitle").textContent = artifact?.output_path || "Saved output review";
+    const detail = state.selectedArtifactDetail;
+    $("#agentReviewWorkspaceTitle").textContent = displayPath(artifact?.output_path) || "Saved output review";
     if (!artifact) {
       content.innerHTML = '<div class="agent-review-empty">Select a saved output to review.</div>';
       return;
     }
-    appendAgentReviewSection(summary, "Saved output", `${artifactKindLabel(artifact.artifact_kind)} · ${artifact.output_path}`);
-    appendAgentReviewSection(summary, "Created from", artifact.source_path || "Workspace R");
+    appendAgentReviewSection(summary, "Saved output", `${artifactKindLabel(artifact.artifact_kind)} · ${displayPath(artifact.output_path)}`);
+    appendAgentReviewSection(summary, "Created from", displayPath(artifact.source_path) || "Workspace R");
     appendAgentReviewSection(summary, "Source details", artifact.provenance_complete ? "Available" : "Incomplete");
     appendAgentReviewSection(summary, "Needs attention", artifact.incomplete_reason);
+    appendAgentReviewSection(summary, "File", detail?.file_available === false ? "Missing from its recorded location" : "Available at its recorded location");
+    appendAgentReviewSection(summary, "Details", detail?.detail_error);
+    const actions = document.createElement("div");
+    actions.className = "agent-review-actions";
+    if (artifact.run_id && state.runs.some((run) => run.run_id === artifact.run_id)) {
+      const run = document.createElement("button");
+      run.type = "button";
+      run.textContent = "Open producing run";
+      run.addEventListener("click", () => {
+        state.agentReviewRunId = artifact.run_id;
+        openAgentWorkSurface("run");
+      });
+      actions.append(run);
+    }
+    if (artifact.source_path && state.project.files.some((file) => file.path === artifact.source_path)) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = `Open ${displayPath(artifact.source_path)}`;
+      open.addEventListener("click", () => openDocument(artifact.source_path));
+      actions.append(open);
+    }
+    if (actions.childElementCount) summary.append(actions);
   } else {
     const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
     $("#agentReviewWorkspaceTitle").textContent = run ? humanRunTitle(run) : "Run review";
@@ -12092,7 +12267,7 @@ $$('[data-posture]').forEach((button) => button.addEventListener("click", () => 
 
 function switchAgentSurface(name) {
   state.agentSurface = name;
-  if (name === "direct" || name === "monitor") state.agentWorkSurface = "none";
+  if (["direct", "monitor", "outputs"].includes(name)) state.agentWorkSurface = "none";
   if (name === "review") state.agentWorkSurface = reviewWorkSurfaceKind();
   applyAgentSurface(name);
   syncAgentWorkSurfaceLayout();
@@ -12109,14 +12284,17 @@ function applyAgentSurface(name) {
   // Show/hide panels based on surface
   const isDirect = name === "direct";
   const isMonitor = name === "monitor";
+  const isOutputs = name === "outputs";
   const isReview = name === "review";
 
   $("#agentPanel").classList.toggle("hidden", !(isDirect || (isReview && state.posture === "agent")));
   $(".context-tabs").classList.toggle("hidden", !isDirect);
   $("#agentMonitorPanel").classList.toggle("hidden", !isMonitor);
+  $("#agentOutputsPanel").classList.toggle("hidden", !isOutputs);
   $("#agentReviewPanel").classList.toggle("hidden", !(isReview && state.posture !== "agent"));
 
   if (isMonitor) renderMonitorPanel();
+  if (isOutputs) renderAgentOutputs();
   if (isReview) {
     renderReviewPanel();
     if (state.posture === "agent") renderAgentReviewWorkspace();
@@ -12126,6 +12304,104 @@ function applyAgentSurface(name) {
 $$("[data-agent-surface]").forEach((button) => button.addEventListener("click", () => {
   switchAgentSurface(button.dataset.agentSurface);
 }));
+
+function agentOutputKey(kind, id) {
+  return `${kind}:${id || ""}`;
+}
+
+async function openAgentOutput(kind, id) {
+  if (kind === "plot") {
+    const plot = state.plots.find((item) => item.plot_id === id);
+    if (!plot) {
+      toast("This Plot is no longer available in the active project.", true);
+      renderAgentOutputs();
+      return;
+    }
+    state.selectedPlotId = id;
+    state.agentSelectedOutput = { kind, id };
+    openAgentWorkSurface("plot");
+    return;
+  }
+
+  const artifact = state.artifacts.find((item) => item.artifact_id === id);
+  if (!artifact) {
+    toast("This saved output is no longer available in the active project.", true);
+    renderAgentOutputs();
+    return;
+  }
+  state.selectedArtifactId = id;
+  state.agentSelectedOutput = { kind: "artifact", id };
+  try {
+    state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: id });
+  } catch (error) {
+    state.selectedArtifactDetail = { artifact, file_available: false, detail_error: String(error) };
+  }
+  openAgentWorkSurface("artifact");
+}
+
+function renderAgentOutputs() {
+  const list = $("#agentOutputsList");
+  if (!list) return;
+  list.replaceChildren();
+  const entries = [
+    ...state.plots.map((plot, index) => ({ kind: "plot", id: plot.plot_id, record: plot, title: `Plot ${index + 1}`, createdAt: plot.created_at })),
+    ...state.artifacts.map((artifact) => ({ kind: "artifact", id: artifact.artifact_id, record: artifact, title: pathFileName(artifact.output_path), createdAt: artifact.created_at })),
+  ].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+  $("#agentOutputCount").textContent = String(entries.length);
+
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "agent-output-empty";
+    empty.textContent = "No outputs yet. Plots and saved results produced in this project will appear here.";
+    list.append(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    const card = document.createElement("button");
+    card.type = "button";
+    const selected = agentOutputKey(entry.kind, entry.id) === agentOutputKey(state.agentSelectedOutput?.kind, state.agentSelectedOutput?.id);
+    card.className = `agent-output-card${selected ? " active" : ""}`;
+    card.setAttribute("aria-label", `Review ${entry.title}`);
+    card.setAttribute("aria-current", selected ? "true" : "false");
+
+    const preview = document.createElement("span");
+    preview.className = "agent-output-preview";
+    if (entry.kind === "plot") {
+      const source = plotImageSource(parseJsonObject(entry.record.payload_json));
+      if (source) {
+        const image = document.createElement("img");
+        image.src = source;
+        image.alt = "";
+        preview.append(image);
+      } else {
+        preview.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-image"></use></svg>';
+      }
+    } else {
+      preview.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-file-text"></use></svg>';
+    }
+
+    const body = document.createElement("span");
+    body.className = "agent-output-body";
+    const kind = document.createElement("span");
+    kind.className = "agent-output-kind";
+    kind.textContent = entry.kind === "plot" ? "Plot" : artifactKindLabel(entry.record.artifact_kind);
+    const title = document.createElement("strong");
+    title.textContent = entry.title;
+    const source = document.createElement("p");
+    source.textContent = entry.kind === "plot"
+      ? plotSourceLabel(entry.record)
+      : (entry.record.source_path ? `Created from ${displayPath(entry.record.source_path)}` : "Created from Workspace R");
+    const status = document.createElement("p");
+    status.textContent = entry.kind === "plot"
+      ? `${plotReviewState(entry.record)} · ${formatTimestamp(entry.createdAt)}`
+      : `${entry.record.provenance_complete ? "Source details captured" : "Source details incomplete"} · ${formatTimestamp(entry.createdAt)}`;
+    body.append(kind, title, source, status);
+    card.append(preview, body);
+    card.addEventListener("click", () => openAgentOutput(entry.kind, entry.id));
+    list.append(card);
+  }
+}
 
 function renderMonitorPanel() {
   const list = $("#monitorRunList");
@@ -12151,7 +12427,7 @@ function renderMonitorPanel() {
       const title = document.createElement("strong");
       title.textContent = humanRunTitle(run);
       const meta = document.createElement("small");
-      meta.textContent = [prettyOrigin(run.origin), run.source_path, runEvidenceLabel(run.run_id), formatTimestamp(run.started_at)].filter(Boolean).join(" · ");
+      meta.textContent = [prettyOrigin(run.origin), displayPath(run.source_path), runEvidenceLabel(run.run_id), formatTimestamp(run.started_at)].filter(Boolean).join(" · ");
       body.append(title, meta);
       item.append(marker, body, createStateChip(prettyStatus(run.status), run.status));
       item.setAttribute("aria-label", `Review ${humanRunTitle(run)}`);
@@ -12182,7 +12458,7 @@ function renderReviewPanel() {
     addReviewSection(content, "Status", prettyStatus(run.status));
     addReviewSection(content, "Started by", prettyOrigin(run.origin));
     addReviewSection(content, "Action", humanRunTitle(run));
-    if (run.source_path) addReviewSection(content, "Source", run.source_path);
+    if (run.source_path) addReviewSection(content, "Source", displayPath(run.source_path));
     return;
   }
 
@@ -12191,8 +12467,8 @@ function renderReviewPanel() {
     const a = normalizedArtifactDetail();
     $("#reviewTitle").textContent = a?.output_path ? pathFileName(a.output_path) : "Saved output";
     addReviewSection(content, "Kind", artifactKindLabel(a?.artifact_kind));
-    if (a?.output_path) addReviewSection(content, "Saved to", a.output_path);
-    if (a?.source_path) addReviewSection(content, "Created from", a.source_path);
+    if (a?.output_path) addReviewSection(content, "Saved to", displayPath(a.output_path));
+    if (a?.source_path) addReviewSection(content, "Created from", displayPath(a.source_path));
     addReviewSection(content, "Source details", a?.provenance_complete ? "Available" : "Incomplete");
     if (a?.incomplete_reason) addReviewSection(content, "Needs attention", a.incomplete_reason);
     return;
@@ -12975,6 +13251,7 @@ async function hydrateProject(response) {
   state.agentReviewRunError = null;
   state.selectedArtifactId = null;
   state.selectedArtifactDetail = null;
+  state.selectedPlotId = null;
   $("#artifactPanel").open = false;
   state.documents = {};
   state.closedDrafts = {};

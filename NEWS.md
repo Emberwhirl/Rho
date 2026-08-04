@@ -8,6 +8,15 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Agent-first now follows a complete Task, Runs, Outputs, and Review loop:
+  Plots and saved results are discoverable without switching to Human-first,
+  and selecting one opens a large review surface with human-readable source,
+  timing, availability, and producing-run actions. Act now instructs
+  tool-capable Agents to execute explicitly requested R work in the current
+  turn instead of merely offering code or asking whether to run it.
+- User-facing project, Run, Problem, Plot, saved-output, audit, and review paths
+  now remove Windows extended-path prefixes for display, while background Runs
+  use task labels instead of exposing internal Workspace R bridge expressions.
 - Plots now make the selected image the dominant review surface, place a
   numbered navigator beside it, and keep Saved outputs collapsed until opened.
   Plot and output rows now use plain-language source, timing, availability, and
