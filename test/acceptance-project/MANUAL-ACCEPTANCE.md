@@ -46,7 +46,12 @@ For every failed step, stop that feature path and record:
 
 Expected first view: the project name is `working-project`; Logs contains
 startup/runtime messages; Console is an empty Workspace R transcript with a
-prompt; Files shows `examples/`, `reports/`, and `.rho/skills/`.
+prompt; Files shows `examples/`, `reports/`, and `.rho/skills/`. Confirm folders
+have recognizable folder icons, stronger labels, stable chevrons, and visible
+hierarchy guides. Expand and collapse each level with mouse and keyboard at the
+normal window width and the narrowest usable width; confirm files stay aligned,
+long names truncate without overlap, and the active file and dirty dot remain
+clear.
 
 ## 1. Tour The Core Workbench In One File
 

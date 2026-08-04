@@ -570,6 +570,7 @@ body.agent-posture .top-actions { margin-left: auto; }
 }
 .tree-item:hover { background: #e8eded; }
 .tree-item.active { background: #dfe9e8; color: #173f3b; }
+.tree-item > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-icon { font-family: Georgia, serif; color: #28776f; font-weight: 700; }
 .file-icon.muted { color: #7d888d; }
 .file-icon.plot { font-family: inherit; color: #9d6920; }
@@ -728,22 +729,32 @@ body.agent-posture .top-actions { margin-left: auto; }
 .project-file-list { display: flex; flex-direction: column; gap: 1px; }
 .tree-directory { min-width: 0; }
 .tree-directory-label {
-  display: block;
+  display: grid;
+  grid-template-columns: 14px 17px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
   height: 29px;
-  padding: 6px 6px;
+  padding: 0 6px;
   overflow: hidden;
-  color: #374348;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-radius: 3px;
+  color: var(--text-primary);
   cursor: pointer;
+  list-style: none;
 }
 .tree-directory-label:hover { background: #e8eded; }
-.tree-directory-label::marker { color: var(--muted); }
+.tree-directory-label:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.tree-directory-label::-webkit-details-marker { display: none; }
+.tree-directory-chevron { width: 14px; height: 14px; color: var(--text-muted); transition: transform 120ms ease; }
+.tree-directory[open] > .tree-directory-label .tree-directory-chevron { transform: rotate(90deg); }
+.tree-directory-icon { width: 16px; height: 16px; color: #8a681f; }
+.tree-directory-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
 .tree-directory-children {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin-left: 14px;
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-strong);
   min-width: 0;
 }
 .empty-tree { padding: 12px 24px; color: var(--muted); font-size: 11px; }

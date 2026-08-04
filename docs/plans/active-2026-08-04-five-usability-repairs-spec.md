@@ -1,8 +1,7 @@
 # Five Workbench Usability Repairs
 
-Status: active; five bounded work packages authorized; UX-FIX1 implemented and
-UX-FIX2 implemented and automated/browser verified; installed-app acceptance
-open
+Status: active; five bounded work packages authorized; UX-FIX1 through UX-FIX3
+implemented and automated/browser verified; installed-app acceptance open
 
 Date: 2026-08-04
 Authorization: user reported five installed-app usability defects and requested
@@ -89,6 +88,16 @@ the implemented repair is recorded in `NEWS.md`.
 Acceptance: expanded/collapsed folders are visually distinct at desktop and
 narrow widths, keyboard focus remains visible, and no label/icon overlap occurs.
 
+Implementation evidence (2026-08-04): directory rows now use the shared icon
+sprite for a folder and stable chevron, stronger bounded labels, and nested
+hierarchy guides. File labels are explicitly single-line and ellipsized. Browser
+review verified expanded/collapsed chevron state, no overlap at desktop width,
+and no page or tree overflow at the narrowest 1100 px layout that retains the
+sidebar. Native summary focus styling and semantics remain in place. Focused and
+M2 hierarchy checks passed. Installed-app confirmation remains open. No
+application version bump was made because this is not yet a new distributed
+development candidate; the implemented repair is recorded in `NEWS.md`.
+
 ## UX-FIX4: Console Tab Focus
 
 - Selecting the Console dock tab focuses the visible Console input after the
@@ -154,6 +163,6 @@ For every package:
 | --- | --- | --- | --- |
 | UX-FIX1 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX2 | complete | passed 2026-08-04 | installed app open |
-| UX-FIX3 | not started | not run | open |
+| UX-FIX3 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX4 | not started | not run | open |
 | UX-FIX5 | not started | not run | open |

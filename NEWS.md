@@ -8,6 +8,8 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Project folders are now visually distinct from files through familiar folder
+  icons, stable disclosure chevrons, stronger labels, and hierarchy guides.
 - The editor now handles `Ctrl+S` on Windows and Linux and `Cmd+S` on macOS in
   Monaco, the basic editor, and the active document context without stealing
   the shortcut from dialogs or unrelated inputs.
