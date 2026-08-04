@@ -12846,8 +12846,7 @@ $$("[data-side-tab]").forEach((button) => button.addEventListener("click", () =>
 }));
 $$("[data-agent-mode]").forEach((button) => button.addEventListener("click", () => {
   state.agentMode = button.dataset.agentMode;
-  $$("[data-agent-mode]").forEach((value) => value.classList.toggle("active", value === button));
-  syncAgentModeControl();
+  syncAgentComposerState();
   $("#agentModeControl").removeAttribute("open");
 }));
 $("#actAutoApprove").addEventListener("change", (event) => {

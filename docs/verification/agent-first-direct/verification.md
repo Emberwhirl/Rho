@@ -1,6 +1,6 @@
 # Agent Entry And Direct Surface Verification
 
-Date: 2026-08-02
+Date: 2026-08-02; Act authorization defect repair verified 2026-08-04
 Contract: [`../../plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md`](../../plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md)
 Source state: uncommitted working tree; application version `0.4.0-dev.0`
 
@@ -16,7 +16,9 @@ Passed:
 The focused contract test covers the advanced mode disclosure, Act-only
 authorization contract, one primary `Ask Rho` entry, collapsed project skills,
 Agent-posture chrome, narrow breakpoint, task-button semantics, input focus,
-and deterministic preview scenario.
+and deterministic preview scenario. The 2026-08-04 regression assertion also
+requires mode selection to run complete composer-state synchronization and
+rejects the former label-only update path.
 
 ## Browser Evidence
 
@@ -31,6 +33,9 @@ At 1440x900, populated state:
 - Project Skills is collapsed by default;
 - Ask/Plan/Act disclosure opens, Act selection updates the effective mode, and
   the Act-session authorization remains visibly available after selection;
+- after the 2026-08-04 repair, the idle DeepSeek V4 Flash preview reported no
+  `disabled` attribute on that checkbox and a real click changed its checked
+  state to `true`;
 - Agent -> Human -> Agent switching preserved the exact composer text;
 - no browser warning or error was recorded.
 

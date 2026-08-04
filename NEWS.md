@@ -8,6 +8,8 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Selecting Act now immediately enables its session R-execution authorization
+  checkbox when the Agent is idle and the selected model supports tools.
 - Windows project roots passed to Workspace R now omit the internal `\\?\`
   filesystem prefix, so `getwd()` shows a normal drive or UNC path.
 - Supervised Git refresh and review commands now run without opening transient

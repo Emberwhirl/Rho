@@ -45,6 +45,16 @@ assert.match(css, /@media \(max-width: 960px\)[\s\S]*\.app-shell\.agent-first \.
 assert.match(js, /function syncAgentModeControl\(\)/);
 assert.match(js, /const label = prettyAgentMode\(state\.agentMode\)/);
 assert.match(js, /state\.agentMode !== "act"/);
+assert.match(
+  js,
+  /\$\$\("\[data-agent-mode\]"\)\.forEach\(\(button\) => button\.addEventListener\("click", \(\) => \{\s*state\.agentMode = button\.dataset\.agentMode;\s*syncAgentComposerState\(\);/,
+  "Changing Agent mode must resynchronize the Act authorization enabled state",
+);
+assert.doesNotMatch(
+  js,
+  /state\.agentMode = button\.dataset\.agentMode;\s*\$\$\("\[data-agent-mode\]"\)[\s\S]{0,240}syncAgentModeControl\(\)/,
+  "Mode selection must not update only the label while leaving authorization disabled",
+);
 assert.match(js, /document\.body\.classList\.toggle\("agent-posture", isAgent\)/);
 assert.match(js, /agentActivityExpanded:\s*new Set\(\)/);
 assert.match(js, /Show"\}\s*activity/);

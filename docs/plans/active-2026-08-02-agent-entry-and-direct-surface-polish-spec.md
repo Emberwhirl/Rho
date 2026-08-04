@@ -57,6 +57,7 @@ conversation does not read as the primary task-steering surface.
 | Busy | send/mode controls remain disabled according to existing policy; cancel remains visible |
 | Warning/unavailable | capability message remains visible without covering the input |
 | Act | advanced control visibly shows Act and reveals the session authorization checkbox |
+| Act authorization | after an idle, Act-capable model enters Act, the revealed session authorization checkbox is enabled and can be checked; Ask/Plan, busy, and unsupported-model states keep it unavailable |
 | Posture switch | active document, selected turn, pending approvals, and composer text remain intact |
 | Narrow window | no incoherent overlap; task rail hides and primary surfaces remain usable |
 | Keyboard/accessibility | Enter submits, Shift+Enter inserts a line; disclosure, mode buttons, and textarea are focusable and labelled |
@@ -118,6 +119,15 @@ Implemented on 2026-08-02:
   the Git-conflict indicator there;
 - the deterministic `agent-first-direct` browser scenario covers empty and
   populated states.
+
+Defect repair authorized by the user on 2026-08-04:
+
+- mode selection must run the complete composer-state synchronization, rather
+  than updating only the visible mode label;
+- regression coverage must prove that selecting Act recomputes the session
+  authorization control from the effective mode, model capability, and busy
+  state. This is an R1 frontend-state correction and does not change execution
+  authority or approval semantics.
 
 Automated and browser evidence is recorded in
 [`../verification/agent-first-direct/verification.md`](../verification/agent-first-direct/verification.md).
