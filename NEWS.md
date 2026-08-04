@@ -8,6 +8,8 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Selecting Console now places the caret in its enabled input automatically, so
+  typing can begin immediately after a user or programmatic tab switch.
 - Project folders are now visually distinct from files through familiar folder
   icons, stable disclosure chevrons, stronger labels, and hierarchy guides.
 - The editor now handles `Ctrl+S` on Windows and Linux and `Cmd+S` on macOS in

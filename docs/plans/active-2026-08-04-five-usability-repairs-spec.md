@@ -1,6 +1,6 @@
 # Five Workbench Usability Repairs
 
-Status: active; five bounded work packages authorized; UX-FIX1 through UX-FIX3
+Status: active; five bounded work packages authorized; UX-FIX1 through UX-FIX4
 implemented and automated/browser verified; installed-app acceptance open
 
 Date: 2026-08-04
@@ -109,6 +109,17 @@ development candidate; the implemented repair is recorded in `NEWS.md`.
 Acceptance: clicking Console from every sibling tab leaves the caret in the
 Console input and typing immediately edits the expression.
 
+Implementation evidence (2026-08-04): `switchDockTab("console")` now owns the
+post-layout focus rule and checks both visibility and enabled state. The earlier
+Problems-specific duplicate focus was removed. Browser interaction verified the
+initial programmatic Console selection and switches from Logs, Plots, and
+Problems all leave `consoleInput` focused. The deterministic browser mock does
+not retain a reliable busy window, so enabled-after-execution behavior remains
+an installed-app manual probe while the disabled guard is source-checked.
+Focused Console and usability checks passed. No application version bump was
+made because this is not yet a new distributed development candidate; the
+implemented repair is recorded in `NEWS.md`.
+
 ## UX-FIX5: Human-Reviewable Agent Runs And Review
 
 Agent-first Runs and Review must help a human answer: what was requested, what
@@ -164,5 +175,5 @@ For every package:
 | UX-FIX1 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX2 | complete | passed 2026-08-04 | installed app open |
 | UX-FIX3 | complete | passed 2026-08-04 | installed app open |
-| UX-FIX4 | not started | not run | open |
+| UX-FIX4 | complete | passed 2026-08-04 | installed busy-state probe open |
 | UX-FIX5 | not started | not run | open |

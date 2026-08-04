@@ -38,4 +38,8 @@ assert.match(css, /tree-directory\[open\][^\n]+tree-directory-chevron/);
 assert.match(css, /\.tree-directory-children[^}]+border-left: 1px solid var\(--border-strong\)/s);
 assert.match(css, /\.tree-item > span:nth-child\(2\)[^}]+text-overflow: ellipsis[^}]+white-space: nowrap/);
 
+assert.match(js, /function switchDockTab\(name\)[\s\S]+if \(name === "console"\)/);
+assert.match(js, /requestAnimationFrame\(\(\) => \{[\s\S]+!input\.disabled[\s\S]+consolePanel[\s\S]+input\.focus\(\)/);
+assert.doesNotMatch(js, /switchDockTab\("console"\);\s*requestAnimationFrame\(\(\) => \$\("#consoleInput"\)\.focus\(\)\)/);
+
 console.log("Usability repair UI contract checks passed.");

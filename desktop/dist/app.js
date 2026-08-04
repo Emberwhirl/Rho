@@ -6517,7 +6517,6 @@ async function openProblemSource(problem) {
   const sourceKind = problemSourceKind(problem);
   if (sourceKind === "console") {
     switchDockTab("console");
-    requestAnimationFrame(() => $("#consoleInput").focus());
     return;
   }
   if (sourceKind !== "file") return;
@@ -11542,6 +11541,12 @@ function switchDockTab(name) {
     button.setAttribute("aria-selected", String(selected));
   });
   ["console", "logs", "plots", "problems"].forEach((tab) => $(`#${tab}Panel`).classList.toggle("hidden", tab !== name));
+  if (name === "console") {
+    requestAnimationFrame(() => {
+      const input = $("#consoleInput");
+      if (!input.disabled && !$("#consolePanel").classList.contains("hidden")) input.focus();
+    });
+  }
 }
 
 function switchContextTab(name) {

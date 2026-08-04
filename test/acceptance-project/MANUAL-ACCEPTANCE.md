@@ -82,7 +82,10 @@ Open `examples/rho-workbench-tour.R` in Human-first Code layout.
    message.
 6. Switch among Console, Logs, Plots, Problems, Environment, and Runs. Confirm
    each keeps its state and that status markers use text or icons in addition
-   to color.
+   to color. From each execution sibling tab, click Console and type a short
+   expression immediately without another click; confirm the caret is already
+   in the Console input. Repeat while R is busy and confirm a disabled input is
+   not focused until the execution finishes and the input is enabled again.
 
 This first pass gives a compact experience of the editor, scoped Run action,
 Console/Logs separation, Environment, Data Viewer, Plots, Runs, Problems, and
