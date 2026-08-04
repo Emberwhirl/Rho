@@ -135,9 +135,8 @@ Installed Tauri acceptance and 100%/125% Windows display-scale inspection are
 manual gates and remain open unless explicitly performed against a named
 candidate. Browser screenshots are review evidence, not installed acceptance.
 The runnable candidate steps and evidence fields are consolidated in
-`docs/acceptance/manual-acceptance-checklist.md` (G20) and
-`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A); their status is
-NOT RUN.
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 8A) and its candidate
+result template; their status is NOT RUN.
 
 ## Version, NEWS, And Release
 

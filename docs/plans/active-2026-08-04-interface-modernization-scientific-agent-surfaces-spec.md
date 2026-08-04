@@ -134,10 +134,9 @@ Browser/mock gate:
 
 Installed Tauri and Windows 100%/125% display-scale review remain manual gates
 against a named candidate.
-Use the consolidated candidate record in
-`docs/acceptance/manual-acceptance-checklist.md` (G12, G20) and the concrete
-examples in `test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A). These
-gates are currently NOT RUN.
+Use the consolidated candidate record and concrete examples in
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (sections 3, 6, and 8A) and its
+candidate result template. These gates are currently NOT RUN.
 
 ## Version, NEWS, And Release
 

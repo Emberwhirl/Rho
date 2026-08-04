@@ -1,6 +1,6 @@
 # Example-driven Manual Acceptance Fixture Verification
 
-Date: 2026-08-02
+Date: 2026-08-04
 Status: fixture automation passed; installed-app manual acceptance not run
 
 ## Scope
@@ -31,10 +31,22 @@ Rho candidate passed the UI checklist.
 - the project-skill manifest parsed as JSON.
 - the generator rejects an existing output root instead of overwriting it.
 
+The 2026-08-04 consolidation rerun also verified:
+
+- the primary generated `working-project` contains the self-contained manual
+  guide, candidate result template, and `examples/rho-workbench-tour.R`;
+- the tour script completed with `RHO_TOUR_ROWS=24` and
+  `RHO_TOUR_MISSING_NOTES=8`, plus the intended warning;
+- the large-project fixture contains exactly 2,100 `.R` files;
+- the conflict fixture reports `UU examples/git-review-demo.txt`;
+- the oversized fixture is exactly 9 MiB;
+- the temporary verification fixture was removed after validation.
+
 ## Not Run
 
 - R Markdown rendering was not run because `rmarkdown` is unavailable in the
   current command-line R environment.
 - Quarto rendering, Agent/model flows, installed-app UI, project persistence,
   browser-to-Tauri Git mutation UI, and candidate installation remain manual
-  gates in `docs/acceptance/manual-acceptance-checklist.md`.
+  gates in `test/acceptance-project/MANUAL-ACCEPTANCE.md`, with results recorded
+  in `test/acceptance-project/acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`.

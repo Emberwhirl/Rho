@@ -5,9 +5,8 @@ Status: active documentation coordination record
 Review date: 2026-08-04
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
-Manual acceptance ownership: the candidate-level execution record is
-`docs/acceptance/manual-acceptance-checklist.md`; the runnable example workflow
-and evidence template are `test/acceptance-project/MANUAL-ACCEPTANCE.md` and
+Manual acceptance ownership: the runnable example workflow and candidate-level
+evidence template are `test/acceptance-project/MANUAL-ACCEPTANCE.md` and
 `test/acceptance-project/acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`.
 These records are queued and currently NOT RUN; they do not replace exact
 release-candidate or package-specific acceptance gates.

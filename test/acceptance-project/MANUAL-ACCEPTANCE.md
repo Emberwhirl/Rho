@@ -3,24 +3,44 @@
 Status: queued for user execution against an exact installed candidate; all
 manual gates below are currently NOT RUN
 
-This guide turns the full acceptance checklist into one realistic scientific
-workflow. Run it against an exact installed candidate and record evidence in
-`acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`. Fixture preparation does not
-pass a gate.
+This is the single executable source of truth for Rho manual review. It turns
+the release, scientific-workflow, Agent-first, editor, environment, evidence,
+Git, recovery, and interface gates into one realistic project walkthrough.
+Run it against one exact installed candidate and record every result in
+`acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`. Fixture preparation and
+browser previews do not pass an installed-app gate.
+
+Use `working-project` for the whole normal workflow. Open the generated
+`conflict-project`, Unicode/space project, large project, and oversized-file
+project only when this guide explicitly asks for those boundary conditions.
+
+For every failed step, stop that feature path and record:
+
+- the first failing action and expected result;
+- a screenshot or copied diagnostic path;
+- whether project files, R state, or durable records changed;
+- whether Retry, restart, rejection, or reopening recovered truthfully.
 
 ## 0. Prepare The Candidate And Projects
 
-1. Confirm the version, installer path, and SHA-256 in
-   `../../docs/acceptance/manual-acceptance-checklist.md` match the installer.
-2. Install and launch that candidate. Record SmartScreen, install-path,
-   WebView2, Ark, startup, and recovery observations under G0-G1.
-3. From this directory, generate isolated projects:
+1. Duplicate `acceptance-results/CANDIDATE-RESULT-TEMPLATE.md` for this run and
+   fill in version, source commit, installer path, SHA-256, Windows/R versions,
+   display scaling, tester, date, and distribution intent. Do not reuse a
+   result record for a rebuilt installer.
+2. Prefer a clean Windows user profile without Rust, Node, Rtools, or the Rho
+   source tree. Install the exact NSIS candidate. Record SmartScreen wording,
+   install path, Start menu shortcut, WebView2 availability, and whether the
+   bundled Ark runtime is present.
+3. Launch Rho with R 4.4 or later. Confirm the shell appears before R finishes
+   loading, Workspace R reaches `R idle`, Logs contains startup/runtime rows,
+   and Console is an empty continuous R transcript with a visible prompt.
+4. From this directory, generate isolated projects:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools\prepare-manual-fixtures.ps1
    ```
 
-4. Open `../generated-manual-fixtures/working-project` in Rho. This is an
+5. Open `../generated-manual-fixtures/working-project` in Rho. This is an
    independent Git repository, so edits and commits cannot change the Rho
    source repository.
 
@@ -28,7 +48,33 @@ Expected first view: the project name is `working-project`; Logs contains
 startup/runtime messages; Console is an empty Workspace R transcript with a
 prompt; Files shows `examples/`, `reports/`, and `.rho/skills/`.
 
-## 1. Run A Real Single-cell QC Workflow
+## 1. Tour The Core Workbench In One File
+
+Open `examples/rho-workbench-tour.R` in Human-first Code layout.
+
+1. Run the complete file. Expected Console markers are `RHO_TOUR_ROWS=24` and
+   `RHO_TOUR_MISSING_NOTES=8`; the submitted code and output remain in the same
+   Console transcript while the deliberate warning also creates truthful
+   warning state without replacing structured Runs/Problems.
+2. Confirm `rho_tour` and `rho_tour_summary` appear in Environment. Open
+   `rho_tour` in Data Viewer and inspect factor, numeric, logical, date, text,
+   and missing cells. Search `manual review`, sort `score`, change page size,
+   use Tab navigation, and verify visible-page export reflects the active query.
+3. Open Plots Session and History. Confirm the boxplot is visible, reopen it
+   from History, and inspect source provenance back to this file.
+4. Inspect the successful Run and its timing/source/revision. Select and run
+   only the final commented `stop(...)` line after removing its comment marker;
+   confirm one source-linked Problem and failed Run, then use Go to source and
+   Run again.
+5. Switch among Console, Logs, Plots, Problems, Environment, and Runs. Confirm
+   each keeps its state and that status markers use text or icons in addition
+   to color.
+
+This first pass gives a compact experience of the editor, scoped Run action,
+Console/Logs separation, Environment, Data Viewer, Plots, Runs, Problems, and
+source navigation before the deeper workflow below.
+
+## 2. Run A Real Single-cell QC Workflow
 
 Open and run these files in order:
 
@@ -53,10 +99,11 @@ acceptance, still open and run the individual files below.
    - Use Plots Session/History, reopen the first plot, and inspect source
      provenance back to this script.
 
-This flow exercises G2-G4, G7-G9, and G14 with actual project output rather
-than placeholder commands.
+This flow exercises Console, files, editor execution, Environment, Evidence,
+Data Viewer, Plots, Runs, and Problems with actual project output rather than
+placeholder commands.
 
-## 2. Diagnose And Correct A QC Failure With Agent
+## 3. Diagnose And Correct A QC Failure With Agent
 
 Run `examples/single-cell-qc/04-fix-me.R`. It deliberately refers to a missing
 column and should create a source-linked Problem.
@@ -81,15 +128,16 @@ column and should create a source-linked Problem.
    mitochondrial review (5 cells in the deterministic fixture). Inspect the
    final answer once and expand Show activity to review tool events.
 
-This covers G10, G12, G14, the reviewable-edit contract, rejection, acceptance,
-and rerun recovery. Valid model credentials and `aisdk` are prerequisites;
+This covers Agent modes, Agent-first work surfaces, Problems, the
+reviewable-edit contract, rejection, acceptance, and rerun recovery. Valid
+model credentials and `aisdk` are prerequisites;
 record an explicit skip if they are unavailable.
 
 Open Tools > Manage LLMs during this scenario. Inspect provider/model status,
 open `.Renviron`, refresh credentials, test the selected connection, close the
-dialog, and verify the updated availability without restarting Rho (G11).
+dialog, and verify the updated availability without restarting Rho.
 
-## 3. Experience Editor Intelligence
+## 4. Experience Editor Intelligence
 
 Open `examples/editor-intelligence.R`:
 
@@ -167,10 +215,10 @@ Open `examples/editor-intelligence.R`:
     proposal is rejected without overwriting the intervening edit.
 
 Also run selected lines, the current line, and the complete file to verify that
-the visible Run action matches its scope. These examples cover G3 and the
-available WS2/WS9 editor capabilities.
+the visible Run action matches its scope. These examples cover the available
+editor intelligence, reviewed-edit, and diagnostic capabilities.
 
-## 4. Navigate Chunks And Render Documents
+## 5. Navigate Chunks And Render Documents
 
 1. Open `reports/cell-qc-report.Rmd`; inspect its four labelled chunks, run one
    chunk, then Render. Confirm an HTML result and render run are visible.
@@ -180,10 +228,10 @@ available WS2/WS9 editor capabilities.
 4. Follow any render diagnostic back to source and inspect Plots/Artifacts,
    Runs, and Audit after completion.
 
-This covers G6, G9, G13, and the render portion of G14. Record missing external
-R Markdown or Quarto prerequisites as skips rather than passes.
+This covers Chunks, Render, Artifacts, Audit, Runs, and render Problems. Record
+missing external R Markdown or Quarto prerequisites as skips rather than passes.
 
-## 5. Inspect Environment, Evidence, Runs, And Audit
+## 6. Inspect Environment, Evidence, Runs, And Audit
 
 With the QC workflow still loaded:
 
@@ -195,7 +243,7 @@ With the QC workflow still loaded:
 4. Open Audit with project scope, then inspect run, snapshot, problem, and
    artifact categories. Change to a run or artifact scope when available.
 
-### 5A. Review Real Claims Against Evidence
+### 6A. Review Real Claims Against Evidence
 
 Open `reports/claim-review-demo.qmd`. Keep the line numbers visible, run both R
 chunks, and Render the document so the project contains a real render-output
@@ -237,11 +285,11 @@ shows foreign-project content, or mutates a file/Artifact/Evidence entry while
 reviewing. Repeat the first source claim in the generated Unicode/space project
 and verify neither project can list, open, delete, or reuse the other's claim.
 
-This is the representative reproducibility check for G7, G13, and G14: the QC
-result must be understandable from files, environment evidence, runs, and
-artifacts without relying on Agent chat alone.
+This is the representative reproducibility check: the QC result must be
+understandable from files, environment evidence, runs, and artifacts without
+relying on Agent chat alone.
 
-## 6. Review And Commit Selected Git Changes
+## 7. Review And Commit Selected Git Changes
 
 Stay in the generated `working-project` repository.
 
@@ -259,10 +307,10 @@ Stay in the generated `working-project` repository.
    Confirm the conflict banner names `examples/git-review-demo.txt`; exercise
    Ours/Theirs or Mark Resolved only after inspecting the file.
 
-Do not run this scenario in the Rho source repository. This covers G5 and the
-WS4 reviewable mutation flow, including rejection and destructive confirmation.
+Do not run this scenario in the Rho source repository. This covers the complete
+reviewable Git mutation flow, including rejection and destructive confirmation.
 
-## 7. Verify Persistence, Switching, And Boundaries
+## 8. Verify Persistence, Switching, And Boundaries
 
 1. Leave an unsaved comment in the editor, resize all panel separators, switch
    Human/Agent, and leave text in Ask Rho. Restart Rho and verify project,
@@ -270,9 +318,9 @@ WS4 reviewable mutation flow, including rejection and destructive confirmation.
 2. Switch to the generated Unicode/space project at
    `../generated-manual-fixtures/路径 含 空格/acceptance-project`, run the QC
    generator, then switch back and verify project isolation.
-3. Open `large-project-2100` and confirm Files applies its documented bound and
-   warning. Open `oversized-file-project/over-8MiB.txt` and confirm a truthful
-   refusal.
+3. Open `large-project-2100` with its 2,100 `.R` files and confirm Files applies
+   its documented bound and warning. Open the 9 MiB file
+   `oversized-file-project/over-8MiB.txt` and confirm a truthful refusal.
 4. At 900 x 700 and 1024 x 680, verify no overlap or page-level horizontal
    scrolling. At 1920 x 1080, verify the work surface remains primary.
 5. In Console run `for (i in 1:500) print(paste("line", i))` and verify the
@@ -283,10 +331,11 @@ WS4 reviewable mutation flow, including rejection and destructive confirmation.
    toasts, hover/active states, and Code/Analyze/Agent workspace switching while
    completing the scenarios above.
 
-This covers G4, G12, G15-G17, and G19. Project switching must not mix files,
-runs, Evidence, Agent state, or Workspace R working directories.
+This covers project/files, Agent-first, layout/persistence, modern interaction,
+and boundary behavior. Project switching must not mix files, runs, Evidence,
+Agent state, or Workspace R working directories.
 
-## 7A. Verify The Current Modernized Surfaces
+## 8A. Verify The Current Modernized Surfaces
 
 Run these checks against the same installed candidate after the workflow above;
 the preview URLs are references for the expected states, not acceptance proof.
@@ -315,13 +364,13 @@ the preview URLs are references for the expected states, not acceptance proof.
    level horizontal scroll with a screenshot.
 
 These steps cover the installed gates for M1-M3, Console/Logs, UX4-AWS1, and
-the state surfaces in G20. The deterministic browser references are:
+the modern state surfaces. The deterministic browser references are:
 `?preview=interface-shell`, `?preview=console-logs`, and
 `?preview=agent-first-direct&state=file|run|artifact|audit|audit-failure`.
 
-## 7B. Focused Scientific And Developer Checks
+## 8B. Focused Scientific And Developer Checks
 
-Complete the applicable items in G21 using the same generated projects:
+Complete these focused checks using the same generated projects:
 
 1. Search, sort, paginate, and inspect missing/type values in Data Viewer;
    export only the visible page and confirm the result belongs to the active
@@ -335,14 +384,50 @@ Complete the applicable items in G21 using the same generated projects:
 4. Exercise completion, hover/Local Help, an installed example, a bounded
    rename or extract proposal, and a formatting preview. Make one stale or
    parse-error case fail closed without changing the file.
-5. Complete the claim-review examples in section 5A and the Git flow in
-   section 6; these are the manual evidence for EW-CR2 and WS4.
+5. Complete the claim-review examples in section 6A and the Git flow in
+   section 7; these are the manual evidence for EW-CR2 and WS4.
 
-## 8. Record The Result
+## 9. Exercise Candidate Recovery And Uninstall
 
-Use `../../docs/acceptance/manual-acceptance-checklist.md` as the gate-level
-source of truth. Record pass, fail, or justified skip for every applicable
-item, plus screenshots/log paths and the first failing step. Keep these facts
+Run these last because several steps deliberately break prerequisites or stop
+the installed application. Use a disposable Windows profile or restore every
+changed PATH/package setting immediately after its step.
+
+1. Start a long Console task such as
+   `for (i in 1:120) { Sys.sleep(0.25); cat(i, "\n") }`, interrupt it, and
+   confirm the durable Run becomes `interrupted`, the prompt recovers, and a
+   subsequent `1 + 1` succeeds.
+2. Trigger a Workspace R error, restart Workspace R, and confirm the project,
+   open documents, Runs, Problems, Evidence, Artifacts, audit records, and
+   Agent draft remain available with truthful new-session state.
+3. Create an Agent approval, then change the relevant project/document
+   revision before approving. Confirm stale approval is rejected and nothing
+   executes or changes. While one Agent turn runs, start another and confirm
+   the single-active-turn rule is explicit.
+4. Select a chat-only model. Confirm Ask and Plan remain available while Act is
+   disabled with an exact reason. Temporarily make `aisdk` unavailable using
+   the candidate's documented test setup; confirm Agent reports Unavailable,
+   Workspace R remains usable, and Retry Agent recovers after restoration
+   without restarting Rho.
+5. Modify an `.Rmd` without saving and choose Render. Confirm rendering is
+   blocked until Save. If Quarto is unavailable, confirm the missing capability
+   is a structured Problem rather than a silent or generic failure.
+6. In a separate recovery pass, launch with no discoverable R and with R 4.3.
+   Confirm the recovery view stays open, distinguishes missing/unsupported R,
+   supports Retry and native Rscript selection, and does not show a blank app.
+7. Use the repository's documented fault-injection setup to make the base R
+   probe exit non-zero with empty stderr. Confirm copied diagnostics retain the
+   exit code, stdout, and elapsed time. Mark this step skipped with reason when
+   the exact candidate has no supported deterministic injection path.
+8. Close Rho, uninstall the exact candidate, and verify application/runtime
+   files are removed. Record separately whether project files and Rho session
+   data are retained or removed. Reinstall only if another review is required.
+
+## 10. Record The Result
+
+Use `acceptance-results/CANDIDATE-RESULT-TEMPLATE.md` as the gate-level source
+of truth. Record pass, fail, or justified skip for every applicable phase,
+plus screenshots/log paths and the first failing step. Keep these facts
 separate:
 
 - browser or automated verification;
@@ -353,3 +438,20 @@ separate:
 
 The separate affected cross-package suite rerun is automated evidence and is
 not replaced by this guide.
+
+## Coverage Index
+
+| Review scope | Primary guide section |
+| --- | --- |
+| Exact installer, SmartScreen, startup, Ark/WebView2 | 0 |
+| Core shell, editor, Console/Logs, Data Viewer, Plot, Run, Problem | 1 |
+| Representative QC and reproducibility workflow | 2, 5, 6 |
+| Agent Ask/Plan/Act, approval, file proposal, activity, model management | 3, 8A, 9 |
+| Completion, Help/examples, references, refactor, diagnostics, formatting | 4, 8B |
+| Chunks, R Markdown/Quarto, cancellation/restart, Artifact linkage | 5, 8B, 9 |
+| Environment inventory/source/mutation review and Evidence | 6, 8B |
+| Claims, Audit, source/Artifact recovery, project isolation | 6A, 8, 8A |
+| Git hunk/file review, rejection, restore, commit, conflict | 7 |
+| Persistence, project switching, Unicode, large/oversized boundaries | 8 |
+| M1-M3 hierarchy, state surfaces, keyboard, 100%/125% scaling | 8A |
+| Interrupt, restart, stale approval, missing prerequisites, uninstall | 9 |

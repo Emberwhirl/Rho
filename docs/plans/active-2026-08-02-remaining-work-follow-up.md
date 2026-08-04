@@ -232,16 +232,35 @@ the current count to **8 open / 41 completed**.
 ## Follow-up Order
 
 1. Keep the consolidated manual acceptance suite queued in
-   `test/acceptance-project/MANUAL-ACCEPTANCE.md` and
-   `docs/acceptance/manual-acceptance-checklist.md` until the user runs it
-   against an exact candidate; separately record the distribution decision and
-   affected-suite rerun. The current suite includes the original six P1 checks,
+   `test/acceptance-project/MANUAL-ACCEPTANCE.md` and record it with
+   `test/acceptance-project/acceptance-results/CANDIDATE-RESULT-TEMPLATE.md`
+   until the user runs it against an exact candidate. These files under
+   `test/` are the executable source of truth; `docs/acceptance/` is only a
+   project-level index. Separately record the distribution decision and
+   affected-suite rerun. The suite includes the original P0/P1 checks,
    Agent-first/Console/Logs, M1-M3 display-scale review, and focused installed
    checks for the completed scientific/developer packages.
 2. Run the affected-suite acceptance item against the chosen exact candidate;
    do not substitute the package-level matrix for candidate evidence.
 3. Reconcile this count whenever an owning acceptance gate closes or
    its evidence gate closes.
+
+## 2026-08-04 Manual Review Consolidation
+
+The executable review is now self-contained under `test/acceptance-project/`.
+One generated `working-project` owns the normal end-to-end experience; separate
+generated projects are retained only for conflict, Unicode/space, 2,100-file,
+and 9 MiB boundary cases. The guide now includes release P0 recovery/uninstall,
+the current Agent-first and Console/Logs presentation, M1-M3 display-scale and
+keyboard review, and focused installed checks for completed scientific and
+developer packages. A deterministic workbench-tour script and a phase-based
+candidate evidence template were added.
+
+This is a D1/R0 acceptance-fixture/documentation correction. It changes no
+product behavior, schema, command, authority, application/R package version,
+or `NEWS.md`. Fixture automation and the new R tour passed; installed-app and
+human acceptance remain NOT RUN, so the open count and release decision do not
+change.
 
 ## Longer-term Deferred Directions
 

@@ -1,9 +1,12 @@
 # Rho Acceptance Test Project
 
-An example-driven R project for manual acceptance and hands-on evaluation of
-the Rho workbench. It includes a deterministic single-cell QC workflow, an
-intentional correction exercise, editor/Git/claim review examples, rendered reports,
-and the original compact `iris` smoke workflow.
+The self-contained manual acceptance and hands-on evaluation project for Rho.
+The generated `working-project` is the one primary project for the complete
+normal workflow: install/startup, core workbench tour, deterministic single-cell
+QC, Agent correction, editor intelligence, rendering, Environment, Evidence,
+Audit, Claims, Git, persistence, and modern interface review. Separate generated
+projects exist only for conflict, Unicode/space, large-project, and oversized
+file boundary conditions.
 
 ## Structure
 
@@ -14,6 +17,7 @@ acceptance-project/
 ├── tools/                     # Edge-case fixture generator
 ├── examples/
 │   ├── single-cell-qc/         # Generate, analyze, plot, and repair QC workflow
+│   ├── rho-workbench-tour.R    # One-file Console/Data/Plot/Run/Problem tour
 │   ├── editor-intelligence.R   # Completion, Help, references, diagnostics
 │   └── git-review-demo.txt     # Two-hunk stage/restore exercise
 ├── rho-acceptance.Rproj       # R project file
@@ -38,37 +42,50 @@ acceptance-project/
 
 ## Quick Start (in Rho)
 
-1. Read [`MANUAL-ACCEPTANCE.md`](MANUAL-ACCEPTANCE.md).
-2. Run `tools/prepare-manual-fixtures.ps1` and open the generated independent
+1. Duplicate and fill
+   [`CANDIDATE-RESULT-TEMPLATE.md`](acceptance-results/CANDIDATE-RESULT-TEMPLATE.md).
+2. Read [`MANUAL-ACCEPTANCE.md`](MANUAL-ACCEPTANCE.md); it is the executable
+   source of truth for all manual review.
+3. Run `tools/prepare-manual-fixtures.ps1` and open the generated independent
    `working-project` in Rho.
-3. Run `examples/single-cell-qc/01-generate-qc-data.R`, then `02-analyze-qc.R`,
+4. Start with `examples/rho-workbench-tour.R`, then run
+   `examples/single-cell-qc/01-generate-qc-data.R`, `02-analyze-qc.R`,
    `03-visualize-qc.R`, and the deliberate failure in `04-fix-me.R`.
-4. Continue through Agent correction, editor intelligence, render, Evidence,
+5. Continue through Agent correction, editor intelligence, render, Evidence,
    Audit, Git, persistence, switching, and boundary scenarios in the guide.
 
-## Gate Coverage
+## Example Coverage
 
-| Script / File | Gates Verified |
+| Script / File | Features Reviewed |
 |---------------|----------------|
-| `examples/single-cell-qc/` | G2-G4, G7-G10, G13-G14, reproducibility workflow |
-| `examples/editor-intelligence.R`, `examples/editor-refactor-use.R` | G3, WS2 completion/installed Help/example/reference/refactor/Agent Help context, WS9 diagnostics |
-| `examples/git-review-demo.txt` | G5 hunk stage/unstage, restore, commit |
-| `reports/cell-qc-report.Rmd` | G6, G9, G13-G14, render provenance |
+| `examples/rho-workbench-tour.R` | Console/Logs, Environment, Data Viewer types/missing/query/export, Plot, Run, warning, source Problem |
+| `examples/single-cell-qc/` | Scientific files, Console, Viewer, Plots, Runs, Problems, Agent correction, reproducibility |
+| `examples/editor-intelligence.R`, `examples/editor-refactor-use.R` | Completion, installed Help/example, references, refactor, Agent Help context, diagnostics |
+| `examples/git-review-demo.txt` | Git hunk stage/unstage, restore, commit |
+| `reports/cell-qc-report.Rmd` | Chunks, render, Artifact provenance, Runs, Audit |
 | `reports/claim-review-demo.qmd` | EW-CR2 source/Artifact anchors, Evidence links, review status and recovery |
-| `01-load-explore.R` | G2 (Console), G3 (Editor), G8 (Data Viewer), G14 (Runs) |
-| `02-modeling.R` | G3 (Editor), G14 (Problems — intentional error) |
-| `03-visualize.R` | G2 (Console), G3 (Editor), G9 (Plots) |
-| `iris-analysis.Rmd` | G3 (Editor), G6 (Chunks), G9 (Render) |
-| `iris-summary.qmd` | G3 (Editor), G9 (Quarto Render) |
-| Project root | G4 (Files), G5 (Git), G7 (Evidence), G15 (Layout), G16 (Switching) |
-| `.rho/skills/` | G10 (Agent), G12 (Agent-First) |
+| `01-load-explore.R` | Console, Editor, Data Viewer, Runs |
+| `02-modeling.R` | Editor and source-linked Problems |
+| `03-visualize.R` | Console, Editor, Plots and provenance |
+| `iris-analysis.Rmd` | Editor, Chunks, R Markdown Render |
+| `iris-summary.qmd` | Editor and Quarto Render |
+| Project root | Files, Git, Evidence, layout, persistence and project switching |
+| `.rho/skills/` | Agent project skills and Agent-first |
 
-## Full Acceptance Checklist
+## Manual Review Ownership
 
-Start with [`MANUAL-ACCEPTANCE.md`](MANUAL-ACCEPTANCE.md). It links the full
-candidate checklist, explains which checks use this project, and prepares the
-Unicode, spaces, large-project, and oversized-file fixtures without tracking
-thousands of generated files in Git.
+Everything required for manual execution and evidence is under this directory:
+
+- [`MANUAL-ACCEPTANCE.md`](MANUAL-ACCEPTANCE.md) is the detailed run order,
+  expected-result guide, recovery sequence, and complete coverage index.
+- [`CANDIDATE-RESULT-TEMPLATE.md`](acceptance-results/CANDIDATE-RESULT-TEMPLATE.md)
+  is the per-candidate record.
+- `tools/prepare-manual-fixtures.ps1` creates the primary independent Git
+  project plus the four boundary projects without tracking generated output in
+  the Rho repository.
+
+Project-level documents under `docs/` may point here for lifecycle status, but
+they are not required while executing the review.
 
 ## Notes
 

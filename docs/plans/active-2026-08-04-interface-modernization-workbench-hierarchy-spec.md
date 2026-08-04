@@ -139,10 +139,9 @@ Browser/mock gate:
 Installed Tauri review and physical Windows 100%/125% display-scale inspection
 remain manual gates against a named candidate. Browser evidence does not close
 those gates.
-The consolidated execution record is
-`docs/acceptance/manual-acceptance-checklist.md` (G20) with the example-driven
-steps in `test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 7A). Status is
-NOT RUN until exact-candidate evidence is recorded.
+The consolidated execution record and example-driven steps are in
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` (section 8A) and its candidate
+result template. Status is NOT RUN until exact-candidate evidence is recorded.
 
 ## Version, NEWS, And Release
 
