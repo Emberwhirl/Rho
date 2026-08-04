@@ -52,21 +52,26 @@ prompt; Files shows `examples/`, `reports/`, and `.rho/skills/`.
 
 Open `examples/rho-workbench-tour.R` in Human-first Code layout.
 
-1. Run the complete file. Expected Console markers are `RHO_TOUR_ROWS=24` and
+1. In Console run `getwd()`. Expected: the generated project path uses a normal
+   drive path such as `E:/.../working-project`; it must not start with `\\?/`
+   or `//?/`.
+2. Run the complete file. Expected Console markers are `RHO_TOUR_ROWS=24` and
    `RHO_TOUR_MISSING_NOTES=8`; the submitted code and output remain in the same
    Console transcript while the deliberate warning also creates truthful
-   warning state without replacing structured Runs/Problems.
-2. Confirm `rho_tour` and `rho_tour_summary` appear in Environment. Open
+   warning state without replacing structured Runs/Problems. While the script
+   writes or refreshes project files and Git status, no console window should
+   pop up or flash in front of Rho.
+3. Confirm `rho_tour` and `rho_tour_summary` appear in Environment. Open
    `rho_tour` in Data Viewer and inspect factor, numeric, logical, date, text,
    and missing cells. Search `manual review`, sort `score`, change page size,
    use Tab navigation, and verify visible-page export reflects the active query.
-3. Open Plots Session and History. Confirm the boxplot is visible, reopen it
+4. Open Plots Session and History. Confirm the boxplot is visible, reopen it
    from History, and inspect source provenance back to this file.
-4. Inspect the successful Run and its timing/source/revision. Select and run
+5. Inspect the successful Run and its timing/source/revision. Select and run
    only the final commented `stop(...)` line after removing its comment marker;
    confirm one source-linked Problem and failed Run, then use Go to source and
    Run again.
-5. Switch among Console, Logs, Plots, Problems, Environment, and Runs. Confirm
+6. Switch among Console, Logs, Plots, Problems, Environment, and Runs. Confirm
    each keeps its state and that status markers use text or icons in addition
    to color.
 

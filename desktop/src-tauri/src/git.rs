@@ -100,11 +100,7 @@ pub fn run_git_bounded(
     args: &[&str],
     stdout_limit: usize,
 ) -> Result<GitCommandOutput> {
-    let mut child = Command::new("git")
-        .args(args)
-        .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut child = git_command(project_root, args)
         .spawn()
         .context("failed to run git")?;
     let stdout = child
@@ -137,6 +133,25 @@ pub fn run_git_bounded(
         stdout,
         stdout_truncated,
     })
+}
+
+fn git_command(project_root: &Path, args: &[&str]) -> Command {
+    let mut command = Command::new("git");
+    hide_console_window(&mut command);
+    command
+        .args(args)
+        .current_dir(project_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command
+}
+
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
 }
 
 pub fn git_status(project_root: &Path) -> Result<GitStatus> {
@@ -462,5 +477,16 @@ mod tests {
     fn successful_git_metadata_rejects_invalid_utf8() {
         let error = decode_stdout(vec![b'f', 0x80, b'o']).unwrap_err();
         assert!(error.to_string().contains("non-UTF-8 stdout"));
+    }
+
+    #[test]
+    fn git_commands_use_the_centralized_bounded_builder() {
+        let command = git_command(Path::new("C:/project"), &["status", "--porcelain"]);
+        assert_eq!(command.get_program(), "git");
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            vec!["status", "--porcelain"]
+        );
+        assert_eq!(command.get_current_dir(), Some(Path::new("C:/project")));
     }
 }

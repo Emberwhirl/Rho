@@ -24,9 +24,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use project::{
     ProjectRestoreResponse, ProjectSessionSnapshot, ProjectSessionStore, ProjectState,
     ProjectSwitchBlocker, ProjectSwitchBlockerKind, ProjectWatcherControl, atomic_write,
-    atomic_write_new, default_project_root, ensure_editable_content_size, ensure_editable_file,
-    ensure_editable_file_size, list_project_files, normalize_existing_project_root, project_path,
-    relative_project_path, start_project_watcher, validate_project_root,
+    atomic_write_new, default_project_root, display_path, ensure_editable_content_size,
+    ensure_editable_file, ensure_editable_file_size, list_project_files,
+    normalize_existing_project_root, project_path, relative_project_path, start_project_watcher,
+    validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
@@ -3870,7 +3871,7 @@ async fn sync_workspace_project_root(
     let mut context = context.lock().await;
     let CoordinatorRuntime { broker, store } = &mut *context;
     let payload = json!({
-        "arguments": {"code": format!("setwd({})", serde_json::to_string(&root.to_string_lossy()).unwrap())},
+        "arguments": {"code": workspace_project_root_code(root)?},
         "expected_workspace": broker.identity()
     });
     dispatch_workspace_request(
@@ -3883,6 +3884,13 @@ async fn sync_workspace_project_root(
     )
     .await?;
     Ok(())
+}
+
+fn workspace_project_root_code(root: &Path) -> Result<String> {
+    Ok(format!(
+        "setwd({})",
+        serde_json::to_string(&display_path(root))?
+    ))
 }
 
 fn write_project_switch_event(
@@ -4702,7 +4710,8 @@ mod tests {
         ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
         lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
         reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
-        source_claim_snapshot, switch_project_with_watcher_factory, write_r_probe_script,
+        source_claim_snapshot, switch_project_with_watcher_factory, workspace_project_root_code,
+        write_r_probe_script,
     };
 
     use crate::project::{
@@ -4766,6 +4775,22 @@ mod tests {
         assert_eq!(low["project_root"], "C:/projects/rho-lockfile");
         assert_eq!(low["limit"], 1);
         assert_eq!(high["limit"], 500);
+    }
+
+    #[test]
+    fn workspace_project_root_code_uses_user_readable_windows_paths() {
+        assert_eq!(
+            workspace_project_root_code(Path::new(r"\\?\E:\YuNotebooks\project")).unwrap(),
+            r#"setwd("E:/YuNotebooks/project")"#
+        );
+        assert_eq!(
+            workspace_project_root_code(Path::new(r"\\?\UNC\server\share\project")).unwrap(),
+            r#"setwd("//server/share/project")"#
+        );
+        assert_eq!(
+            workspace_project_root_code(Path::new(r"E:\路径 含 空格\project")).unwrap(),
+            r#"setwd("E:/路径 含 空格/project")"#
+        );
     }
 
     fn test_runtime_config(store_path: &Path, data_dir: &Path) -> RuntimeConfig {
@@ -6008,7 +6033,7 @@ async fn set_smoke_project_root(
     store.set_project_root(Some(root.to_string_lossy().as_ref()))?;
     let payload = json!({
         "arguments": {
-            "code": format!("setwd({})", serde_json::to_string(&root.to_string_lossy())?)
+            "code": workspace_project_root_code(root)?
         },
         "expected_workspace": broker.identity()
     });

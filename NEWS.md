@@ -6,6 +6,13 @@ this file records behavior that is already available in a released build.
 
 ## 0.4.0-dev.0 - 2026-08-01
 
+### Fixed
+
+- Windows project roots passed to Workspace R now omit the internal `\\?\`
+  filesystem prefix, so `getwd()` shows a normal drive or UNC path.
+- Supervised Git refresh and review commands now run without opening transient
+  console windows when project files change or R code produces outputs.
+
 ### Added
 
 #### Render lifecycle

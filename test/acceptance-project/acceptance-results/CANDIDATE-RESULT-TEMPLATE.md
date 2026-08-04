@@ -54,6 +54,8 @@ blank.
 
 ### 1. Core Workbench Tour
 
+- [ ] `getwd()` used a normal drive/UNC path with no `\\?\` or `//?/` prefix
+- [ ] Running code and file/Git refresh caused no flashing console windows
 - [ ] `rho-workbench-tour.R` produced 24 rows and 8 missing notes
 - [ ] Console/Logs, Environment, Data Viewer query/export, Plot history, Run,
       source-linked Problem, and tab-state preservation verified
