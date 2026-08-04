@@ -3848,8 +3848,9 @@ function renderDocumentTabs() {
   const tabs = $("#documentTabs");
   tabs.replaceChildren();
   for (const fileDocument of Object.values(state.documents)) {
+    const selected = fileDocument.path === state.activeDocument;
     const button = document.createElement("div");
-    button.className = `document-tab ${fileDocument.path === state.activeDocument ? "active" : ""}`;
+    button.className = `document-tab ${selected ? "active" : ""}`;
     const icon = document.createElement("span");
     icon.className = "r-badge";
     icon.textContent = fileDocument.path.toLowerCase().endsWith(".r") ? "R" : "·";
@@ -3861,6 +3862,9 @@ function renderDocumentTabs() {
     const activate = document.createElement("button");
     activate.type = "button";
     activate.className = "document-tab-main";
+    activate.setAttribute("role", "tab");
+    activate.setAttribute("aria-selected", String(selected));
+    activate.setAttribute("title", fileDocument.displayName || fileDocument.path);
     activate.append(icon, label, dirty);
     activate.addEventListener("click", () => openDocument(fileDocument.path));
     const close = document.createElement("button");
@@ -9329,9 +9333,11 @@ function recordPreviewLayoutEvidence() {
     const topbar = rectEvidence($(".topbar"));
     const project = rectEvidence($("#projectSwitcher"));
     const tabs = $$(".document-tab").map(rectEvidence);
+    const editor = rectEvidence($(".editor-region"));
     target.textContent = JSON.stringify({
       viewport: { width: window.innerWidth, height: window.innerHeight },
       posture: state.posture,
+      human_preset: state.humanPreset,
       overflow: {
         document_x: document.documentElement.scrollWidth > window.innerWidth,
         topbar_x: $(".topbar").scrollWidth > $(".topbar").clientWidth,
@@ -9341,7 +9347,18 @@ function recordPreviewLayoutEvidence() {
         document_tabs: $$(".document-tab").map((tab) => tab.textContent.trim()),
       },
       counts: { plots: $("#plotCount").textContent, problems: $("#problemCount").textContent },
-      rects: { topbar, project, tabs },
+      selections: {
+        document: $$(".document-tab-main").map((tab) => tab.getAttribute("aria-selected")),
+        dock: document.querySelector('[data-dock-tab][aria-selected="true"]')?.dataset.dockTab || null,
+        context: document.querySelector('[data-context-tab][aria-selected="true"]')?.dataset.contextTab || null,
+      },
+      panels: {
+        left: Number($("#leftResizeHandle").getAttribute("aria-valuenow")),
+        right: Number($("#rightResizeHandle").getAttribute("aria-valuenow")),
+        dock: Number($("#dockResizeHandle").getAttribute("aria-valuenow")),
+        dock_expanded: $("#toggleDockMaximize").dataset.expanded === "true",
+      },
+      rects: { topbar, project, tabs, editor },
     });
     return;
   }
@@ -11196,12 +11213,20 @@ async function sendAgentPrompt() {
 }
 
 function switchDockTab(name) {
-  $$("[data-dock-tab]").forEach((button) => button.classList.toggle("active", button.dataset.dockTab === name));
+  $$("[data-dock-tab]").forEach((button) => {
+    const selected = button.dataset.dockTab === name;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
   ["console", "logs", "plots", "problems"].forEach((tab) => $(`#${tab}Panel`).classList.toggle("hidden", tab !== name));
 }
 
 function switchContextTab(name) {
-  $$("[data-context-tab]").forEach((button) => button.classList.toggle("active", button.dataset.contextTab === name));
+  $$("[data-context-tab]").forEach((button) => {
+    const selected = button.dataset.contextTab === name;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
   document.querySelector(`[data-context-tab="${name}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   $("#agentPanel").classList.toggle("hidden", name !== "agent");
   $("#environmentPanel").classList.toggle("hidden", name !== "environment");
@@ -11215,12 +11240,22 @@ function switchContextTab(name) {
   return Promise.resolve();
 }
 
+function normalizeHumanPreset(value) {
+  return ["code", "analyze", "agent"].includes(value) ? value : "code";
+}
+
 function applyWorkbenchLayout(layout) {
-  $(".app-shell").classList.toggle("layout-code", layout === "code");
-  $$("[data-layout]").forEach((button) => button.classList.toggle("active", button.dataset.layout === layout));
-  if (layout === "agent") switchContextTab("agent");
-  if (layout === "analyze") switchContextTab("environment");
-  if (layout === "agent") setAgentComposerHeight(Number($("#agentComposerResizeHandle").getAttribute("aria-valuenow")), false);
+  const normalized = normalizeHumanPreset(layout);
+  state.humanPreset = normalized;
+  $(".app-shell").classList.toggle("layout-code", normalized === "code");
+  $$("[data-layout]").forEach((button) => {
+    const selected = button.dataset.layout === normalized;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  if (normalized === "agent") switchContextTab("agent");
+  if (normalized === "analyze") switchContextTab("environment");
+  if (normalized === "agent") setAgentComposerHeight(Number($("#agentComposerResizeHandle").getAttribute("aria-valuenow")), false);
   requestAnimationFrame(() => layoutEditor());
 }
 
@@ -11475,7 +11510,11 @@ function switchAgentSurface(name) {
 }
 
 function applyAgentSurface(name) {
-  $$("[data-agent-surface]").forEach((button) => button.classList.toggle("active", button.dataset.agentSurface === name));
+  $$("[data-agent-surface]").forEach((button) => {
+    const selected = button.dataset.agentSurface === name;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
 
   // Show/hide panels based on surface
   const isDirect = name === "direct";
@@ -12018,6 +12057,16 @@ function setPanelSize(panel, requested, persist = true) {
   $(".app-shell").style.setProperty(property, `${value}px`);
   const handle = panel === "left" ? $("#leftResizeHandle") : panel === "right" ? $("#rightResizeHandle") : $("#dockResizeHandle");
   handle.setAttribute("aria-valuenow", String(value));
+  const currentLimits = panelLimits();
+  for (const currentPanel of ["left", "right", "dock"]) {
+    const currentHandle = currentPanel === "left"
+      ? $("#leftResizeHandle")
+      : currentPanel === "right"
+        ? $("#rightResizeHandle")
+        : $("#dockResizeHandle");
+    currentHandle.setAttribute("aria-valuemin", String(Math.round(currentLimits[currentPanel][0])));
+    currentHandle.setAttribute("aria-valuemax", String(Math.round(currentLimits[currentPanel][1])));
+  }
   if (panel === "dock") requestAnimationFrame(() => layoutEditor());
   if (persist) {
     if (!isDesktop) localStorage.setItem(`rho.panel.${panel}`, String(value));
@@ -12121,12 +12170,13 @@ function applySessionPanels(panels = {}) {
 
 function toggleDockMaximize() {
   const button = $("#toggleDockMaximize");
+  const icon = button.querySelector("use");
   const expanded = button.dataset.expanded === "true";
   if (expanded) {
     const previous = Number(button.dataset.previousHeight) || panelDefaults.dock;
     setPanelSize("dock", previous);
     button.dataset.expanded = "false";
-    button.textContent = "⤢";
+    icon.setAttribute("href", "#icon-maximize-2");
     button.title = "Expand execution panel";
     button.setAttribute("aria-label", "Expand execution panel");
     return;
@@ -12134,7 +12184,7 @@ function toggleDockMaximize() {
   button.dataset.previousHeight = $("#dockResizeHandle").getAttribute("aria-valuenow");
   setPanelSize("dock", panelLimits().dock[1]);
   button.dataset.expanded = "true";
-  button.textContent = "⤡";
+  icon.setAttribute("href", "#icon-minimize-2");
   button.title = "Restore execution panel";
   button.setAttribute("aria-label", "Restore execution panel");
 }
@@ -12335,10 +12385,10 @@ async function hydrateProject(response) {
     };
   }
   applySessionPanels(session.panels || {});
+  state.humanPreset = normalizeHumanPreset(session.human_preset);
   if (session.posture) {
     state.posture = session.posture;
     state.agentSurface = state.posture === "agent" ? "direct" : (session.agent_surface || "direct");
-    state.humanPreset = session.human_preset || "code";
   }
   setProjectStatus("ready");
   await loadProjectSkills();
@@ -12647,7 +12697,11 @@ $("#gitCommitForm").addEventListener("submit", async (event) => {
   $("#gitCommitMessage").value = "";
 });
 $$("[data-side-tab]").forEach((button) => button.addEventListener("click", () => {
-  $$("[data-side-tab]").forEach((value) => value.classList.toggle("active", value === button));
+  $$("[data-side-tab]").forEach((value) => {
+    const selected = value === button;
+    value.classList.toggle("active", selected);
+    value.setAttribute("aria-selected", String(selected));
+  });
   $("#filesPanel").classList.toggle("hidden", button.dataset.sideTab !== "files");
   $("#runsPanel").classList.toggle("hidden", button.dataset.sideTab !== "runs");
 }));
@@ -12730,6 +12784,7 @@ $("#agentLlmCancelTest").addEventListener("click", cancelAgentModelTest);
 $("#agentLlmSelectDefault").addEventListener("click", selectAgentDefaultModel);
 $$("[data-layout]").forEach((button) => button.addEventListener("click", () => {
   applyWorkbenchLayout(button.dataset.layout);
+  scheduleSessionSave();
 }));
 
 $("#agentSendButton").addEventListener("click", sendAgentPrompt);

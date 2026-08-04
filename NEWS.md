@@ -162,6 +162,9 @@ this file records behavior that is already available in a released build.
 - Modernized the shared workbench shell with semantic visual tokens, consistent
   local toolbar icons, clearer Human/Agent and tab hierarchy, stable Run
   geometry, visible keyboard focus, and overflow-safe narrow layouts.
+- Strengthened the Human-first editor with consistent action icons, explicit
+  active-tab semantics, clearer resize handles, truthful panel ranges, and
+  reliable Code/Analyze/Agent layout restoration across posture changes.
 - Reworked the execution dock so Console is a continuous Workspace R transcript
   and prompt, while startup, Agent R, render, interrupt, and restart status is
   presented in a separate Logs tab.

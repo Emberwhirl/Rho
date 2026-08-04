@@ -13,10 +13,11 @@ Cross-reviewed against:
 - `docs/plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`;
 - `docs/design/proposed-2026-07-26-intuitive-interaction-and-guided-workflows-design.md`.
 
-Implementation entry rule: only Phase 1 may be considered independently. Any
-top-level shell, layout-mode, Agent-surface, or persistence work in later
-phases waits for an explicit decision on the workbench-posture information
-architecture and a separately authorized implementation package.
+Implementation status: focused Phase 1 and Phase 2 packages were separately
+authorized and implemented with automated/browser verification on 2026-08-04;
+their installed-app and display-scale acceptance remains open. Phase 3 and
+later work still require a separately authorized implementation package and
+must preserve the implemented posture and persistence authorities.
 
 ## Purpose
 
@@ -185,6 +186,10 @@ and selected states where applicable.
 
 ### Phase 1: Visual Foundation and Consistency
 
+Focused status: M1 implemented and verified under
+`active-2026-08-04-interface-modernization-foundation-shell-spec.md`; installed
+acceptance remains open.
+
 Objective: remove the most visible inconsistency without changing workflows.
 
 Work:
@@ -206,6 +211,10 @@ Acceptance:
 - existing project, execution, approval, and environment behavior is unchanged.
 
 ### Phase 2: Workbench Hierarchy
+
+Focused status: M2 implemented and verified under
+`active-2026-08-04-interface-modernization-workbench-hierarchy-spec.md`;
+installed acceptance remains open.
 
 Objective: make the main workspace easier to scan and reduce visual competition.
 
