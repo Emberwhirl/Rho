@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Problems now treats `<console>` as an execution surface rather than a missing
+  file, opens and focuses Console directly, and marks deleted sources as
+  unavailable without a misleading navigation attempt.
 - Running R code that creates a plot now opens Plots and selects the plot from
   that exact execution instead of updating a hidden preview.
 - Plot previews and PNG export now accept Ark's unpadded base64 image payloads;

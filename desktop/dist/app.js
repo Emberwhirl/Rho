@@ -6482,7 +6482,13 @@ function renderLintStatus() {
 }
 
 async function openProblemSource(problem) {
-  if (!problem.source_path) return;
+  const sourceKind = problemSourceKind(problem);
+  if (sourceKind === "console") {
+    switchDockTab("console");
+    requestAnimationFrame(() => $("#consoleInput").focus());
+    return;
+  }
+  if (sourceKind !== "file") return;
   await openDocument(problem.source_path);
   if (state.activeDocument !== problem.source_path || !problem.line_number) return;
   if (state.editor.mode === "monaco" && state.editor.editor) {
@@ -6490,6 +6496,18 @@ async function openProblemSource(problem) {
     state.editor.editor.setPosition({ lineNumber: problem.line_number, column: problem.column_number || 1 });
     state.editor.editor.focus();
   }
+}
+
+function problemSourceKind(problem) {
+  const sourcePath = String(problem?.source_path || "").trim();
+  if (!sourcePath) return "none";
+  if (sourcePath === "<console>") return "console";
+  if (/^<[^<>]+>$/.test(sourcePath)) return "virtual";
+  return state.project.files.some((file) => file.path === sourcePath) ? "file" : "missing";
+}
+
+function problemSourceLabel(problem) {
+  return problemSourceKind(problem) === "console" ? "Console" : problem.source_path;
 }
 
 function renderProblems() {
@@ -6515,7 +6533,7 @@ function renderProblems() {
     title.textContent = problem.origin === "lintr"
       ? problem.message
       : problem.source_path
-        ? `Analysis stopped at ${problem.source_path}`
+        ? `Analysis stopped at ${problemSourceLabel(problem)}`
         : problem.message;
     const detail = document.createElement("p");
     detail.textContent = problem.origin === "lintr"
@@ -6541,10 +6559,11 @@ function renderProblems() {
     }
     const actions = document.createElement("div");
     actions.className = "problem-actions";
-    if (problem.source_path) {
+    const sourceKind = problemSourceKind(problem);
+    if (sourceKind === "file" || sourceKind === "console") {
       const openSource = document.createElement("button");
       openSource.type = "button";
-      openSource.textContent = "Go to source";
+      openSource.textContent = sourceKind === "console" ? "Open Console" : "Go to source";
       openSource.addEventListener("click", async () => {
         try {
           await openProblemSource(problem);
@@ -6553,6 +6572,12 @@ function renderProblems() {
         }
       });
       actions.append(openSource);
+    } else if (sourceKind === "missing") {
+      const unavailable = document.createElement("span");
+      unavailable.className = "problem-source-unavailable";
+      unavailable.textContent = "Source unavailable";
+      unavailable.title = `The project file is no longer available: ${problem.source_path}`;
+      actions.append(unavailable);
     }
     if (problem.origin === "lintr" && problem.quick_fix) {
       const review = document.createElement("button");
@@ -9092,7 +9117,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "interface-shell") {
     state.posture = "human";
@@ -9381,6 +9406,42 @@ async function maybeApplyPreviewScenario() {
     addLog("SYSTEM", "R version 4.6.1 · Ark PID 22988");
     addLog("AGENT", "run_r completed in Agent R");
     switchDockTab("console");
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
+  if (scenario === "usability-problems") {
+    state.problems = [
+      {
+        run_id: "run_console_problem",
+        origin: "user",
+        status: "failed",
+        message: "object 'mitochondrial_percent' not found",
+        call: "eval(ei, envir)",
+        source_path: "<console>",
+        execution_mode: "console",
+      },
+      {
+        run_id: "run_file_problem",
+        origin: "user",
+        status: "failed",
+        message: "object 'qc' not found",
+        call: "summary(qc)",
+        source_path: "analysis.R",
+        execution_mode: "file",
+        line_number: 2,
+        column_number: 1,
+      },
+      {
+        run_id: "run_missing_problem",
+        origin: "user",
+        status: "failed",
+        message: "source file was removed",
+        source_path: "deleted-analysis.R",
+        execution_mode: "file",
+      },
+    ];
+    renderProblems();
+    switchDockTab("problems");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }

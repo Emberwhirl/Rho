@@ -71,6 +71,10 @@ Open `examples/rho-workbench-tour.R` in Human-first Code layout.
    only the final commented `stop(...)` line after removing its comment marker;
    confirm one source-linked Problem and failed Run, then use Go to source and
    Run again.
+   In Console, also run `stop("console navigation check")`. Confirm its Problem
+   says `Analysis stopped at Console`, offers `Open Console` rather than
+   `Go to source`, and returns focus to the Console input without a missing-file
+   message.
 6. Switch among Console, Logs, Plots, Problems, Environment, and Runs. Confirm
    each keeps its state and that status markers use text or icons in addition
    to color.

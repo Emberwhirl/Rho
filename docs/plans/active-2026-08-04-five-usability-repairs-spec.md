@@ -1,0 +1,148 @@
+# Five Workbench Usability Repairs
+
+Status: active; five bounded work packages authorized; UX-FIX1 implemented and
+automated/browser verified; installed-app acceptance open
+
+Date: 2026-08-04
+Authorization: user reported five installed-app usability defects and requested
+five separate commits
+Change class: D1 for UX-FIX1 to UX-FIX4; D2 presentation package for UX-FIX5
+Risk class: R1 frontend interaction/presentation; UX-FIX2 touches the existing
+explicit project-file save command but adds no write authority
+Mandatory stops: verify, review, document, and commit each package separately
+before starting the next package
+
+## Shared Boundaries
+
+- Preserve Workspace R, durable Runs/Problems/Plots/Artifacts, project identity,
+  Agent approval, file-edit review, Git, Environment, and retention authority.
+- Add no schema, migration, provider behavior, execution policy, filesystem
+  authority, automatic save, or inferred success state.
+- Keep browser/mock behavior aligned with desktop behavior and retain narrow-
+  viewport, keyboard, focus, and accessible-name coverage.
+- Existing application version remains `0.4.0-dev.0`; each implemented
+  user-visible repair is recorded in `NEWS.md`. A new distributed candidate
+  still requires synchronized version metadata.
+- Installed-app acceptance remains a separate manual gate in
+  `test/acceptance-project/MANUAL-ACCEPTANCE.md`.
+
+## UX-FIX1: Truthful Problem Source Navigation
+
+Problem `source_path` values such as `<console>` identify an execution surface,
+not a project file. Problems must not label them `Go to source` and then report
+that a file does not exist.
+
+- `<console>` shows `Open Console`; clicking selects Console and focuses its
+  input without changing or retrying the Run.
+- Other angle-bracket virtual sources do not expose file navigation.
+- A real source path exposes `Go to source` only while it exists in the active
+  project file inventory. A missing file is represented as unavailable rather
+  than opened optimistically.
+- Real-file line/column navigation, Lintr quick-fix review, Explain, and Run
+  again behavior remain unchanged.
+
+Acceptance: deterministic Problems state covers console, existing file, and
+missing file sources; no missing-file toast is produced for `<console>`.
+
+Implementation evidence (2026-08-04): the Problems projection now classifies
+console, other virtual, existing-file, and missing-file sources before offering
+navigation. The `usability-problems` browser scenario verified `Open Console`
+focus, retained existing-file navigation, truthful unavailable presentation,
+and no horizontal overflow at 900 px. Focused frontend checks passed. Installed-
+app confirmation remains open in the acceptance project. No application version
+bump was made because this is not yet a new distributed development candidate;
+the implemented repair is recorded in `NEWS.md`.
+
+## UX-FIX2: Common Editor Save Shortcut
+
+- `Ctrl+S` on Windows/Linux and `Meta+S` on macOS invoke the existing guarded
+  active-document Save command and prevent browser-page save.
+- The shortcut is available from Monaco and the active workbench document, but
+  does nothing when no editable active document exists or a modal/text input
+  owns the keystroke outside the editor.
+- Save success, failure, dirty state, version, project refresh, and external-
+  change behavior remain owned by the existing save path.
+- No auto-save, Save As, multi-file save, or new filesystem command is added.
+
+Acceptance: a dirty project file saves once, becomes clean, and persists; an
+unavailable/read-only/no-document state performs no write and remains truthful.
+
+## UX-FIX3: Clearer File Explorer Hierarchy
+
+- Folders use a familiar local folder icon, stronger label weight, stable
+  disclosure chevron, and restrained hierarchy guides/indentation.
+- Files retain type icons and active/dirty states; long paths remain bounded.
+- Folder presentation must remain denser than cards and must not change sort,
+  expansion, selection, watcher, or file-operation semantics.
+
+Acceptance: expanded/collapsed folders are visually distinct at desktop and
+narrow widths, keyboard focus remains visible, and no label/icon overlap occurs.
+
+## UX-FIX4: Console Tab Focus
+
+- Selecting the Console dock tab focuses the visible Console input after the
+  panel switch completes.
+- Programmatic switches to Console follow the same rule only when the input is
+  enabled; Logs/Plots/Problems do not steal focus.
+- Console transcript, history, busy state, and execution behavior are unchanged.
+
+Acceptance: clicking Console from every sibling tab leaves the caret in the
+Console input and typing immediately edits the expression.
+
+## UX-FIX5: Human-Reviewable Agent Runs And Review
+
+Agent-first Runs and Review must help a human answer: what was requested, what
+the Agent actually did, what changed or was produced, whether it succeeded,
+what evidence is available, and what still needs attention.
+
+- Runs de-emphasizes internal system bookkeeping such as an unselected
+  `workspace.snapshot` when a user/Agent scientific action is available, while
+  retaining truthful access to bounded technical identity.
+- Run rows use concise human labels, outcome, origin, source, time, and output/
+  problem cues derived only from existing durable data.
+- Review for a selected Agent turn or Run presents a human-readable summary,
+  performed actions, produced Plot/Artifact/source evidence, warnings/problems,
+  and bounded provenance. Raw request/status identifiers remain secondary.
+- Review never invents a model rationale, semantic correctness verdict, file
+  change, Plot, Artifact, or successful completion not present in existing
+  records/events.
+- Existing Audit remains deterministic reproducibility review and is not
+  conflated with Agent task review or approval decisions.
+
+Acceptance: the Agent plotting example yields a review surface where a human
+can locate the request, successful R action, resulting Plot, relevant Run, and
+any limitation without reading raw protocol values. Empty, running, failed,
+completed, and no-evidence states remain truthful.
+
+## Cross-review
+
+WP3 remains authority for Runs and Problems; WP3 scientific workflow remains
+authority for Plots and Artifacts; UX4 Agent-first contracts retain posture,
+Task/Runs/Review navigation and adaptive work-surface ownership; M1-M3 retain
+tokens, hierarchy, state language, and review-lane distinctions; CL1 retains
+Console/Logs routing; WS2 edit packages retain editor-buffer and explicit-save
+semantics. These five repairs change local presentation and interaction only.
+No conflicting schema, persistence, approval, policy, project, execution, or
+retention ownership was found.
+
+## Verification Matrix
+
+For every package:
+
+- `node --check desktop/dist/app.js`;
+- focused source-contract/regression checks;
+- relevant adjacent frontend checks;
+- deterministic browser interaction at representative desktop and narrow
+  viewport where visual behavior changes;
+- `git diff --check` and scoped post-verification review;
+- installed-app acceptance recorded as open unless run against a named build.
+
+## Package Progress
+
+| Package | Implementation | Automated/browser evidence | Manual gate |
+| --- | --- | --- | --- |
+| UX-FIX1 | complete | passed 2026-08-04 | installed app open |
+| UX-FIX2 | not started | not run | open |
+| UX-FIX3 | not started | not run | open |
+| UX-FIX4 | not started | not run | open |
+| UX-FIX5 | not started | not run | open |
