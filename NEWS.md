@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Problems now provides a `Clear lint results` action that removes only
+  transient `lintr` diagnostics and stale Quick Fix state; failed-Run Problems
+  and their audit history remain intact.
 - The active-file `lintr` action is now the `Check code` icon in the editor
   toolbar, where file-level actions belong; the unrelated execution-dock action
   has been removed and running no longer shifts toolbar geometry.

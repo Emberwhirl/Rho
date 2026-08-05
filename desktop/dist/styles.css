@@ -980,6 +980,10 @@ body.resizing-vertical { cursor: col-resize; }
 .plot-navigator-header { display: flex; align-items: center; justify-content: space-between; flex: 0 0 34px; padding: 0 10px; border-bottom: 1px solid var(--border); }
 .plot-navigator-header strong { font-size: 11px; }
 .problems-panel { background: #fff; }
+.problems-toolbar { display: flex; align-items: stretch; min-height: 32px; border-bottom: 1px solid var(--border); background: #f7f9f9; }
+.problems-toolbar .lint-status { flex: 1 1 auto; border-bottom: 0; }
+.problems-toolbar > button { align-self: center; flex: 0 0 28px; width: 28px; height: 28px; margin: 2px 4px 2px auto; color: var(--muted); }
+.problems-toolbar > button:disabled { opacity: 0.35; cursor: default; }
 .problem-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 9px; padding: 10px 13px; border-bottom: 1px solid #e6eaeb; }
 .problem-row > div { min-width: 0; }
 .problem-row .problem-icon { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 50%; color: var(--danger); background: var(--state-danger-bg); font-size: 10px; font-weight: 700; line-height: 1; }

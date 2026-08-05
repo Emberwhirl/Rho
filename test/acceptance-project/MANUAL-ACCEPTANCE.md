@@ -278,9 +278,12 @@ Open `examples/editor-intelligence.R`:
    the file. Repeat after switching to another open file and verify the wrong
    file is also rejected.
 13. Add `review_flag = example_value > 2`, save, and choose Check code. When the installed
-   lintr profile reports `assignment_linter`, review the proposed `<-` change,
-   cancel, then apply and undo it as above. Record an explicit skip when that
-   linter is disabled in the installed profile.
+    lintr profile reports `assignment_linter`, review the proposed `<-` change,
+    cancel, then apply and undo it as above. Record an explicit skip when that
+    linter is disabled in the installed profile. When the diagnostic checks are
+    complete, choose `Clear lint results` in Problems. Confirm all lintr rows
+    and the status strip disappear, while the intentional failed-Run Problem
+    from the earlier workflow remains visible and its Run remains reviewable.
 14. Add a comment in the main editor, save with Ctrl+S (Cmd+S on macOS), close
     the tab, and reopen it to confirm the saved text persists and the dirty dot
     clears. Make another edit, click the document tab so focus is outside the

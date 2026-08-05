@@ -200,3 +200,16 @@ scientific-surface contracts, browser placement and successful invocation, and
 made because this is not yet a new distributable candidate.
 
 The remaining two authorized packages are pending.
+
+### WS2-LINT-CLEAR-1
+
+Implemented and verified 2026-08-05. Problems now has one accessible clear
+icon that is enabled only when transient Lint state exists. Clearing filters
+only `origin === "lintr"`, resets the Lint response/proposal, closes Quick Fix,
+and does not invoke a store command or mutate Runs. JavaScript syntax, the
+focused clear contract, Lint/usability/scientific-surface tests, browser
+transition from five to three Problems with the durable failure preserved, and
+`git diff --check` passed. Installed acceptance is NOT RUN. No version bump was
+made because this is not yet a new distributable candidate.
+
+The final UX-KEYS-1 package is pending.

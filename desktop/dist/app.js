@@ -6637,6 +6637,8 @@ function renderProblems() {
   const list = $("#problemList");
   list.replaceChildren();
   renderLintStatus();
+  $("#clearLintResultsButton").disabled = state.lint.status === "idle"
+    && !state.problems.some((problem) => problem.origin === "lintr");
   const groups = groupedProblems();
   $("#problemEmpty").classList.toggle("hidden", groups.length > 0);
   $("#problemCount").textContent = String(groups.length);
@@ -6754,6 +6756,13 @@ function closeLintQuickFix() {
   $("#lintQuickFixDialog").classList.add("hidden");
   state.lint.proposal = null;
   setLintQuickFixError();
+}
+
+function clearLintResults() {
+  state.problems = state.problems.filter((problem) => problem.origin !== "lintr");
+  state.lint = { status: "idle", response: null, proposal: null, projectRoot: null, error: null };
+  closeLintQuickFix();
+  renderProblems();
 }
 
 async function reviewLintQuickFix(problem) {
@@ -12585,6 +12594,7 @@ async function lintCurrentFile() {
 }
 
 $("#editorCheckCodeButton").addEventListener("click", lintCurrentFile);
+$("#clearLintResultsButton").addEventListener("click", clearLintResults);
 $("#lintQuickFixApply").addEventListener("click", applyLintQuickFix);
 $("#lintQuickFixCancel").addEventListener("click", closeLintQuickFix);
 $("#lintQuickFixClose").addEventListener("click", closeLintQuickFix);

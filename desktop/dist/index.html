@@ -388,7 +388,10 @@ plot(
             </details>
           </div>
           <div id="problemsPanel" class="dock-content problems-panel hidden">
-            <div id="lintStatus" class="lint-status hidden" aria-live="polite"></div>
+            <div class="problems-toolbar" role="toolbar" aria-label="Problem actions">
+              <div id="lintStatus" class="lint-status hidden" aria-live="polite"></div>
+              <button id="clearLintResultsButton" class="icon-button" type="button" title="Clear lint results" aria-label="Clear lint results" disabled><svg class="ui-icon" aria-hidden="true"><use href="#icon-circle-x"></use></svg></button>
+            </div>
             <div id="problemEmpty" class="empty-state surface-state" data-state="completed"><svg class="surface-state-icon ui-icon" aria-hidden="true"><use href="#icon-check"></use></svg><strong>No problems detected</strong><p>Structured run and lint diagnostics will appear here.</p></div>
             <div id="problemList"></div>
           </div>
