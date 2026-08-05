@@ -63,6 +63,7 @@ semantics.
 | `plans/active-2026-08-04-five-usability-repairs-spec.md` | active; UX-FIX1 through UX-FIX5 implemented and automated/browser verified in five separately reviewed packages | truthful Problem navigation, explicit save shortcut, clearer file hierarchy, Console focus, and human-reviewable Agent Runs/Review projection | WP3/UX4/M1-M3/CL1/WS2 authority preserved; exact installed-candidate acceptance remains open |
 | `plans/active-2026-08-05-native-context-lint-problems-editor-shortcuts-spec.md` | active; all five bounded packages implemented and automated/browser verified in separate commits; exact installed-candidate acceptance remains open | desktop context-menu policy, installed Lint transport, Check code entry, transient diagnostic clearing, and common editor shortcuts | WS2 diagnostics/refactor/format, WP3 durable Problems, UX-FIX2 Save, and M1-M3 presentation authority preserved; no schema or new mutation authority |
 | `plans/active-2026-08-05-audit-human-friendly-presentation-spec.md` | active; AUDIT-UX1 implemented and automated/browser verified 2026-08-05; installed acceptance open | shared human-friendly projection for the existing read-only project reproducibility check | RA-RC2 rules/schema/status truth, UX4-AWS1 work surfaces, and M1-M3 presentation authority preserved; no backend, persistence, repair, or execution scope |
+| `plans/active-2026-08-05-audit-runtime-reliability-repair-spec.md` | active; AUDIT-REL1 implementation and automated verification complete 2026-08-05; installed acceptance open | Unicode-safe audit execution, existing Windows drive-path coverage, panic/timeout recovery, stale-request rejection, and dirty-source preflight | accepted RA-RC2 retains rule/schema/status truth; AUDIT-UX1 retains presentation language; no persistence, repair, automatic save, execution, or release scope |
 | `plans/active-2026-08-05-human-facing-information-projection-spec.md` | active; WP1-WP4 implementation and automated/browser verification complete 2026-08-05; installed acceptance open | shared user-facing projection of internal identifiers, errors, statuses, paths, and implementation terminology | UX1 language authority and all existing workflow/backend authority preserved; installed/display-scale acceptance remains separate |
 | `plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md` | active; CRED-UX1 implemented and automated/browser verified 2026-08-05; installed acceptance open | Windows system credential storage, Agent R secret injection, `.Renviron` compatibility fallback, and simplified LLM settings | implemented LLM V1 retains model/provider/capability/selection authority; Workspace R, Agent approval, project, history, and no-fallback boundaries unchanged; installed credential-manager acceptance remains separate |
 | `plans/active-2026-08-04-plot-review-surface-spec.md` | active; PLOT-UX1 implemented and automated/browser verified 2026-08-04; installed acceptance open | plot-first preview layout, side Plot navigation, progressive disclosure, and human-readable Saved outputs projection | WP3/BH4/PLOT-PAYLOAD-1/PLOT-ROOT-1/M1-M3 authority preserved; installed acceptance remains open |
@@ -211,6 +212,12 @@ evidence. Project
 identity must not be inferred from source paths, current UI state, timestamps,
 or Artifact filenames. RA-RC2 static project audit follows only after RA-RC1
 acceptance and retains explicit parser, scan, and evidence limitations.
+
+AUDIT-REL1 is a bounded repair to the implemented RA-RC2 path. It may harden
+Unicode parsing and request recovery and may block a disk-backed check when an
+open supported source document is dirty. It cannot change rule identity,
+severity, persistence, project scope, or create automatic save/repair behavior.
+AUDIT-UX1 remains the owner of shared Human/Agent result language.
 
 ### Implemented baseline hardening
 

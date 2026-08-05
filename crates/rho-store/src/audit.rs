@@ -422,44 +422,22 @@ fn extract_identifier_before_colons(before: &str) -> Option<String> {
         return None;
     }
 
-    let mut end = trimmed.len();
     let chars: Vec<char> = trimmed.chars().collect();
-
-    // Walk backwards over valid identifier characters
-    while end > 0 {
-        let c = chars[end - 1];
-        if c.is_alphanumeric() || c == '.' || c == '_' {
-            end -= 1;
-        } else if c == '"' || c == '\'' {
-            // Backtick or quoted identifier -- skip
-            if end > 0 {
-                let quote = c;
-                let mut i = end - 1;
-                loop {
-                    if i == 0 {
-                        return None;
-                    }
-                    if chars[i] == quote {
-                        return Some(trimmed[i + 1..end - 1].to_string());
-                    }
-                    i -= 1;
-                }
-            }
-            return None;
-        } else {
-            break;
-        }
+    let last = *chars.last()?;
+    if matches!(last, '`' | '"' | '\'') {
+        let opening = chars[..chars.len() - 1]
+            .iter()
+            .rposition(|candidate| *candidate == last)?;
+        let name: String = chars[opening + 1..chars.len() - 1].iter().collect();
+        return (!name.is_empty()).then_some(name);
     }
 
-    if end >= trimmed.len() {
-        return None;
-    }
-    let name = &trimmed[end..];
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
-    }
+    let start = chars
+        .iter()
+        .rposition(|c| !(c.is_alphanumeric() || *c == '.' || *c == '_'))
+        .map_or(0, |index| index + 1);
+    let name: String = chars[start..].iter().collect();
+    (!name.is_empty()).then_some(name)
 }
 
 // ---------------------------------------------------------------------------
@@ -969,8 +947,8 @@ fn check_portability(
         for (line_idx, line) in file.content.lines().enumerate() {
             let line_num = line_idx as u32 + 1;
 
-            // portability.absolute_path.windows  -- detect :\\ pattern
-            if line.contains(":\\") {
+            // portability.absolute_path.windows
+            if contains_windows_drive_absolute_path(line) {
                 push_finding(
                     findings,
                     limits,
@@ -1089,6 +1067,17 @@ fn check_portability(
             }
         }
     }
+}
+
+fn contains_windows_drive_absolute_path(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    bytes.windows(3).enumerate().any(|(index, candidate)| {
+        candidate[0].is_ascii_alphabetic()
+            && candidate[1] == b':'
+            && matches!(candidate[2], b'/' | b'\\')
+            && (index == 0
+                || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_'))
+    })
 }
 
 // --- 2c. Randomness -------------------------------------------------------
@@ -1484,6 +1473,67 @@ mod tests {
     use crate::environment::EnvironmentSnapshotDraft;
     use crate::run::{RunDraft, RunFinish};
     use tempfile::TempDir;
+
+    #[test]
+    fn package_extraction_is_unicode_safe_before_namespace_operator() {
+        let line = "cat(\"\\n\u{2500}\u{2500}\u{2500} base::plot() \u{2500}\u{2500}\u{2500}\\n\")";
+        assert_eq!(extract_packages_from_line(line), vec!["base"]);
+        assert_eq!(
+            extract_packages_from_line("value <- `stats`::median(x)"),
+            vec!["stats"]
+        );
+    }
+
+    #[test]
+    fn windows_drive_absolute_path_accepts_r_slashes_but_not_urls() {
+        assert!(contains_windows_drive_absolute_path(
+            r#"read.csv("D:\\data\\input.csv")"#
+        ));
+        assert!(contains_windows_drive_absolute_path(
+            r#"read.csv("D:/data/input.csv")"#
+        ));
+        assert!(!contains_windows_drive_absolute_path(
+            r#"download.file("https://example.org/data.csv")"#
+        ));
+    }
+
+    #[test]
+    fn unicode_namespace_text_does_not_hide_saved_portability_and_randomness_findings() {
+        let dir = TempDir::new().unwrap();
+        let project_root = dir.path().to_str().unwrap();
+        let store = Store::open(dir.path().join("test.sqlite")).unwrap();
+        std::fs::write(
+            dir.path().join("display.R"),
+            "cat(\"\\n\u{2500}\u{2500}\u{2500} base::plot() \u{2500}\u{2500}\u{2500}\\n\")\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("analysis.R"),
+            "setwd(\"D:/\")\nrnorm(100)\n",
+        )
+        .unwrap();
+
+        let response = store.audit_reproducibility(
+            AuditScope::Project,
+            project_root,
+            None,
+            &AuditLimits::default(),
+        );
+
+        for rule_id in [
+            "rho.repro.v1.portability.absolute_path.windows",
+            "rho.repro.v1.portability.setwd.literal",
+            "rho.repro.v1.randomness.rng_without_seed",
+        ] {
+            assert!(
+                response
+                    .findings
+                    .iter()
+                    .any(|finding| finding.rule_id == rule_id),
+                "expected {rule_id}"
+            );
+        }
+    }
 
     // --- Helpers ---
 

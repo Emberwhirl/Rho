@@ -218,3 +218,53 @@ acceptance gate. Full evidence is recorded in
 WS4-G1 implementation and automated/browser review are complete. The document
 remains active only for installed-app acceptance handoff. WS4-G2 and WS4-G3
 subsequently closed the two capability follow-ups with automated evidence.
+
+## Installed Command-Envelope Defect Repair
+
+Status: WS4-G1-R1 implementation and automated verification complete 2026-08-05; installed acceptance open
+
+Change class: D1 defect repair. Risk: R2 because the defect crosses the
+JavaScript/Tauri command boundary.
+
+Installed reproduction:
+
+```text
+invalid args `filePath` for command `git_diff_unified`:
+command git_diff_unified missing required key filePath
+```
+
+The frontend and browser mock used snake_case top-level command arguments such
+as `file_path`, while Tauri exposes Rust command parameters to JavaScript as
+camelCase. Browser checks therefore passed against a mock contract that did not
+match the installed boundary. Diff loading failed first, which prevented Stage
+actions; the commit input then remained correctly disabled because no file
+could enter the staged set.
+
+Repair invariant:
+
+- every top-level Git Tauri argument uses the installed camelCase name:
+  `filePath`, `expectedRevision`, `hunkIndex`, and
+  `expectedStagedRevision`;
+- Rust handler-local snake_case names and the guarded Git mutation contract do
+  not change;
+- the browser mock accepts the same camelCase names and tests reject regression
+  to snake_case at the JavaScript boundary;
+- diff, file/hunk stage and unstage, restore, conflict resolution, and commit
+  remain revision guarded and project scoped.
+
+WS4-G1-R1 focused Git frontend/mock contract checks passed after the camelCase
+boundary repair. Rebuilt installed-app confirmation remains part of the
+existing WS4 acceptance gate. This repair does not add remote, credential,
+clone, init, schema, or persistence scope.
+
+Repair evidence:
+
+```text
+cargo +stable-x86_64-pc-windows-gnu test -p rho-desktop git
+  18 passed; 0 failed
+node --check desktop/dist/app.js
+node scripts/test-git-review-ui.mjs
+node scripts/test-agent-first-ui.mjs
+node scripts/test-console-logs-ui.mjs
+git diff --check
+```

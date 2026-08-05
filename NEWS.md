@@ -29,6 +29,15 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Git Review now uses the installed Tauri camelCase command envelope for diff,
+  stage/unstage, restore, conflict resolution, and commit operations. Staged
+  review and commit controls no longer fail because the browser mock accepted a
+  different argument shape.
+- Project reproducibility checks now survive Unicode source text, recognize
+  Windows drive paths written with either slash style, report saved
+  `setwd()`/unseeded random-number findings, and recover from backend failure or
+  timeout. Checks explicitly ask for modified source files to be saved before
+  scanning disk-backed project content.
 - Format Document now unwraps and validates the typed Workspace R formatter
   result at the desktop command boundary, instead of rejecting the broker's
   execution envelope as an invalid formatter response.

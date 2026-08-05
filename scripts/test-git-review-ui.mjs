@@ -51,13 +51,23 @@ assert.match(js, /function renderGitReview\(\)/);
 assert.match(js, /function selectGitReviewFile\(path, staged\)/);
 assert.match(js, /function confirmGitRestore\(diff\)/);
 assert.match(js, /confirmLabel:\s*"Restore file"[\s\S]*cancelLabel:\s*"Keep changes"/);
-assert.match(js, /expected_revision:\s*diff\.revision/);
-assert.match(js, /expected_staged_revision:\s*state\.gitReview\.stagedRevision/);
+assert.match(js, /filePath:\s*diff\.path, expectedRevision:\s*diff\.revision/);
+assert.match(js, /filePath:\s*diff\.path, hunkIndex:\s*hunk\.index, expectedRevision:\s*diff\.revision/);
+assert.match(js, /expectedStagedRevision:\s*state\.gitReview\.stagedRevision/);
+assert.match(js, /invoke\("git_diff_unified", \{ filePath:\s*path, staged \}\)/);
+assert.match(js, /invoke\("git_resolve_conflict", \{ filePath:\s*file, resolution:\s*res \}\)/);
 assert.match(js, /scenario === "git-review"/);
 assert.match(js, /seedMockGitReview\(\)/);
 assert.match(js, /gitPreviewState === "stale"[\s\S]*mockGitRevisionSequence \+= 1/);
 assert.match(js, /gitPreviewState === "failure"[\s\S]*mockGitFailureCommand = "git_diff"[\s\S]*mockGitFailureCommand = null/);
 assert.doesNotMatch(js, /hunk_content\s*:/, "Frontend must never send raw patch content");
+for (const staleArgument of ["file_path", "expected_revision", "hunk_index", "expected_staged_revision"]) {
+  assert.doesNotMatch(
+    js,
+    new RegExp(`(?:args\\.${staleArgument}\\b|[,{]\\s*${staleArgument}\\s*:)`),
+    `Frontend/mock must use the installed Tauri camelCase argument for ${staleArgument}`,
+  );
+}
 
 assert.match(
   main,

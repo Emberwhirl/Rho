@@ -1885,14 +1885,21 @@ async fn audit_reproducibility(
             "invalid audit scope: {scope} (expected 'project', 'run:<id>', or 'artifact:<id>')"
         ));
     };
-    Ok(read_store(&state)
-        .map_err(display_error)?
-        .audit_reproducibility(
+    let store = read_store(&state).map_err(display_error)?;
+    contain_audit_panic(|| {
+        store.audit_reproducibility(
             audit_scope,
             &project_root,
             reference_snapshot_id.as_deref(),
             &AuditLimits::default(),
-        ))
+        )
+    })
+}
+
+fn contain_audit_panic<T>(operation: impl FnOnce() -> T) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)).map_err(|_| {
+        "The project reproducibility check failed unexpectedly. Try the check again.".to_string()
+    })
 }
 
 #[tauri::command]
@@ -4777,7 +4784,7 @@ mod tests {
     use super::{
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RenderJobState,
         RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
-        bounded_diagnostic, classify_startup_error, configure_user_startup,
+        bounded_diagnostic, classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         durable_project_root, editor_format_result, ensure_artifact_export_target,
         ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
@@ -4805,6 +4812,16 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
     use tokio::sync::{Mutex, RwLock};
+
+    #[test]
+    fn audit_command_boundary_contains_panics() {
+        assert_eq!(contain_audit_panic(|| 42).unwrap(), 42);
+        let error = contain_audit_panic(|| -> usize { panic!("audit fixture panic") }).unwrap_err();
+        assert_eq!(
+            error,
+            "The project reproducibility check failed unexpectedly. Try the check again."
+        );
+    }
 
     #[test]
     fn editor_format_command_returns_the_typed_workspace_result() {

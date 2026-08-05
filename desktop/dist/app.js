@@ -25,6 +25,8 @@ const state = {
   humanPreset: "code",
   auditResult: null,
   auditLoading: false,
+  auditBlockedFiles: [],
+  auditRequestSequence: 0,
   editorFunctions: null,
   editorFunctionsLoaded: false,
   agentBusy: false,
@@ -2948,7 +2950,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "git_diff_unified") {
     const staged = Boolean(args.staged);
-    const file = (staged ? mockGitReview.staged : mockGitReview.working).find((entry) => entry.path === args.file_path);
+    const file = (staged ? mockGitReview.staged : mockGitReview.working).find((entry) => entry.path === args.filePath);
     if (!file) throw new Error("Selected Git file is unavailable");
     return {
       path: file.path,
@@ -2971,17 +2973,17 @@ async function mockInvoke(command, args) {
     const fromStaged = command === "git_unstage_file" || command === "git_hunk_unstage";
     const source = fromStaged ? mockGitReview.staged : mockGitReview.working;
     const target = fromStaged ? mockGitReview.working : mockGitReview.staged;
-    const file = source.find((entry) => entry.path === args.file_path);
+    const file = source.find((entry) => entry.path === args.filePath);
     if (!file) throw new Error("Stale Git review; refresh before changing files");
     const expected = mockGitFileRevision(file, fromStaged);
-    if (args.expected_revision !== expected) throw new Error("Stale Git review; refresh before changing files");
+    if (args.expectedRevision !== expected) throw new Error("Stale Git review; refresh before changing files");
     if (command === "git_restore_file") {
       if (file.status === "?") throw new Error("Untracked files cannot be restored in Git review");
       source.splice(source.indexOf(file), 1);
     } else if (command === "git_hunk_stage" || command === "git_hunk_unstage") {
-      const hunk = file.hunks[args.hunk_index];
+      const hunk = file.hunks[args.hunkIndex];
       if (!hunk) throw new Error("Selected Git hunk is unavailable");
-      file.hunks.splice(args.hunk_index, 1);
+      file.hunks.splice(args.hunkIndex, 1);
       let targetFile = target.find((entry) => entry.path === file.path);
       if (!targetFile) {
         targetFile = { path: file.path, status: file.status === "?" ? "A" : file.status, hunks: [] };
@@ -3000,7 +3002,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "git_commit") {
     if (!String(args.message || "").trim()) throw new Error("Commit message cannot be empty");
-    if (args.expected_staged_revision !== mockGitStagedRevision()) throw new Error("Stale staged changes; refresh before committing");
+    if (args.expectedStagedRevision !== mockGitStagedRevision()) throw new Error("Stale staged changes; refresh before committing");
     if (mockGitReview.staged.length === 0) throw new Error("No staged changes to commit");
     mockGitReview.staged = [];
     mockGitRevisionSequence += 1;
@@ -3009,7 +3011,10 @@ async function mockInvoke(command, args) {
   if (command === "git_list_conflicts") {
     return { files: ["src/analysis.R", "R/utils.R"], merge_head: "abc1234", has_conflicts: true };
   }
-  if (command === "git_resolve_conflict") { return null; }
+  if (command === "git_resolve_conflict") {
+    if (!args.filePath) throw new Error("Selected Git conflict is unavailable");
+    return null;
+  }
   if (command === "targets_status") {
     return {
       has_targets: true,
@@ -4861,7 +4866,7 @@ function renderGitDiff() {
   primary.textContent = diff.staged ? "Unstage file" : "Stage file";
   primary.addEventListener("click", () => runGitMutation(
     diff.staged ? "git_unstage_file" : "git_stage",
-    { file_path: diff.path, expected_revision: diff.revision },
+    { filePath: diff.path, expectedRevision: diff.revision },
     `${diff.staged ? "Unstaged" : "Staged"} ${diff.path}`,
   ));
   actions.append(primary);
@@ -4898,7 +4903,7 @@ function renderGitDiff() {
     action.textContent = diff.staged ? "Unstage hunk" : "Stage hunk";
     action.addEventListener("click", () => runGitMutation(
       diff.staged ? "git_hunk_unstage" : "git_hunk_stage",
-      { file_path: diff.path, hunk_index: hunk.index, expected_revision: diff.revision },
+      { filePath: diff.path, hunkIndex: hunk.index, expectedRevision: diff.revision },
       `${diff.staged ? "Unstaged" : "Staged"} selected hunk in ${diff.path}`,
     ));
     header.append(label, action);
@@ -4956,7 +4961,7 @@ async function selectGitReviewFile(path, staged) {
   state.gitReview.diff = null;
   renderGitReview();
   try {
-    const diff = await invoke("git_diff_unified", { file_path: path, staged });
+    const diff = await invoke("git_diff_unified", { filePath: path, staged });
     if (projectRoot !== state.project.root || !gitReviewSelectionExists(path, staged)) return;
     state.gitReview.diff = diff;
     state.gitReview.error = null;
@@ -5038,7 +5043,7 @@ async function confirmGitRestore(diff) {
   if (!confirmed) return;
   await runGitMutation(
     "git_restore_file",
-    { file_path: diff.path, expected_revision: diff.revision },
+    { filePath: diff.path, expectedRevision: diff.revision },
     `Restored ${diff.path}`,
   );
 }
@@ -5081,7 +5086,7 @@ function renderConflictBanner() {
       btn.textContent = res === "mark" ? "Mark Resolved" : `Accept ${res === "ours" ? "Ours" : "Theirs"}`;
       btn.addEventListener("click", async () => {
         try {
-          await invoke("git_resolve_conflict", { file_path: file, resolution: res });
+          await invoke("git_resolve_conflict", { filePath: file, resolution: res });
           toast(`Resolved ${file} (${res})`);
           loadGitConflicts();
         } catch (err) { toast(reportUiFailure("resolve Git conflict", err, "The conflict resolution could not be applied. Refresh Git review and try again."), true); }
@@ -12815,6 +12820,15 @@ function renderAgentAuditWorkspace(content) {
     content.innerHTML = '<div class="agent-review-empty" role="status">Checking project...</div>';
     return;
   }
+  if (state.auditBlockedFiles.length) {
+    const paths = state.auditBlockedFiles.map(displayPath).join(", ");
+    const empty = document.createElement("div");
+    empty.className = "agent-review-empty";
+    empty.setAttribute("role", "status");
+    empty.textContent = `Save the modified source ${state.auditBlockedFiles.length === 1 ? "file" : "files"} before checking: ${paths}. Then run Check project again.`;
+    content.replaceChildren(empty);
+    return;
+  }
   if (!result) {
     content.innerHTML = '<div class="agent-review-empty">Check the project to review reproducibility risks.</div>';
     return;
@@ -12833,7 +12847,7 @@ function renderAgentAuditWorkspace(content) {
   if (!findings.length) {
     const empty = document.createElement("div");
     empty.className = "agent-review-empty";
-    empty.textContent = result.status === "error" ? "The project check did not complete." : "No issues were found in the reviewed project information.";
+    empty.textContent = result.status === "error" ? (result.ui_message || "The project check did not complete.") : "No issues were found in the reviewed project information.";
     content.append(empty);
     return;
   }
@@ -13304,6 +13318,29 @@ $("#agentOpenFileButton").addEventListener("click", () => {
 
 // ── Reproducibility Audit ──
 
+const AUDIT_REQUEST_TIMEOUT_MS = 30_000;
+
+function dirtyAuditSourcePaths() {
+  return Object.values(state.documents)
+    .filter((documentState) => /\.(?:r|rmd|qmd|rnw)$/i.test(documentState.path || "") && documentIsDirty(documentState))
+    .map((documentState) => documentState.path)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function invokeAuditWithTimeout() {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("Project reproducibility check timed out")),
+      AUDIT_REQUEST_TIMEOUT_MS,
+    );
+  });
+  return Promise.race([
+    invoke("audit_reproducibility", { scope: "project" }),
+    timeout,
+  ]).finally(() => clearTimeout(timeoutId));
+}
+
 function openHumanProjectCheck() {
   applyWorkbenchLayout("analyze");
   $$('[data-context-tab]').forEach((button) => {
@@ -13315,19 +13352,31 @@ function openHumanProjectCheck() {
 }
 
 $("#auditProjectButton").addEventListener("click", async () => {
-  state.auditLoading = true;
+  syncDocumentFromEditor({ render: false, persist: false });
+  const requestSequence = ++state.auditRequestSequence;
+  const projectRoot = state.project.root;
   state.auditResult = null;
+  state.auditBlockedFiles = dirtyAuditSourcePaths();
+  state.auditLoading = state.auditBlockedFiles.length === 0;
   if (state.posture === "agent") openAgentWorkSurface("audit");
   else openHumanProjectCheck();
   renderAuditPanel();
-  try {
-    state.auditResult = await invoke("audit_reproducibility", { scope: "project" });
-  } catch (e) {
-    state.auditResult = { status: "error", findings: [], coverage: {}, truncated: true, truncation_reasons: [String(e)] };
-  }
-  state.auditLoading = false;
-  renderAuditPanel();
   if (state.posture === "agent") renderAgentReviewWorkspace();
+  if (state.auditBlockedFiles.length) return;
+  try {
+    const result = await invokeAuditWithTimeout();
+    if (requestSequence !== state.auditRequestSequence || projectRoot !== state.project.root) return;
+    state.auditResult = result;
+  } catch (e) {
+    if (requestSequence !== state.auditRequestSequence || projectRoot !== state.project.root) return;
+    const uiMessage = reportUiFailure("check project reproducibility", e, "The project check did not finish. Try again.");
+    state.auditResult = { status: "error", findings: [], coverage: {}, truncated: true, truncation_reasons: [String(e)], ui_message: uiMessage };
+  } finally {
+    if (requestSequence !== state.auditRequestSequence || projectRoot !== state.project.root) return;
+    state.auditLoading = false;
+    renderAuditPanel();
+    if (state.posture === "agent") renderAgentReviewWorkspace();
+  }
 });
 
 $("#auditCloseButton").addEventListener("click", () => {
@@ -13413,6 +13462,20 @@ function renderAuditPanel() {
     $("#auditTruncated").classList.add("hidden");
     return;
   }
+  if (state.auditBlockedFiles.length) {
+    $("#auditStatus").textContent = auditStatusPresentation("incomplete").label;
+    $("#auditStatus").className = "audit-status-badge status-incomplete";
+    $("#auditStatus").dataset.status = "incomplete";
+    $("#auditCoverage").textContent = "Unsaved source is not included in project checks.";
+    const paths = state.auditBlockedFiles.map(displayPath).join(", ");
+    const empty = document.createElement("div");
+    empty.className = "audit-empty";
+    empty.setAttribute("role", "status");
+    empty.textContent = `Save the modified source ${state.auditBlockedFiles.length === 1 ? "file" : "files"} before checking: ${paths}. Then run Check project again.`;
+    $("#auditFindings").replaceChildren(empty);
+    $("#auditTruncated").classList.add("hidden");
+    return;
+  }
   const r = state.auditResult;
   if (!r) return;
 
@@ -13430,7 +13493,7 @@ function renderAuditPanel() {
   if (findings.length === 0) {
     const empty = document.createElement("div");
     empty.className = "audit-empty";
-    empty.textContent = r.status === "error" ? "The project check did not complete." : "No issues were found in the reviewed project information.";
+    empty.textContent = r.status === "error" ? (r.ui_message || "The project check did not complete.") : "No issues were found in the reviewed project information.";
     findingsContainer.append(empty);
   } else {
     appendAuditFindingGroups(findingsContainer, findings);
@@ -14299,6 +14362,8 @@ async function hydrateProject(response) {
   state.agentWorkSurface = "none";
   state.auditResult = null;
   state.auditLoading = false;
+  state.auditBlockedFiles = [];
+  state.auditRequestSequence += 1;
   state.activeRunId = null;
   state.agentReviewRunId = null;
   state.agentReviewRunDetail = null;
@@ -14641,7 +14706,7 @@ $("#gitCommitForm").addEventListener("submit", async (event) => {
   }
   await runGitMutation(
     "git_commit",
-    { message, expected_staged_revision: state.gitReview.stagedRevision },
+    { message, expectedStagedRevision: state.gitReview.stagedRevision },
     "Committed reviewed changes",
   );
   $("#gitCommitMessage").value = "";
