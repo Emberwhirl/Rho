@@ -7,6 +7,37 @@ Target release: `0.2.0-dev.10` or later
 Implementation note: this specification is retained as the delivered contract
 for the configurable model workflow.
 
+### 2026-08-05 credential and settings amendment
+
+The Windows credential and settings behavior in
+`plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md`
+supersedes the V1 statements below that credentials are `.Renviron`-only, that
+Rho has no API-key input, and that operating-system credential storage is
+deferred.
+
+On Windows, Rho now stores an explicitly submitted API key in Windows
+Credential Manager under service `Rho Agent LLM`, keyed by the stable provider
+profile ID. The key is never written to `llm-profiles.json`, project/session
+state, SQLite, localStorage, prompts, events, logs, diagnostics, process
+arguments, or the non-secret runtime profile. Rust reads it immediately before
+a connection test or Agent turn and injects it only into that short-lived Agent
+R child environment. Workspace R does not receive this override.
+
+An existing effective user `.Renviron` remains a read-only compatibility
+fallback when no system credential is stored. Rho does not migrate, edit, or
+delete it. A system credential takes precedence for Agent R.
+
+The Model settings dialog now defaults to Provider type, Model, conditional
+Base URL and API key fields, with Save, Test connection, and Use this model as
+the primary actions. Provider/model catalog and maintenance, environment
+variable names, protocol/capability controls, and destructive actions are
+inside one collapsed Advanced disclosure. The password input is transient and
+is cleared after save success or failure, dialog close, provider change, and
+project change; a stored value is never redisplayed.
+
+All remaining V1 decisions below continue to govern provider/model metadata,
+selection, no fallback, capability gating, attribution, and authority.
+
 ## 1. Goal
 
 Allow the user to configure model providers and select the LLM used by the

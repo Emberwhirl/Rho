@@ -755,26 +755,15 @@ plot(
       <div class="agent-llm-surface">
         <div class="agent-llm-header">
           <div>
-            <strong id="agentLlmDialogTitle">Models and connections</strong>
+            <strong id="agentLlmDialogTitle">Model settings</strong>
             <p id="agentLlmUserEnviron" class="agent-llm-subtitle">Loading connection settings…</p>
           </div>
           <button id="agentLlmClose" type="button" aria-label="Close model settings">✕</button>
         </div>
         <div id="agentLlmValidation" class="agent-llm-banner hidden"></div>
         <div class="agent-llm-layout">
-          <section class="agent-llm-column">
-            <div class="agent-llm-toolbar">
-              <strong>Providers</strong>
-              <div class="agent-llm-toolbar-actions">
-                <button id="agentLlmAddProvider" type="button">Add provider</button>
-                <button id="agentLlmReloadCredentials" type="button">Reload credentials</button>
-                <button id="agentLlmOpenEnviron" type="button">Open credential file</button>
-                <button id="agentLlmCopySetupLine" type="button">Copy API key template</button>
-              </div>
-            </div>
-            <div id="agentLlmProviderList" class="agent-llm-list" role="listbox" aria-label="Providers"></div>
+          <section class="agent-llm-column agent-llm-primary">
             <div class="agent-llm-form">
-              <label>Display name<input id="agentLlmProviderDisplayName" type="text" /></label>
               <label>Provider type
                 <select id="agentLlmProviderKind">
                   <option value="registered">R provider</option>
@@ -785,7 +774,40 @@ plot(
                   <option value="local_openai_compatible">Local OpenAI-compatible</option>
                 </select>
               </label>
-              <label>Base URL<input id="agentLlmProviderBaseUrl" type="url" placeholder="http://127.0.0.1:11434/v1" /></label>
+              <label>Model<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
+              <label id="agentLlmBaseUrlField">Base URL<input id="agentLlmProviderBaseUrl" type="url" placeholder="http://127.0.0.1:11434/v1" /></label>
+              <div id="agentLlmCredentialField" class="agent-llm-credential-field">
+                <label>API key
+                  <input id="agentLlmCredential" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter a new API key" />
+                </label>
+                <div class="agent-llm-credential-meta">
+                  <span id="agentLlmCredentialStatus" class="agent-llm-credential-status">Not set</span>
+                  <button id="agentLlmDeleteCredential" class="agent-llm-link-button hidden" type="button">Remove stored key</button>
+                </div>
+              </div>
+            </div>
+            <div id="agentLlmTestResult" class="agent-llm-test-result hidden"></div>
+            <div class="agent-llm-actions agent-llm-primary-actions">
+              <button id="agentLlmSaveConfiguration" class="primary" type="button">Save</button>
+              <button id="agentLlmTestModel" type="button">Test connection</button>
+              <button id="agentLlmCancelTest" class="hidden" type="button">Cancel test</button>
+              <button id="agentLlmSelectDefault" type="button">Use this model</button>
+            </div>
+          </section>
+          <details id="agentLlmAdvanced" class="agent-llm-advanced agent-llm-management-details">
+            <summary>Advanced</summary>
+            <div class="agent-llm-management-grid">
+          <section class="agent-llm-column">
+            <div class="agent-llm-toolbar">
+              <strong>Providers</strong>
+              <div class="agent-llm-toolbar-actions">
+                <button id="agentLlmAddProvider" type="button">Add provider</button>
+                <button id="agentLlmOpenEnviron" type="button">Open user environment file</button>
+              </div>
+            </div>
+            <div id="agentLlmProviderList" class="agent-llm-list" role="listbox" aria-label="Providers"></div>
+            <div class="agent-llm-form">
+              <label>Display name<input id="agentLlmProviderDisplayName" type="text" /></label>
               <label class="agent-llm-checkbox"><input id="agentLlmProviderApiKeyRequired" type="checkbox" checked /> API key required</label>
               <details class="agent-llm-advanced">
                 <summary>Advanced settings</summary>
@@ -816,9 +838,6 @@ plot(
               <div class="agent-llm-toolbar-actions">
                 <button id="agentLlmAddModel" type="button">Add model</button>
                 <button id="agentLlmLoadCatalog" type="button">Load catalog</button>
-                <button id="agentLlmTestModel" type="button">Test connection</button>
-                <button id="agentLlmCancelTest" type="button">Cancel test</button>
-                <button id="agentLlmSelectDefault" type="button">Select default</button>
               </div>
             </div>
             <div id="agentLlmModelList" class="agent-llm-list" role="listbox" aria-label="Models"></div>
@@ -832,7 +851,6 @@ plot(
               <details class="agent-llm-advanced">
                 <summary>Advanced settings</summary>
                 <div class="agent-llm-advanced-fields">
-                  <label>Model ID<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
                   <label>Tool calling
                     <select id="agentLlmModelToolCalling">
                       <option value="yes">Yes</option>
@@ -865,12 +883,13 @@ plot(
                 </div>
               </details>
             </div>
-            <div id="agentLlmTestResult" class="agent-llm-test-result hidden"></div>
             <div class="agent-llm-actions">
               <button id="agentLlmSaveModel" type="button">Save model</button>
               <button id="agentLlmDeleteModel" type="button">Delete model</button>
             </div>
           </section>
+            </div>
+          </details>
         </div>
       </div>
     </div>

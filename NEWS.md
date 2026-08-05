@@ -8,6 +8,10 @@ this file records behavior that is already available in a released build.
 
 ### Improved
 
+- Model settings now keep API keys in Windows Credential Manager and present a
+  single required-fields-first setup flow. Existing user `.Renviron`
+  credentials remain a read-only fallback, while provider protocol,
+  capability, catalog, and destructive controls stay under Advanced.
 - Normal workbench surfaces now present outcomes, next actions, scientific
   source/output information, and friendly status labels without exposing
   opaque record IDs, raw backend errors, runtime paths, or implementation

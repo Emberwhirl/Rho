@@ -2722,6 +2722,12 @@ async fn run_agent(
     let turn_id = format!("agent_turn_{}", Uuid::new_v4());
     let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, model_id.as_deref())
         .map_err(display_error)?;
+    let credential_override = agent_llm::credential_override_for_model(
+        &config.data_dir,
+        &config.rscript,
+        model_id.as_deref(),
+    )
+    .map_err(display_error)?;
     let user_environ = agent_llm::resolve_user_environ(&config.rscript)
         .map_err(display_error)?
         .path;
@@ -2795,6 +2801,7 @@ async fn run_agent(
             resolved_model.effective_model_ref,
             Some(runtime_profile),
             Some(user_environ),
+            credential_override,
             prompt,
             mode,
             task_turn_id.clone(),
@@ -2843,6 +2850,28 @@ async fn agent_llm_delete_provider(
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
     agent_llm::delete_provider(&config.data_dir, &provider_id).map_err(display_error)?;
+    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_set_credential(
+    provider_id: String,
+    credential: String,
+    state: State<'_, AppState>,
+) -> Result<AgentLlmSettingsView, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    agent_llm::set_credential(&config.data_dir, &provider_id, &credential)
+        .map_err(display_error)?;
+    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_delete_credential(
+    provider_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentLlmSettingsView, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    agent_llm::delete_credential(&config.data_dir, &provider_id).map_err(display_error)?;
     agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
 }
 
@@ -6134,6 +6163,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             resolved_model.effective_model_ref.clone(),
             Some(resolved_model.runtime_profile),
             Some(user_environ),
+            None,
             prompt,
             "ask".to_string(),
             turn_id,
@@ -6325,6 +6355,8 @@ fn main() {
             agent_llm_settings,
             agent_llm_save_provider,
             agent_llm_delete_provider,
+            agent_llm_set_credential,
+            agent_llm_delete_credential,
             agent_llm_save_model,
             agent_llm_delete_model,
             agent_llm_select_model,

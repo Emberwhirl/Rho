@@ -213,9 +213,73 @@ and rerun recovery. Valid
 model credentials and `aisdk` are prerequisites;
 record an explicit skip if they are unavailable.
 
-Open Tools > Manage LLMs during this scenario. Inspect provider/model status,
-open `.Renviron`, refresh credentials, test the selected connection, close the
-dialog, and verify the updated availability without restarting Rho.
+Open Model settings from the Agent model selector during this scenario. Confirm
+that only Provider type, Model, the conditional Base URL/API key fields, Save,
+Test connection, and Use this model appear before Advanced. Exercise the
+system-credential workflow in Section 3A and verify the updated availability
+without restarting Rho.
+
+## 3A. Windows System Credential And Model Settings
+
+Run this section with an installed candidate on Windows. Use a disposable
+provider API key that can be revoked after acceptance; never paste the key into
+this document, a screenshot, Console, Logs, Problems, diagnostics, or a project
+file. Record the candidate version and installer SHA-256.
+
+1. Open Agent > model selector > Model settings. Expected: Advanced is closed;
+   the normal form contains Provider type, Model, API key when required, and
+   Base URL only for compatible/local providers. The key field is a masked,
+   empty input even if a credential already exists.
+2. Select the provider used by the acceptance model. For a concrete compatible
+   example, choose OpenAI-compatible, set the provider's documented `/v1` Base
+   URL, enter its model ID, paste the disposable key, and choose Save. Expected:
+   the key field clears and status becomes `Stored securely`; closing and
+   reopening the dialog never redisplays the key or any fragment/length hint.
+3. Open Windows Credential Manager > Windows Credentials. Confirm one entry is
+   associated with `Rho Agent LLM`. Do not reveal or capture the credential
+   value. Rename the provider display name under Advanced, save, restart Rho,
+   and confirm the same model remains usable and status remains
+   `Stored securely`.
+4. Choose Test connection. Expected: success identifies the configured model
+   without response content or key material. Then use Ask for a harmless
+   request such as `Return the result of 2 + 2 without running R code.` Confirm
+   the turn is attributed to the selected model. Use Act for
+   `Run R code to calculate sum(1:10) and report the result.` Approve only the
+   expected R action and confirm Console/Run Review shows `55`, with no key in
+   the prompt, events, Run details, Logs, Problems, or copied diagnostics.
+5. Paste a different disposable key and Save. Restart Rho and retest. Expected:
+   replacement succeeds, the input clears, and only the replacement credential
+   works. Repeat with an empty key field and Save; expected: the existing key is
+   not deleted or overwritten.
+6. Choose Remove stored key and cancel once. Expected: status and connection
+   remain unchanged. Repeat and confirm removal. If no matching key exists in
+   the effective user environment, status becomes `Not set` and the connection
+   test fails with an actionable message. Repeating removal is harmless.
+7. To test compatibility fallback, put the disposable key under the provider's
+   documented environment-variable name in the effective user `.Renviron`,
+   restart Rho, and leave the system key absent. Expected: status is
+   `Available from user environment` and Agent turns work. Save a system key and
+   verify status changes to `Stored securely`. Remove it and verify the
+   environment fallback works again. Rho must not modify the `.Renviron` file.
+8. Switch between two test projects while the dialog is open after typing only
+   a disposable dummy value such as `not-a-real-key`. Expected: the key field
+   clears, provider/model settings remain global, and no project file or
+   session state contains the dummy value.
+9. Disconnect or deny credential-store access if the test machine permits it,
+   then retry Save and Remove. Expected: the UI reports that secure storage is
+   unavailable or that the operation failed, retains truthful metadata, does
+   not claim success, and permits a retry after access is restored.
+10. Uninstall the candidate without manually deleting the credential first,
+    inspect Windows Credential Manager, and record whether the entry remains.
+    The current contract does not promise automatic credential removal. Remove
+    the disposable credential and revoke the test key after recording the
+    result.
+
+Repeat steps 1-6 at the minimum supported window and Windows 125% display
+scale. Record pass/fail, screenshots with the key field empty, the fallback and
+failure states exercised, and any deviation. Until this exact installed-app
+record exists, this section is `NOT RUN` and does not establish release
+readiness.
 
 ## 4. Experience Editor Intelligence
 
@@ -524,13 +588,16 @@ references but do not count as installed acceptance.
    comparison fields appear and status/origin/action values are friendly. The
    R error remains visible; traceback is hidden under `Technical error details`
    until explicitly expanded.
-6. Open `Model settings`. Confirm provider/model lists use display names and
-   `Ready`, `Available`, `Disabled`, or actionable credential language. The
-   credential-file path, provider selector enums, and raw validation errors
-   must not appear. Confirm Provider ID, environment-variable fields, Wire API,
-   stream options, Model ID, and capability metadata are initially hidden under
-   two collapsed `Advanced settings` disclosures. Expand both, edit and save a
-   disposable provider/model, reopen the dialog, and confirm values persist.
+6. Open `Model settings`. Confirm the primary flow shows Provider type, Model,
+   conditional Base URL/API key fields, and the three primary actions. Status
+   must use `Stored securely`, `Available from user environment`, `Not set`,
+   `Not required`, or `Credential storage unavailable`; no credential-file
+   path, raw selector enum, validation error, key fragment, or key length may
+   appear. Confirm Provider ID, environment-variable fields, Wire API, stream
+   options, capability metadata, catalog management, and destructive actions
+   are initially hidden under one collapsed `Advanced` disclosure. Expand it,
+   edit and save a disposable provider/model, reopen the dialog, and confirm
+   non-secret values persist while the API key input remains empty.
 7. Simulate one missing/stale item and one connection failure. Confirm each
    message states what happened and what to do next. Use Copy diagnostics or
    Open log folder and confirm support details remain obtainable without being

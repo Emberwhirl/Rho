@@ -1421,7 +1421,7 @@ body.resizing-vertical { cursor: col-resize; }
   z-index: 1;
   display: grid;
   gap: 10px;
-  width: min(980px, calc(100vw - 40px));
+  width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
   padding: 14px;
   overflow: auto;
@@ -1461,9 +1461,58 @@ body.resizing-vertical { cursor: col-resize; }
 }
 .agent-llm-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.agent-llm-primary {
+  padding: 14px;
+  background: #fff;
+}
+.agent-llm-primary .agent-llm-form { gap: 11px; }
+.agent-llm-primary-actions { justify-content: flex-end; }
+.agent-llm-primary-actions button.primary {
+  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.agent-llm-credential-field {
+  display: grid;
+  gap: 5px;
+}
+.agent-llm-credential-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
+}
+.agent-llm-credential-status {
+  color: var(--muted);
+  font-size: 10px;
+}
+.agent-llm-link-button {
+  padding: 0;
+  border: 0;
+  color: var(--danger);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+.agent-llm-management-details {
+  padding: 0;
+  border-top: 0;
+}
+.agent-llm-management-details > summary {
+  padding: 6px 2px;
+  font-size: 11px;
+}
+.agent-llm-management-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+.agent-llm-management-grid .agent-llm-list { min-height: 0; }
+.agent-llm-management-grid .agent-llm-row { align-self: start; }
 .agent-llm-column {
   display: grid;
   gap: 8px;
@@ -1573,6 +1622,7 @@ body.resizing-vertical { cursor: col-resize; }
   flex-wrap: wrap;
   gap: 6px;
 }
+.agent-llm-actions button.danger { color: var(--danger); }
 .agent-llm-test-result {
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -2237,6 +2287,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .context-panel { grid-column: 2; }
   .project-switcher { display: none; }
   .agent-llm-layout { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-management-grid { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-grid { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-body { min-height: 110px; max-height: 210px; }
   .package-management-fields { grid-template-columns: minmax(0, 1fr); }

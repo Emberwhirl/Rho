@@ -1617,6 +1617,19 @@ fn desktop_agent_turn_stdin(
     ))
 }
 
+fn configure_agent_process_environment(
+    command: &mut tokio::process::Command,
+    user_environ: Option<&str>,
+    credential_override: Option<(&str, &str)>,
+) {
+    if let Some(path) = user_environ {
+        command.env("R_ENVIRON_USER", path);
+    }
+    if let Some((name, value)) = credential_override {
+        command.env(name, value);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run_agent_turn(
     session: &ArkSession,
@@ -1626,6 +1639,7 @@ pub async fn run_agent_turn(
     model: String,
     runtime_profile: Option<AgentRuntimeModelProfile>,
     user_environ: Option<String>,
+    credential_override: Option<(String, String)>,
     prompt: String,
     mode: String,
     turn_id: String,
@@ -1671,9 +1685,13 @@ pub async fn run_agent_turn(
         let stdin_payload = desktop_agent_turn_stdin(&token, &runtime_profile, &model_prompt)?;
         let mut command = tokio::process::Command::new(rscript);
         hide_console_window(&mut command);
-        if let Some(path) = user_environ {
-            command.env("R_ENVIRON_USER", path);
-        }
+        configure_agent_process_environment(
+            &mut command,
+            user_environ.as_deref(),
+            credential_override
+                .as_ref()
+                .map(|(name, value)| (name.as_str(), value.as_str())),
+        );
         let mut child = command
             .args(&args)
             .stdin(Stdio::piped())
@@ -4657,6 +4675,45 @@ mod tests {
         assert!(stdin_payload.starts_with("secret-token\n"));
         assert!(stdin_payload.ends_with(&prompt));
         assert!(stdin_payload.len() > 32 * 1024);
+    }
+
+    #[test]
+    fn desktop_agent_system_credential_is_environment_only() {
+        let secret = "system-secret-value";
+        let mut command = tokio::process::Command::new("Rscript");
+        configure_agent_process_environment(
+            &mut command,
+            Some("C:/Users/test/.Renviron"),
+            Some(("DEEPSEEK_API_KEY", secret)),
+        );
+        let command = command.as_std();
+        let args = command
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        let environment = command
+            .get_envs()
+            .map(|(name, value)| {
+                (
+                    name.to_string_lossy().to_string(),
+                    value.map(|value| value.to_string_lossy().to_string()),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        assert!(args.iter().all(|value| !value.contains(secret)));
+        assert_eq!(
+            environment
+                .get("DEEPSEEK_API_KEY")
+                .and_then(|value| value.as_deref()),
+            Some(secret)
+        );
+        assert_eq!(
+            environment
+                .get("R_ENVIRON_USER")
+                .and_then(|value| value.as_deref()),
+            Some("C:/Users/test/.Renviron")
+        );
     }
 
     #[test]
