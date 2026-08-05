@@ -495,6 +495,54 @@ the modern state surfaces. The deterministic browser references are:
 `?preview=interface-shell`, `?preview=console-logs`, and
 `?preview=agent-first-direct&state=file|run|artifact|audit|audit-failure`.
 
+### 8A.1 Human-Facing Information And Model Settings
+
+Run this pass in the same installed candidate. It is the manual acceptance for
+the 2026-08-05 human-facing information projection; preview results are useful
+references but do not count as installed acceptance.
+
+1. In Agent-first, open Task, Activity, Runs, Outputs, and Review. Trigger one
+   R approval and one failed R run. Confirm the UI shows the model display
+   name, requested action, exact R code, useful R error, source file, output,
+   and next action. It must not show request/Run/Artifact/snapshot IDs, raw
+   JSON, broker/runtime names, process IDs, or backend command names.
+2. In Human-first, inspect Console and Logs. Confirm Console preserves entered
+   R code, output, messages, warnings, and errors. Confirm Logs use `Rho`,
+   `Agent`, and `You` labels and omit process IDs, runtime implementation names,
+   opaque Run IDs, and raw payload details.
+3. Open Environment with and without `renv.lock`; inspect installed and locked
+   packages, one package-change preview, a Data Viewer page, Local Help,
+   Installed Help, and project References. Confirm package names/versions,
+   repositories, project-relative source paths, and consequences remain useful,
+   while package-library absolute paths, raw status/reason codes, transport
+   limits, and skill implementation paths are absent.
+4. Create Result, Method, and Interpretation claims. Review linked, missing,
+   incomplete, changed-source, and foreign-project cases. Confirm each uses a
+   controlled claim type and a plain-language review outcome. Unknown backend
+   limitation text must become a truthful generic limitation, not appear raw.
+5. Compare two Runs and open a failed Run in Agent Review. Confirm only known
+   comparison fields appear and status/origin/action values are friendly. The
+   R error remains visible; traceback is hidden under `Technical error details`
+   until explicitly expanded.
+6. Open `Model settings`. Confirm provider/model lists use display names and
+   `Ready`, `Available`, `Disabled`, or actionable credential language. The
+   credential-file path, provider selector enums, and raw validation errors
+   must not appear. Confirm Provider ID, environment-variable fields, Wire API,
+   stream options, Model ID, and capability metadata are initially hidden under
+   two collapsed `Advanced settings` disclosures. Expand both, edit and save a
+   disposable provider/model, reopen the dialog, and confirm values persist.
+7. Simulate one missing/stale item and one connection failure. Confirm each
+   message states what happened and what to do next. Use Copy diagnostics or
+   Open log folder and confirm support details remain obtainable without being
+   shown in the normal UI.
+8. Repeat steps 1, 3, 5, and 6 at `900 x 700` and Windows 125% display scale.
+   Record clipping, overlap, horizontal page scroll, inaccessible collapsed
+   fields, focus loss, or text overflow with screenshots.
+
+Record candidate version/hash, pass/fail per step, screenshots, and deviations.
+Until that record exists for an installed candidate, this acceptance is
+`NOT RUN` and does not establish release readiness.
+
 ## 8B. Focused Scientific And Developer Checks
 
 Complete these focused checks using the same generated projects:

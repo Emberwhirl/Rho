@@ -755,10 +755,10 @@ plot(
       <div class="agent-llm-surface">
         <div class="agent-llm-header">
           <div>
-            <strong id="agentLlmDialogTitle">Manage LLMs</strong>
-            <p id="agentLlmUserEnviron" class="agent-llm-subtitle">Loading effective user environment…</p>
+            <strong id="agentLlmDialogTitle">Models and connections</strong>
+            <p id="agentLlmUserEnviron" class="agent-llm-subtitle">Loading connection settings…</p>
           </div>
-          <button id="agentLlmClose" type="button" aria-label="Close Manage LLMs">✕</button>
+          <button id="agentLlmClose" type="button" aria-label="Close model settings">✕</button>
         </div>
         <div id="agentLlmValidation" class="agent-llm-banner hidden"></div>
         <div class="agent-llm-layout">
@@ -767,9 +767,9 @@ plot(
               <strong>Providers</strong>
               <div class="agent-llm-toolbar-actions">
                 <button id="agentLlmAddProvider" type="button">Add provider</button>
-                <button id="agentLlmReloadCredentials" type="button">Reload environment</button>
-                <button id="agentLlmOpenEnviron" type="button">Open user env</button>
-                <button id="agentLlmCopySetupLine" type="button">Copy setup line</button>
+                <button id="agentLlmReloadCredentials" type="button">Reload credentials</button>
+                <button id="agentLlmOpenEnviron" type="button">Open credential file</button>
+                <button id="agentLlmCopySetupLine" type="button">Copy API key template</button>
               </div>
             </div>
             <div id="agentLlmProviderList" class="agent-llm-list" role="listbox" aria-label="Providers"></div>
@@ -777,7 +777,7 @@ plot(
               <label>Display name<input id="agentLlmProviderDisplayName" type="text" /></label>
               <label>Provider type
                 <select id="agentLlmProviderKind">
-                  <option value="registered">Registered aisdk provider</option>
+                  <option value="registered">R provider</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="gemini">Gemini</option>
@@ -785,20 +785,25 @@ plot(
                   <option value="local_openai_compatible">Local OpenAI-compatible</option>
                 </select>
               </label>
-              <label>Provider ID<input id="agentLlmRegisteredProviderId" type="text" placeholder="deepseek" /></label>
-              <label>API key environment<input id="agentLlmProviderApiKeyEnv" type="text" placeholder="OPENAI_API_KEY" /></label>
               <label>Base URL<input id="agentLlmProviderBaseUrl" type="url" placeholder="http://127.0.0.1:11434/v1" /></label>
-              <label>Base URL environment<input id="agentLlmProviderBaseUrlEnv" type="text" placeholder="OPENAI_BASE_URL" /></label>
-              <label>Wire API
-                <select id="agentLlmProviderWireApi">
-                  <option value="">Default</option>
-                  <option value="chat_completions">chat_completions</option>
-                  <option value="responses">responses</option>
-                  <option value="anthropic_messages">anthropic_messages</option>
-                </select>
-              </label>
               <label class="agent-llm-checkbox"><input id="agentLlmProviderApiKeyRequired" type="checkbox" checked /> API key required</label>
-              <label class="agent-llm-checkbox"><input id="agentLlmProviderDisableStreamOptions" type="checkbox" /> Disable stream options</label>
+              <details class="agent-llm-advanced">
+                <summary>Advanced settings</summary>
+                <div class="agent-llm-advanced-fields">
+                  <label>Provider ID<input id="agentLlmRegisteredProviderId" type="text" placeholder="deepseek" /></label>
+                  <label>API key environment<input id="agentLlmProviderApiKeyEnv" type="text" placeholder="OPENAI_API_KEY" /></label>
+                  <label>Base URL environment<input id="agentLlmProviderBaseUrlEnv" type="text" placeholder="OPENAI_BASE_URL" /></label>
+                  <label>Wire API
+                    <select id="agentLlmProviderWireApi">
+                      <option value="">Default</option>
+                      <option value="chat_completions">chat_completions</option>
+                      <option value="responses">responses</option>
+                      <option value="anthropic_messages">anthropic_messages</option>
+                    </select>
+                  </label>
+                  <label class="agent-llm-checkbox"><input id="agentLlmProviderDisableStreamOptions" type="checkbox" /> Disable stream options</label>
+                </div>
+              </details>
             </div>
             <div class="agent-llm-actions">
               <button id="agentLlmSaveProvider" type="button">Save provider</button>
@@ -823,37 +828,42 @@ plot(
               <label>Provider
                 <select id="agentLlmModelProvider"></select>
               </label>
-              <label>Model ID<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
-              <label>Tool calling
-                <select id="agentLlmModelToolCalling">
-                  <option value="yes">yes</option>
-                  <option value="no">no</option>
-                  <option value="unknown">unknown</option>
-                </select>
-              </label>
-              <label>Reasoning
-                <select id="agentLlmModelReasoning">
-                  <option value="unknown">unknown</option>
-                  <option value="yes">yes</option>
-                  <option value="no">no</option>
-                </select>
-              </label>
-              <label>Vision input
-                <select id="agentLlmModelVisionInput">
-                  <option value="unknown">unknown</option>
-                  <option value="yes">yes</option>
-                  <option value="no">no</option>
-                </select>
-              </label>
-              <label>Capability source
-                <select id="agentLlmModelCapabilitySource">
-                  <option value="declared">declared</option>
-                  <option value="catalog">catalog</option>
-                  <option value="probe">probe</option>
-                  <option value="unknown">unknown</option>
-                </select>
-              </label>
               <label class="agent-llm-checkbox"><input id="agentLlmModelEnabled" type="checkbox" checked /> Enabled</label>
+              <details class="agent-llm-advanced">
+                <summary>Advanced settings</summary>
+                <div class="agent-llm-advanced-fields">
+                  <label>Model ID<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
+                  <label>Tool calling
+                    <select id="agentLlmModelToolCalling">
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                      <option value="unknown">Not specified</option>
+                    </select>
+                  </label>
+                  <label>Reasoning
+                    <select id="agentLlmModelReasoning">
+                      <option value="unknown">Not specified</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label>Image input
+                    <select id="agentLlmModelVisionInput">
+                      <option value="unknown">Not specified</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                  <label>Capability source
+                    <select id="agentLlmModelCapabilitySource">
+                      <option value="declared">Manually set</option>
+                      <option value="catalog">Model catalog</option>
+                      <option value="probe">Connection test</option>
+                      <option value="unknown">Not specified</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
             </div>
             <div id="agentLlmTestResult" class="agent-llm-test-result hidden"></div>
             <div class="agent-llm-actions">
@@ -1024,6 +1034,6 @@ plot(
       </section>
     </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3&projection=wp2"></script>
+    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3&projection=wp4"></script>
   </body>
 </html>

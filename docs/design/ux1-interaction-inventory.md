@@ -210,20 +210,30 @@ Phase: UX1 deliverable
 | unavailable | missing capability and setup/fallback action |
 | empty | reason and context-specific first action |
 
-### Current Gaps Against Contract
+### Reconciled Gaps Against Contract
 
-| Gap | Surface | Fix in |
+Status reviewed 2026-08-05 against the implemented frontend and the active
+human-facing information projection contract.
+
+| Former gap | Surface | Current status |
 |---|---|---|
-| Run button always shows `Run` regardless of scope | topbar | UX2 (W3) |
-| `SYSTEM`/`AGENT` origin badges clutter console | console | UX2 |
-| `rev 1` badge always visible in Agent header | agent | UX2 |
-| `state 1`/`project 0` always visible in status bar | status bar | UX2 |
-| `prompt()` used for new file / export path | multiple | UX2 (W2) |
-| `confirm()` used for destructive actions | multiple | UX2 (W2) |
-| Approval says `Approve run_r` not `Run this code once` | approval | UX4 (W6) |
-| `Clear` button label ambiguous | plots/artifacts | UX5 (W10) |
-| `Authorize Act R execution for this session` checkbox | agent | UX4 (W5) |
-| Ask/Plan/Act always visible as 3-way choice | agent composer | UX4 (W5) |
+| Run button always shows `Run` regardless of scope | topbar | resolved; action follows selection/current line/file context |
+| `SYSTEM`/`AGENT` origin badges clutter console | console | resolved; R work stays in Console and friendly product origins appear in Logs |
+| `rev 1` badge always visible in Agent header | agent | resolved; revision identity is not primary UI |
+| `state 1`/`project 0` always visible in status bar | status bar | resolved; internal revisions are omitted |
+| `prompt()` used for new file / export path | multiple | resolved; product dialogs own path entry and validation |
+| `confirm()` used for destructive actions | multiple | resolved; consequence-specific product confirmation is used |
+| Approval says `Approve run_r` not `Run this code once` | approval | resolved; exact R code and `Run this code` are shown |
+| `Clear` button label ambiguous | plots/artifacts | resolved; actions name the records or previews affected |
+| `Authorize Act R execution for this session` checkbox | agent | resolved; Act controls are progressively disclosed |
+| Ask/Plan/Act always visible as 3-way choice | agent composer | resolved; the default composer is task-first with mode controls disclosed on demand |
+
+The 2026-08-05 projection pass also closes the cross-surface gap that was not
+explicit in the original inventory: normal UI no longer falls back to opaque
+IDs, raw status/error values, runtime paths, or implementation terminology.
+Diagnostics retain exact support information through copy/log actions. Model
+settings show connection and selection fields first; protocol and capability
+metadata are under collapsed Advanced settings.
 
 ---
 

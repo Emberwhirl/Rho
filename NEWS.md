@@ -6,6 +6,15 @@ this file records behavior that is already available in a released build.
 
 ## 0.4.0-dev.0 - 2026-08-01
 
+### Improved
+
+- Normal workbench surfaces now present outcomes, next actions, scientific
+  source/output information, and friendly status labels without exposing
+  opaque record IDs, raw backend errors, runtime paths, or implementation
+  terminology. Exact support details remain available through diagnostics and
+  logs. Model settings now show connection and model-selection fields first,
+  with protocol and capability metadata under collapsed Advanced settings.
+
 ### Fixed
 
 - The former `Audit` action is now the clearer `Check project` workflow.

@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const html = fs.readFileSync(path.join(root, "desktop", "dist", "index.html"), "utf8");
 const js = fs.readFileSync(path.join(root, "desktop", "dist", "app.js"), "utf8");
 
 assert.match(js, /function userFacingError\(error, fallback/);
@@ -27,6 +28,13 @@ for (const context of [
   "load environment operations",
   "preview environment operation",
   "respond to environment operation",
+  "save model provider",
+  "delete model provider",
+  "save model",
+  "delete model",
+  "select model",
+  "load model catalog",
+  "reload model credentials",
 ]) assert.ok(js.includes(`reportUiFailure("${context}"`), `Missing projection boundary for ${context}`);
 
 for (const rawProjection of [
@@ -92,5 +100,49 @@ assert.doesNotMatch(compare, /fieldLabels\[field\.field\] \|\| "Detail"/);
 const agentRunReview = js.slice(js.indexOf("function renderAgentRunReview("), js.indexOf("\nfunction renderAgentReview"));
 assert.match(agentRunReview, /document\.createElement\("details"\)/);
 assert.doesNotMatch(agentRunReview, /appendAgentReviewSection\(outcome, "Traceback"/);
+
+const advancedGroups = [...html.matchAll(/<details class="agent-llm-advanced">([\s\S]*?)<\/details>/g)].map((match) => match[1]);
+assert.equal(advancedGroups.length, 2, "Provider and model forms each need one Advanced settings disclosure");
+for (const id of ["agentLlmRegisteredProviderId", "agentLlmProviderApiKeyEnv", "agentLlmProviderBaseUrlEnv", "agentLlmProviderWireApi", "agentLlmProviderDisableStreamOptions"]) {
+  assert.ok(advancedGroups[0].includes(`id="${id}"`), `${id} must be inside provider Advanced settings`);
+}
+for (const id of ["agentLlmModelId", "agentLlmModelToolCalling", "agentLlmModelReasoning", "agentLlmModelVisionInput", "agentLlmModelCapabilitySource"]) {
+  assert.ok(advancedGroups[1].includes(`id="${id}"`), `${id} must be inside model Advanced settings`);
+}
+assert.equal((html.match(/<summary>Advanced settings<\/summary>/g) || []).length, 2);
+
+const modelSettings = js.slice(js.indexOf("function renderAgentLlmDialog()"), js.indexOf("\nfunction openAgentLlmDialog"));
+assert.doesNotMatch(modelSettings, /settings\.user_environ\.path|provider\.kind\}.*credential|model\.selector_status/);
+assert.doesNotMatch(modelSettings, /settings\.validation_error \|\||result\.message \|\|/);
+assert.match(modelSettings, /providerConnectionLabel\(provider\)/);
+assert.match(modelSettings, /modelConnectionLabel\(model\)/);
+const modelSettingActions = js.slice(js.indexOf("async function saveAgentProvider()"), js.indexOf("\nfunction syncAgentPolling"));
+assert.doesNotMatch(modelSettingActions, /toast\(String\(error\)|toast\(`[^`]*\$\{error\}/);
+assert.doesNotMatch(modelSettingActions, /toast\(`Opened \$\{info\.path\}|Copied \$\{envName\}/);
+
+assert.doesNotMatch(js, /toast\(String\((?:error|err|failure)\)/);
+assert.doesNotMatch(js, /toast\(`[^`]*\$\{(?:error|err|failure)\}/);
+
+const gitReview = js.slice(js.indexOf("function renderGitReview()"), js.indexOf("\nfunction renderConflictBanner"));
+assert.match(gitReview, /userFacingError\(state\.gitReview\.error/);
+assert.doesNotMatch(gitReview, /textContent = state\.gitReview\.error|Git review unavailable: \$\{error\}/);
+
+const packageInventory = js.slice(js.indexOf("function renderPackageList()"), js.indexOf("\nfunction abbreviateLibrary"));
+assert.match(packageInventory, /userFacingError\(data\.error/);
+assert.doesNotMatch(packageInventory, /meta\.textContent = data\?\.error\s*(?:\|\||;)/);
+
+const agentReviewDetail = js.slice(js.indexOf("async function loadAgentReviewRunDetail"), js.indexOf("\nfunction agentReviewEvidence"));
+assert.match(agentReviewDetail, /reportUiFailure\("load Agent run review"/);
+assert.doesNotMatch(agentReviewDetail, /state\.agentReviewRunError = String\(error\)/);
+
+const agentRuntimeRetry = js.slice(js.indexOf('$("#agentRuntimeRetryButton").addEventListener'), js.indexOf('$("#agentCancelButton").addEventListener'));
+assert.match(agentRuntimeRetry, /userFacingError\(state\.agentRuntime\.error/);
+assert.match(agentRuntimeRetry, /reportUiFailure\("retry Agent runtime"/);
+assert.doesNotMatch(agentRuntimeRetry, /toast\(state\.agentRuntime\.available \? "Agent runtime is ready\." : state\.agentRuntime\.error/);
+
+const auditedRenderers = [projectSkills, timeline, installedHelp, localHelp, projectReferences, environmentSummary, environmentOperation, dataViewer, evidenceClaims, compare, agentRunReview, modelSettings].join("\n");
+assert.doesNotMatch(auditedRenderers, /\.textContent\s*=\s*[^;\n]*(?:request_id|run_id|artifact_id|snapshot_id)/);
+assert.doesNotMatch(auditedRenderers, /(?:textContent|title)\s*=\s*[^;\n]*arguments_json|JSON\.stringify\(/);
+assert.doesNotMatch(auditedRenderers, /(?:textContent|title)\s*=\s*String\((?:error|failure)\)/);
 
 console.log("Human-facing information projection contract checks passed.");

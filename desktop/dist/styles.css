@@ -1527,6 +1527,21 @@ body.resizing-vertical { cursor: col-resize; }
   display: grid;
   gap: 7px;
 }
+.agent-llm-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.agent-llm-advanced > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.agent-llm-advanced-fields {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
 .agent-llm-form label {
   display: grid;
   gap: 4px;

@@ -3785,7 +3785,7 @@ async function flushSessionSnapshot() {
     const key = emergencySessionKey();
     if (key) localStorage.removeItem(key);
   } catch (error) {
-    toast(`Session state was not saved: ${error}`, true);
+    toast(reportUiFailure("save session state", error, "The session layout could not be saved. Your project files are unchanged."), true);
   }
 }
 
@@ -4029,7 +4029,7 @@ async function openDocument(path, options = {}) {
       };
       delete state.closedDrafts[path];
     } catch (error) {
-      toast(String(error), true);
+      toast(reportUiFailure("open project file", error, "The file could not be opened. Refresh the project and try again."), true);
       return;
     }
   }
@@ -4083,7 +4083,7 @@ async function refreshProject() {
       : state.project.files[0]?.path;
     if (first) await openDocument(first);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("refresh project", error, "The project could not be refreshed. Check that it is still available and try again."), true);
   }
 }
 
@@ -4108,7 +4108,7 @@ async function saveActiveDocument() {
     scheduleSessionSave();
   } catch (error) {
     state.internalProjectWrites.delete(documentState.path);
-    toast(String(error), true);
+    toast(reportUiFailure("save project file", error, "The file could not be saved. Check the project and try again."), true);
   }
 }
 
@@ -4128,7 +4128,7 @@ async function createDocument() {
     scheduleSessionSave();
   } catch (error) {
     state.internalProjectWrites.delete(path);
-    toast(String(error), true);
+    toast(reportUiFailure("create project file", error, "The file could not be created. Check the project path and try again."), true);
   }
 }
 
@@ -4600,7 +4600,7 @@ function renderGitReview() {
   }
   if (state.gitReview.error) {
     reviewState.classList.add("error");
-    reviewState.textContent = state.gitReview.error;
+    reviewState.textContent = userFacingError(state.gitReview.error, "Git review is unavailable. Refresh it and try again.");
   } else if (state.gitReview.loading) {
     reviewState.textContent = "Refreshing repository state...";
   } else if (!state.gitReview.working.length && !state.gitReview.staged.length) {
@@ -4633,7 +4633,7 @@ async function selectGitReviewFile(path, staged) {
     state.gitReview.error = null;
   } catch (error) {
     if (projectRoot !== state.project.root) return;
-    state.gitReview.error = `Unable to review ${path}: ${error}`;
+    state.gitReview.error = reportUiFailure("load Git file review", error, "This file could not be reviewed. Refresh Git review and try again.");
   }
   renderGitReview();
 }
@@ -4678,7 +4678,7 @@ async function loadGitReview({ preserveSelection = true } = {}) {
   } catch (error) {
     if (projectRoot !== state.project.root) return;
     state.gitReview.loading = false;
-    state.gitReview.error = `Git review unavailable: ${error}`;
+    state.gitReview.error = reportUiFailure("load Git review", error, "Git review is unavailable. Refresh it and try again.");
     renderGitReview();
   }
 }
@@ -4691,7 +4691,7 @@ async function runGitMutation(command, args, successMessage) {
     await invoke(command, args);
     toast(successMessage);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("change Git state", error, "The Git action could not be completed. Refresh Git review and try again."), true);
   } finally {
     await loadGitStatus();
     await loadGitReview();
@@ -4755,7 +4755,7 @@ function renderConflictBanner() {
           await invoke("git_resolve_conflict", { file_path: file, resolution: res });
           toast(`Resolved ${file} (${res})`);
           loadGitConflicts();
-        } catch (err) { toast(`Resolve failed: ${err}`, "error"); }
+        } catch (err) { toast(reportUiFailure("resolve Git conflict", err, "The conflict resolution could not be applied. Refresh Git review and try again."), true); }
       });
       actions.append(btn);
     });
@@ -5544,7 +5544,7 @@ function renderAgentModelSelector() {
           updateAgentHeader();
           renderAgentLlmDialog();
         } catch (error) {
-          toast(String(error), true);
+          toast(reportUiFailure("select Agent model", error, "The model could not be selected. Refresh model settings and try again."), true);
         }
       });
       menu.append(button);
@@ -5554,7 +5554,7 @@ function renderAgentModelSelector() {
   manage.type = "button";
   manage.className = "agent-model-manage";
   manage.setAttribute("role", "menuitem");
-  manage.innerHTML = "<strong>Manage LLMs...</strong><p>Edit providers, models and connection checks.</p>";
+  manage.innerHTML = "<strong>Model settings...</strong><p>Edit connections, models and connection checks.</p>";
   manage.addEventListener("click", () => {
     closeAgentModelSelector();
     openAgentLlmDialog();
@@ -5589,6 +5589,29 @@ function catalogProviderId(provider) {
   return null;
 }
 
+function providerConnectionLabel(provider) {
+  const kind = {
+    registered: "R provider", openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini",
+    openai_compatible: "Compatible service", local_openai_compatible: "Local service",
+  }[provider?.kind] || "Custom service";
+  const credential = {
+    available: "Ready", ready: "Ready", missing: "API key needed", unavailable: "Unavailable",
+  }[provider?.credential_status] || "Not checked";
+  return `${kind} · ${credential}`;
+}
+
+function modelConnectionLabel(model) {
+  const status = {
+    selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled",
+    unavailable: "Unavailable", invalid: "Needs attention",
+  }[model?.selector_status] || (model?.enabled ? "Available" : "Disabled");
+  return `${model?.provider_display_name || "Provider"} · ${status}`;
+}
+
+function catalogProviderLabel(provider) {
+  return ({ openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini" })[provider] || "Compatible service";
+}
+
 function renderAgentLlmCatalogOptions() {
   const select = $("#agentLlmCatalogModel");
   select.replaceChildren();
@@ -5604,7 +5627,7 @@ function renderAgentLlmCatalogOptions() {
   for (const entry of state.agentLlm.catalog.filter((item) => !providerId || item.provider === providerId)) {
     const option = document.createElement("option");
     option.value = `${entry.provider}:${entry.id}`;
-    option.textContent = `${entry.display_name || entry.id} (${entry.provider})`;
+    option.textContent = `${entry.display_name || "Catalog model"} (${catalogProviderLabel(entry.provider)})`;
     select.append(option);
   }
   select.disabled = !state.agentLlm.catalog.length;
@@ -5648,9 +5671,11 @@ function renderAgentLlmDialog() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   ensureAgentLlmSelectionState();
   $("#agentLlmUserEnviron").textContent = settings.user_environ?.path
-    ? `Effective user environment: ${settings.user_environ.path}`
-    : "Effective user environment is unavailable.";
-  $("#agentLlmValidation").textContent = settings.validation_error || "";
+    ? "Credentials are loaded from your user environment."
+    : "User environment settings are unavailable.";
+  $("#agentLlmValidation").textContent = settings.validation_error
+    ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
+    : "";
   $("#agentLlmValidation").classList.toggle("hidden", !settings.validation_error);
   const providerList = $("#agentLlmProviderList");
   providerList.replaceChildren();
@@ -5663,7 +5688,7 @@ function renderAgentLlmDialog() {
     for (const provider of settings.providers) {
       const row = createAgentLlmListRow(
         provider.display_name,
-        `${provider.kind} · credential ${provider.credential_status}`,
+        providerConnectionLabel(provider),
         provider.id === state.agentLlm.selectedProviderId
       );
       row.addEventListener("click", () => {
@@ -5685,7 +5710,7 @@ function renderAgentLlmDialog() {
     for (const model of settings.models) {
       const row = createAgentLlmListRow(
         model.display_name,
-        `${model.provider_display_name} · ${model.selector_status} · ${prettyToolCalling(model.capabilities?.tool_calling || "unknown")}`,
+        modelConnectionLabel(model),
         model.id === state.agentLlm.selectedModelEditorId
       );
       row.addEventListener("click", () => {
@@ -5702,7 +5727,9 @@ function renderAgentLlmDialog() {
   const result = state.agentLlm.lastTestResult;
   $("#agentLlmTestResult").className = `agent-llm-test-result${result ? ` ${result.status}` : " hidden"}`;
   $("#agentLlmTestResult").textContent = result
-    ? `${result.message || "Connection checked."}${result.latency_ms ? ` · ${result.latency_ms} ms` : ""}`
+    ? (result.status === "ready"
+      ? `Connection ready${result.latency_ms ? ` · ${result.latency_ms} ms` : ""}`
+      : userFacingError(result.message, "The connection could not be verified. Review the provider settings and try again."))
     : "";
   $("#agentLlmTestModel").disabled = state.agentLlm.testInFlight;
   $("#agentLlmCancelTest").disabled = !state.agentLlm.testInFlight;
@@ -5815,7 +5842,7 @@ async function saveAgentProvider() {
     applyAgentLlmView(view);
     toast(`Saved provider ${provider.display_name || provider.id}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection settings and try again."), true);
   }
 }
 
@@ -5839,7 +5866,7 @@ async function deleteAgentProvider() {
     renderAgentProviderForm();
     toast(`Deleted provider ${provider.display_name}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("delete model provider", error, "The provider could not be deleted. Refresh model settings and try again."), true);
   }
 }
 
@@ -5852,7 +5879,7 @@ async function saveAgentModel() {
     applyAgentLlmView(view);
     toast(`Saved model ${model.display_name || model.id}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("save model", error, "The model could not be saved. Review its provider and settings and try again."), true);
   }
 }
 
@@ -5889,7 +5916,7 @@ async function deleteAgentModel() {
     applyAgentLlmView(view);
     toast(`Deleted model ${model.display_name}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("delete model", error, "The model could not be deleted. Refresh model settings and try again."), true);
   }
 }
 
@@ -5904,7 +5931,7 @@ async function selectAgentDefaultModel() {
     applyAgentLlmView(view);
     toast(`Selected ${model.display_name} for the next Agent turns.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("select model", error, "The model could not be selected. Refresh model settings and try again."), true);
   }
 }
 
@@ -5923,7 +5950,7 @@ async function testAgentModelConnection() {
     state.agentLlm.lastTestResult = view.models.find((item) => item.id === model.id)?.last_test || null;
     applyAgentLlmView(view);
   } catch (error) {
-    const message = String(error);
+    const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
     state.agentLlm.lastTestResult = {
       status: message.includes("cancelled") ? "warn" : "error",
       latency_ms: null,
@@ -5947,7 +5974,7 @@ async function loadAgentLlmCatalog() {
     renderAgentLlmCatalogOptions();
     toast(`Loaded ${state.agentLlm.catalog.length} catalog models.`);
   } catch (error) {
-    toast(`Could not load model catalog: ${error}`, true);
+    toast(reportUiFailure("load model catalog", error, "The model catalog could not be loaded. Check the connection and try again."), true);
   } finally {
     button.disabled = false;
   }
@@ -5973,25 +6000,25 @@ async function cancelAgentModelTest() {
     $("#agentLlmTestResult").className = "agent-llm-test-result";
     $("#agentLlmTestResult").textContent = "Cancelling connection test...";
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."), true);
   }
 }
 
 async function reloadAgentCredentials() {
   try {
     applyAgentLlmView(await invoke("agent_llm_refresh_credentials"));
-    toast("Reloaded Agent credential detection.");
+    toast("Credentials reloaded.");
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("reload model credentials", error, "Credentials could not be reloaded. Review the credential file and try again."), true);
   }
 }
 
 async function openAgentUserEnviron() {
   try {
-    const info = await invoke("agent_llm_open_user_environ");
-    toast(`Opened ${info.path}.`);
+    await invoke("agent_llm_open_user_environ");
+    toast("Opened the credential file.");
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("open model credentials", error, "The credential file could not be opened."), true);
   }
 }
 
@@ -5999,9 +6026,9 @@ async function copyAgentSetupLine() {
   const envName = $("#agentLlmProviderApiKeyEnv").value.trim() || currentProviderRecord()?.api_key_env || "API_KEY";
   try {
     await copyText(`${envName}=""`);
-    toast(`Copied ${envName} setup line.`);
+    toast("Copied the API key template.");
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("copy model credential template", error, "The API key template could not be copied."), true);
   }
 }
 
@@ -6047,7 +6074,12 @@ function renderAgentTimeline() {
     paragraph.className = "timeline-meta technical-meta";
     paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${agentModelDisplayName(turn.model)}`;
     content.append(headingRow, paragraph);
-    const detail = truncateText(turn.error_message || turn.final_message || "", 140);
+    const detail = truncateText(
+      turn.error_message
+        ? userFacingError(turn.error_message, "The Agent could not complete this task. Open it to review what happened.")
+        : turn.final_message || "",
+      140,
+    );
     if (detail && !selected) {
       const detailLine = document.createElement("p");
       detailLine.textContent = detail;
@@ -6156,7 +6188,10 @@ function renderTaskRail() {
 
     const preview = document.createElement("span");
     preview.className = "task-rail-preview";
-    preview.textContent = turn.prompt_preview || turn.final_message || turn.error_message || "(empty)";
+    preview.textContent = turn.prompt_preview
+      || turn.final_message
+      || (turn.error_message ? userFacingError(turn.error_message, "The Agent could not complete this task.") : "")
+      || "(empty)";
 
     item.append(status, badge, preview);
     item.addEventListener("click", async () => selectTaskTurn(turn.turn_id));
@@ -6553,7 +6588,7 @@ function renderProblemsLegacy() {
         try {
           await openDocument(problem.source_path);
         } catch (error) {
-          toast(String(error), true);
+          toast(reportUiFailure("open Problem source", error, "The source could not be opened. Refresh the project and try again."), true);
         }
       });
       actions.append(openSource);
@@ -6584,7 +6619,7 @@ function renderProblemsLegacy() {
           await loadRunData();
         } catch (error) {
           addProblem(String(error));
-          toast(String(error), true);
+          toast(reportUiFailure("retry R run", error, "The R run could not be started again. Review the Problem and try again."), true);
         }
       });
       actions.append(retry);
@@ -6655,12 +6690,9 @@ function renderLintStatus() {
     status.textContent = "Quick fix applied to the unsaved editor buffer · Save to persist, then Check code again";
     return;
   }
-  const provider = response?.provider;
-  const identity = provider ? `${provider.name || "lintr"} ${provider.version || "version unavailable"}` : "lintr";
-  const notices = response?.notices?.length ? ` · ${response.notices.join(", ")}` : "";
   status.textContent = state.lint.error
-    ? `${identity} · ${state.lint.error}${notices}`
-    : `${identity} · file scope · document ${response?.document_version ?? "?"} · ${response?.diagnostics?.length || 0} diagnostics${notices}`;
+    ? userFacingError(state.lint.error, "The code check could not be completed. Save the file and try again.")
+    : `${response?.diagnostics?.length || 0} code ${response?.diagnostics?.length === 1 ? "issue" : "issues"} found`;
 }
 
 async function openProblemSource(problem) {
@@ -6729,9 +6761,7 @@ function renderProblems() {
       location.textContent = `${displayPath(problem.source_path)}:${problem.line_number}:${problem.column_number}`;
       const meta = document.createElement("p");
       meta.className = "problem-meta";
-      const producers = [...new Set(group.problems.map((item) => `${item.producer || "lintr"} ${item.producer_version || ""}`.trim()))].sort();
-      const rules = [...new Set(group.problems.map((item) => item.rule).filter(Boolean))].sort();
-      meta.textContent = `${severity} · ${producers.join(", ")} · ${rules.join(", ")} · ${problem.scan_scope || "file"}`;
+      meta.textContent = `${severity} · Code check`;
       content.append(location, meta);
       if (group.problems.length > 1) {
         const count = document.createElement("span");
@@ -6751,7 +6781,7 @@ function renderProblems() {
         try {
           await openProblemSource(problem);
         } catch (error) {
-          toast(String(error), true);
+          toast(reportUiFailure("open Problem source", error, "The source could not be opened. Refresh the project and try again."), true);
         }
       });
       actions.append(openSource);
@@ -6794,7 +6824,7 @@ function renderProblems() {
           await loadRunData();
         } catch (error) {
           addProblem(String(error));
-          toast(String(error), true);
+          toast(reportUiFailure("retry R run", error, "The R run could not be started again. Review the Problem and try again."), true);
         }
       });
       actions.append(retry);
@@ -6828,7 +6858,7 @@ async function reviewLintQuickFix(problem) {
   try {
     await openProblemSource(problem);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("open lint source", error, "The source could not be opened. Refresh the project and try again."), true);
     return;
   }
   state.lint.proposal = {
@@ -7194,7 +7224,9 @@ function boundedRefactorPreview(content, limit = 32_000) {
 function setRefactorReviewError(message = null) {
   state.refactor.error = message ? String(message) : null;
   const error = $("#refactorReviewError");
-  error.textContent = state.refactor.error || "";
+  error.textContent = state.refactor.error
+    ? userFacingError(state.refactor.error, "The proposed editor change could not be completed. Refresh the project and try again.")
+    : "";
   error.classList.toggle("hidden", !state.refactor.error);
 }
 
@@ -7744,7 +7776,7 @@ function renderArtifactRecords() {
         state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
-        toast(`Saved output details are unavailable: ${error}`, true);
+        toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
       }
       renderPlots();
       $("#artifactPanel").open = true;
@@ -7767,7 +7799,7 @@ function renderArtifactRecords() {
         state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
-        toast(`Saved output details are unavailable: ${error}`, true);
+        toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
       }
       renderPlots();
       $("#artifactPanel").open = true;
@@ -7918,7 +7950,7 @@ async function executeCode(request) {
     if (executionHasRenderablePlot(response)) plotExecutionId = response.execution_id || null;
     await refreshEnvironment();
   } catch (error) {
-    const message = String(error);
+    const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
     addTerminalOutput(message, "error");
     addProblem(message);
     toast(message, true);
@@ -7965,7 +7997,7 @@ async function gotoDefinitionAtCursor() {
       toast(`No project definition for '${name}' — opening help`);
     }
   } catch (error) {
-    toast(`Go to definition failed: ${error}`, true);
+    toast(reportUiFailure("open definition", error, "The definition could not be opened. Try Local Help or refresh the project."), true);
   }
 }
 
@@ -8385,7 +8417,7 @@ async function refreshEnvironment() {
     renderEnvironment();
     loadPackageInventories();
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
   }
 }
 
@@ -8432,7 +8464,9 @@ function renderPackageList() {
   const filter = ($("#packageFilter").value || "").trim().toLowerCase();
 
   if (!data || data.error) {
-    meta.textContent = data?.error || "Loading";
+    meta.textContent = data?.error
+      ? userFacingError(data.error, "The package list is unavailable. Refresh Environment and try again.")
+      : "Loading";
     summary.textContent = "";
     list.replaceChildren(emptyRow(data?.error ? "Package list unavailable" : "Loading packages"));
     return;
@@ -8652,7 +8686,7 @@ async function loadEvidenceClaims() {
   } catch (error) {
     state.evidenceClaims = [];
     state.evidenceClaimReviews = new Map();
-    $("#evidenceClaimState").textContent = `Claims unavailable: ${error}`;
+    $("#evidenceClaimState").textContent = reportUiFailure("load evidence claims", error, "Claims are unavailable. Refresh Evidence and try again.");
   }
   renderEvidenceClaims();
   renderEvidenceClaimFormOptions();
@@ -8724,7 +8758,7 @@ async function openClaimArtifact(claim) {
     $("#artifactPanel").open = true;
     renderPlots();
   } catch (error) {
-    toast(`The linked saved output could not be opened: ${error}`, true);
+    toast(reportUiFailure("open claim output", error, "The linked saved output could not be opened. Refresh Evidence and try again."), true);
   }
 }
 
@@ -8791,7 +8825,7 @@ function renderEvidenceClaims() {
       const accepted = await confirmAction({ title: "Delete claim?", message: "This removes the claim and its Evidence links. Evidence entries and source files are unchanged.", confirmLabel: "Delete Claim", destructive: true });
       if (!accepted) return;
       try { await invoke("delete_evidence_claim", { claimId: claim.claim_id }); await loadEvidenceClaims(); }
-      catch (error) { toast(`Delete failed: ${error}`, true); }
+      catch (error) { toast(reportUiFailure("delete evidence claim", error, "The claim could not be deleted. Refresh Claims and try again."), true); }
     });
     actions.append(inspect, openAnchor, remove);
     if (claim.source_excerpt) {
@@ -8893,7 +8927,7 @@ function renderEvidenceList() {
       try {
         await invoke("delete_evidence_entry", { id: entry.id });
         await Promise.all([loadEvidenceEntries(), loadEvidenceClaims()]);
-      } catch (err) { toast(`Delete failed: ${err}`, "error"); }
+      } catch (err) { toast(reportUiFailure("delete evidence entry", err, "The Evidence entry could not be deleted. Refresh Evidence and try again."), true); }
     });
     actions.append(delBtn);
 
@@ -8961,7 +8995,7 @@ function initEvidencePanel() {
       $("#evidenceNewDoi").value = "";
       $("#evidenceCitationPreview").classList.add("hidden");
       await loadEvidenceEntries();
-    } catch (err) { toast(`Create failed: ${err}`, "error"); }
+    } catch (err) { toast(reportUiFailure("create evidence entry", err, "The Evidence entry could not be created. Review the form and try again."), true); }
   });
   $("#evidenceSearch").addEventListener("input", () => {
     if (!state.evidenceEntries) return;
@@ -9105,7 +9139,7 @@ function renderChunks() {
           operationClass: "scientific",
         });
         toast(`Ran chunk "${chunk.label}"`);
-      } catch (err) { toast(`Chunk error: ${err}`, "error"); }
+      } catch (err) { toast(reportUiFailure("run document chunk", err, "The document chunk could not be run. Review Console and Problems for the R error."), true); }
     });
     const precBtn = document.createElement("button");
     precBtn.textContent = "\u2191 Prec";
@@ -9176,7 +9210,7 @@ async function runPrecedingChunks(index) {
       operationClass: "scientific",
     });
     toast(`Ran ${preceding.length} preceding chunk(s)`);
-  } catch (err) { toast(`Batch error: ${err}`, "error"); }
+  } catch (err) { toast(reportUiFailure("run preceding document chunks", err, "The preceding chunks could not be run. Review Console and Problems for the R error."), true); }
 }
 
 async function runBelowChunks(index) {
@@ -9192,7 +9226,7 @@ async function runBelowChunks(index) {
       operationClass: "scientific",
     });
     toast(`Ran ${below.length} chunk(s) below`);
-  } catch (err) { toast(`Batch error: ${err}`, "error"); }
+  } catch (err) { toast(reportUiFailure("run following document chunks", err, "The following chunks could not be run. Review Console and Problems for the R error."), true); }
 }
 
 async function runAllChunks() {
@@ -9207,7 +9241,7 @@ async function runAllChunks() {
       operationClass: "scientific",
     });
     toast(`Ran all ${chunks.length} chunk(s)`);
-  } catch (err) { toast(`Batch error: ${err}`, "error"); }
+  } catch (err) { toast(reportUiFailure("run all document chunks", err, "The document chunks could not be run. Review Console and Problems for the R error."), true); }
 }
 
 function renderEnvironmentSummary() {
@@ -10608,7 +10642,7 @@ async function submitPackageManagement(event) {
   if (result.ok) {
     closePackageManagementDialog({ restoreFocus: false });
   } else {
-    error.textContent = result.error;
+    error.textContent = userFacingError(result.error, "The package change could not be prepared. Review the package name and try again.");
     error.classList.remove("hidden");
   }
 }
@@ -10820,7 +10854,7 @@ async function exportVisibleDataView() {
     switchDockTab("plots");
     toast(`Exported the visible page to ${safePath}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("export visible data page", error, "The visible data page could not be exported. Review the output path and try again."), true);
   }
 }
 
@@ -10854,7 +10888,7 @@ async function exportActivePlot() {
     switchDockTab("plots");
     toast(`Exported the selected plot to ${normalized}.`);
   } catch (error) {
-    toast(`Could not export plot: ${error}`, true);
+    toast(reportUiFailure("export plot", error, "The plot could not be exported. Review the output path and try again."), true);
   }
 }
 
@@ -10873,7 +10907,7 @@ async function clearArtifacts(sessionOnly) {
     await loadRunData();
     toast(`Deleted output records from ${scope}. Output files were left in place.`);
   } catch (error) {
-    toast(`Could not delete output records: ${error}`, true);
+    toast(reportUiFailure("delete output records", error, "The output records could not be deleted. Refresh Outputs and try again."), true);
   }
 }
 
@@ -10988,7 +11022,7 @@ async function inspectEnvironmentObject(name) {
       });
     })
     .catch((error) => {
-      toast(String(error), true);
+      toast(reportUiFailure("inspect R object", error, "This object could not be inspected. Refresh Environment and try again."), true);
       state.selectedObjectDetail = null;
       state.selectedDataObjectDetail = { ok: false, message: String(error), error_code: "viewer_unavailable", name };
       renderEnvironment();
@@ -11163,19 +11197,20 @@ async function renderActiveDocumentFile() {
     statusEl.classList.add("hidden");
     cancelBtn.classList.add("hidden");
     renderBtn.disabled = false;
+    const friendlyError = reportUiFailure("render document", error, "The document render could not be started. Review Problems and try again.");
     updateLastRender({
       ok: false,
       tool: null,
       sourcePath: path,
       outputPath: null,
       phase: "transport",
-      message: String(error),
+      message: friendlyError,
     });
-    addProblem(String(error), "", {
+    addProblem(friendlyError, "", {
       sourcePath: path,
       executionMode: "render",
     });
-    toast(String(error), true);
+    toast(friendlyError, true);
     renderEnvironmentSummary();
   }
 }
@@ -11382,7 +11417,7 @@ async function openAgentLocalHelpContext(context) {
     await showLocalHelp(context.name, context.package);
     toast(`Opened ${context.package}::${context.help_topic} Local Help.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("open Agent Local Help", error, "Local Help could not be opened. Refresh Help and try again."), true);
   }
 }
 
@@ -11693,7 +11728,7 @@ async function acceptFileEditProposal() {
     toast(`Applied Agent edit to ${proposal.path}.`);
   } catch (error) {
     state.internalProjectWrites.delete(proposal.path);
-    toast(String(error), true);
+    toast(reportUiFailure("apply Agent file edit", error, "The proposed edit could not be applied. Refresh the project and review the proposal again."), true);
   } finally {
     button.disabled = false;
   }
@@ -11735,7 +11770,7 @@ async function undoFileEditProposal() {
     renderDocumentTabs();
     toast(`Undid Agent edit in ${undo.path}.`);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("undo Agent file edit", error, "The Agent edit could not be undone. The current file was left unchanged."), true);
   } finally {
     button.disabled = false;
   }
@@ -11977,7 +12012,7 @@ async function loadAgentReviewRunDetail(runId) {
     if (!detail) state.agentReviewRunError = "Detailed execution output is no longer available.";
   } catch (error) {
     if (state.agentReviewRunId !== runId) return;
-    state.agentReviewRunError = String(error);
+    state.agentReviewRunError = reportUiFailure("load Agent run review", error, "Detailed execution output is unavailable.");
   } finally {
     if (state.agentReviewRunId === runId) {
       state.agentReviewRunLoading = false;
@@ -12105,7 +12140,7 @@ function renderAgentRunReview(content, run) {
 
   const limitations = [];
   if (["queued", "running", "waiting"].includes(run.status)) limitations.push("This run is still in progress; its outcome and evidence may change.");
-  if (state.agentReviewRunError) limitations.push(`Detailed execution output is unavailable: ${state.agentReviewRunError}`);
+  if (state.agentReviewRunError) limitations.push(state.agentReviewRunError);
   if (!state.agentReviewRunLoading && !evidence.plots.length && !evidence.artifacts.length && !evidence.problems.length) limitations.push("No durable Plot, saved output, or Problem is linked to this run.");
   if (evidence.plots.some((plot) => !plot.provenance_complete) || evidence.artifacts.some((artifact) => !artifact.provenance_complete)) limitations.push("Some output source details are unavailable.");
   if (limitations.length) {
@@ -13525,7 +13560,7 @@ function actionToast(message, label, action, dismiss = null) {
   button.className = "toast-action";
   button.textContent = label;
   button.addEventListener("click", async () => {
-    try { await action(); } catch (error) { toast(String(error), true); }
+    try { await action(); } catch (error) { toast(reportUiFailure("complete requested action", error, "The requested action could not be completed. Refresh the view and try again."), true); }
     element.remove();
   });
   element.append(text, button);
@@ -13659,7 +13694,7 @@ async function handleExternalDocumentChange(path) {
     renderDocumentTabs();
     scheduleSessionSave();
   } catch (error) {
-    toast(`External change detected for ${path}, but reloading failed: ${error}`, true);
+    toast(reportUiFailure("reload changed file", error, `The changed file ${path} could not be reloaded. Your editor content is preserved.`), true);
   }
 }
 
@@ -13797,9 +13832,9 @@ async function finishWorkbenchStartup(startupView) {
     if (response.status === "ready") {
       await hydrateProject(response);
     } else if (response.status === "blocked") {
-      toast(response.blocker?.message || "Project switch is blocked.", true);
+      toast(userFacingError(response.blocker?.message, "The saved project could not be restored. Choose another project to continue."), true);
     } else if (response.status === "failed_restored" || response.status === "fatal") {
-      toast(response.message || "Project switch failed.", true);
+      toast(userFacingError(response.message, "The saved project could not be restored. Choose another project to continue."), true);
     } else if (response.status === "unavailable") {
       state.project = { root: "", files: [], truncated: false };
       state.documents = {};
@@ -13825,8 +13860,8 @@ async function finishWorkbenchStartup(startupView) {
     if ($("#startupGate").classList.contains("hidden")) {
       setKernelStatus("error", "R unavailable");
       addLog("SYSTEM", String(error), "error");
-      addProblem(String(error));
-      toast(String(error), true);
+      addProblem(userFacingError(error, "The project session stopped unexpectedly. Restart R to continue."));
+      toast(reportUiFailure("finish workbench startup", error, "The project session stopped unexpectedly. Restart R to continue."), true);
       return;
     }
     renderStartupIssue({
@@ -13903,11 +13938,11 @@ $("#projectSwitcher").addEventListener("click", async () => {
     const response = await invoke("project_pick_directory");
     if (response.status === "cancelled") return;
     if (response.status === "blocked") {
-      toast(response.blocker?.message || "Project switch is blocked.", true);
+      toast(userFacingError(response.blocker?.message, "This project cannot be opened. The current project remains active."), true);
       return;
     }
     if (response.status === "failed_restored" || response.status === "fatal") {
-      toast(response.message || "Project switch failed.", true);
+      toast(userFacingError(response.message, "The project could not be switched. The current project remains active."), true);
       return;
     }
     if (response.status === "unavailable") {
@@ -13917,7 +13952,7 @@ $("#projectSwitcher").addEventListener("click", async () => {
     }
     await hydrateProject(response);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("switch project", error, "The project could not be switched. The current project remains active."), true);
   }
 });
 $("#projectBannerAction").addEventListener("click", () => $("#projectSwitcher").click());
@@ -14082,7 +14117,7 @@ $("#aboutCopyDiagnostics").addEventListener("click", async () => {
     await copyText(appDiagnostics(await loadAppInfo()));
     toast("Copied Rho diagnostics.");
   } catch (error) {
-    toast(`Could not copy diagnostics: ${error}`, true);
+    toast(reportUiFailure("copy diagnostics", error, "Diagnostics could not be copied. Open the log folder instead."), true);
   }
 });
 $("#aboutWebsite").addEventListener("click", async () => invoke("open_rho_website", { url: (await loadAppInfo()).website_url }));
@@ -14122,9 +14157,14 @@ $("#agentRuntimeRetryButton").addEventListener("click", async () => {
     state.agentRuntime = await invoke("agent_runtime_retry");
     updateAgentHeader();
     renderAgentTimeline();
-    toast(state.agentRuntime.available ? "Agent runtime is ready." : state.agentRuntime.error, !state.agentRuntime.available);
+    toast(
+      state.agentRuntime.available
+        ? "Agent runtime is ready."
+        : userFacingError(state.agentRuntime.error, "The assistant connection is still unavailable. Review model settings and try again."),
+      !state.agentRuntime.available,
+    );
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("retry Agent runtime", error, "The assistant connection could not be retried. Review model settings and try again."), true);
   } finally {
     button.disabled = false;
   }
@@ -14137,7 +14177,7 @@ $("#agentCancelButton").addEventListener("click", async () => {
     await invoke("cancel_agent_turn", { turnId });
     await Promise.all([loadAgentData(), loadRunData()]);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("cancel Agent task", error, "The Agent task could not be stopped. Check its current status before trying again."), true);
   } finally {
     $("#agentCancelButton").disabled = false;
   }
@@ -14162,7 +14202,7 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     await Promise.all([loadAgentData(), loadRunData()]);
     toast("Deleted Agent history for this project.");
   } catch (error) {
-    toast(`Could not delete Agent history: ${error}`, true);
+    toast(reportUiFailure("delete Agent history", error, "Conversation history could not be deleted. Refresh Activity and try again."), true);
   }
 });
 $("#agentInput").addEventListener("keydown", (event) => {
@@ -14242,7 +14282,7 @@ $("#agentContextNewFile").addEventListener("click", async () => {
     insertAgentReference(path, { source: "new_file" });
     closeAgentContextMenu();
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("validate new Agent context file", error, "That file path cannot be used in this project. Enter a project-relative path."), true);
   }
 });
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
@@ -14354,7 +14394,7 @@ $("#renderCancelButton").addEventListener("click", async () => {
     await invoke("cancel_render_job", { job_id: jobId });
   } catch (error) {
     button.disabled = false;
-    toast(`Render cancellation failed: ${error}`, true);
+    toast(reportUiFailure("stop document render", error, "The render could not be stopped. Check its current status before trying again."), true);
   }
 });
 $("#renderOpenSourceButton").addEventListener("click", async () => {
@@ -14376,7 +14416,7 @@ $("#renderReviewArtifactButton").addEventListener("click", async () => {
   } catch (error) {
     state.lastRender.artifactAvailable = false;
     renderLastRenderCard();
-    toast(`Saved render output is unavailable: ${error}`, true);
+    toast(reportUiFailure("open rendered output", error, "The saved report is unavailable. Refresh Outputs or render the document again."), true);
   }
 });
 $("#renderShowProblemsButton").addEventListener("click", () => {
@@ -14405,7 +14445,7 @@ async function prunePlotPayloads(sessionOnly) {
     await loadRunData();
     toast(`Freed previews for ${scope}. ${result?.pruned_count || 0} plot preview${result?.pruned_count === 1 ? " is" : "s are"} no longer stored.`);
   } catch (error) {
-    toast(`Could not free preview storage: ${error}`, true);
+    toast(reportUiFailure("free plot preview storage", error, "Plot preview storage could not be freed. Refresh Plots and try again."), true);
   }
 }
 async function clearPlots(sessionOnly) {
@@ -14421,7 +14461,7 @@ async function clearPlots(sessionOnly) {
     await loadRunData();
     toast(`Deleted plot history from ${scope}. Exported files were left in place.`);
   } catch (error) {
-    toast(`Could not delete plot history: ${error}`, true);
+    toast(reportUiFailure("delete plot history", error, "Plot history could not be deleted. Refresh Plots and try again."), true);
   }
 }
 $("#pruneSessionPlotsButton").addEventListener("click", () => prunePlotPayloads(true));
@@ -14436,7 +14476,7 @@ $("#artifactOpenSourceButton").addEventListener("click", async () => {
   try {
     await openDocument(sourcePath);
   } catch (error) {
-    toast(`Could not open source document: ${error}`, true);
+    toast(reportUiFailure("open output source", error, "The source document could not be opened. Refresh the project and try again."), true);
   }
 });
 $$('[data-plot-scope]').forEach((button) => button.addEventListener("click", async () => {
@@ -14529,7 +14569,7 @@ $("#interruptButton").addEventListener("click", async () => {
     if (response?.run_id) state.activeRunId = response.run_id;
     await loadRunData();
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("interrupt R session", error, "The R session could not be interrupted. Check the current run before trying again."), true);
   }
 });
 $("#restartButton").addEventListener("click", async () => {
@@ -14548,7 +14588,7 @@ $("#restartButton").addEventListener("click", async () => {
     await loadRunData();
   } catch (error) {
     setKernelStatus("error", "R unavailable");
-    toast(String(error), true);
+    toast(reportUiFailure("restart R session", error, "The R session could not be restarted. Retry or review diagnostics if the problem continues."), true);
   }
 });
 

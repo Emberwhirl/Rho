@@ -165,3 +165,28 @@ passed. Browser/mock review covered a missing lockfile/package inventory, the
 Evidence claim form and review labels, and a failed Agent Run with useful R
 error/source evidence and no default traceback. Installed-app acceptance
 remains `NOT RUN`.
+
+### WP4 Simple Settings And Enforcement
+
+Implemented 2026-08-05. Model settings now lead with display name, provider,
+connection URL, credential requirement, catalog selection, enabled state, and
+connection actions. Provider IDs, environment-variable names, Wire API, stream
+options, Model ID, and capability metadata retain their existing serialized
+values under two collapsed Advanced settings disclosures. Provider/model rows,
+validation, connection tests, and credential actions use friendly projections
+without showing the credential-file path or raw backend errors.
+
+The focused projection contract now extracts representative renderers and
+rejects direct visible opaque-ID assignment, arguments JSON projection, raw
+error string projection, unknown Compare fields, and normal settings enum/path
+fallbacks. Its repository-wide error checks also reject direct error-object
+toasts and verify the Git review, package inventory, Agent Run Review, and
+Agent runtime retry boundaries. JavaScript syntax and all 27 repository `scripts/test-*.mjs`
+frontend contracts passed. Browser/mock review confirmed both
+Advanced settings disclosures are closed by default, the technical controls
+are not visible until expansion, and expansion restores them. UX1 gap status,
+NEWS, cross-review status, and the integrated manual acceptance project were
+updated. Application and R package versions remain unchanged because this work
+joins the existing `0.4.0-dev.0` candidate and changes no R package contract.
+Installed-app and display-scale acceptance remain `NOT RUN`; no release
+readiness decision is made.
