@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const html = fs.readFileSync("desktop/dist/index.html", "utf8");
 const js = fs.readFileSync("desktop/dist/app.js", "utf8");
+const rust = fs.readFileSync("desktop/src-tauri/src/main.rs", "utf8");
 
 assert.match(html, /data-menu-command="format-document"/);
 assert.match(html, /id="editorFormatButton"[^>]+aria-label="Format document"/);
@@ -10,6 +11,10 @@ assert.match(js, /"format-document": \(\) => \$\("#editorFormatButton"\)\.click\
 assert.match(js, /editorFormatButton"\)\.addEventListener\("click"/);
 assert.match(js, /invoke\("editor_format_source", \{\s*request:/);
 assert.match(js, /const request = args\.request \|\| args/);
+assert.match(rust, /fn editor_format_result\(response: Value\) -> Result<Value>/);
+assert.match(rust, /response\s*\.get\("execution"\)/);
+assert.match(rust, /Some\("rho\.editor_format_result\.v1"\)/);
+assert.match(rust, /editor_format_result\(response\)\.map_err\(display_error\)/);
 assert.match(js, /kind: "rho\.editor_format_proposal\.v1"/);
 assert.match(js, /rho\.editor_refactor_proposal\.v1", "rho\.editor_format_proposal\.v1"/);
 assert.match(js, /state\.refactor\.status = state\.refactor\.proposal\.targets\.some/);

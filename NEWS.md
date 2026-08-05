@@ -21,6 +21,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Format Document now unwraps and validates the typed Workspace R formatter
+  result at the desktop command boundary, instead of rejecting the broker's
+  execution envelope as an invalid formatter response.
 - Console commands such as `?mean` now open the matching installed
   documentation in the right-side Help panel while remaining recorded as
   ordinary Workspace Runs. Rho no longer starts R's separate HTTP Help viewer

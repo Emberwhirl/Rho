@@ -397,6 +397,18 @@ struct EditorFormatRequest {
     document_version: i64,
 }
 
+fn editor_format_result(response: Value) -> Result<Value> {
+    let execution = response
+        .get("execution")
+        .cloned()
+        .context("Formatting response omitted the Workspace R result")?;
+    ensure!(
+        execution.get("kind").and_then(Value::as_str) == Some("rho.editor_format_result.v1"),
+        "Formatting response returned an unexpected Workspace R result"
+    );
+    Ok(execution)
+}
+
 #[derive(Deserialize)]
 struct EvidenceClaimCreateRequest {
     kind: String,
@@ -2007,7 +2019,7 @@ async fn editor_format_source(
         },
         "expected_workspace": broker.identity()
     });
-    dispatch_workspace_request(
+    let response = dispatch_workspace_request(
         "workspace.format_r_source",
         &payload,
         ExecutionOrigin::System,
@@ -2016,7 +2028,8 @@ async fn editor_format_source(
         store,
     )
     .await
-    .map_err(display_error)
+    .map_err(display_error)?;
+    editor_format_result(response).map_err(display_error)
 }
 
 #[tauri::command]
@@ -4757,11 +4770,12 @@ mod tests {
         RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
         bounded_diagnostic, classify_startup_error, configure_user_startup,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
-        durable_project_root, ensure_artifact_export_target, ensure_supported_r_version,
-        existing_startup_file, finish_render_job, has_png_signature, lockfile_inventory_arguments,
-        parse_r_runtime_probe, project_switch_blocker, reconcile_render_job,
-        render_job_is_terminal, run_is_retryable, safe_delete_project_file, source_claim_snapshot,
-        switch_project_with_watcher_factory, workspace_project_root_code, write_r_probe_script,
+        durable_project_root, editor_format_result, ensure_artifact_export_target,
+        ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
+        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
+        reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
+        source_claim_snapshot, switch_project_with_watcher_factory, workspace_project_root_code,
+        write_r_probe_script,
     };
 
     use crate::project::{
@@ -4782,6 +4796,39 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
     use tokio::sync::{Mutex, RwLock};
+
+    #[test]
+    fn editor_format_command_returns_the_typed_workspace_result() {
+        let result = editor_format_result(json!({
+            "execution_id": "run_1",
+            "execution": {
+                "kind": "rho.editor_format_result.v1",
+                "ok": true,
+                "status": "formatted",
+                "path": "analysis.R",
+                "document_version": 7
+            },
+            "workspace": {"workspace_id": "workspace_1"}
+        }))
+        .unwrap();
+
+        assert_eq!(result["kind"], "rho.editor_format_result.v1");
+        assert_eq!(result["status"], "formatted");
+        assert_eq!(result["path"], "analysis.R");
+        assert_eq!(result["document_version"], 7);
+        assert!(result.get("execution").is_none());
+    }
+
+    #[test]
+    fn editor_format_command_rejects_missing_or_untyped_workspace_results() {
+        assert!(editor_format_result(json!({"workspace": {}})).is_err());
+        assert!(
+            editor_format_result(json!({
+                "execution": {"kind": "rho.other_result.v1", "ok": true}
+            }))
+            .is_err()
+        );
+    }
 
     #[test]
     fn retries_only_scientific_workspace_execution() {

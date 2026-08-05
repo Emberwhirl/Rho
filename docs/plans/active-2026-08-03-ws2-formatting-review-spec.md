@@ -6,6 +6,35 @@ Date: 2026-08-03
 Owner: WS2 editor intelligence
 Parent: [`accepted-2026-08-01-ws2-editor-intelligence-checkpoint.md`](../design/accepted-2026-08-01-ws2-editor-intelligence-checkpoint.md)
 
+## 2026-08-05 Installed Command Repair
+
+Authorization: the user explicitly authorized repairing Format Document as the
+first of three independently completed and committed work packages.
+
+Classification: D1 defect repair / R2 cross-boundary workflow.
+
+Installed reproduction: formatting an editable `.R` document reaches
+Workspace R but the desktop reports `The formatter returned an invalid result.`
+The browser mock does not reproduce the defect.
+
+Root cause: `workspace.format_r_source` returns its typed result inside the
+broker's ordinary execution envelope, while the desktop frontend contract
+expects the `editor_format_source` Tauri command to return
+`rho.editor_format_result.v1` directly. Browser/mock mode already returns the
+direct result, so its tests did not exercise the real command boundary.
+
+Repair invariant: the broker envelope remains authoritative internally. The
+Tauri command must extract and validate exactly one
+`rho.editor_format_result.v1` execution value before returning it to the
+frontend. Missing or differently typed execution values fail visibly; the
+frontend does not guess among response shapes. Formatted, unchanged,
+unavailable, provider-error, stale, Apply, Save, and Undo semantics remain
+unchanged.
+
+Mandatory stop: after the command-boundary regression, existing R/frontend
+formatting checks, affected Rust tests, contract review, NEWS update, and one
+independent commit. Installed-candidate acceptance remains separate.
+
 ## Problem And Scope
 
 Rho has reviewable diagnostic fixes and refactors, but no whole-document
@@ -178,3 +207,28 @@ The current development identity remains `0.4.0-dev.0`; the Cargo workspace,
 Tauri bundle, desktop frontend package, and lockfile must agree. Add the
 user-visible formatting behavior to the `0.4.0-dev.0` NEWS section after the
 implementation evidence exists.
+
+## 2026-08-05 Repair Evidence
+
+The installed-command repair is implementation- and automation-complete. The
+Tauri command now extracts the broker envelope's `execution` value, verifies
+its exact `rho.editor_format_result.v1` kind, and returns only that typed value
+to the unchanged frontend proposal flow. Missing or differently typed values
+fail at the desktop boundary.
+
+Verification passed:
+
+- `cargo +stable-x86_64-pc-windows-gnu fmt --all -- --check`;
+- `cargo +stable-x86_64-pc-windows-gnu test -p rho-server`: 39 passed;
+- `cargo +stable-x86_64-pc-windows-gnu test -p rho-desktop`: 96 passed;
+- `Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"`:
+  passed with two existing Windows symlink capability skips;
+- `node --check desktop/dist/app.js`;
+- `node scripts/test-editor-format-ui.mjs`;
+- `git diff --check`.
+
+Contract review found no change to formatting providers, Workspace R or broker
+authority, response schema, project identity, editor mutation, Save/Undo,
+mock behavior, or application/package versions. Browser presentation is
+unchanged. Exact installed-candidate Format/Review/Apply/Save/Undo acceptance
+was not run and remains open; release readiness is unchanged.
