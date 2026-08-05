@@ -33,6 +33,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Structured errors from Console and direct R execution now also appear in
+  Problems with their source, call, and traceback context instead of remaining
+  visible only in the Console transcript.
 - Viewer no longer shows a redundant `Open Source` action when the source is
   already the active editor document; artifact sources still open in the
   editor and close the Viewer as expected.

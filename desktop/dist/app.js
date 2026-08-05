@@ -7956,7 +7956,29 @@ function renderExecution(response, request) {
   asMessageList(execution.warnings).forEach((warning) => addTerminalOutput(warning, "warning"));
   if (execution.value) addTerminalOutput(execution.value);
   if (execution.error) {
-    addTerminalOutput(execution.error.message, "error");
+    const errorMessage = execution.error.message || "R execution failed.";
+    addTerminalOutput(errorMessage, "error");
+    if (execution.kind !== "render") {
+      addProblem(errorMessage, execution.error.call || "", {
+        runId: response.execution_id || null,
+        origin: "user",
+        status: "failed",
+        sourcePath: request?.sourcePath || null,
+        executionMode: request?.type || null,
+        documentVersion: request?.documentVersion ?? null,
+        traceback: execution.traceback || execution.calls || [],
+      });
+    }
+  }
+  if (execution.ok === false && !execution.error && execution.kind !== "render") {
+    addProblem("R execution failed.", "", {
+      runId: response.execution_id || null,
+      origin: "user",
+      status: "failed",
+      sourcePath: request?.sourcePath || null,
+      executionMode: request?.type || null,
+      documentVersion: request?.documentVersion ?? null,
+    });
   }
   if (execution.kind === "render") {
     updateLastRender({
