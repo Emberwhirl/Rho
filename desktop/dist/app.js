@@ -5546,7 +5546,7 @@ function parseApprovalArguments(argumentsJson) {
   }
 }
 
-async function loadAgentData() {
+async function loadAgentData({ quiet = false } = {}) {
   try {
     const [turns, approvals] = await Promise.all([
       invoke("list_agent_turns", { limit: 20 }),
@@ -5570,9 +5570,15 @@ async function loadAgentData() {
         || state.agentTurns[0]?.turn_id
         || null;
     state.selectedTurnId = preferredTurnId;
-    state.selectedTurnDetail = preferredTurnId
-      ? await invoke("get_agent_turn_detail", { turnId: preferredTurnId })
-      : null;
+    state.selectedTurnDetail = null;
+    if (preferredTurnId) {
+      try {
+        state.selectedTurnDetail = await invoke("get_agent_turn_detail", { turnId: preferredTurnId });
+      } catch (error) {
+        if (!isStaleInformationError(error)) throw error;
+        state.selectedTurnId = null;
+      }
+    }
     renderAgentTimeline();
     renderApprovalPanel();
     renderFileEditPanel();
@@ -5580,8 +5586,13 @@ async function loadAgentData() {
     updateAgentHeader();
     syncAgentPolling();
   } catch (error) {
-    toast(reportUiFailure("load Agent history", error, "Conversation history could not be loaded. Refresh and try again."), true);
+    if (!quiet) toast(reportUiFailure("load Agent history", error, "Conversation history could not be loaded. Refresh and try again."), true);
   }
+}
+
+function isStaleInformationError(error) {
+  const raw = typeof error === "string" ? error : error?.message || String(error || "");
+  return /not found|missing|no longer available|stale|changed/i.test(raw);
 }
 
 function emptyAgentLlmSettings(message) {
@@ -6444,7 +6455,7 @@ function syncAgentPolling() {
   const shouldPoll = state.agentTurns.some((turn) => ["running", "waiting"].includes(turn.status)) || state.pendingApprovals.length > 0;
   if (shouldPoll && !state.agentPollTimer) {
     state.agentPollTimer = window.setInterval(() => {
-      loadAgentData().catch(() => {});
+      loadAgentData({ quiet: true }).catch(() => {});
       loadRunData().catch(() => {});
     }, 1500);
   }
