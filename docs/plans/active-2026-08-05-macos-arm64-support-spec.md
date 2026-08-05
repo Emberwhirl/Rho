@@ -2,7 +2,8 @@
 
 Status: active; full direction authorized by the project owner on 2026-08-05;
 MAC1 implementation, automated verification, and independent contract review
-complete on 2026-08-05; MAC2-MAC5 remain proposed and unauthorized
+complete on 2026-08-05; MAC2 authorized on 2026-08-05; MAC3-MAC5 remain
+proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -21,12 +22,16 @@ contracts remain authoritative.
 
 Authorization evidence: after reviewing a decision-complete implementation
 plan, the project owner requested "Implement the plan" on 2026-08-05. This
-activates MAC1 only. Every later package requires entry-condition review and a
-recorded authorization amendment before product-code work starts.
+activated MAC1. After the MAC1 implementation checkpoint and evidence were
+reported, the project owner requested "激活后续步骤" on 2026-08-05. Per the
+one-package governance rule, this activates MAC2 only. Every later package
+still requires entry-condition review and a recorded authorization amendment
+before product-code work starts.
 
-Mandatory stop: reached after MAC1. Stop before Ark bootstrap, R discovery,
-Keychain, updater, signing, candidate, or publication work. MAC2 requires a
-separate entry review and explicit authorization amendment.
+Mandatory stop: complete MAC2's bundled Ark and arm64 R vertical slice,
+affected automated verification, runtime recovery evidence, independent
+contract review, and documentation reconciliation; then stop before Keychain,
+frontend/macOS integration, updater, signing, candidate, or publication work.
 
 ## Goal And Success Criteria
 
@@ -178,7 +183,25 @@ under the same version.
 Exit gate: MAC1 diff contains no Ark bootstrap, R discovery, Keychain, update
 schema, signing workflow, version bump, NEWS claim, or release publication.
 
-### MAC2: Bundled Ark and arm64 R vertical slice — proposed
+### MAC2: Bundled Ark and arm64 R vertical slice — authorized 2026-08-05
+
+Entry review:
+
+- MAC1 is committed as `e4a3196`; its macOS configuration, desktop/workspace
+  tests, arm64 debug build, independent review, version decision, and NO-GO
+  release status are recorded above.
+- The worktree was clean at activation and contained no unrelated user changes.
+- Ark 0.1.252 remains the project-pinned runtime. The macOS arm64 archive and
+  exact SHA-256 named in this contract are the only authorized new runtime
+  input; redirects, alternate versions, universal/x64 archives, and unverified
+  local binaries are rejected.
+- Existing Jet process groups/watchdog, broker project identity, Workspace R
+  authority, Agent R separation, R 4.4 minimum, and user startup-file policy
+  are unchanged entry constraints.
+- MAC2 may change only runtime manifest/bootstrap/lookup, R discovery/probe,
+  deterministic child PATH/kernelspec environment, bounded Unix fallback
+  cleanup, their tests, and browser/mock state strictly required to keep a new
+  desktop runtime command truthful. MAC3-MAC5 surfaces remain out of scope.
 
 - add pinned Ark manifest/bootstrap/sidecar and installed/development lookup;
 - implement R discovery, architecture/version validation, deterministic PATH,
@@ -186,6 +209,12 @@ schema, signing workflow, version bump, NEWS claim, or release publication.
 - close Unix shutdown recovery without changing Jet launch authority;
 - demonstrate editor-to-Workspace R execution, interrupt, restart, crash
   recovery, and absence of orphan process groups.
+
+Exit gate: a tracked Ark binary is forbidden; the ignored staged sidecar must
+be reproducible from the pinned manifest. The debug app must launch the bundled
+arm64 Ark with arm64 R 4.4+ and recover truthfully from missing Ark, checksum or
+architecture failure, missing/old/x86 R, interrupt, shutdown, and crash. Stop
+after MAC2 review even if MAC3 appears mechanically adjacent.
 
 ### MAC3: System integration and UI parity — proposed
 
