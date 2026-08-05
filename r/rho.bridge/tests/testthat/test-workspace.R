@@ -427,6 +427,7 @@ test_that("local lockfile source labels require provable project containment", {
   expect_identical(label("."), ".")
   expect_null(label("../outside"))
   expect_null(label("vendor/missing/../../outside-missing"))
+  expect_null(label("vendor\\missing\\..\\..\\outside-missing"))
   expect_null(label(sibling))
   expect_null(label(outside))
 

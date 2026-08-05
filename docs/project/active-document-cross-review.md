@@ -388,6 +388,14 @@ create a tag or Release and its evidence cannot satisfy candidate, MAC5,
 About/update, Pages, or publication gates. Candidate mode remains restricted to
 `YuLab-SMU/Rho`; no other document owns or consumes rehearsal evidence.
 
+Hosted MAC4-R failures may repair only an existing owning contract: WS1-L2
+continues to own fail-closed local-source containment, MAC2 continues to own
+Apple-Silicon R architecture policy, and the exact-candidate checklist continues
+to own synchronized Cargo identity. Windows path handling and CRLF/current-host
+test portability do not transfer those authorities to MAC4-R. Any repair must
+be regression-covered and accepted by a new exact-commit two-platform rehearsal;
+cross-run artifact composition is forbidden.
+
 ### macOS arm64 platform ownership
 
 The M3 roadmap retains full cross-platform milestone authority. The active

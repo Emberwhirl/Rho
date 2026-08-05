@@ -86,6 +86,14 @@ Before draft creation, the exact hosted checkout must pass:
 A platform job failure prevents aggregate evidence and draft creation. A draft
 job failure never publishes a partial release.
 
+For the fork-only rehearsal, a hosted platform failure may activate only a
+bounded repair of an already specified behavior or deterministic test. The
+replacement must be a new full run of the exact updated fork `main` commit;
+combining artifacts or results from different commits or runs is forbidden.
+Windows checkout line endings, current-platform architecture, and lexical
+local-source containment are explicit portability gates, not grounds to relax
+the candidate contract.
+
 ## MAC4 Local Implementation Evidence — 2026-08-05
 
 Passed locally on Apple Silicon macOS 26.5.2 with Xcode 26.6, Node 22.22.3,

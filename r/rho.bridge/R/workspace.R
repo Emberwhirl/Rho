@@ -496,6 +496,8 @@ rho_lockfile_safe_remote_label <- function(value) {
 rho_lockfile_local_source_label <- function(value, project_dir) {
   value <- rho_lockfile_inventory_text(value, 1000L)
   if (is.null(value) || !nzchar(value)) return(NULL)
+  path_components <- strsplit(value, "[/\\\\]+")[[1L]]
+  if (any(path_components == "..")) return(NULL)
   candidate <- if (grepl("^([A-Za-z]:[/\\\\]|/)", value)) value else file.path(project_dir, value)
   unresolved <- character()
   probe <- candidate

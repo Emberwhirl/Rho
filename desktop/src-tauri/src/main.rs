@@ -6033,14 +6033,16 @@ mod tests {
 
     #[test]
     fn rejects_x86_and_old_r_probe_results_before_runtime_generation() {
-        let x86 = parse_r_runtime_probe(
-            "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\
-             __RHO_BIN__/Library/Frameworks/R.framework/Resources/bin\n\
-             __RHO_ARCH__x86_64\n\
-             __RHO_PATH_SEP__:\n",
-        )
-        .unwrap_err();
-        assert!(x86.to_string().contains("R_ARCH_MISMATCH"));
+        if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            let x86 = parse_r_runtime_probe(
+                "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\
+                 __RHO_BIN__/Library/Frameworks/R.framework/Resources/bin\n\
+                 __RHO_ARCH__x86_64\n\
+                 __RHO_PATH_SEP__:\n",
+            )
+            .unwrap_err();
+            assert!(x86.to_string().contains("R_ARCH_MISMATCH"));
+        }
 
         let old = parse_r_runtime_probe(
             "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\

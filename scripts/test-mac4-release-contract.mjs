@@ -17,7 +17,13 @@ assert.match(read("desktop/dist/index.html"), /styles\.css\?v=0\.4\.0-dev\.1/);
 assert.match(read("desktop/dist/index.html"), /app\.js\?v=0\.4\.0-dev\.1/);
 assert.ok(count(read("desktop/dist/app.js"), /0\.4\.0-dev\.1/g) >= 3, "Mock identity must be synchronized");
 
-const lockLocalVersions = [...read("Cargo.lock").matchAll(/name = "rho-[^"]+"\nversion = "([^"]+)"/g)].map((match) => match[1]);
+const localPackagePattern = /name = "rho-[^"]+"\r?\nversion = "([^"]+)"/g;
+assert.deepEqual(
+  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.1"'.matchAll(localPackagePattern)].map((match) => match[1]),
+  [expectedVersion],
+  "Cargo.lock parsing must accept Windows CRLF checkouts",
+);
+const lockLocalVersions = [...read("Cargo.lock").matchAll(localPackagePattern)].map((match) => match[1]);
 assert.ok(lockLocalVersions.length >= 9, "Expected local Rho workspace packages in Cargo.lock");
 assert.ok(lockLocalVersions.every((version) => version === expectedVersion), "Cargo.lock local package versions must match the candidate");
 

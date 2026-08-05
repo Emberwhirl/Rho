@@ -479,6 +479,31 @@ Verification and exit gate:
   separate MAC4 fact, the release decision remains `NO-GO`, and MAC5 remains
   unauthorized.
 
+Hosted defect-repair checkpoint:
+
+- the exact fork rehearsal is the acceptance environment for platform-specific
+  failures that cannot be reproduced on the local Apple Silicon host. A hosted
+  failure does not widen MAC4-R authority: repair work is limited to restoring
+  an already accepted cross-platform contract or making its deterministic test
+  portable, and the replacement run must rebuild both platforms from one new
+  default-branch commit;
+- Windows must reject every local lockfile source containing a lexical `..`
+  component before filesystem probing. This preserves the accepted WS1-L2
+  fail-closed rule even when Windows path APIs collapse missing ancestors
+  differently from Unix. Missing and Unicode paths without `..` remain
+  reportable only when their nearest existing ancestor proves containment;
+- the R architecture regression must test Apple-Silicon policy through the
+  existing explicit target-OS/target-architecture predicate. A test running on
+  Windows must not require the current Windows process to reject x86 R; product
+  behavior and stable `R_ARCH_MISMATCH` recovery on Apple Silicon are unchanged;
+- release-contract parsing of checked-out text must accept both LF and CRLF.
+  The Cargo lockfile assertion continues to require all local Rho packages and
+  synchronized versions; only line-ending portability may change;
+- each observed defect retains or gains a deterministic regression. The full
+  hosted replacement run, not a rerun of only the failed job, is required for
+  MAC4-R exit because admission binds the exact current fork `main` commit and
+  the final evidence requires both platform artifacts.
+
 ### MAC5: Exact-candidate acceptance and publication — proposed
 
 - bind automated and human evidence to the exact tag, commit, assets, sizes,
