@@ -4243,6 +4243,28 @@ function prettyStatus(status) {
   }[status] || status || "Unknown";
 }
 
+const USER_ERROR_PRESENTATIONS = [
+  { matches: /stale|revision|changed since|changed after|out of date/i, message: "The underlying information changed. Refresh it and try again." },
+  { matches: /not found|missing|no longer available|unavailable/i, message: "The requested information is no longer available. Refresh this view and try again." },
+  { matches: /permission|policy|denied|not allowed|outside (?:the )?project/i, message: "This action is not allowed in the current project state. Review the project and try a permitted action." },
+  { matches: /timeout|timed out|network|connection|http/i, message: "Rho could not reach the required service. Check the connection and try again." },
+  { matches: /cancelled|canceled|interrupted|stopped/i, message: "The action was stopped. Your existing project files were left unchanged." },
+];
+
+function userFacingError(error, fallback = "Rho could not complete this action. Try again or review diagnostics if the problem continues.") {
+  const raw = typeof error === "string" ? error : error?.message || String(error || "");
+  return USER_ERROR_PRESENTATIONS.find((entry) => entry.matches.test(raw))?.message || fallback;
+}
+
+function reportUiFailure(context, error, fallback) {
+  console.error(`[${context}]`, error);
+  return userFacingError(error, fallback);
+}
+
+function userFacingStatus(status, labels, fallback = "Needs attention") {
+  return Object.prototype.hasOwnProperty.call(labels, status) ? labels[status] : fallback;
+}
+
 function presentationState(status) {
   if (["completed", "success", "approved", "ready", "matched"].includes(status)) return "completed";
   if (["running", "busy"].includes(status)) return "running";
@@ -4398,7 +4420,7 @@ async function loadRunData() {
     renderProblems();
     renderPlots();
   } catch (error) {
-    toast(`Run history is unavailable: ${error}`, true);
+    toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
   }
 }
 
@@ -5097,7 +5119,7 @@ async function loadProjectSkills(options = {}) {
       discovery_error: String(error),
     };
     if (!quiet) {
-      toast(`Project skills are unavailable: ${error}`, true);
+      toast(reportUiFailure("load project guidance", error, "Project guidance could not be loaded. The Agent will continue without it."), true);
     }
   }
   renderProjectSkills();
@@ -5220,7 +5242,7 @@ async function loadAgentData() {
     updateAgentHeader();
     syncAgentPolling();
   } catch (error) {
-    toast(`Agent history is unavailable: ${error}`, true);
+    toast(reportUiFailure("load Agent history", error, "Conversation history could not be loaded. Refresh and try again."), true);
   }
 }
 
@@ -6226,7 +6248,7 @@ async function submitApproval(decision, approval) {
     });
     await Promise.all([loadAgentData(), loadRunData(), refreshEnvironment()]);
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("respond to Agent approval", error, "The decision could not be saved. Review the request and try again."), true);
   } finally {
     for (const id of ["approvalApprove", "approvalReject", "approvalCancel"]) {
       $(["#", id].join("")).disabled = false;
@@ -6323,7 +6345,7 @@ function renderRuns() {
           addLog("SYSTEM", `Interrupt requested for ${run.run_id}`);
           await loadRunData();
         } catch (error) {
-          toast(String(error), true);
+          toast(reportUiFailure("stop R run", error, "This R run could not be stopped. Check its current status and try again."), true);
         }
       });
       row.append(cancel);
@@ -6362,7 +6384,7 @@ async function doCompareRuns() {
     state.compareResult = result;
     renderRuns();
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("compare runs", error, "The selected runs could not be compared. Refresh Run history and try again."), true);
   }
 }
 
@@ -10385,7 +10407,7 @@ async function loadEnvironmentOperationData() {
     renderEnvironmentOperationCard();
     renderEnvironmentOperationDialog();
   } catch (error) {
-    toast(`Environment operations are unavailable: ${error}`, true);
+    toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
   }
 }
 
@@ -10407,8 +10429,9 @@ async function beginEnvironmentOperation(operation, options = {}) {
     openEnvironmentOperationDialog(request.request_id, options.returnFocus || document.activeElement);
     return { ok: true, request };
   } catch (error) {
-    toast(String(error), true);
-    return { ok: false, error: String(error) };
+    const message = reportUiFailure("preview environment operation", error, "Rho could not prepare this environment change. Review the package or project environment and try again.");
+    toast(message, true);
+    return { ok: false, error: message };
   } finally {
     state.environmentOperationDialog.busy = false;
     renderEnvironmentOperationCard();
@@ -10431,7 +10454,7 @@ async function respondEnvironmentOperation(decision) {
     renderEnvironmentOperationDialog();
     if (decision !== "approve") closeEnvironmentOperationDialog();
   } catch (error) {
-    toast(String(error), true);
+    toast(reportUiFailure("respond to environment operation", error, "The environment decision could not be completed. Refresh Environment before trying again."), true);
   } finally {
     state.environmentOperationDialog.busy = false;
     renderEnvironmentOperationCard();
