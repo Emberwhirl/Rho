@@ -11,7 +11,9 @@ reached; MAC4 entry review complete and explicitly authorized on 2026-08-05;
 MAC4 implementation, locally available verification, version/NEWS review, and
 separate contract review complete on 2026-08-05; hosted signing/notarization,
 candidate assets, and draft creation remain NOT RUN; the MAC4 mandatory stop
-is reached; MAC5 remains proposed and unauthorized
+is reached; MAC4-R fork rehearsal entry review complete and explicitly
+authorized on 2026-08-05; its implementation and credentialed hosted run remain
+NOT RUN; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -40,7 +42,12 @@ on 2026-08-05. MAC4 and MAC5 still require their own entry-condition review and
 recorded authorization amendment before product-code work starts. After the
 MAC3 checkpoint and evidence were committed, the project owner requested
 "开始完成MAC4" on 2026-08-05. This activates MAC4 only under the entry review
-and mandatory stop recorded below; MAC5 remains unauthorized.
+and mandatory stop recorded below; MAC5 remains unauthorized. After the MAC4
+implementation was pushed for upstream review, the project owner identified
+that the main repository requires pre-merge hosted build evidence and then
+approved the bounded fork rehearsal proposal with "行，那就这样做吧" on
+2026-08-05. This activates MAC4-R only; it does not authorize a fork Release,
+an authoritative candidate, MAC5 acceptance, or publication.
 
 Mandatory stop: implement MAC4's additive update schema, synchronized
 `0.4.0-dev.1` candidate identity, deterministic evidence tooling, parallel
@@ -50,6 +57,13 @@ available validation and record every hosted secret/signing/draft gate that was
 not run; reconcile NEWS and contracts; then stop before MAC5 exact-candidate
 installed acceptance, acceptance-evidence upload, release publication, or live
 Pages acceptance.
+
+MAC4-R mandatory stop: add a repository-bound, artifact-only rehearsal lane;
+prove its positive and negative admission contract locally; push it to the fork
+default branch; run one exact-commit Windows/macOS hosted rehearsal using the
+fork repository secrets; record the run, artifact hashes, and any failure
+truthfully; then stop. Do not create a Git tag or Release, do not promote fork
+artifacts into the main candidate, and do not activate MAC5.
 
 ## Goal And Success Criteria
 
@@ -389,6 +403,73 @@ Developer ID signing, notarization, stapling, Gatekeeper checks, draft creation,
 and uploaded hashes are separate facts and remain `NOT RUN` until a credentialed
 workflow creates the exact draft. Stop after MAC4 implementation/review and any
 available draft evidence; do not perform MAC5 acceptance or publish the release.
+
+### MAC4-R: Fork-only signed rehearsal — authorized 2026-08-05
+
+Problem and evidence: the first upstream review requires hosted cross-platform
+build evidence before merge, while GitHub does not expose repository secrets to
+an upstream pull-request job and manual dispatch requires the workflow to exist
+on the repository default branch. Running the current candidate mode in the
+fork would create a misleading draft whose source repository contradicts the
+exact-candidate checklist.
+
+Contract:
+
+- `workflow_dispatch` gains one required choice input, `build_mode`, whose safe
+  default is `rehearsal`; accepted values are only `rehearsal` and `candidate`;
+- `rehearsal` is admitted only when `github.repository` is exactly
+  `YuLab-SMU/Rho_for_mac`; `candidate` is admitted only when it is exactly
+  `YuLab-SMU/Rho`; every other mode/repository pairing fails in the identity
+  job before a platform build uses credentials;
+- both modes resolve and check out one full commit and run the same Windows x64
+  and signed/notarized macOS arm64 platform jobs. Secret names, temporary-file
+  handling, unconditional Keychain cleanup, and platform evidence remain the
+  MAC4 contract;
+- candidate mode alone may run the `contents: write` draft-assembly job.
+  Rehearsal mode has `contents: read`, never creates or mutates a tag, Release,
+  Pages state, environment, issue, pull request, or repository content;
+- rehearsal mode downloads both platform artifacts, runs the normal aggregate
+  validator only as an internal consistency check, discards candidate aggregate
+  output, and uploads one 14-day Actions artifact containing the six platform
+  files plus bounded `rho_candidate_rehearsal_evidence`;
+- rehearsal evidence binds status, source repository, version, release tag,
+  full commit, GitHub run ID and attempt, both platform artifact names, sizes,
+  hashes, and platform-evidence hashes. It contains no credential, runner path,
+  Keychain path, API-key path, or unbounded log;
+- rehearsal artifacts and evidence are review-only. The candidate workflow in
+  `YuLab-SMU/Rho` must rebuild both platforms and may not ingest, promote, copy,
+  or publish them. MAC5, publish admission, and update-site generation reject
+  the rehearsal evidence type by construction.
+
+Failure and recovery:
+
+- missing/invalid secrets, checkout drift, platform failure, signing failure,
+  notarization failure, cleanup failure, missing platform, malformed evidence,
+  or checksum/size mismatch prevents final rehearsal evidence;
+- Actions may retain a successfully uploaded platform input when a sibling job
+  later fails, but such partial artifacts have no aggregate rehearsal record and
+  therefore are not passing evidence;
+- a retry is a new run attempt bound into new evidence. It does not delete or
+  replace a release because rehearsal has no release permission or mutation;
+- cancellation still executes the existing unconditional Apple credential
+  cleanup step. Absence of final rehearsal evidence is reported as failure or
+  cancellation, never success.
+
+Verification and exit gate:
+
+- deterministic tests cover safe-default mode, exact repository guards,
+  least-privilege rehearsal assembly, candidate-only write permission, no
+  Release step in rehearsal, 14-day retention, exact seven-file artifact, and
+  rejection of malformed/foreign/stale/oversized rehearsal evidence;
+- the hosted exit requires both platform jobs and the aggregate rehearsal job
+  to pass for one exact fork commit, followed by recording the run URL, artifact
+  identity, and hashes in this active document and the pull request;
+- application and R package versions remain unchanged and `NEWS.md` is not
+  amended because this is an internal review-evidence lane with no user-visible
+  application or package contract change;
+- stop after recording rehearsal evidence. A main-repository draft remains a
+  separate MAC4 fact, the release decision remains `NO-GO`, and MAC5 remains
+  unauthorized.
 
 ### MAC5: Exact-candidate acceptance and publication — proposed
 

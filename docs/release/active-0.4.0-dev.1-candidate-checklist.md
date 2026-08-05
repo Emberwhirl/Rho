@@ -2,7 +2,8 @@
 
 Status: active; MAC4 candidate/update/signing/draft tooling implemented and
 locally verified on 2026-08-05; no exact hosted draft, installed-candidate
-acceptance, or release GO exists yet
+acceptance, or release GO exists yet; MAC4-R fork rehearsal authorized on
+2026-08-05 and NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -19,7 +20,10 @@ does not apply to this candidate.
 Authorization: the project owner requested "开始完成MAC4" on 2026-08-05.
 This authorizes MAC4 implementation and draft-candidate construction only.
 MAC5 installed acceptance, acceptance-evidence upload, publication, and live
-Pages acceptance remain unauthorized.
+Pages acceptance remain unauthorized. After identifying that upstream review
+requires pre-merge hosted evidence, the project owner approved the bounded
+artifact-only fork rehearsal with "行，那就这样做吧" on 2026-08-05. That
+rehearsal has no candidate, Release, MAC5, or publication authority.
 
 ## Exact Identity
 
@@ -112,6 +116,28 @@ import, hosted signing, notarization result, stapling, Gatekeeper, platform
 artifact uploads, aggregate hosted evidence, and draft creation all remain
 `NOT RUN`. No GitHub release or Pages state was changed.
 
+## MAC4-R Fork Rehearsal Gate — AUTHORIZED / NOT RUN
+
+The review-only rehearsal must run from the exact fork and cannot satisfy any
+row in Required Draft Assets or MAC5 Installed Acceptance.
+
+| Gate | Required evidence | State |
+| --- | --- | --- |
+| Repository admission | `build_mode=rehearsal` and exact `YuLab-SMU/Rho_for_mac` identity | NOT RUN |
+| Immutable source | one full fork commit shared by both platform jobs | NOT RUN |
+| Windows rehearsal | installer, checksum, platform evidence and Workspace smoke | NOT RUN |
+| macOS rehearsal | signed/notarized/stapled DMG, checksum, Gatekeeper and Workspace smoke | NOT RUN |
+| Aggregate rehearsal | bounded rehearsal record agrees with both platform files and hashes | NOT RUN |
+| Credential cleanup | temporary `.p12`, `.p8`, and Keychain removed on every outcome | NOT RUN |
+| Mutation boundary | Actions artifact only; no tag, Release, Pages, environment, or repository mutation | NOT RUN |
+
+The final Actions artifact is retained for 14 days and contains only the two
+platform artifact/checksum/evidence triplets plus
+`rho-0.4.0-dev.1-rehearsal-evidence.json`. Candidate aggregate evidence is used
+only transiently for validation and is not uploaded. Rehearsal evidence is not
+accepted by candidate publication or update-site tooling. The main repository
+must rebuild the exact candidate after merge.
+
 ## macOS Signing And Notarization Gate
 
 The hosted macOS job must record all of these as separate passed checks:
@@ -197,5 +223,5 @@ publication do not by themselves prove live Pages acceptance.
 ## Current Decision
 
 `NO-GO`. MAC4 implementation and locally available verification are complete,
-but no credentialed hosted candidate, immutable draft, MAC5 installed
-acceptance, or explicit GO exists.
+and MAC4-R is authorized but NOT RUN. No credentialed hosted rehearsal or
+candidate, immutable draft, MAC5 installed acceptance, or explicit GO exists.

@@ -41,8 +41,8 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review and locally available verification complete; unsigned arm64 runtime/app/DMG workflows passed; hosted signing/notarization/draft NOT RUN | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | MAC4 mandatory stop reached; MAC5 remains unauthorized; full M3 remains open for exact candidate gates, macOS x64, and Linux x64 |
-| `release/active-0.4.0-dev.1-candidate-checklist.md` | active; exact identity/tooling fixed and locally verified; candidate assets, hosted signing, draft, MAC5 acceptance, and GO all pending | sole `0.4.0-dev.1` cross-platform candidate identity, evidence binding, installed-acceptance ledger, and GO/NO-GO decision | credentialed MAC4 hosted candidate may populate draft facts; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review and locally available verification complete; MAC4-R fork rehearsal authorized 2026-08-05 and NOT RUN; hosted candidate draft NOT RUN | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, and repository-bound rehearsal lane | MAC4-R may produce review-only fork Actions artifacts without a Release; MAC5 remains unauthorized; full M3 remains open for exact candidate gates, macOS x64, and Linux x64 |
+| `release/active-0.4.0-dev.1-candidate-checklist.md` | active; exact identity/tooling fixed and locally verified; MAC4-R fork rehearsal authorized and NOT RUN; candidate assets, hosted draft, MAC5 acceptance, and GO all pending | sole `0.4.0-dev.1` cross-platform candidate identity, rehearsal/candidate separation, evidence binding, installed-acceptance ledger, and GO/NO-GO decision | review-only rehearsal may run in the exact fork; credentialed authoritative candidate may run only in the main repository; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -380,6 +380,13 @@ construction, signed/notarized macOS packaging automation, immutable draft
 assembly, and a separately gated publish workflow. No credentialed hosted run
 or draft exists, and MAC4 may not perform MAC5 installed acceptance or publish
 the draft.
+
+MAC4-R is a bounded pre-merge evidence lane owned jointly by the active macOS
+specification and exact-candidate checklist. It may use fork repository secrets
+to build both platforms and upload short-lived Actions artifacts, but it cannot
+create a tag or Release and its evidence cannot satisfy candidate, MAC5,
+About/update, Pages, or publication gates. Candidate mode remains restricted to
+`YuLab-SMU/Rho`; no other document owns or consumes rehearsal evidence.
 
 ### macOS arm64 platform ownership
 
