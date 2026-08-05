@@ -1,7 +1,8 @@
 # Rho 0.4.0-dev.1 Cross-Platform Candidate Checklist
 
-Status: active; MAC4 candidate tooling authorized on 2026-08-05; no exact
-hosted draft, installed-candidate acceptance, or release GO exists yet
+Status: active; MAC4 candidate/update/signing/draft tooling implemented and
+locally verified on 2026-08-05; no exact hosted draft, installed-candidate
+acceptance, or release GO exists yet
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -24,9 +25,9 @@ Pages acceptance remain unauthorized.
 
 | Field | Required value | Current evidence |
 | --- | --- | --- |
-| Application version | `0.4.0-dev.1` | pending synchronized metadata |
-| Release tag | `v0.4.0-dev.1` | pending draft |
-| Release name | `Rho 0.4.0-dev.1` | pending draft |
+| Application version | `0.4.0-dev.1` | synchronized and locally verified |
+| Release tag | `v0.4.0-dev.1` | workflow identity fixed; draft NOT RUN |
+| Release name | `Rho 0.4.0-dev.1` | workflow identity fixed; draft NOT RUN |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | fixed |
 | Source commit | one full 40-character SHA | pending hosted checkout |
@@ -55,8 +56,9 @@ replacing it. A withdrawn or rejected candidate advances to a new version.
 Each platform evidence file binds schema/type/status, version, tag, source
 commit, platform, artifact name, byte size, lowercase SHA-256, and named checks.
 The aggregate record requires both platform files to agree and binds the exact
-asset set. Absolute runner paths, certificate/keychain paths, credentials,
-secret values, and unbounded logs are forbidden.
+asset set. Evidence JSON is capped at 256 KiB and checksum sidecars at 1 KiB.
+Absolute runner paths, certificate/keychain paths, credentials, secret values,
+and unbounded logs are forbidden.
 
 ## MAC4 Automated Candidate Gate
 
@@ -78,6 +80,37 @@ Before draft creation, the exact hosted checkout must pass:
 
 A platform job failure prevents aggregate evidence and draft creation. A draft
 job failure never publishes a partial release.
+
+## MAC4 Local Implementation Evidence — 2026-08-05
+
+Passed locally on Apple Silicon macOS 26.5.2 with Xcode 26.6, Node 22.22.3,
+Rust 1.97.0, and arm64 R 4.5.2:
+
+- synchronized Cargo workspace/lockfile, Tauri, frontend package/lockfile,
+  browser mock, cache-busting, roadmap, and NEWS identity checks;
+- candidate evidence and publish-admission fixtures, including malformed
+  identity, missing/unknown platform, stale acceptance, NO-GO, evidence byte
+  budget, and content hash/size rejection;
+- legacy Windows-only and two-platform update generation, SemVer promotion,
+  draft rejection, missing macOS, unknown platform, and bad asset/hash tests;
+- 33 deterministic `scripts/test-*.mjs` suites, frontend syntax, workflow YAML,
+  shell/bootstrap failure fixtures, both R package suites, Rust format, and the
+  complete Rust workspace matrix;
+- Tauri CLI 2.11.4 release `app,dmg` build with explicit `--no-sign`; the
+  resulting `0.4.0-dev.1` app reports macOS 14.0 minimum, the app executable
+  and bundled Ark are arm64, the DMG mounts with `Rho.app`, and the app-bundled
+  Workspace smoke passed execution, Viewer, two-project, interrupt, restart,
+  and crash-recovery checks.
+
+The local DMG was deliberately unsigned and is development evidence only. Its
+size/hash are not candidate identity and must not be copied into hosted
+evidence. The Windows GNU target and PowerShell are absent locally; the hosted
+Windows build is `NOT RUN`, not inferred from static configuration.
+
+The repository does not contain signing/notarization credentials. Developer ID
+import, hosted signing, notarization result, stapling, Gatekeeper, platform
+artifact uploads, aggregate hosted evidence, and draft creation all remain
+`NOT RUN`. No GitHub release or Pages state was changed.
 
 ## macOS Signing And Notarization Gate
 
@@ -163,5 +196,6 @@ publication do not by themselves prove live Pages acceptance.
 
 ## Current Decision
 
-`NO-GO`. MAC4 implementation has been authorized, but no credentialed hosted
-candidate, immutable draft, MAC5 installed acceptance, or explicit GO exists.
+`NO-GO`. MAC4 implementation and locally available verification are complete,
+but no credentialed hosted candidate, immutable draft, MAC5 installed
+acceptance, or explicit GO exists.

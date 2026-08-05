@@ -1,0 +1,451 @@
+name: Build Rho Candidate Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Exact Git ref to build
+        required: true
+        default: main
+      release_tag:
+        description: Single-use prerelease tag
+        required: true
+        default: v0.4.0-dev.1
+      release_name:
+        description: Draft release title
+        required: true
+        default: Rho 0.4.0-dev.1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rho-candidate-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    name: Resolve immutable candidate identity
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      version: ${{ steps.identity.outputs.version }}
+      release_tag: ${{ steps.identity.outputs.release_tag }}
+      release_name: ${{ steps.identity.outputs.release_name }}
+    steps:
+      - name: Check out exact candidate ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Validate candidate identity and contract tools
+        id: identity
+        shell: bash
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          version="$(node -e 'const fs=require("fs"); const value=fs.readFileSync("Cargo.toml", "utf8").match(/^version = "([^"]+)"/m); if(!value) process.exit(1); process.stdout.write(value[1])')"
+          test "$INPUT_RELEASE_NAME" = "Rho $version"
+          node scripts/candidate-release.mjs --mode identity --version "$version" --tag "$INPUT_RELEASE_TAG" --commit "$commit"
+          node scripts/candidate-release.mjs --test true
+          node scripts/generate-update-site.mjs --test true
+          node scripts/test-mac4-release-contract.mjs
+          {
+            echo "commit=$commit"
+            echo "version=$version"
+            echo "release_tag=$INPUT_RELEASE_TAG"
+            echo "release_name=$INPUT_RELEASE_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+  windows-candidate:
+    name: Build Windows x64 candidate
+    needs: identity
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable candidate commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          fetch-depth: 0
+
+      - name: Prove checked-out identity
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          if ((& git rev-parse HEAD).Trim() -ne $env:EXPECTED_COMMIT) { throw "Windows checkout identity mismatch." }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up R and Rtools
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.6.1"
+          rtools-version: "45"
+          use-public-rspm: true
+
+      - name: Install R test dependencies
+        shell: pwsh
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Rscript -e "if (!requireNamespace('remotes', quietly = TRUE)) install.packages('remotes')"
+          Rscript -e "remotes::install_deps('r/rho.bridge', dependencies = TRUE, upgrade = 'never')"
+          Rscript -e "remotes::install_deps('r/rho.agent', dependencies = TRUE, upgrade = 'never')"
+
+      - name: Install Windows GNU Rust toolchain
+        shell: pwsh
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable-x86_64-pc-windows-gnu --no-self-update
+          rustup component add rustfmt --toolchain stable-x86_64-pc-windows-gnu
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_RTOOLS_BIN=C:\rtools45\x86_64-w64-mingw32.static.posix\bin"
+          $rscript = (& Rscript -e "cat(normalizePath(file.path(R.home('bin'), 'Rscript.exe'), winslash='/', mustWork=TRUE))").Trim()
+          if (-not $rscript) { throw "Could not resolve Rscript.exe." }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_RSCRIPT=$rscript"
+
+      - name: Bootstrap pinned Windows Ark runtime
+        shell: pwsh
+        run: |
+          $env:PATH="$env:RHO_RTOOLS_BIN;$env:PATH"
+          ./scripts/bootstrap-ark-windows.ps1 -RscriptPath "$env:RHO_RSCRIPT"
+
+      - name: Run complete Windows candidate validation
+        shell: pwsh
+        run: |
+          $env:PATH="$env:RHO_RTOOLS_BIN;$env:PATH"
+          cargo fmt --all -- --check
+          cargo test --workspace --no-fail-fast
+          Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"
+          Rscript -e "testthat::test_local('r/rho.agent', reporter = 'summary')"
+          node --check desktop/dist/app.js
+          Get-ChildItem -LiteralPath scripts -Filter "test-*.mjs" | Sort-Object Name | ForEach-Object {
+            & node $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Failed deterministic test: $($_.Name)" }
+          }
+
+      - name: Build and smoke-test Windows installer
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          ./scripts/build-windows-installer.ps1
+          $binary = Join-Path $PWD "target\release\rho-desktop.exe"
+          & $binary --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Windows Workspace smoke failed." }
+          $expected = "Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
+          $installer = Get-ChildItem -LiteralPath "target\release\bundle\nsis" -Filter "*-setup.exe"
+          if ($installer.Count -ne 1 -or $installer[0].Name -ne $expected) { throw "Expected exactly $expected." }
+          New-Item -ItemType Directory -Path "target\candidate" -Force | Out-Null
+          Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path "target\candidate" $expected)
+
+      - name: Create Windows platform evidence
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          $artifact = "target\candidate\Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
+          $evidence = "target\candidate\rho-$($env:CANDIDATE_VERSION)-windows-x86_64-evidence.json"
+          node scripts/candidate-release.mjs --mode platform --version $env:CANDIDATE_VERSION --tag $env:CANDIDATE_TAG --commit $env:CANDIDATE_COMMIT --platform windows_x86_64 --artifact $artifact --output $evidence --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke
+
+      - name: Upload immutable Windows candidate inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-${{ needs.identity.outputs.version }}-windows-x86-64
+          path: |
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe.sha256
+            target/candidate/rho-${{ needs.identity.outputs.version }}-windows-x86_64-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-candidate:
+    name: Build signed and notarized macOS arm64 candidate
+    needs: identity
+    runs-on: macos-26
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out immutable candidate commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          fetch-depth: 0
+
+      - name: Prove runner, Xcode and source identity
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          test -d /Applications/Xcode_26.6.app
+          test "$(xcodebuild -version | sed -n '1p')" = "Xcode 26.6"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up current stable R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install R test dependencies
+        shell: bash
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          Rscript -e "if (!requireNamespace('remotes', quietly = TRUE)) install.packages('remotes')"
+          Rscript -e "remotes::install_deps('r/rho.bridge', dependencies = TRUE, upgrade = 'never')"
+          Rscript -e "remotes::install_deps('r/rho.agent', dependencies = TRUE, upgrade = 'never')"
+
+      - name: Install native Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install stable-aarch64-apple-darwin --no-self-update
+          rustup component add rustfmt --toolchain stable-aarch64-apple-darwin
+          rustup default stable-aarch64-apple-darwin
+          rustc -vV | grep -F 'host: aarch64-apple-darwin'
+
+      - name: Bootstrap pinned macOS Ark runtime
+        shell: bash
+        run: ./scripts/bootstrap-ark-macos.sh
+
+      - name: Run complete macOS candidate validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo test --workspace --no-fail-fast
+          Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"
+          Rscript -e "testthat::test_local('r/rho.agent', reporter = 'summary')"
+          node --check desktop/dist/app.js
+          for test_script in scripts/test-*.mjs; do node "$test_script"; done
+
+      - name: Import temporary Developer ID credentials
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_CERTIFICATE"
+          test -n "$APPLE_CERTIFICATE_PASSWORD"
+          test -n "$KEYCHAIN_PASSWORD"
+          test -n "$APPLE_SIGNING_IDENTITY"
+          test -n "$APPLE_API_KEY"
+          test -n "$APPLE_API_PRIVATE_KEY"
+          certificate_path="$RUNNER_TEMP/rho-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate_path"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" | base64 -D > "$api_key_path"
+          chmod 600 "$certificate_path" "$api_key_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -t agg -f pkcs12
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path" | grep -F "$APPLE_SIGNING_IDENTITY"
+          echo "RHO_SIGNING_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and verify macOS DMG
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_SIGNING_IDENTITY"
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APPLE_API_ISSUER"
+          test -n "$APPLE_API_KEY"
+          test -f "$APPLE_API_KEY_PATH"
+          (cd desktop/src-tauri && npx -y "@tauri-apps/cli@2.11.4" build --target aarch64-apple-darwin --bundles app,dmg)
+          app_path="target/aarch64-apple-darwin/release/bundle/macos/Rho.app"
+          dmg_path="target/aarch64-apple-darwin/release/bundle/dmg/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          test -d "$app_path"
+          test -f "$dmg_path"
+          codesign --verify --deep --strict --verbose=4 "$app_path"
+          test "$(lipo -archs "$app_path/Contents/MacOS/rho-desktop")" = "arm64"
+          ark_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -name 'ark*' -print -quit)"
+          test -n "$ark_path"
+          test "$(lipo -archs "$ark_path")" = "arm64"
+          xcrun notarytool history --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --output-format json > target/notary-history.json
+          node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("target/notary-history.json", "utf8")); const name=process.argv[1]; if(!value.history?.some((entry)=>entry.name===name && entry.status==="Accepted")) process.exit(1)' "$(basename "$dmg_path")"
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          spctl --assess --type execute --verbose=4 "$app_path"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+          "$app_path/Contents/MacOS/rho-desktop" --smoke-test
+          mkdir -p target/candidate
+          cp "$dmg_path" "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+
+      - name: Create macOS platform evidence
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,notarization,staple,gatekeeper
+
+      - name: Upload immutable macOS candidate inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-${{ needs.identity.outputs.version }}-macos-arm64
+          path: |
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg.sha256
+            target/candidate/rho-${{ needs.identity.outputs.version }}-macos-aarch64-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary Apple credentials
+        if: always()
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/rho-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/rho-developer-id.p12"
+          if [[ -n "$APPLE_API_KEY" ]]; then rm -f "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"; fi
+
+  draft-candidate:
+    name: Assemble immutable draft prerelease
+    needs: [identity, windows-candidate, macos-candidate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out candidate contract tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+
+      - name: Download both platform candidates
+        uses: actions/download-artifact@v5
+        with:
+          pattern: rho-${{ needs.identity.outputs.version }}-*
+          path: target/candidate
+          merge-multiple: true
+
+      - name: Validate and aggregate exact candidate assets
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json"
+
+      - name: Create single-use draft and upload assets once
+        id: draft
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_NAME: ${{ needs.identity.outputs.release_name }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag: process.env.CANDIDATE_TAG });
+              throw new Error(`Release ${process.env.CANDIDATE_TAG} already exists; advance the candidate version.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${process.env.CANDIDATE_TAG}` });
+              throw new Error(`Tag ${process.env.CANDIDATE_TAG} already exists; advance the candidate version.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const version = process.env.CANDIDATE_VERSION;
+            const requiredNames = [
+              `Rho_${version}_x64-setup.exe`,
+              `Rho_${version}_x64-setup.exe.sha256`,
+              `rho-${version}-windows-x86_64-evidence.json`,
+              `Rho_${version}_aarch64.dmg`,
+              `Rho_${version}_aarch64.dmg.sha256`,
+              `rho-${version}-macos-aarch64-evidence.json`,
+              `rho-${version}-candidate-evidence.json`,
+            ];
+            const files = requiredNames.map((name) => {
+              const filePath = path.join("target", "candidate", name);
+              const stat = fs.statSync(filePath);
+              if (!stat.isFile() || stat.size <= 0) throw new Error(`Missing candidate asset ${name}`);
+              return { name, filePath, size: stat.size };
+            });
+            const release = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: process.env.CANDIDATE_TAG,
+              target_commitish: process.env.CANDIDATE_COMMIT,
+              name: process.env.CANDIDATE_NAME,
+              body: `Immutable cross-platform candidate built from \`${process.env.CANDIDATE_COMMIT}\`. Publication requires separate MAC5 acceptance evidence and GO.`,
+              draft: true,
+              prerelease: true,
+            });
+            for (const file of files) {
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: release.data.id,
+                name: file.name,
+                data: fs.readFileSync(file.filePath),
+                headers: { "content-type": "application/octet-stream", "content-length": file.size },
+              });
+            }
+            const checked = await github.rest.repos.getRelease({ owner, repo, release_id: release.data.id });
+            if (!checked.data.draft || !checked.data.prerelease || checked.data.target_commitish !== process.env.CANDIDATE_COMMIT) {
+              throw new Error("Draft release identity changed during assembly.");
+            }
+            const actual = new Map(checked.data.assets.map((asset) => [asset.name, asset.size]));
+            if (actual.size !== files.length || files.some((file) => actual.get(file.name) !== file.size)) {
+              throw new Error("Draft release assets do not match the aggregate candidate.");
+            }
+            core.setOutput("release_url", checked.data.html_url);
+
+      - name: Report unpublished draft
+        shell: bash
+        env:
+          DRAFT_URL: ${{ steps.draft.outputs.release_url }}
+        run: echo "Candidate remains an unpublished draft at $DRAFT_URL"

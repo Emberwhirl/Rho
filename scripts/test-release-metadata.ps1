@@ -63,8 +63,11 @@ $requiredFiles = @(
     "desktop\dist\app.js",
     "desktop\dist\styles.css",
     ".github\workflows\update-site-publish.yml",
+    ".github\workflows\candidate-build-draft.yml",
+    ".github\workflows\candidate-publish.yml",
+    "scripts\candidate-release.mjs",
     "scripts\generate-update-site.mjs",
-    "docs\design\active-2026-07-25-about-and-update-check-design.md"
+    "docs\design\accepted-2026-07-25-about-and-update-check-design.md"
 )
 $missingFiles = @(
     $requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repo $_) -PathType Leaf) }

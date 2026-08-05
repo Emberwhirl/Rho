@@ -41,12 +41,12 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC3 implementation/review complete; unsigned arm64 runtime and isolated development-app workflow acceptance passed; MAC4 entry-reviewed and authorized 2026-08-05 but not implemented | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | MAC4 may implement only its candidate/update/signing/draft workflow contract; MAC5 remains unauthorized; full M3 remains open for macOS x64, Linux x64, and exact-candidate gates |
-| `release/active-0.4.0-dev.1-candidate-checklist.md` | active; exact identity fixed; candidate assets, hosted signing, draft, MAC5 acceptance, and GO all pending | sole `0.4.0-dev.1` cross-platform candidate identity, evidence binding, installed-acceptance ledger, and GO/NO-GO decision | MAC4 may populate automated/draft facts; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review and locally available verification complete; unsigned arm64 runtime/app/DMG workflows passed; hosted signing/notarization/draft NOT RUN | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | MAC4 mandatory stop reached; MAC5 remains unauthorized; full M3 remains open for exact candidate gates, macOS x64, and Linux x64 |
+| `release/active-0.4.0-dev.1-candidate-checklist.md` | active; exact identity/tooling fixed and locally verified; candidate assets, hosted signing, draft, MAC5 acceptance, and GO all pending | sole `0.4.0-dev.1` cross-platform candidate identity, evidence binding, installed-acceptance ledger, and GO/NO-GO decision | credentialed MAC4 hosted candidate may populate draft facts; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
-| `design/accepted-2026-07-25-about-and-update-check-design.md` | implementation active; MAC4 macOS artifact extension authorized; live and installed acceptance open | About/update V1 schema, channel, endpoint, allowlist, redirect, and Pages gates | MAC4 may add the compatible optional macOS artifact; live/installed acceptance remains separate |
+| `design/accepted-2026-07-25-about-and-update-check-design.md` | implementation active; MAC4 optional macOS artifact and multi-platform generator implemented/verified; live and installed acceptance open | About/update V1 schema, channel, endpoint, allowlist, redirect, and Pages gates | hosted candidate/publication may populate exact release and Pages facts; live/installed acceptance remains separate |
 | `plans/active-2026-07-26-bh1-project-scoped-durable-identity-handoff.md` | accepted; Wave 1 exit gate passed | canonical project identity, project-scoped durable queries/context, retry and approval-continuation admission, and legacy-unscoped fail-closed behavior | BH4 is accepted; BH5 is active |
 | `plans/active-2026-07-27-bh3-transactional-schema-v8-migration-handoff.md` | accepted | transactional `v7 -> v8` migration, fail-closed historical rejection, same-directory recoverable backup, and bounded migration diagnostics | BH4 is accepted; BH5 is active |
 | `plans/active-2026-07-28-bh2-project-switch-state-machine-handoff.md` | accepted | broker-owned project-switch preflight, blocked/synchronized/committed/failed-restored outcomes, and deterministic switch recovery | BH4 is accepted; BH5 is active |
@@ -375,10 +375,11 @@ affected evidence.
 
 The macOS arm64 specification does not amend or reuse the exact
 `0.2.0-dev.12` release contract. Its future `0.4.0-dev.1` publication is owned
-by the new D4 active checklist. Authorized MAC4 may implement parallel
-candidate construction, signed/notarized macOS packaging, immutable draft
-assembly, and a separately gated publish workflow. It may not perform MAC5
-installed acceptance or publish the draft.
+by the new D4 active checklist. MAC4 implemented parallel candidate
+construction, signed/notarized macOS packaging automation, immutable draft
+assembly, and a separately gated publish workflow. No credentialed hosted run
+or draft exists, and MAC4 may not perform MAC5 installed acceptance or publish
+the draft.
 
 ### macOS arm64 platform ownership
 
@@ -388,10 +389,10 @@ record a macOS-arm64 sub-gate but cannot close M3 while macOS x64 and Linux x64
 remain open.
 
 The accepted About/update design retains endpoint, channel, allowlist, SemVer,
-fetch, size, timeout, and user-initiated-install policy. Authorized MAC4 may add
-one optional schema-v1 macOS artifact and multi-platform page projection under
-the recorded two-way amendment. It cannot make updater installation or a draft
-release authoritative.
+fetch, size, timeout, and user-initiated-install policy. Completed MAC4 adds one
+optional schema-v1 macOS artifact, platform-unavailable admission, and
+multi-platform page projection under the recorded two-way amendment. It does
+not make updater installation or a draft release authoritative.
 
 The active system-credential specification retains stable provider IDs,
 redaction, precedence, Agent-only injection, and failure semantics. Its

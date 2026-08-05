@@ -53,11 +53,13 @@ struct UpdateManifest {
 
 #[derive(Debug, Deserialize)]
 struct UpdateArtifacts {
-    windows_x86_64: WindowsArtifact,
+    windows_x86_64: UpdateArtifact,
+    #[serde(default)]
+    macos_aarch64: Option<UpdateArtifact>,
 }
 
 #[derive(Debug, Deserialize)]
-struct WindowsArtifact {
+struct UpdateArtifact {
     url: String,
     sha256: String,
     size: u64,
@@ -157,6 +159,24 @@ fn evaluate_manifest(
 }
 
 fn validate_manifest(manifest: &UpdateManifest, requested_channel: ReleaseChannel) -> Result<()> {
+    validate_manifest_for_platform(manifest, requested_channel, current_update_platform())
+}
+
+fn current_update_platform() -> &'static str {
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "macos_aarch64"
+    } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        "windows_x86_64"
+    } else {
+        "unsupported"
+    }
+}
+
+fn validate_manifest_for_platform(
+    manifest: &UpdateManifest,
+    requested_channel: ReleaseChannel,
+    platform: &str,
+) -> Result<()> {
     ensure!(
         manifest.schema_version == 1,
         "UPDATE_INVALID: unsupported schema version"
@@ -183,19 +203,36 @@ fn validate_manifest(manifest: &UpdateManifest, requested_channel: ReleaseChanne
     );
     validate_rho_page_url(&manifest.release_page_url)?;
     validate_github_release_url(&manifest.github_release_url, false)?;
-    validate_github_release_url(&manifest.artifacts.windows_x86_64.url, true)?;
+    validate_artifact(&manifest.artifacts.windows_x86_64)?;
+    if let Some(artifact) = &manifest.artifacts.macos_aarch64 {
+        validate_artifact(artifact)?;
+    }
+    match platform {
+        "windows_x86_64" => {}
+        "macos_aarch64" => ensure!(
+            manifest.artifacts.macos_aarch64.is_some(),
+            "UPDATE_PLATFORM_UNAVAILABLE: this release has no Apple Silicon installer"
+        ),
+        _ => ensure!(
+            false,
+            "UPDATE_PLATFORM_UNAVAILABLE: this platform has no supported installer"
+        ),
+    }
+    Ok(())
+}
+
+fn validate_artifact(artifact: &UpdateArtifact) -> Result<()> {
+    validate_github_release_url(&artifact.url, true)?;
     ensure!(
-        manifest.artifacts.windows_x86_64.sha256.len() == 64
-            && manifest
-                .artifacts
-                .windows_x86_64
+        artifact.sha256.len() == 64
+            && artifact
                 .sha256
                 .chars()
                 .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase()),
         "UPDATE_INVALID: SHA-256 is invalid"
     );
     ensure!(
-        manifest.artifacts.windows_x86_64.size > 0,
+        artifact.size > 0,
         "UPDATE_INVALID: artifact size is invalid"
     );
     Ok(())
@@ -268,6 +305,10 @@ mod tests {
                 "url": format!("https://github.com/YuLab-SMU/Rho/releases/download/v{version}/Rho_{version}_x64-setup.exe"),
                 "sha256": "97bc0a0aad9889c9027e30e07dd3a5ef38885c43e5ace5dbb14aaf8bca0ef019",
                 "size": 15854119
+            }, "macos_aarch64": {
+                "url": format!("https://github.com/YuLab-SMU/Rho/releases/download/v{version}/Rho_{version}_aarch64.dmg"),
+                "sha256": "97bc0a0aad9889c9027e30e07dd3a5ef38885c43e5ace5dbb14aaf8bca0ef019",
+                "size": 20554119
             }}
         })).unwrap()
     }
@@ -364,6 +405,85 @@ mod tests {
         assert!(
             evaluate_manifest(
                 "0.2.0-dev.1",
+                ReleaseChannel::Development,
+                &serde_json::to_vec(&value).unwrap()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn accepts_optional_apple_silicon_artifact() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&manifest("development", "0.4.0-dev.1")).unwrap();
+        value["artifacts"]["macos_aarch64"] = json!({
+            "url": "https://github.com/YuLab-SMU/Rho/releases/download/v0.4.0-dev.1/Rho_0.4.0-dev.1_aarch64.dmg",
+            "sha256": "a".repeat(64),
+            "size": 20_000_000
+        });
+        assert!(
+            evaluate_manifest(
+                "0.4.0-dev.0",
+                ReleaseChannel::Development,
+                &serde_json::to_vec(&value).unwrap()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn preserves_windows_only_compatibility_but_reports_missing_macos_artifact() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&manifest("development", "0.4.0-dev.1")).unwrap();
+        value["artifacts"]
+            .as_object_mut()
+            .unwrap()
+            .remove("macos_aarch64");
+        let parsed: UpdateManifest = serde_json::from_value(value).unwrap();
+        assert!(
+            validate_manifest_for_platform(&parsed, ReleaseChannel::Development, "windows_x86_64")
+                .is_ok()
+        );
+        let error =
+            validate_manifest_for_platform(&parsed, ReleaseChannel::Development, "macos_aarch64")
+                .unwrap_err();
+        assert!(error.to_string().contains("UPDATE_PLATFORM_UNAVAILABLE"));
+    }
+
+    #[test]
+    fn rejects_invalid_apple_silicon_artifact() {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&manifest("development", "0.4.0-dev.1")).unwrap();
+        value["artifacts"]["macos_aarch64"] = json!({
+            "url": "https://example.test/Rho_0.4.0-dev.1_aarch64.dmg",
+            "sha256": "a".repeat(64),
+            "size": 20_000_000
+        });
+        assert!(
+            evaluate_manifest(
+                "0.4.0-dev.0",
+                ReleaseChannel::Development,
+                &serde_json::to_vec(&value).unwrap()
+            )
+            .is_err()
+        );
+        value["artifacts"]["macos_aarch64"]["url"] = json!(
+            "https://github.com/YuLab-SMU/Rho/releases/download/v0.4.0-dev.1/Rho_0.4.0-dev.1_aarch64.dmg"
+        );
+        value["artifacts"]["macos_aarch64"]["sha256"] = json!("ABC");
+        assert!(
+            evaluate_manifest(
+                "0.4.0-dev.0",
+                ReleaseChannel::Development,
+                &serde_json::to_vec(&value).unwrap()
+            )
+            .is_err()
+        );
+        value["artifacts"]["macos_aarch64"]["sha256"] = json!("a".repeat(64));
+        value["artifacts"]["macos_aarch64"]["size"] = json!(0);
+        assert!(
+            evaluate_manifest(
+                "0.4.0-dev.0",
                 ReleaseChannel::Development,
                 &serde_json::to_vec(&value).unwrap()
             )

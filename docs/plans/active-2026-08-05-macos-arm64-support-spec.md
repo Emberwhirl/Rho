@@ -8,7 +8,10 @@ debug-app runtime acceptance, and separate contract review complete on
 native-Keychain smoke, unsigned arm64 development-app workflow acceptance, and
 separate contract review complete on 2026-08-05; the MAC3 mandatory stop is
 reached; MAC4 entry review complete and explicitly authorized on 2026-08-05;
-MAC4 implementation has not started; MAC5 remains proposed and unauthorized
+MAC4 implementation, locally available verification, version/NEWS review, and
+separate contract review complete on 2026-08-05; hosted signing/notarization,
+candidate assets, and draft creation remain NOT RUN; the MAC4 mandatory stop
+is reached; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -624,8 +627,9 @@ Explicitly open or not accepted:
 Version outcome: application remains `0.4.0-dev.0`, R package versions are
 unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
 MAC2 stop is reached. MAC3 was subsequently entry-reviewed and activated by
-the authorization recorded above; MAC4-MAC5 remain inactive until their own
-entry review and authorization record.
+the authorization recorded above; MAC4 was later entry-reviewed and authorized
+after the MAC3 stop. MAC5 remains inactive until its own entry review and
+authorization record.
 
 ## MAC3 Implementation Evidence — 2026-08-05
 
@@ -731,5 +735,94 @@ Explicitly open or not accepted:
 
 Version outcome: application remains `0.4.0-dev.0`, R package versions are
 unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
-MAC3 stop is reached. MAC4-MAC5 remain inactive until their own entry review
-and explicit authorization are recorded.
+MAC3 stop is reached. MAC4 was subsequently entry-reviewed and authorized as
+recorded above; MAC5 remains inactive until its own entry review and explicit
+authorization are recorded.
+
+## MAC4 Implementation Evidence — 2026-08-05
+
+Implementation present:
+
+- update schema version 1 now accepts and validates optional
+  `artifacts.macos_aarch64` metadata without breaking Windows-only feeds. The
+  Apple Silicon client reports stable `UPDATE_PLATFORM_UNAVAILABLE` when the
+  current release has no Mac artifact; Windows admission retains its required
+  Windows artifact. Rust tests cover both-platform success, legacy Windows
+  compatibility, missing Mac, untrusted URL, hash, and size failures;
+- the release-page generator accepts legacy `rho-0.2-release.json` evidence or
+  exact cross-platform aggregate evidence. It validates tag, commit, channel,
+  artifact names, URLs, sizes, hashes, and recognized platform keys, then
+  renders platform-specific downloads without changing the redirect-only
+  application update policy;
+- `candidate-release.mjs` owns bounded platform, aggregate, acceptance, and
+  publish-admission schemas. It recomputes local artifact/sidecar/evidence
+  hashes, requires both platforms and exact source identity, caps evidence,
+  and rejects missing/duplicate/foreign/stale, NO-GO, oversized, or
+  content-mismatched inputs;
+- `Build Rho Candidate Draft` resolves one full commit, runs parallel
+  least-privilege Windows x64 and `macos-26` jobs, selects Xcode 26.6, stages
+  the API `.p8` under `RUNNER_TEMP`, imports Developer ID credentials into a
+  temporary Keychain, uses Tauri's App Store Connect variables, verifies
+  notarization history/signature/staple/Gatekeeper/arm64/smoke gates, and
+  unconditionally removes temporary Apple files and Keychain;
+- draft assembly requires both platform jobs, rejects an existing tag or
+  release, creates one draft prerelease, uploads the seven exact assets once,
+  and re-reads names and sizes. It contains no asset deletion or replacement;
+- `Publish Rho Candidate` is separately protected by environment
+  `rho-release`. It downloads and re-hashes the exact draft, requires bounded
+  MAC5 `status: passed` and `decision: GO` evidence matching aggregate SHA,
+  version/tag/commit and the complete platform mapping, then performs only the
+  draft-to-published state transition. It cannot build, upload, delete, rename,
+  or replace assets;
+- Pages automation now handles legacy or aggregate evidence only after a
+  release is public, downloads and re-hashes both candidate platform-evidence
+  assets, emits Windows and optional Apple Silicon downloads, and
+  post-deployment checks every present recognized artifact. Draft construction
+  cannot trigger Pages;
+- application metadata, workspace lockfile packages, Tauri, frontend
+  package/lockfile, browser mock, cache-busting, roadmap, and NEWS are
+  synchronized at `0.4.0-dev.1`. R package versions remain unchanged because
+  their exported contracts did not change.
+
+Local automated and packaging evidence passed:
+
+- candidate and update-site self-tests plus all 33 deterministic
+  `scripts/test-*.mjs` suites and `node --check desktop/dist/app.js`;
+- YAML parsing for all three affected workflows, shell syntax, Ark bootstrap
+  checksum/missing/non-Mach-O failure fixtures, and `git diff --check`;
+- `cargo fmt --all -- --check` and `cargo test --workspace --no-fail-fast`;
+- complete `rho.bridge` and `rho.agent` testthat suites;
+- Tauri CLI 2.11.4 release build with `--bundles app,dmg --no-sign --ci` on
+  arm64 macOS 26.5.2 / Xcode 26.6 / R 4.5.2. The app metadata reports version
+  `0.4.0-dev.1` and macOS 14.0 minimum; app and bundled Ark are arm64; the DMG
+  mounted with `Rho.app`; and its bundled executable passed the complete
+  Workspace smoke, including Viewer, stale rejection, two-project isolation,
+  interrupt, restart, and crash recovery.
+
+The local DMG was explicitly unsigned. Its locally observed bytes and hash are
+not candidate evidence and are not recorded as a distributable identity.
+Only `aarch64-apple-darwin` is installed locally and PowerShell is unavailable,
+so Windows compilation/NSIS/smoke and the PowerShell metadata check are
+`NOT RUN`; deterministic Windows contract/configuration tests passed but are
+not a substitute for the hosted job.
+
+No repository Apple secret, credentialed hosted run, signed/notarized artifact,
+staple, Gatekeeper candidate assessment, candidate upload, aggregate hosted
+evidence, GitHub draft, installed candidate, or Pages publication was created
+or claimed. Local inspection found a developer signing identity, but MAC4 did
+not use it because no exact App Store Connect notarization credential set was
+provided and the contract forbids treating a partial local signature as a
+candidate.
+
+Post-test contract review found no blocking ownership, schema, policy,
+persistence, authority, or sequencing deviation. The only implementation-time
+correction was to build both `app,dmg`: Tauri cleans the app bundle after a
+DMG-only build, while MAC4 must retain the app for exact architecture,
+signature, Gatekeeper, and smoke checks. This stays inside the accepted bundle
+targets and is statically enforced.
+
+Version outcome: application is `0.4.0-dev.1`; R package versions are
+unchanged; NEWS records the user-visible Mac and cross-platform update support.
+Release decision: NO-GO. The MAC4 mandatory stop is reached. MAC5 remains
+unauthorized, and no acceptance evidence upload, release publication, or live
+Pages acceptance may proceed without its own activation.

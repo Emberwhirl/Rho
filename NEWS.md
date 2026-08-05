@@ -4,6 +4,31 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.1 - 2026-08-05
+
+### Added
+
+- Added native Apple Silicon support for macOS 14 and later, including the
+  pinned arm64 Ark runtime, arm64 R 4.4+ discovery, Apple Keychain-backed model
+  credentials, macOS-native open/reveal behavior, and Command-key editor
+  gestures while retaining Windows behavior.
+- Added an immutable cross-platform candidate pipeline that builds Windows x64
+  and macOS arm64 in parallel, requires Developer ID signing, Apple
+  notarization, stapling, Gatekeeper checks, checksums, and bounded evidence,
+  and creates only an unpublished draft until separate installed-candidate GO.
+
+### Improved
+
+- Update manifests and the Rho download page now accept a validated Apple
+  Silicon DMG alongside the required Windows installer while preserving legacy
+  Windows-only feeds and the existing user-initiated update policy.
+
+### Fixed
+
+- macOS project fixtures now compare canonical `/private/var` aliases, local
+  lockfile source details stay inside the active project, and Bioconductor
+  fixture provenance no longer depends on packages installed on the test Mac.
+
 ## 0.4.0-dev.0 - 2026-08-01
 
 ### Improved

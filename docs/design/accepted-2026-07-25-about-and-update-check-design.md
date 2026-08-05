@@ -2,8 +2,9 @@
 
 Date: 2026-07-25
 
-Status: implementation active; MAC4 macOS artifact extension authorized on
-2026-08-05; live Pages deployment and installed-app acceptance pending
+Status: implementation active; MAC4 macOS artifact extension implemented and
+locally verified on 2026-08-05; hosted candidate, live Pages deployment, and
+installed-app acceptance pending
 
 Release inclusion boundary: this feature was implemented after the locked
 `0.2.0-dev.12` candidate baseline. It is not retroactively part of that
@@ -226,7 +227,7 @@ Add a Tauri command named `app_info`. It returns a typed payload equivalent to:
 
 ```json
 {
-  "version": "0.2.0-dev.12",
+  "version": "0.4.0-dev.1",
   "channel": "development",
   "commit": "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
   "platform": "windows-x86_64",
@@ -261,12 +262,17 @@ Each channel endpoint returns one UTF-8 JSON document:
   "published_at": "2026-07-22T14:45:23Z",
   "summary": "Agent reliability and release hardening fixes.",
   "release_page_url": "https://yulab-smu.top/Rho/",
-  "github_release_url": "https://github.com/YuLab-SMU/Rho/releases/tag/v0.2.0-dev.12",
+  "github_release_url": "https://github.com/YuLab-SMU/Rho/releases/tag/v0.4.0-dev.1",
   "artifacts": {
     "windows_x86_64": {
-      "url": "https://github.com/YuLab-SMU/Rho/releases/download/v0.2.0-dev.12/Rho_0.2.0-dev.12_x64-setup.exe",
+      "url": "https://github.com/YuLab-SMU/Rho/releases/download/v0.4.0-dev.1/Rho_0.4.0-dev.1_x64-setup.exe",
       "sha256": "97bc0a0aad9889c9027e30e07dd3a5ef38885c43e5ace5dbb14aaf8bca0ef019",
       "size": 15854119
+    },
+    "macos_aarch64": {
+      "url": "https://github.com/YuLab-SMU/Rho/releases/download/v0.4.0-dev.1/Rho_0.4.0-dev.1_aarch64.dmg",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 23456789
     }
   }
 }
@@ -283,10 +289,13 @@ Required validation:
   path is `/Rho/` or a descendant of `/Rho/`;
 - `github_release_url` is HTTPS and belongs to
   `github.com/YuLab-SMU/Rho/releases/`;
-- the Windows artifact URL is HTTPS and belongs to the expected Rho GitHub
+- `artifacts.windows_x86_64` is required; `artifacts.macos_aarch64` is optional
+  for backward compatibility, and unrecognized artifact keys are rejected by
+  publication generation;
+- every present artifact URL is HTTPS and belongs to the expected Rho GitHub
   Release download path;
-- `sha256` is exactly 64 lowercase hexadecimal characters;
-- `size` is a positive integer.
+- every present `sha256` is exactly 64 lowercase hexadecimal characters;
+- every present `size` is a positive integer.
 
 The client must reject the entire manifest if a required field fails
 validation. It must cap the response body at 64 KiB and use a total request
@@ -298,9 +307,12 @@ artifact, so checksum verification is not a client V1 behavior.
 
 ## 7. Publication Contract
 
-The existing Windows publish workflow remains authoritative for creating a
-GitHub Release and uploading the installer, SHA-256 sidecar, and release
-evidence.
+The existing Windows publish workflow remains the legacy authority for its
+`0.2.x` release records. The `0.4.0-dev.1` cross-platform candidate instead
+uses the active D4 checklist: parallel platform jobs produce evidence, a
+separate assembly job creates one immutable draft, and a separately protected
+publish workflow can only expose that draft after exact MAC5 GO evidence.
+Neither candidate construction nor Pages automation may publish a draft.
 
 After those assets exist, a separate Pages publication job must:
 
@@ -310,7 +322,8 @@ After those assets exist, a separate Pages publication job must:
    versions, for `development.json`; this promotes development installations
    to a newer stable release when appropriate;
 4. require the expected Windows installer, checksum, and validated release
-   evidence for every selected release;
+   evidence for every legacy release, or the complete Windows/macOS artifact
+   and aggregate-evidence set for a cross-platform candidate;
 5. generate the two manifests and the release page from those records;
 6. validate all generated URLs, versions, sizes, and SHA-256 values;
 7. deploy through GitHub Pages only after generation tests pass;
@@ -404,10 +417,11 @@ branch and is rejected by the `github-pages` environment policy, which allows
 only `gh-pages`.
 
 Site publication is a separate `ubuntu-latest` workflow. It runs automatically
-after a successful Windows release workflow and may also be dispatched by
-itself. It reads already-published GitHub Releases and must not rebuild the
-Windows installer merely to refresh Pages. Live endpoint verification remains
-an open acceptance gate until the corrected workflow has run successfully.
+after a successful legacy Windows publication or protected cross-platform
+candidate publication and may also be dispatched by itself. It reads only
+already-published GitHub Releases and must not rebuild an installer merely to
+refresh Pages. Live endpoint verification remains an open acceptance gate
+until the corrected workflow has run successfully.
 
 ### WP5: Release integration and documentation
 
@@ -454,7 +468,10 @@ Generation and workflow tests must prove:
 
 - draft releases are ignored;
 - stable and development releases cannot cross channels;
-- missing installer, evidence, or checksum fails generation;
+- missing platform artifact, evidence, or checksum fails generation;
+- Windows-only legacy evidence remains valid, while aggregate candidate
+  evidence rejects a missing macOS platform, unknown platforms, stale commit,
+  and mismatched asset size or hash;
 - manifest values match the GitHub Release asset and evidence JSON;
 - the deployed page and both available manifests return HTTPS success;
 - the expected version remains available after a second deployment.

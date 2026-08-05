@@ -1620,7 +1620,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.0",
+      version: "0.4.0-dev.1",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1638,8 +1638,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.0",
-      available_version: "0.4.0-dev.0",
+      installed_version: "0.4.0-dev.1",
+      available_version: "0.4.0-dev.1",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -13951,6 +13951,7 @@ async function openAboutDialog() {
 
 function updateFailureMessage(error) {
   const message = String(error);
+  if (message.includes("UPDATE_PLATFORM_UNAVAILABLE")) return "This release does not include an installer for this Mac yet.";
   if (message.includes("UPDATE_HTTP")) return "The update service returned an unexpected response.";
   if (message.includes("UPDATE_INVALID")) return "The update service returned invalid release information.";
   return "Rho could not reach the update service. Check your connection or proxy and try again.";

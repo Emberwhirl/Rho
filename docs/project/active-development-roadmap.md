@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-05
-Current baseline: `0.4.0-dev.0`
+Current baseline: `0.4.0-dev.1`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -156,11 +156,13 @@ Keychain adapter, native/UI parity, bounded bridge repairs, complete affected
 automation, and isolated unsigned development-app workflow acceptance also
 completed on 2026-08-05. Its two portability gates and WS1-L2 containment
 conformance gate are closed. Windows CI, signed exact-candidate acceptance, and
-release work remain open. MAC4 entry review is complete and its bounded
-candidate/update/signing workflow package was explicitly authorized on
-2026-08-05; implementation has not started. MAC5 remains unauthorized. This
-stream delivers macOS arm64 first; macOS x64 and Linux x64 remain required
-before the full M3 acceptance gate can close.
+release work remain open. MAC4's bounded candidate/update/signing/draft
+workflow package was authorized, implemented, locally verified, versioned at
+`0.4.0-dev.1`, and contract-reviewed on 2026-08-05. Credentialed hosted
+Windows/macOS builds, signing/notarization, exact artifacts, and draft creation
+remain NOT RUN. MAC5 remains unauthorized. This stream delivers macOS arm64
+first; macOS x64 and Linux x64 remain required before the full M3 acceptance
+gate can close.
 
 Deliverables:
 
