@@ -36,4 +36,17 @@ for (const rawProjection of [
   "Environment operations are unavailable: ${error}",
 ]) assert.ok(!js.includes(rawProjection), `Raw backend error remains visible: ${rawProjection}`);
 
+const timelineStart = js.indexOf("function renderAgentTimeline()");
+const timelineEnd = js.indexOf("\nfunction renderTaskRail", timelineStart);
+const timeline = js.slice(timelineStart, timelineEnd);
+assert.match(timeline, /agentModelDisplayName\(turn\.model\)/);
+assert.doesNotMatch(timeline, /event\.request_id|meta\.push\(event\.request_id\)/);
+assert.doesNotMatch(timeline, /aisdk|Ark session|broker policy/);
+assert.match(js, /const code = approval\.code \|\| argumentsObject\.code \|\| ""/);
+assert.doesNotMatch(js, /approval\.code \|\| argumentsObject\.code \|\| approval\.arguments_json/);
+assert.doesNotMatch(js, /Ark PID/);
+assert.doesNotMatch(js, /id="startupDetails"|id="startupTechnicalDetail"|id="startupLogPath"/);
+assert.match(js, /\["R session", runtime\.r_version/);
+assert.doesNotMatch(js.slice(js.indexOf("async function openAboutDialog()"), js.indexOf("\nfunction updateFailureMessage")), /info\.commit|runtime\.rscript|aisdk/);
+
 console.log("Human-facing information projection contract checks passed.");

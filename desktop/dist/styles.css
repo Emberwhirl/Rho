@@ -318,6 +318,7 @@ body:not(.agent-posture) .agent-only-action { display: none; }
 body.agent-posture .run-button { display: none; }
 body.agent-posture .work-modes { display: none; }
 body.agent-posture .menu { display: none; }
+body.agent-posture .editor-status-only { display: none; }
 body.agent-posture .git-conflict-banner { flex: 0 0 auto; max-width: 92px; overflow: hidden; }
 body.agent-posture .git-conflict-banner .conflict-list { display: none; }
 .app-shell.agent-first .sidebar-footer,

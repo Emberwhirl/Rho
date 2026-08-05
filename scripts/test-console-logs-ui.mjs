@@ -35,8 +35,10 @@ assert.match(js, /event\.key === "ArrowUp"/);
 assert.match(js, /event\.key === "ArrowDown"/);
 assert.match(js, /input\.value = state\.consoleDraft/);
 assert.match(js, /rememberConsoleCommand\(value\)/);
-assert.match(js, /addLog\("AGENT", `run_r >/);
-assert.match(js, /addLog\("SYSTEM", `Workspace restarted/);
+assert.match(js, /addLog\("AGENT", `R code\\n/);
+assert.match(js, /addLog\("SYSTEM", "R session restarted and ready"/);
+assert.doesNotMatch(js, /Ark PID/);
+assert.doesNotMatch(js, /Could not display Agent run \$\{run\.run_id\}/);
 assert.match(js, /scenario === "console-logs"/);
 
 console.log("Console/Logs UI contract checks passed.");

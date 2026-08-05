@@ -4191,7 +4191,7 @@ function addLog(origin, text, kind = "") {
   entry.className = `log-entry ${origin.toLowerCase()} ${kind}`.trim();
   const badge = document.createElement("span");
   badge.className = "origin";
-  badge.textContent = origin.toUpperCase();
+  badge.textContent = { SYSTEM: "Rho", AGENT: "Agent", USER: "You" }[origin.toUpperCase()] || "Rho";
   const content = document.createElement("span");
   content.textContent = String(text);
   entry.append(badge, content);
@@ -4775,7 +4775,7 @@ function prettyAgentMode(mode) {
 }
 
 function prettyAgentStatus(status) {
-  return {
+  return userFacingStatus(status, {
     queued: "Queued",
     running: "Running",
     waiting: "Waiting for approval",
@@ -4787,7 +4787,7 @@ function prettyAgentStatus(status) {
     stale: "Stale",
     policy_denied: "Policy denied",
     approved: "Approved",
-  }[status] || status || "Unknown";
+  }, "Needs attention");
 }
 
 function truncateText(text, limit = 120) {
@@ -4858,18 +4858,28 @@ function parseAgentMentionInput(value, cursor) {
 }
 
 function agentTimelineEventBody(event) {
+  if (event.event_type === "agent.user_prompt" || event.event_type === "chat.message_completed") return event.body;
+  if (event.event_type === "agent.run_started") return "Rho is working on this task.";
+  if (event.event_type === "approval.requested") return "Review the requested action before work continues.";
   if (event.event_type === "tool.call_completed" && event.tool === "propose_file_edit") {
     return "Review the proposed file edit below. No file has been changed yet.";
   }
   if (event.event_type === "tool.call_completed" && event.tool === "run_r") {
     return friendlyRunRResult(event.body);
   }
-  return event.body;
+  if (event.event_type === "tool.call_failed") {
+    return userFacingError(event.body, "This step could not be completed. Review the task and try again.");
+  }
+  return "";
 }
 
 function agentTimelineEventTitle(event) {
   const key = `${event.event_type}:${event.tool || ""}`;
   return {
+    "agent.user_prompt:": "You",
+    "agent.run_started:": "Rho started",
+    "chat.message_completed:": "Rho",
+    "approval.requested:run_r": "Review R code",
     "tool.call_started:run_r": "Running R",
     "tool.call_completed:run_r": "R completed",
     "tool.call_failed:run_r": "R failed",
@@ -4879,7 +4889,7 @@ function agentTimelineEventTitle(event) {
     "tool.call_completed:inspect_r_object": "R object inspected",
     "tool.call_started:propose_file_edit": "Preparing file edit",
     "tool.call_completed:propose_file_edit": "File edit ready",
-  }[key] || event.title;
+  }[key] || "Activity update";
 }
 
 function parseNestedJsonObject(value) {
@@ -5283,9 +5293,9 @@ function prettyToolCalling(value) {
 
 function agentSendDisabledReason() {
   if (state.agentRuntime && !state.agentRuntime.available) {
-    return state.agentRuntime.error || "aisdk is unavailable in Agent R.";
+    return userFacingError(state.agentRuntime.error, "The assistant connection is unavailable. Retry the connection from this panel.");
   }
-  if (state.agentLlm.settings?.validation_error) return state.agentLlm.settings.validation_error;
+  if (state.agentLlm.settings?.validation_error) return "The assistant configuration needs attention. Open model settings to review it.";
   if (!selectedAgentModel()) return "No enabled Agent model is configured.";
   return null;
 }
@@ -5342,8 +5352,17 @@ function updateAgentModelLabel() {
   const selected = selectedAgentModel();
   $("#agentRuntimeLabel").textContent = selected?.display_name || "Select model";
   $("#agentModelSelector").title = selected
-    ? `${selected.display_name} · ${selected.provider_display_name} · ${selected.selector_status}`
+    ? `${selected.display_name} · ${selected.provider_display_name}`
     : "Select Agent model";
+}
+
+function agentModelDisplayName(selector) {
+  const raw = String(selector || "");
+  const modelId = raw.includes(":") ? raw.slice(raw.lastIndexOf(":") + 1) : raw;
+  const match = (state.agentLlm.settings?.models || []).find((model) => model.id === raw || model.model_id === modelId);
+  if (match?.display_name) return match.display_name;
+  if (raw && !raw.includes(":") && /\s/.test(raw)) return raw;
+  return "Configured model";
 }
 
 async function loadAgentLlmSettings() {
@@ -5385,14 +5404,14 @@ async function syncAgentRunsToConsole(runs) {
     try {
       const detail = await invoke("get_run_detail", { runId: run.run_id });
       if (!detail) continue;
-      addLog("AGENT", `run_r > ${detail.code || run.code_preview || ""}`);
+      addLog("AGENT", `R code\n${detail.code || run.code_preview || ""}`);
       if (detail.stdout) addLog("AGENT", detail.stdout);
       asMessageList(detail.messages).forEach((message) => addLog("AGENT", message));
       asMessageList(detail.warnings).forEach((warning) => addLog("AGENT", warning, "warning"));
       if (detail.value_text) addLog("AGENT", detail.value_text);
       if (detail.error_message) addLog("AGENT", detail.error_message, "error");
     } catch (error) {
-      addLog("SYSTEM", `Could not display Agent run ${run.run_id}: ${error}`, "error");
+      addLog("SYSTEM", reportUiFailure("display Agent R result", error, "An Agent R result could not be displayed. Refresh Runs to review it."), "error");
     }
   }
 }
@@ -6013,14 +6032,9 @@ function renderAgentTimeline() {
   panel.replaceChildren();
   if (!state.agentTurns.length) {
     if (state.agentRuntime && !state.agentRuntime.available) {
-      addTimeline("Agent unavailable", state.agentRuntime.error || "aisdk could not be loaded in Agent R.", "error");
+      addTimeline("Assistant unavailable", userFacingError(state.agentRuntime.error, "Retry the assistant connection when you are ready."), "error");
     } else {
-      const version = state.agentRuntime?.aisdk_version;
-      addTimeline(
-        "Workspace connected",
-        `Ark session is ready. Agent R${version ? ` uses aisdk ${version}` : ""}.`,
-        "completed",
-      );
+      addTimeline("R session ready", "Ask Rho about the current project or attach a file for review.", "completed");
     }
     return;
   }
@@ -6039,7 +6053,7 @@ function renderAgentTimeline() {
     headingRow.append(heading, createStateChip(prettyAgentStatus(turn.status), turn.status));
     const paragraph = document.createElement("p");
     paragraph.className = "timeline-meta technical-meta";
-    paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${turn.model || "model unavailable"}`;
+    paragraph.textContent = `${prettyAgentMode(turn.mode)} · ${agentModelDisplayName(turn.model)}`;
     content.append(headingRow, paragraph);
     const detail = truncateText(turn.error_message || turn.final_message || "", 140);
     if (detail && !selected) {
@@ -6092,14 +6106,6 @@ function renderAgentTimeline() {
         const childHeading = document.createElement("strong");
         childHeading.textContent = agentTimelineEventTitle(event);
         childContent.append(childHeading);
-        const meta = [];
-        if (event.request_id) meta.push(event.request_id);
-        if (meta.length) {
-          const metaLine = document.createElement("p");
-          metaLine.className = "timeline-meta technical-meta";
-          metaLine.textContent = meta.join(" · ");
-          childContent.append(metaLine);
-        }
         const body = agentTimelineEventBody(event);
         if (body) {
           const runResult = event.event_type === "tool.call_completed" && event.tool === "run_r";
@@ -6205,20 +6211,26 @@ function renderApprovalPanel() {
     return;
   }
   const argumentsObject = parseApprovalArguments(approval.arguments_json);
-  const turn = state.agentTurns.find((item) => item.turn_id === approval.turn_id) || null;
   const toolLabel = agentToolLabel(approval.tool);
   $("#approvalPanelTitle").textContent = toolLabel;
-  $("#approvalSummary").textContent = `The Agent wants to ${toolLabel.toLowerCase()} in ${prettyAgentMode(turn?.mode || "act")} mode. Review the exact code before approving.`;
+  $("#approvalSummary").textContent = approval.tool === "run_r"
+    ? "Rho wants to run this R code. Review it before continuing."
+    : `Rho wants to ${toolLabel.toLowerCase()}. Review the request before continuing.`;
   const requestIsStale = approval.state_revision !== state.revision.state_revision
     || approval.project_revision !== state.revision.project_revision;
   $("#approvalRevision").textContent = requestIsStale
     ? "Workspace content changed after this request. Review the code again before deciding."
     : "This request matches the current workspace.";
-  const code = approval.code || argumentsObject.code || approval.arguments_json;
+  const code = approval.code || argumentsObject.code || "";
   $("#approvalCode").textContent = code || "";
   $("#approvalCode").classList.toggle("hidden", !code);
-  $("#approvalApprove").textContent = `Approve ${toolLabel.toLowerCase()}`;
-  $("#approvalReject").textContent = `Reject ${toolLabel.toLowerCase()}`;
+  const exactCodeMissing = approval.tool === "run_r" && !code;
+  if (exactCodeMissing) {
+    $("#approvalSummary").textContent = "The exact R code is unavailable. Refresh this task before deciding.";
+  }
+  $("#approvalApprove").textContent = approval.tool === "run_r" ? "Run this code" : `Approve ${toolLabel.toLowerCase()}`;
+  $("#approvalApprove").disabled = exactCodeMissing;
+  $("#approvalReject").textContent = approval.tool === "run_r" ? "Not now" : `Reject ${toolLabel.toLowerCase()}`;
   $("#approvalCancel").textContent = "Cancel pending";
   $("#approvalPanel").dataset.requestId = approval.request_id;
   $("#approvalPanel").dataset.label = approvalLabel(approval);
@@ -6342,7 +6354,7 @@ function renderRuns() {
       cancel.addEventListener("click", async () => {
         try {
           await invoke("cancel_run", { runId: run.run_id });
-          addLog("SYSTEM", `Interrupt requested for ${run.run_id}`);
+          addLog("SYSTEM", "Stop requested for the selected R run.");
           await loadRunData();
         } catch (error) {
           toast(reportUiFailure("stop R run", error, "This R run could not be stopped. Check its current status and try again."), true);
@@ -9694,8 +9706,8 @@ async function maybeApplyPreviewScenario() {
     addTerminalOutput("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.\n  4.300   5.100   5.800   5.843   6.400   7.900");
     addTerminalCommand("mean(iris$Sepal.Length)");
     addTerminalOutput("[1] 5.843333");
-    addLog("SYSTEM", "R version 4.6.1 · Ark PID 22988");
-    addLog("AGENT", "run_r completed in Agent R");
+    addLog("SYSTEM", "R version 4.6.1 · R session ready");
+    addLog("AGENT", "R work completed");
     switchDockTab("console");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
@@ -13140,22 +13152,20 @@ async function openAboutDialog() {
   openProductDialog("about");
   $("#aboutVersion").textContent = "Rho";
   $("#aboutChannel").textContent = "loading";
-  setDefinitionList($("#aboutDetails"), [["Build", "Loading..."]]);
+  setDefinitionList($("#aboutDetails"), [["Application", "Loading..."]]);
   try {
     const info = await loadAppInfo();
     const runtime = info.runtime || {};
     $("#aboutVersion").textContent = `Rho ${info.version}`;
     $("#aboutChannel").textContent = info.channel;
     setDefinitionList($("#aboutDetails"), [
-      ["Build", info.commit === "unknown" ? "unknown" : info.commit.slice(0, 12)],
       ["Platform", info.platform],
-      ["R", runtime.r_version || "Not started"],
-      ["Rscript", runtime.rscript || "Not started"],
-      ["Agent runtime", runtime.agent_available == null ? "Not started" : runtime.agent_available ? "Available" : "Unavailable"],
-      ["aisdk", runtime.aisdk_version || "Unavailable"],
+      ["R session", runtime.r_version || "Not started"],
+      ["Assistant", runtime.agent_available == null ? "Not checked" : runtime.agent_available ? "Available" : "Unavailable"],
     ]);
   } catch (error) {
-    setDefinitionList($("#aboutDetails"), [["Application information", String(error)]]);
+    console.error("[load About information]", error);
+    setDefinitionList($("#aboutDetails"), [["Application information", "Could not be loaded. Copy diagnostics for support."]]);
   }
 }
 
@@ -13693,9 +13703,7 @@ function setStartupBusy(busy) {
 function showStartupProgress(title, message) {
   $("#startupProgress").classList.remove("hidden");
   $("#startupIssue").classList.add("hidden");
-  $("#startupDetails").classList.add("hidden");
   $("#startupActions").classList.add("hidden");
-  $("#startupLogPath").classList.add("hidden");
   $("#startupTitle").textContent = title;
   $("#startupMessage").textContent = message;
 }
@@ -13704,9 +13712,7 @@ function renderStartupIssue(issue) {
   const fallback = {
     title: "Rho could not start",
     message: "Retry startup or open the diagnostic log for more information.",
-    technical_detail: "No diagnostic detail was returned.",
     actions: ["retry", "copy_diagnostics", "open_log", "exit"],
-    diagnostics_path: "",
   };
   const value = { ...fallback, ...(issue || {}) };
   const actions = new Set(value.actions || fallback.actions);
@@ -13715,16 +13721,12 @@ function renderStartupIssue(issue) {
   $("#startupIssue").classList.remove("hidden");
   $("#startupIssueTitle").textContent = value.title;
   $("#startupIssueMessage").textContent = value.message;
-  $("#startupTechnicalDetail").textContent = value.technical_detail;
-  $("#startupDetails").classList.toggle("hidden", !value.technical_detail);
   $("#startupActions").classList.remove("hidden");
   $("#startupRetry").classList.toggle("hidden", !actions.has("retry"));
   $("#startupChooseR").classList.toggle("hidden", !actions.has("choose_rscript"));
   $("#startupCopyDiagnostics").classList.toggle("hidden", !actions.has("copy_diagnostics"));
   $("#startupOpenLog").classList.toggle("hidden", !actions.has("open_log"));
   $("#startupExit").classList.toggle("hidden", !actions.has("exit"));
-  $("#startupLogPath").textContent = value.diagnostics_path ? `Diagnostic log: ${value.diagnostics_path}` : "";
-  $("#startupLogPath").classList.toggle("hidden", !value.diagnostics_path);
   setStartupBusy(false);
 }
 
@@ -13735,7 +13737,7 @@ function revealWorkbench() {
 }
 
 async function finishWorkbenchStartup(startupView) {
-  showStartupProgress("Starting Workspace R", "Opening the Ark-backed R session...");
+  showStartupProgress("Starting the R session", "Opening R for this project...");
   try {
     if (!state.startupPrepared) {
       initializePanelLayout();
@@ -13748,7 +13750,7 @@ async function finishWorkbenchStartup(startupView) {
     updateIdentity(status.workspace);
     $("#rVersion").textContent = status.r_version || "R";
     setKernelStatus("idle", "R idle");
-    addLog("SYSTEM", `${status.r_version} · Ark PID ${status.kernel_pid}`);
+    addLog("SYSTEM", `${status.r_version} · R session ready`);
     revealWorkbench();
     maybeCheckForUpdates();
     await loadAgentLlmSettings();
@@ -13790,11 +13792,9 @@ async function finishWorkbenchStartup(startupView) {
     }
     renderStartupIssue({
       code: "ARK_START_FAILED",
-      title: "Workspace R could not start",
-      message: "R is available, but Rho could not start the Workspace. Retry or copy diagnostics.",
-      technical_detail: String(error),
+      title: "The R session could not start",
+      message: "R is available, but the project session did not open. Retry or copy diagnostics.",
       actions: ["retry", "copy_diagnostics", "open_log", "exit"],
-      diagnostics_path: state.startupView?.issue?.diagnostics_path || "",
     });
   }
 }
@@ -13818,7 +13818,6 @@ async function runStartup(command = "startup_bootstrap") {
     renderStartupIssue({
       title: "Rho could not check its runtime",
       message: "Retry startup or copy diagnostics for support.",
-      technical_detail: String(error),
       actions: ["retry", "choose_rscript", "copy_diagnostics", "open_log", "exit"],
     });
   } finally {
@@ -13838,12 +13837,16 @@ $("#startupCopyDiagnostics").addEventListener("click", async () => {
     $("#startupCopyDiagnostics").textContent = "Copied";
     setTimeout(() => { $("#startupCopyDiagnostics").textContent = "Copy diagnostics"; }, 1600);
   } catch (error) {
-    renderStartupIssue({ ...state.startupView?.issue, technical_detail: String(error) });
+    console.error("[copy startup diagnostics]", error);
+    renderStartupIssue({ ...state.startupView?.issue, message: "Diagnostics could not be copied. Open the log folder or retry startup." });
   }
 });
 $("#startupOpenLog").addEventListener("click", async () => {
   try { await invoke("startup_open_log_directory"); }
-  catch (error) { renderStartupIssue({ ...state.startupView?.issue, technical_detail: String(error) }); }
+  catch (error) {
+    console.error("[open startup log folder]", error);
+    renderStartupIssue({ ...state.startupView?.issue, message: "The log folder could not be opened. Copy diagnostics or retry startup." });
+  }
 });
 $("#startupExit").addEventListener("click", () => window.close());
 
@@ -14502,7 +14505,7 @@ $("#restartButton").addEventListener("click", async () => {
     state.selectedObjectName = null;
     state.selectedObjectDetail = null;
     renderEnvironment();
-    addLog("SYSTEM", `Workspace restarted · Ark PID ${status.kernel_pid}`);
+    addLog("SYSTEM", "R session restarted and ready");
     await loadRunData();
   } catch (error) {
     setKernelStatus("error", "R unavailable");

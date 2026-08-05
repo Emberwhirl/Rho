@@ -128,3 +128,18 @@ approval, Run cancellation/comparison, and Environment operation failures. Raw
 details are written only to the developer console by this layer. JavaScript
 syntax, the focused projection contract, Agent-first, Environment package, and
 Project Check UI contracts passed. Installed-app acceptance remains `NOT RUN`.
+
+### WP2 Agent And Diagnostics Surfaces
+
+Implemented 2026-08-05. Agent Task and Activity map historical model selectors
+to display names, omit request IDs, and whitelist friendly event titles and
+bodies. Approval never falls back to arguments JSON. Logs use product labels
+and omit opaque Run/PID/runtime details. Startup offers recovery and diagnostic
+actions without rendering raw details or machine log paths. About keeps only
+product, platform, R-session, and assistant availability information while Copy
+Diagnostics retains support detail. Agent posture hides editor-only status-bar
+metadata. Focused, Console/Logs, Agent-first, scientific-surface, interface, and
+Agent output-review contracts passed; browser preview confirmed no visible
+model selector, request ID, broker/runtime term, or editor position in the
+default Agent and expanded Activity views. Installed-app acceptance remains
+`NOT RUN`.

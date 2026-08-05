@@ -46,10 +46,6 @@
           <span class="startup-issue-icon" aria-hidden="true">!</span>
           <div><strong id="startupIssueTitle">R needs attention</strong><p id="startupIssueMessage"></p></div>
         </div>
-        <details id="startupDetails" class="startup-details hidden">
-          <summary>Technical details</summary>
-          <pre id="startupTechnicalDetail"></pre>
-        </details>
         <div id="startupActions" class="startup-actions hidden">
           <button id="startupRetry" class="primary" type="button">Retry</button>
           <button id="startupChooseR" type="button">Choose Rscript.exe</button>
@@ -57,7 +53,6 @@
           <button id="startupOpenLog" type="button">Open log folder</button>
           <button id="startupExit" type="button">Exit</button>
         </div>
-        <p id="startupLogPath" class="startup-log-path hidden"></p>
       </div>
     </section>
     <div id="appShell" class="app-shell layout-code hidden" aria-hidden="true">
@@ -329,7 +324,7 @@ plot(
           </div>
           <div id="logsPanel" class="dock-content logs-panel hidden">
             <div id="logsOutput" class="logs-output" role="log" aria-live="polite">
-              <div class="log-entry system"><span class="origin">SYSTEM</span><span>Starting Ark-backed Workspace R...</span></div>
+              <div class="log-entry system"><span class="origin">Rho</span><span>Preparing the R session...</span></div>
             </div>
           </div>
           <div id="plotsPanel" class="dock-content plot-panel hidden">
@@ -462,7 +457,7 @@ plot(
           <div id="agentTimeline" class="agent-timeline" aria-live="polite">
             <div class="timeline-item completed">
               <span class="timeline-marker">✓</span>
-              <div><strong>Workspace connected</strong><p>Ark session is ready for inspection and execution.</p></div>
+              <div><strong>R session ready</strong><p>Ask Rho about the current project or attach a file for review.</p></div>
             </div>
           </div>
           <div id="approvalPanel" class="approval-panel review-surface hidden" role="region" aria-labelledby="approvalPanelTitle">
@@ -747,8 +742,8 @@ plot(
         <div><span id="kernelDot" class="kernel-dot starting"></span><span id="kernelStatus">Starting R…</span></div>
         <div class="status-spacer"></div>
         <span id="rVersion">R</span>
-        <span>UTF-8</span>
-        <span>Ln <b id="cursorLine">1</b>, Col <b id="cursorColumn">1</b></span>
+        <span class="editor-status-only">UTF-8</span>
+        <span class="editor-status-only">Ln <b id="cursorLine">1</b>, Col <b id="cursorColumn">1</b></span>
       </footer>
     </div>
     <div id="agentLlmDialog" class="agent-llm-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="agentLlmDialogTitle">
@@ -1025,6 +1020,6 @@ plot(
       </section>
     </div>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
-    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3&agent=output-review-v3"></script>
+    <script src="app.js?v=0.4.0-dev.0&rev=m3-scientific-review-v3&projection=wp2"></script>
   </body>
 </html>
