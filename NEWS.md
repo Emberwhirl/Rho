@@ -33,6 +33,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- `?topic` Console commands now unwrap the real Workspace Help response, so
+  Local Help and installed documentation show the requested topic instead of
+  an `undefined` or unavailable placeholder.
 - Structured errors from Console and direct R execution now also appear in
   Problems with their source, call, and traceback context instead of remaining
   visible only in the Console transcript.

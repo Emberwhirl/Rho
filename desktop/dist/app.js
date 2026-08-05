@@ -8693,14 +8693,16 @@ async function showLocalHelp(name, packageName = null) {
   renderLocalHelp();
   $("#localHelpHeading").focus();
   try {
-    const record = await invoke("editor_function_help", { name, package: packageName });
+    const recordResponse = await invoke("editor_function_help", { name, package: packageName });
+    const record = helpRecordFromResponse(recordResponse);
     state.localHelp = { status: record?.found ? "found" : "unavailable", record, error: null };
     renderLocalHelp();
     if (record?.found && record.package) {
       state.installedHelp.status = "loading";
       renderLocalHelp();
       try {
-        const documentation = await invoke("editor_function_documentation", { name: record.help_topic || record.name, package: record.package });
+        const documentationResponse = await invoke("editor_function_documentation", { name: record.help_topic || record.name, package: record.package });
+        const documentation = helpRecordFromResponse(documentationResponse);
         state.installedHelp = {
           status: documentation?.found ? "found" : "unavailable",
           record: documentation,
@@ -8717,6 +8719,14 @@ async function showLocalHelp(name, packageName = null) {
   }
   renderLocalHelp();
   return state.localHelp.record;
+}
+
+function helpRecordFromResponse(response) {
+  const execution = response?.execution;
+  if (execution && typeof execution === "object" && ("found" in execution || "help_topic" in execution || "package" in execution)) {
+    return execution;
+  }
+  return response;
 }
 
 async function openProjectReference(reference) {
