@@ -5,6 +5,52 @@ test_that("execution retains workspace state", {
   expect_true(result$ok)
   expect_equal(workspace$x, 41)
   expect_match(result$value, "42")
+  expect_null(result$help)
+})
+
+test_that("execution projects final local Help results without printing them", {
+  workspace <- new.env(parent = globalenv())
+
+  unqualified <- rho_execute("?mean", envir = workspace)
+  qualified <- rho_execute("help('lm', package = 'stats')", envir = workspace)
+  namespace_qualified <- rho_execute("?stats::lm", envir = workspace)
+
+  expect_true(unqualified$ok)
+  expect_identical(unqualified$help, list(topic = "mean", package = "base"))
+  expect_null(unqualified$value)
+  expect_identical(qualified$help, list(topic = "lm", package = "stats"))
+  expect_null(qualified$value)
+  expect_identical(namespace_qualified$help, list(topic = "lm", package = "stats"))
+  expect_null(namespace_qualified$value)
+  expect_true(is.character(jsonlite::toJSON(
+    list(unqualified, qualified, namespace_qualified),
+    auto_unbox = TRUE,
+    null = "null"
+  )))
+})
+
+test_that("execution projects missing Help topics for truthful unavailable state", {
+  workspace <- new.env(parent = globalenv())
+  result <- suppressWarnings(rho_execute("help('rhoDefinitelyMissingTopic')", envir = workspace))
+
+  expect_true(result$ok)
+  expect_identical(
+    result$help,
+    list(topic = "rhoDefinitelyMissingTopic", package = NULL)
+  )
+  expect_null(result$value)
+})
+
+test_that("execution rejects malformed Help projection metadata without printing", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute(
+    "structure('C:/outside/not-a-package/help/topic', class = 'help_files_with_topic', topic = paste(rep('x', 129), collapse = ''))",
+    envir = workspace
+  )
+
+  expect_true(result$ok)
+  expect_null(result$help)
+  expect_null(result$value)
 })
 
 test_that("errors and prior mutations are retained", {

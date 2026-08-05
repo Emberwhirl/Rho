@@ -5,6 +5,8 @@ Status: active implementation contract
 Date: 2026-08-03
 Authorization: user requested that every remaining package proceed one at a
 time
+Repair authorization: user explicitly authorized Console-to-Help integration
+on 2026-08-05
 Change class: D2 bounded cross-boundary Help and explicit execution workflow
 Risk: R2 installed documentation parsing, transport bounds, package metadata,
 browser/mock parity, and user-confirmed Workspace execution
@@ -149,6 +151,72 @@ Frontend/mock:
 - disabled unsafe example, confirmation cancel/success/failure, Console/Run/
   Problems projection, busy/cancel truth, mock parity, and browser review.
 
+## Authorized Repair WS2-H2-R1: Console Help Projection
+
+### Defect And Invariant
+
+Console evaluation of `?mean` succeeds, but `rho_execute()` prints the final
+`help_files_with_topic` value. That print path starts R's HTTP Help server while
+returning no topic/package metadata that the desktop can project. The Console
+therefore shows only the server-start message and the existing right-side Help
+surface remains empty.
+
+The repair invariant is: when the final successful Console result is one local
+R Help object, the recorded `workspace.execute` response carries one bounded
+Help target, does not print or start the HTTP Help viewer, and opens the
+existing right-side Help surface through its current location/documentation
+queries. Ordinary execution and non-Help results remain unchanged.
+
+### Contract And Bounds
+
+- `rho_execute()` adds a fixed nullable `help` field. A Help result is
+  `{topic, package}` where `topic` is the Help object's bounded topic attribute
+  and `package` is present only when all returned Help records resolve to one
+  valid installed-package directory name.
+- Topic is bounded to 128 UTF-8 bytes. Package is either one valid R package
+  name of at most 128 ASCII characters or `null`. Missing and ambiguous Help
+  records retain the requested bounded topic and defer truth resolution to the
+  existing `workspace.function_help` lane.
+- Help projection is based on the evaluated result class, not frontend parsing
+  of R source. It applies only when the final successful expression returns
+  `help_files_with_topic`; `??topic`, arbitrary browser URLs, intermediate
+  expressions, and general viewer dispatch remain out of scope.
+- The Help object is not printed. This prevents R's HTML Help server/browser
+  side effect. The original Console command remains a normal durable user Run;
+  no execution, approval, persistence, project, or package authority changes.
+- After rendering ordinary execution output, the frontend reuses
+  `showLocalHelp(topic, package)`. Lookup failure remains visible in Help and
+  does not rewrite the successful execution result.
+- Browser/mock `execute_r` returns the same Help projection for deterministic
+  Console Help requests, emits no Plot for those requests, and keeps ordinary
+  execution fixtures unchanged.
+
+### Repair Verification Gate
+
+- R regression: ordinary values keep `help = NULL`; `?mean`, explicit-package
+  `help()`, package-qualified `?`, and a missing topic return a JSON-safe
+  bounded Help target without invoking the Help print/browser path.
+- Frontend regression: a successful execution Help target calls the existing
+  Local Help route exactly once; absent/malformed targets do not navigate; the
+  command remains in Console and the Run remains recorded.
+- Browser/mock: deterministic Console `?mean` opens `base::mean` in the
+  right-side Help surface without creating a Plot, while unavailable Help
+  remains truthful and subsequent ordinary Console execution still works.
+- Run the focused R/frontend checks, complete `rho.bridge`, JavaScript syntax,
+  adjacent Local/Installed Help and Console/Logs checks, then review against
+  this repair contract.
+
+### Repair Version And Release Decision
+
+- `rho.bridge` advances from `0.1.10` to `0.1.11` because structured execution
+  adds the fixed nullable Help target.
+- Application metadata remains `0.4.0-dev.0`; this repair does not create a new
+  distributable candidate, and distribution remains prohibited until a named
+  integration candidate reconciles application version metadata.
+- Root and package NEWS record the implemented behavior. Exact installed-app
+  acceptance remains open, so this active contract makes no milestone or
+  release-readiness claim.
+
 ## Version And Lifecycle
 
 - `rho.bridge` advances from `0.1.7` to `0.1.8` because it adds a distributed
@@ -216,3 +284,42 @@ Automated evidence:
 reconciled to 13 open / 36 completed. Exact installed-app/manual acceptance
 remains open, so this contract stays active and no milestone or release
 readiness claim is made.
+
+## WS2-H2-R1 Implementation And Evidence
+
+The authorized Console Help repair was implemented and independently reviewed
+on 2026-08-05 without authority, persistence, schema, or scope deviations:
+
+- `rho_execute()` now returns a fixed nullable `help` target for a final
+  `help_files_with_topic` result. Topic and package metadata are validated and
+  bounded; missing and ambiguous topics defer to the existing Local Help
+  resolver. Help objects are not printed, so the R HTTP Help server is not
+  started.
+- Only Console-origin frontend execution consumes the target. It preserves the
+  Console transcript and durable Run, opens the existing Help surface, and
+  leaves failed/unavailable lookup truth in that surface. File, selection,
+  Help-example, Agent, and ordinary execution results do not gain a new UI
+  route.
+- Browser/mock parity covers `?mean`, produces no synthetic Plot, and records
+  deterministic Help location, documentation, Console-command, and Run state.
+  The frontend asset cache key advances with the behavior.
+- Contract review found and resolved an accidental roxygen export attachment,
+  over-broad non-Console routing, a missing preview allowlist entry, a stale
+  browser cache key, an incorrect command-evidence selector, and incoherent
+  mock `mean` documentation before completion.
+
+Automated evidence:
+
+- `rho.bridge`: 493 passed, 2 Windows file-symlink fixtures skipped because
+  file symlinks are unavailable in this session;
+- Rust GNU workspace formatting and 240 tests: passed; 13 existing dead-code
+  warnings remain in desktop Git helpers;
+- JavaScript syntax, Installed Help UI, Local Help UI, Console/Logs UI, and
+  `git diff --check`: passed.
+
+Browser/mock evidence at `1280 x 720` and `1024 x 768` confirms `base::mean`
+opens in Help, installed documentation is available, `> ?mean` remains in the
+Console, the ordinary Console Run is recorded, no Plot is created, Help stays
+inside its panel, and the document has no horizontal overflow or browser
+warning/error. Exact installed-app/manual acceptance remains open; application
+metadata stays `0.4.0-dev.0`, while `rho.bridge` advances to `0.1.11`.

@@ -1,3 +1,9 @@
+# rho.bridge 0.1.11
+
+- Added a fixed nullable Help target to structured execution results when the
+  final value is one local R Help record. The Help object is no longer printed,
+  preventing the Workspace from starting R's HTTP Help viewer.
+
 # rho.bridge 0.1.10
 
 - Added a bounded, project-relative R source formatting result using the

@@ -1569,6 +1569,17 @@ async function invoke(command, args = {}) {
   return mockInvoke(command, args);
 }
 
+function mockConsoleHelpTarget(code) {
+  const match = /^\s*\?\s*(?:([A-Za-z][A-Za-z0-9.]*)\s*::\s*)?([A-Za-z.][A-Za-z0-9._]*)\s*$/.exec(String(code || ""));
+  if (!match) return null;
+  const packageName = match[1] || {
+    mean: "base",
+    lm: "stats",
+    sd: "stats",
+  }[match[2]] || null;
+  return { topic: match[2], package: packageName };
+}
+
 async function mockInvoke(command, args) {
   if (mockGitFailureCommand === command) {
     throw new Error(`Injected ${command} preview failure`);
@@ -1695,6 +1706,7 @@ async function mockInvoke(command, args) {
   }
   if (command === "execute_r") {
     const request = args.request || {};
+    const helpTarget = mockConsoleHelpTarget(request.code);
     const unpaddedMockPng = MOCK_PNG_BASE64.replace(/=+$/, "");
     state.revision.state_revision += 1;
     state.objects = [
@@ -1712,7 +1724,7 @@ async function mockInvoke(command, args) {
       traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
       parentRunId: request.parent_run_id ?? null,
     });
-    if (!request.code?.includes("stop(")) {
+    if (!request.code?.includes("stop(") && !helpTarget) {
       mockPlots.unshift({
         plot_id: `plot_${run.run_id}`,
         run_id: run.run_id,
@@ -1735,13 +1747,14 @@ async function mockInvoke(command, args) {
         ok: !request.code?.includes("stop("),
         code: request.code,
         stdout: "",
-        value: request.code?.includes("stop(") ? null : "     reads        detected   \n Min.   : 40122   Min.   :2511  \n Median : 72840   Median :3238  \n Mean   : 76114   Mean   :3216",
+        value: request.code?.includes("stop(") || helpTarget ? null : "     reads        detected   \n Min.   : 40122   Min.   :2511  \n Median : 72840   Median :3238  \n Mean   : 76114   Mean   :3216",
         warnings: [],
         messages: [],
+        help: helpTarget,
         error: request.code?.includes("stop(") ? { message: "boom", call: "stop(\"boom\")" } : null,
         traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
       },
-      events: [{ event: { type: "display_data", data: { "image/png": unpaddedMockPng } } }],
+      events: helpTarget ? [] : [{ event: { type: "display_data", data: { "image/png": unpaddedMockPng } } }],
       workspace: state.revision,
     };
   }
@@ -2098,24 +2111,29 @@ async function mockInvoke(command, args) {
     const omitted = previewState === "omitted";
     const executionError = previewState === "execution-error";
     const long = previewState === "long";
+    const meanTopic = name === "mean";
     const exampleCode = executionError
       ? 'stop("boom")'
-      : "fit <- lm(mpg ~ wt, data = mtcars)\nsummary(fit)";
+      : meanTopic ? "mean(c(2, 4, 6, 8))" : "fit <- lm(mpg ~ wt, data = mtcars)\nsummary(fit)";
     return {
       name,
       package: packageName,
       package_version: "4.6.0",
       help_topic: name,
       found: true,
-      title: empty ? null : "Fitting Linear Models",
-      description: empty ? null : "Fit linear models to a formula and data.",
-      usage: empty ? null : long ? `lm(formula, data, ${"optional_argument, ".repeat(35)}...)` : "lm(formula, data, subset, weights, na.action, ...)",
+      title: empty ? null : meanTopic ? "Arithmetic Mean" : "Fitting Linear Models",
+      description: empty ? null : meanTopic ? "Calculate the arithmetic mean." : "Fit linear models to a formula and data.",
+      usage: empty ? null : meanTopic ? "mean(x, ...)" : long ? `lm(formula, data, ${"optional_argument, ".repeat(35)}...)` : "lm(formula, data, subset, weights, na.action, ...)",
       arguments: empty ? [] : [
-        { name: "formula", description: "A symbolic description of the model to be fitted." },
-        { name: "data", description: "An optional data frame containing model variables." },
+        ...(meanTopic
+          ? [{ name: "x", description: "An R object for which a mean is requested." }]
+          : [
+            { name: "formula", description: "A symbolic description of the model to be fitted." },
+            { name: "data", description: "An optional data frame containing model variables." },
+          ]),
       ],
-      details: empty ? null : long ? "Model terms are evaluated from the installed documentation. ".repeat(30) : "Models are specified symbolically and fitted by least squares.",
-      value: empty ? null : "An object of class lm containing the fitted model.",
+      details: empty ? null : meanTopic ? "The default method returns the arithmetic mean after optional method dispatch." : long ? "Model terms are evaluated from the installed documentation. ".repeat(30) : "Models are specified symbolically and fitted by least squares.",
+      value: empty ? null : meanTopic ? "A numeric or complex mean value." : "An object of class lm containing the fitted model.",
       example: {
         code: empty ? null : truncated ? `${exampleCode}\n# ${"truncated ".repeat(40)}...` : exampleCode,
         executable: !empty && !truncated,
@@ -7678,6 +7696,19 @@ function renderExecution(response, request) {
   }
 }
 
+function executionHelpTarget(response) {
+  const target = response?.execution?.help;
+  if (!target || typeof target !== "object" || typeof target.topic !== "string") return null;
+  if (!target.topic.trim() || /[\u0000-\u001f\u007f]/.test(target.topic)) return null;
+  if (new TextEncoder().encode(target.topic).length > 128) return null;
+  if (target.package != null && (
+    typeof target.package !== "string"
+    || target.package.length > 128
+    || !/^[A-Za-z][A-Za-z0-9.]*$/.test(target.package)
+  )) return null;
+  return { topic: target.topic, package: target.package || null };
+}
+
 function executionHasRenderablePlot(response) {
   return asMessageList(response?.events).some((wrapped) => {
     const event = wrapped.event || wrapped;
@@ -8046,6 +8077,8 @@ async function executeCode(request) {
     if (documentState && request.type !== "console") documentState.lastExecutedRange = request.range || null;
     renderExecution(response, request);
     if (executionHasRenderablePlot(response)) plotExecutionId = response.execution_id || null;
+    const helpTarget = request.type === "console" ? executionHelpTarget(response) : null;
+    if (helpTarget) await showLocalHelp(helpTarget.topic, helpTarget.package);
     await refreshEnvironment();
   } catch (error) {
     const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
@@ -9476,7 +9509,7 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save"].includes(scenario)) return;
   state.previewScenarioApplied = true;
   if (scenario === "interface-shell") {
     state.posture = "human";
@@ -9747,6 +9780,17 @@ async function maybeApplyPreviewScenario() {
     if (["overview", "arguments", "examples", "vignettes"].includes(requestedView)) {
       setInstalledHelpView(requestedView);
     }
+    setTimeout(recordPreviewLayoutEvidence, 0);
+    return;
+  }
+  if (scenario === "console-help") {
+    await executeCode({
+      code: `?${previewParams.get("topic") || "mean"}`,
+      type: "console",
+      sourcePath: "<console>",
+      documentVersion: null,
+      range: null,
+    });
     setTimeout(recordPreviewLayoutEvidence, 0);
     return;
   }
@@ -10034,7 +10078,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -10245,6 +10289,29 @@ function recordPreviewLayoutEvidence() {
       document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       content_outside_panel: Boolean(panel && content && (content.left < panel.left || content.right > panel.right)),
       rects: { panel, content },
+    });
+    return;
+  }
+  if (scenario === "console-help") {
+    const helpRun = state.runs.find((run) => run.execution_mode === "console" && /^\s*\?/.test(run.code || ""));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      active_context_tab: document.querySelector("[data-context-tab].active")?.dataset.contextTab || null,
+      location: {
+        status: state.localHelp.status,
+        package: state.localHelp.record?.package || null,
+        topic: state.localHelp.record?.help_topic || null,
+      },
+      documentation: {
+        status: state.installedHelp.status,
+        found: Boolean(state.installedHelp.record?.found),
+      },
+      execution: {
+        run_recorded: Boolean(helpRun),
+        command_visible: $$("#consoleOutput .terminal-entry.command").some((row) => row.textContent.includes("?")),
+        plots: state.plots.length,
+      },
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     });
     return;
   }

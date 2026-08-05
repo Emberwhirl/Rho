@@ -21,6 +21,10 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Console commands such as `?mean` now open the matching installed
+  documentation in the right-side Help panel while remaining recorded as
+  ordinary Workspace Runs. Rho no longer starts R's separate HTTP Help viewer
+  for these results.
 - The former `Audit` action is now the clearer `Check project` workflow.
   Human-first and Agent-first share friendly result statuses, categories,
   finding titles, next steps, and evidence links without exposing rule IDs,
