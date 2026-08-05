@@ -49,4 +49,48 @@ assert.doesNotMatch(js, /id="startupDetails"|id="startupTechnicalDetail"|id="sta
 assert.match(js, /\["R session", runtime\.r_version/);
 assert.doesNotMatch(js.slice(js.indexOf("async function openAboutDialog()"), js.indexOf("\nfunction updateFailureMessage")), /info\.commit|runtime\.rscript|aisdk/);
 
+const projectSkills = js.slice(js.indexOf("function renderProjectSkills()"), js.indexOf("\nasync function loadProjectSkills"));
+assert.doesNotMatch(projectSkills, /skill\.id|instructions_path|references\.join|discovery_error}`/);
+assert.match(projectSkills, /Provided by this project/);
+
+const installedHelp = js.slice(js.indexOf("function renderInstalledHelp("), js.indexOf("\nfunction renderLocalHelp"));
+assert.doesNotMatch(installedHelp, /state\.installedHelp\.status;/);
+assert.doesNotMatch(installedHelp, /record\.notices.*join|bounded response/);
+
+const localHelp = js.slice(js.indexOf("function renderLocalHelp()"), js.indexOf("\nasync function showLocalHelp"));
+assert.doesNotMatch(localHelp, /Package root|Library root|transport limit/);
+
+const projectReferences = js.slice(js.indexOf("function renderProjectReferences()"), js.indexOf("\nasync function showProjectReferences"));
+assert.doesNotMatch(projectReferences, /state\.projectReferences\.status;|record\.notices.*join|bounded scan/);
+
+const environmentSummary = js.slice(js.indexOf("function renderEnvironmentSummary()"), js.indexOf("\nfunction renderLastRenderCard"));
+assert.doesNotMatch(environmentSummary, /`renv \$\{renvStatus\}`/);
+assert.match(environmentSummary, /Package versions are not recorded/);
+
+const packageList = js.slice(js.indexOf("function renderPackageList()"), js.indexOf("\nfunction abbreviateLibrary"));
+assert.doesNotMatch(packageList, /name\.title = pkg\.library|incomplete_reasons\.join|dependencyRoles\.error \|\| dependencyRoles\.state/);
+
+const environmentOperation = js.slice(js.indexOf("function formatEnvironmentOperationSummary("), js.indexOf("\nfunction closeEnvironmentOperationDialog"));
+assert.doesNotMatch(environmentOperation, /bounded drift|broker to mutate|Project library: \$\{args\.project_library\}|Project library: \$\{preview\.project_library/);
+assert.doesNotMatch(environmentOperation, /reason = request\.reason \? `[^`]*\$\{request\.reason\}/);
+
+const dataViewer = js.slice(js.indexOf("function renderDataViewer()"), js.indexOf("\nfunction dataViewerDelimitedText"));
+assert.doesNotMatch(dataViewer, /bounded page|bounded viewer/);
+assert.match(dataViewer, /The source changed; refresh this object before continuing/);
+
+const evidenceClaims = js.slice(js.indexOf("function renderEvidenceClaims()"), js.indexOf("\nfunction switchEvidenceTab"));
+assert.doesNotMatch(evidenceClaims, /`\$\{claim\.kind\}/);
+assert.match(js, /function claimKindLabel\(kind\)/);
+assert.match(js, /function claimLimitationLabel\(limitation\)/);
+assert.doesNotMatch(evidenceClaims, /note\.textContent = limitation/);
+assert.match(js, /reportUiFailure\("create evidence claim"/);
+
+const compare = js.slice(js.indexOf("function renderCompareResult()"), js.indexOf("\nfunction addProblem"));
+assert.match(compare, /filter\(\(item\) => fieldLabels\[item\.field\]/);
+assert.doesNotMatch(compare, /fieldLabels\[field\.field\] \|\| "Detail"/);
+
+const agentRunReview = js.slice(js.indexOf("function renderAgentRunReview("), js.indexOf("\nfunction renderAgentReview"));
+assert.match(agentRunReview, /document\.createElement\("details"\)/);
+assert.doesNotMatch(agentRunReview, /appendAgentReviewSection\(outcome, "Traceback"/);
+
 console.log("Human-facing information projection contract checks passed.");

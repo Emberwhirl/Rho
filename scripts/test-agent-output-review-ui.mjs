@@ -46,7 +46,7 @@ assert.match(js, /Refreshing lockfile status/);
 assert.match(js, /Refreshing project environment/);
 assert.doesNotMatch(js, /meta\.textContent = \[prettyOrigin\(run\.origin\), run\.source_path/);
 assert.doesNotMatch(js, /appendAgentReviewSection\(request, "Source", run\.source_path/);
-assert.match(js, /appendLocalHelpLocation\(content, "Package root", displayPath\(record\.package_root\)\)/);
+assert.doesNotMatch(js, /appendLocalHelpLocation\(content, "Package root"|appendLocalHelpLocation\(content, "Library root"/);
 assert.match(js, /appendLocalHelpLocation\(content, "Source reference", record\.source_path \? `\$\{displayPath\(record\.source_path\)\}/);
 
 assert.match(rust, /Ask mode is read-only[\s\S]*Never call run_r\./);

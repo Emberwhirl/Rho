@@ -5062,27 +5062,27 @@ function renderProjectSkills() {
   const discovery = state.projectSkills || emptyProjectSkillsView(state.project.root);
   const skills = Array.isArray(discovery.skills) ? discovery.skills : [];
   const trustLabel = discovery.trust_status === "untrusted_project_content"
-    ? "untrusted"
-    : (discovery.trust_status || "unknown");
+    ? "Project guidance"
+    : "Guidance unavailable";
   trust.textContent = trustLabel;
   summary.textContent = discovery.discovery_error
-    ? `Could not load .rho/skills for ${activeProjectName()}. Agent turns will ignore project skills until the manifest is fixed.`
+    ? `Project guidance could not be loaded for ${activeProjectName()}. The Agent will continue without it.`
     : skills.length
-      ? `Loaded ${skills.length} project skill${skills.length === 1 ? "" : "s"} from .rho/skills. This content is read-only and treated as untrusted project guidance.`
-      : "No project skills were discovered in .rho/skills for this project.";
+      ? `${skills.length} project guidance item${skills.length === 1 ? " is" : "s are"} available. Review this project-provided guidance before relying on it.`
+      : "This project does not provide Agent guidance.";
   list.replaceChildren();
   if (discovery.discovery_error) {
     const row = document.createElement("div");
     row.className = "project-skill-row";
     const meta = document.createElement("div");
     meta.className = "project-skill-meta";
-    meta.textContent = `Discovery error: ${discovery.discovery_error}`;
+    meta.textContent = userFacingError(discovery.discovery_error, "Check the project guidance files, then refresh this view.");
     row.append(meta);
     list.append(row);
   } else if (!skills.length) {
     const empty = document.createElement("div");
     empty.className = "empty-tree";
-    empty.textContent = "Add a bounded manifest at .rho/skills/manifest.json to make project guidance visible here.";
+    empty.textContent = "Project guidance will appear here when the project provides it.";
     list.append(empty);
   } else {
     for (const skill of skills) {
@@ -5091,23 +5091,15 @@ function renderProjectSkills() {
       const title = document.createElement("div");
       title.className = "project-skill-title";
       const heading = document.createElement("strong");
-      heading.textContent = skill.title || skill.id || "Untitled skill";
-      const identifier = document.createElement("span");
-      identifier.className = "project-skill-id";
-      identifier.textContent = skill.id || "unknown";
-      title.append(heading, identifier);
+      heading.textContent = skill.title || "Untitled guidance";
+      title.append(heading);
       const meta = document.createElement("div");
       meta.className = "project-skill-meta";
       meta.textContent = skill.description || "No description provided.";
-      const paths = document.createElement("div");
-      paths.className = "project-skill-paths";
-      const references = Array.isArray(skill.references) ? skill.references : [];
-      paths.textContent = [
-        `trust: ${skill.trust_status || trustLabel}`,
-        `instructions: ${skill.instructions_path || "(missing)"}`,
-        `references: ${references.length ? references.join(", ") : "none"}`,
-      ].join("\n");
-      row.append(title, meta, paths);
+      const stateLabel = document.createElement("div");
+      stateLabel.className = "project-skill-paths";
+      stateLabel.textContent = "Provided by this project";
+      row.append(title, meta, stateLabel);
       list.append(row);
     }
   }
@@ -6458,24 +6450,31 @@ function renderCompareResult() {
 
     const header = document.createElement("div");
     header.className = "compare-section-header";
-    header.textContent = sectionLabels[section.label] || section.label;
+    header.textContent = sectionLabels[section.label] || "Run details";
     header.addEventListener("click", () => sec.classList.toggle("open"));
 
     const body = document.createElement("div");
     body.className = "compare-section-body";
 
-    for (const field of (section.fields || []).filter((item) => !hiddenFields.has(item.field))) {
+    for (const field of (section.fields || []).filter((item) => fieldLabels[item.field] && !hiddenFields.has(item.field))) {
       const row = document.createElement("div");
       row.className = "compare-field";
       const label = document.createElement("span");
       label.className = "compare-field-label";
-      label.textContent = fieldLabels[field.field] || "Detail";
+      label.textContent = fieldLabels[field.field];
       const comparisonState = document.createElement("span");
       comparisonState.className = `compare-field-state ${field.state}`;
       comparisonState.textContent = stateLabels[field.state] || "Review";
       const value = document.createElement("span");
       value.className = "compare-field-value";
-      const values = [field.left_value, field.right_value].filter((item) => item !== null && item !== undefined);
+      const mapCompareValue = (item) => {
+        if (field.field === "status") return prettyStatus(item);
+        if (field.field === "origin") return prettyOrigin(item);
+        if (field.field === "request_type") return humanExecutionMode({ request_type: item });
+        if (field.field === "snapshot_available") return item === true || item === "true" ? "Available" : item === false || item === "false" ? "Unavailable" : "Not checked";
+        return item;
+      };
+      const values = [field.left_value, field.right_value].filter((item) => item !== null && item !== undefined).map(mapCompareValue);
       value.textContent = values.join(" \u2194 ") || "-";
       row.append(label, comparisonState, value);
       body.append(row);
@@ -8035,7 +8034,9 @@ function renderInstalledHelp(container) {
   heading.textContent = "Installed documentation";
   const status = document.createElement("span");
   status.className = "revision-badge";
-  status.textContent = state.installedHelp.status;
+  status.textContent = userFacingStatus(state.installedHelp.status, {
+    loading: "Loading", found: "Available", unavailable: "Not found", empty: "Not requested", error: "Unavailable",
+  }, "Not requested");
   header.append(heading, status);
   wrapper.append(header);
 
@@ -8047,7 +8048,7 @@ function renderInstalledHelp(container) {
   if (state.installedHelp.status === "error") {
     const error = emptyRow("Installed documentation unavailable");
     const detail = document.createElement("p");
-    detail.textContent = state.installedHelp.error || "The installed Rd record could not be rendered.";
+    detail.textContent = userFacingError(state.installedHelp.error, "The installed documentation could not be opened.");
     error.append(detail);
     wrapper.append(error);
     container.append(wrapper);
@@ -8116,10 +8117,9 @@ function renderInstalledHelp(container) {
       if (record.example.omitted_tags?.length || record.example.parse_error) {
         const note = document.createElement("p");
         note.className = "installed-help-warning";
-        note.textContent = [
-          record.example.omitted_tags?.length ? `Omitted non-runnable Rd sections: ${record.example.omitted_tags.join(", ")}.` : null,
-          record.example.parse_error,
-        ].filter(Boolean).join(" ");
+        note.textContent = record.example.parse_error
+          ? userFacingError(record.example.parse_error, "Some parts of this example cannot be run here.")
+          : "Some documentation-only sections are not included in the runnable example.";
         body.append(note);
       }
       const run = document.createElement("button");
@@ -8150,7 +8150,7 @@ function renderInstalledHelp(container) {
   if (record.incomplete || record.truncated) {
     const warning = document.createElement("p");
     warning.className = "installed-help-warning";
-    warning.textContent = `Installed documentation is partial (${(record.notices || []).join(", ") || "bounded response"}).`;
+    warning.textContent = "Showing the available part of this documentation.";
     wrapper.append(warning);
   }
   container.append(wrapper);
@@ -8160,7 +8160,9 @@ function renderLocalHelp() {
   const content = $("#localHelpContent");
   const badge = $("#localHelpState");
   content.replaceChildren();
-  badge.textContent = state.localHelp.status;
+  badge.textContent = userFacingStatus(state.localHelp.status, {
+    loading: "Loading", found: "Available", unavailable: "Not found", error: "Unavailable",
+  }, "Not selected");
   if (state.localHelp.status === "loading") {
     content.append(emptyRow("Resolving local Help"));
     return;
@@ -8168,7 +8170,7 @@ function renderLocalHelp() {
   if (state.localHelp.status === "error") {
     const error = emptyRow("Local Help unavailable");
     const detail = document.createElement("p");
-    detail.textContent = state.localHelp.error || "The installed Help record could not be resolved.";
+    detail.textContent = userFacingError(state.localHelp.error, "The installed Help record could not be opened.");
     error.append(detail);
     content.append(error);
     return;
@@ -8192,16 +8194,13 @@ function renderLocalHelp() {
     signature.textContent = record.signature;
     content.append(signature);
   }
-  appendLocalHelpLocation(content, "Local Help record", record.help_record);
-  appendLocalHelpLocation(content, "Package root", displayPath(record.package_root));
-  appendLocalHelpLocation(content, "Library root", displayPath(record.library_root));
   appendLocalHelpLocation(content, "Source reference", record.source_path ? `${displayPath(record.source_path)}${record.source_line ? `:${record.source_line}` : ""}` : null);
   if (record.ambiguous || record.truncated) {
     const warning = document.createElement("p");
     warning.className = "local-help-warning";
     warning.textContent = [
       record.ambiguous ? "Multiple local Help records matched; the first result in R's lookup order is shown." : null,
-      record.truncated ? "One or more displayed fields were truncated to the transport limit." : null,
+      record.truncated ? "Some long details are not shown." : null,
     ].filter(Boolean).join(" ");
     content.append(warning);
   }
@@ -8261,7 +8260,9 @@ function renderProjectReferences() {
   const content = $("#projectReferencesContent");
   const badge = $("#projectReferencesState");
   content.replaceChildren();
-  badge.textContent = state.projectReferences.status;
+  badge.textContent = userFacingStatus(state.projectReferences.status, {
+    loading: "Searching", found: "Matches found", empty: "No matches", incomplete: "Partial results", truncated: "Partial results", error: "Unavailable",
+  }, "Not selected");
   if (state.projectReferences.status === "loading") {
     content.append(emptyRow("Searching project references"));
     return;
@@ -8269,7 +8270,7 @@ function renderProjectReferences() {
   if (state.projectReferences.status === "error") {
     const error = emptyRow("Project references unavailable");
     const detail = document.createElement("p");
-    detail.textContent = state.projectReferences.error || "The Workspace reference query failed.";
+    detail.textContent = userFacingError(state.projectReferences.error, "Project references could not be searched.");
     error.append(detail);
     content.append(error);
     return;
@@ -8314,8 +8315,8 @@ function renderProjectReferences() {
     const warning = document.createElement("p");
     warning.className = "project-references-warning";
     const messages = [];
-    if (record.incomplete) messages.push(`Results may be incomplete (${(record.notices || []).join(", ") || "bounded scan"}).`);
-    if (record.truncated) messages.push(`Showing ${record.references?.length || 0} of ${record.matched_count || 0} observed matches.`);
+    if (record.incomplete) messages.push("Some project files could not be searched, so these results may be incomplete.");
+    if (record.truncated) messages.push(`Showing the first ${record.references?.length || 0} of ${record.matched_count || 0} matches.`);
     warning.textContent = messages.join(" ");
     content.append(warning);
   }
@@ -8478,7 +8479,7 @@ function renderPackageList() {
     const name = document.createElement("span");
     name.className = "pkg-name";
     name.textContent = pkg.name;
-    name.title = `${pkg.name} ${pkg.version} — ${abbreviateLibrary(pkg.library)}`;
+    name.title = `${pkg.name} ${pkg.version || ""}`.trim();
 
     const version = document.createElement("span");
     version.className = "pkg-version";
@@ -8486,7 +8487,7 @@ function renderPackageList() {
 
     const lib = document.createElement("span");
     lib.className = "pkg-library";
-    lib.textContent = abbreviateLibrary(pkg.library);
+    lib.textContent = attachedNames.has(pkg.name) ? "Loaded" : "Available";
 
     row.append(name, version, lib);
     list.append(row);
@@ -8510,8 +8511,8 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     bitbucket: "Bitbucket", git: "Git", url: "URL", local: "Local", unknown: "Unknown source",
   };
   if (lockfile.state === "invalid_lockfile") {
-    meta.textContent = "Invalid lockfile";
-    summary.textContent = lockfile.parse_error || "renv.lock could not be parsed.";
+    meta.textContent = "Lockfile needs attention";
+    summary.textContent = "Rho could not read renv.lock. Fix the file before comparing package versions.";
     list.replaceChildren(emptyRow("Fix renv.lock before comparing packages"));
     return;
   }
@@ -8527,10 +8528,10 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
   } else if (dependencyRoles.state === "no_description") {
     summary.textContent += " · Dependency roles unavailable: no DESCRIPTION";
   } else if (dependencyRoles.state) {
-    summary.textContent += ` · Dependency roles unavailable: ${dependencyRoles.error || dependencyRoles.state}`;
+    summary.textContent += " · Package roles could not be read from DESCRIPTION";
   }
   if (data.incomplete && data.incomplete_reasons?.length) {
-    summary.textContent += ` · Incomplete: ${data.incomplete_reasons.join(", ")}`;
+    summary.textContent += " · Some comparison details are unavailable";
   }
 
   const visible = filter
@@ -8562,10 +8563,10 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     const name = document.createElement("span");
     name.className = "pkg-name";
     name.textContent = pkg.name || "";
-    name.title = pkg.library ? `${pkg.name} · ${pkg.library}` : pkg.name || "";
+    name.title = pkg.name || "";
     const packageMeta = document.createElement("span");
     packageMeta.className = "pkg-metadata";
-    const sourceText = sourceLabels[pkg.source?.kind] || pkg.source?.kind || "Unknown source";
+    const sourceText = sourceLabels[pkg.source?.kind] || "Unknown source";
     const sourceDetail = pkg.source?.detail ? `: ${pkg.source.detail}` : "";
     packageMeta.textContent = `${roleLabels[pkg.dependency_role] || "Unclassified"} · ${sourceText}${sourceDetail}`;
     packageMeta.title = packageMeta.textContent;
@@ -8578,7 +8579,7 @@ function renderLockfilePackageList(data, filter, list, meta, summary) {
     installed.textContent = pkg.installed_version || "—";
     const status = document.createElement("span");
     status.className = `package-state ${pkg.state || ""}`;
-    status.textContent = stateLabels[pkg.state] || pkg.state || "Unknown";
+    status.textContent = stateLabels[pkg.state] || "Status unavailable";
     status.title = status.textContent;
     const action = document.createElement("span");
     const packageOperation = {
@@ -8658,7 +8659,20 @@ async function loadEvidenceClaims() {
 }
 
 function claimStatusLabel(status) {
-  return ({ linked: "Linked", missing_evidence: "Missing evidence", unresolved_source: "Unresolved source", incomplete_evidence: "Incomplete evidence", cross_project_rejected: "Cross-project rejected", unavailable: "Unavailable" })[status] || status;
+  return ({ linked: "Ready to review", missing_evidence: "Needs evidence", unresolved_source: "Source unavailable", incomplete_evidence: "Review incomplete", cross_project_rejected: "Belongs to another project", unavailable: "Unavailable" })[status] || "Unavailable";
+}
+
+function claimKindLabel(kind) {
+  return ({ result: "Result", method: "Method", interpretation: "Interpretation" })[kind] || "Claim";
+}
+
+function claimLimitationLabel(limitation) {
+  const text = String(limitation || "");
+  if (/artifact|saved output|anchor/i.test(text)) return "The linked source or saved output is no longer available.";
+  if (/no evidence|not linked/i.test(text)) return "No Evidence entry is linked to this claim.";
+  if (/metadata|notes|incomplete/i.test(text)) return "Some linked Evidence details are incomplete.";
+  if (/project/i.test(text)) return "This claim cannot be reviewed in the current project.";
+  return "Some claim details could not be verified.";
 }
 
 function renderEvidenceClaimFormOptions() {
@@ -8756,7 +8770,7 @@ function renderEvidenceClaims() {
       : `${claim.source_path}:${claim.start_line}-${claim.end_line}`;
     const meta = document.createElement("div");
     meta.className = "evidence-item-meta";
-    meta.textContent = `${claim.kind} · ${claim.linked_evidence_ids.length} linked Evidence ${claim.linked_evidence_ids.length === 1 ? "entry" : "entries"}`;
+    meta.textContent = `${claimKindLabel(claim.kind)} · ${claim.linked_evidence_ids.length} linked Evidence ${claim.linked_evidence_ids.length === 1 ? "entry" : "entries"}`;
     const actions = document.createElement("div");
     actions.className = "claim-actions";
     const inspect = document.createElement("button");
@@ -8788,7 +8802,7 @@ function renderEvidenceClaims() {
     for (const limitation of review.limitations || []) {
       const note = document.createElement("p");
       note.className = "form-error";
-      note.textContent = limitation;
+      note.textContent = claimLimitationLabel(limitation);
       detail.append(note);
     }
     for (const entry of review.evidence || []) {
@@ -9000,7 +9014,7 @@ function initEvidencePanel() {
       $("#evidenceClaimSummary").value = "";
       await loadEvidenceClaims();
     } catch (failure) {
-      error.textContent = String(failure);
+      error.textContent = reportUiFailure("create evidence claim", failure, "This claim could not be created. Review its source or saved output and try again.");
       error.classList.remove("hidden");
     }
   });
@@ -9212,14 +9226,25 @@ function renderEnvironmentSummary() {
   const render = environment.render || {};
   const attached = (environment.attached_packages?.values || []).map((item) => `${item.name}${item.version ? ` ${item.version}` : ""}`).join(", ");
   const renvStatus = renv.status || "unknown";
+  const renvLabel = {
+    synchronized: "Package versions match the lockfile",
+    active: "Project package environment active",
+    present: "Package versions recorded",
+    absent: "Package versions are not recorded",
+    no_lockfile: "Package versions are not recorded",
+    drifted: "Package versions differ from the lockfile",
+    unavailable: "Package environment unavailable",
+    error: "Package environment unavailable",
+    invalid: "Lockfile needs attention",
+  }[renvStatus] || "Package environment not checked";
   const renvTone = renvStatus === "synchronized"
     ? "completed"
     : /unavailable|error|invalid/.test(renvStatus)
       ? "failed"
       : "warning";
   renderStatusItems($("#environmentContract"), [
-    { label: `renv ${renvStatus}`, status: renvTone },
-    { label: bioc.version ? `Bioc ${bioc.version}` : `Bioc ${bioc.status || "unknown"}`, status: bioc.version ? "completed" : "neutral" },
+    { label: renvLabel, status: renvTone },
+    { label: bioc.version ? `Bioconductor ${bioc.version}` : "Bioconductor version not detected", status: bioc.version ? "completed" : "neutral" },
     { label: attached ? `Packages ${attached}` : "No packages attached", status: "neutral" },
   ]);
   renderStatusItems($("#renderCapability"), [
@@ -9285,8 +9310,8 @@ function prettyEnvironmentOperationStatus(status) {
     rejected: "Rejected",
     cancelled: "Cancelled",
     interrupted: "Interrupted",
-    stale: "Stale",
-  }[status] || status || "Unknown";
+    stale: "Needs refresh",
+  }[status] || "Status unavailable";
 }
 
 function environmentOperationTone(status) {
@@ -10280,11 +10305,13 @@ function latestEnvironmentOperation() {
 
 function formatEnvironmentOperationSummary(request) {
   if (!request) return "No environment operation has been requested yet.";
-  const reason = request.reason ? ` · ${request.reason}` : "";
+  const reason = request.reason
+    ? ` ${userFacingError(request.reason, "Review the current environment and refresh this preview before trying again.")}`
+    : "";
   if (request.status === "requested") {
     return request.request_name?.startsWith("environment.package_")
       ? "Preview ready. Review the package, project library, repositories, and partial-write warning before running."
-      : "Preview ready. Review the bounded drift report before allowing the broker to mutate the project environment.";
+      : "Preview ready. Review the package changes before updating the project environment.";
   }
   if (request.status === "completed") return `${environmentOperationLabel(request.request_name)} finished.${reason}`;
   if (request.status === "running") return `${environmentOperationLabel(request.request_name)} is running.${reason}`;
@@ -10334,7 +10361,7 @@ function formatEnvironmentOperationArguments(request) {
     `Action: ${environmentOperationLabel(request?.request_name)}`,
     `Project: ${displayPath(request?.project_root || args.project_root) || "unknown"}`,
     args.package ? `Package: ${args.package}` : null,
-    args.project_library ? `Project library: ${args.project_library}` : null,
+    args.project_library ? "Package library: Current project library" : null,
     args.bioconductor ? `Bioconductor: ${args.bioconductor}` : null,
     `Repositories: ${(args.repositories && Object.keys(args.repositories).length) ? Object.values(args.repositories).join(", ") : "project defaults"}`,
   ].filter(Boolean).join("\n");
@@ -10349,10 +10376,10 @@ function formatEnvironmentOperationPreview(request) {
   if (preview.package) {
     return [
       `Project: ${displayPath(preview.project_dir || request?.project_root) || "unknown"}`,
-      `Planned change: ${preview.disposition || preview.operation || "unknown"} ${preview.package}`,
+      `Planned change: ${{ install_package: "Install", update_package: "Update", remove_package: "Remove" }[preview.operation] || "Change"} ${preview.package}`,
       `Installed version: ${preview.installed_version || "not installed"}`,
       `Lockfile version: ${preview.locked_version || "not locked"}`,
-      `Project library: ${preview.project_library || "unknown"}`,
+      "Package library: Current project library",
       `Warnings: ${(preview.warnings || []).join(" | ") || "none"}`,
     ].join("\n");
   }
@@ -10361,8 +10388,8 @@ function formatEnvironmentOperationPreview(request) {
   );
   return [
     `Project: ${displayPath(preview.project_dir || request?.project_root) || "unknown"}`,
-    `Environment status: ${renv.status || (renvStatus.ok ? "ready" : "needs attention")}`,
-    `Lockfile and library: ${renv.synchronization || (renvStatus.synchronized ? "in sync" : "different")}`,
+    `Environment status: ${{ active: "Ready", present: "Package versions recorded", absent: "Package versions are not recorded" }[renv.status] || (renvStatus.ok ? "Ready" : "Needs attention")}`,
+    `Lockfile and library: ${{ synchronized: "In sync", drifted: "Different", no_lockfile: "No lockfile" }[renv.synchronization] || (renvStatus.synchronized ? "In sync" : "Different")}`,
     `Warnings: ${(renvStatus.warnings || []).join(" | ") || "none"}`,
     `Messages: ${(renvStatus.messages || []).join(" | ") || "none"}`,
     `Changes: ${diffLines.length ? diffLines.join("\n") : "no package differences detected"}`,
@@ -10381,12 +10408,12 @@ function renderEnvironmentOperationDialog() {
   setStateChip($("#environmentOperationDialogState"), prettyEnvironmentOperationStatus(request.status), request.status);
   $("#environmentOperationDialogNote").textContent = request.request_name?.startsWith("environment.package_")
     ? "Review the package, project library, repositories, and partial-write warning before changing the project environment."
-    : "Review the requested renv action and package changes before changing the project environment.";
+    : "Review the requested package-environment action and changes before continuing.";
   $("#environmentOperationArguments").textContent = formatEnvironmentOperationArguments(request);
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
   if (request.reason) {
-    error.textContent = request.reason;
+    error.textContent = userFacingError(request.reason, "This environment change could not be completed. Refresh the preview and try again.");
     error.classList.remove("hidden");
   } else {
     error.textContent = "";
@@ -10475,7 +10502,7 @@ async function respondEnvironmentOperation(decision) {
 }
 
 function previewSummary(detail) {
-  if (!detail) return "Select an object to inspect its bounded summary.";
+  if (!detail) return "Select an object to inspect its preview.";
   const preview = detail.preview || {};
   const lines = [
     `${detail.name} · ${stringValues(detail.classes).join("/") || detail.typeof || "object"}`,
@@ -10490,7 +10517,7 @@ function previewSummary(detail) {
   } else if (preview.kind === "list") {
     lines.push(`items: ${(preview.items || []).join(", ")}${preview.truncated ? " ..." : ""}`);
   } else if (preview.unsupported_preview) {
-    lines.push("Preview is bounded to structural metadata for this class.");
+    lines.push("For this object type, the preview shows structure only.");
   }
   if (detail.structure) lines.push("", detail.structure);
   return lines.filter((line) => line !== null && line !== undefined).join("\n");
@@ -10511,7 +10538,7 @@ function selectedDataView(detail = state.selectedDataObjectDetail) {
 }
 
 function dataViewerWindowMeta(page) {
-  if (!page) return "No bounded page loaded yet.";
+  if (!page) return "No data loaded yet.";
   const rowStart = page.total_rows ? (page.row_offset || 0) + 1 : 0;
   const rowEnd = Math.min(page.total_rows || 0, (page.row_offset || 0) + (page.rows?.length || 0));
   const columnStart = page.total_columns ? (page.column_offset || 0) + 1 : 0;
@@ -10521,7 +10548,7 @@ function dataViewerWindowMeta(page) {
     `rows ${rowStart}-${rowEnd} of ${page.total_rows || 0}`,
     page.query ? `${page.total_rows || 0} matches from ${page.source_total_rows || 0} rows` : null,
     `cols ${columnStart}-${columnEnd} of ${page.total_columns || 0}`,
-    page.truncated ? "More data exists outside this view" : null,
+    page.truncated ? "Showing part of the data" : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -10537,8 +10564,8 @@ function renderPackageManagementDialog() {
   $("#packageManagementCancel").disabled = busy;
   const projectLibrary = state.environment?.renv?.project_library;
   $("#packageManagementLibrary").textContent = projectLibrary
-    ? `Current environment reports ${projectLibrary}. Preview revalidates the exact project library and repositories.`
-    : "Preview resolves and validates the exact project library and repositories.";
+    ? "This change will use the current project's package library. Preview checks the library and repositories again."
+    : "Preview checks the project package library and repositories before continuing.";
 }
 
 function openPackageManagementDialog(operation = "install_package", packageName = "", trigger = null) {
@@ -10608,7 +10635,9 @@ function renderDataViewer() {
   $("#objectPreviewBody").classList.toggle("hidden", supported);
 
   if (!supported) {
-    $("#dataViewerStatus").textContent = detail?.message || "Select a supported object to open the bounded viewer.";
+    $("#dataViewerStatus").textContent = detail?.message
+      ? userFacingError(detail.message, "This object cannot be shown as a table.")
+      : "Select a table-like object to preview its data.";
     $("#dataViewerMeta").textContent = "";
     $("#dataViewerViewSelect").replaceChildren();
     thead.replaceChildren();
@@ -10629,13 +10658,14 @@ function renderDataViewer() {
   }
 
   $("#dataViewerStatus").textContent = state.dataViewer.error?.message
-    || (state.dataViewer.loadingPage
+    ? userFacingError(state.dataViewer.error.message, "The source changed; refresh this object before continuing.")
+    : (state.dataViewer.loadingPage
       ? "Searching Workspace R..."
       : page
         ? (page.total_rows === 0
           ? "No rows match this search."
-          : (page.truncated ? "Showing a bounded partial page." : "Showing a bounded page from Workspace R."))
-        : "Choose a view to load its first bounded page.");
+          : (page.truncated ? "Showing part of the data." : "Showing data from the current R session."))
+        : "Choose a view to load its first page.");
   $("#dataViewerStatus").classList.toggle("error", Boolean(state.dataViewer.error));
   $("#dataViewerMeta").textContent = dataViewerWindowMeta(page);
   $("#dataViewerExportButton").disabled = !page || state.dataViewer.loadingPage;
@@ -11082,10 +11112,10 @@ function renderEnvironment() {
   $("#objectPreviewTitle").textContent = selectedName;
   $("#objectPreviewMeta").textContent = state.selectedDataObjectDetail?.display_kind
     || state.selectedObjectDetail?.preview_kind
-    || "bounded";
+    || "Preview";
   $("#objectPreviewBody").textContent = state.selectedObjectDetail
     ? previewSummary(state.selectedObjectDetail)
-    : (state.selectedDataObjectDetail?.message || "Select an object to inspect its bounded summary.");
+    : (state.selectedDataObjectDetail?.message || "Select an object to inspect its preview.");
   renderDataViewer();
 }
 
@@ -12024,7 +12054,16 @@ function renderAgentRunReview(content, run) {
   appendAgentReviewSection(outcome, "Messages", stringValues(record.messages).join("\n"));
   appendAgentReviewSection(outcome, "Warnings", stringValues(record.warnings).join("\n"));
   appendAgentReviewSection(outcome, "Error", record.error_message || run.error_message);
-  appendAgentReviewSection(outcome, "Traceback", stringValues(record.traceback).join("\n"));
+  const traceback = stringValues(record.traceback).join("\n");
+  if (traceback) {
+    const details = document.createElement("details");
+    details.className = "agent-review-traceback";
+    const summary = document.createElement("summary");
+    summary.textContent = "Technical error details";
+    details.append(summary);
+    appendAgentReviewSection(details, "Traceback", traceback);
+    outcome.append(details);
+  }
   if (state.agentReviewRunLoading) {
     const loading = document.createElement("p");
     loading.className = "agent-review-loading";

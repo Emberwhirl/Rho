@@ -204,7 +204,11 @@
             </div>
             <div id="evidenceClaimForm" class="evidence-form hidden">
               <input id="evidenceClaimSummary" type="text" maxlength="4096" placeholder="Claim summary" aria-label="Claim summary" />
-              <input id="evidenceClaimKind" type="text" maxlength="64" value="result" placeholder="Claim kind" aria-label="Claim kind" />
+              <select id="evidenceClaimKind" aria-label="Claim type">
+                <option value="result">Result</option>
+                <option value="method">Method</option>
+                <option value="interpretation">Interpretation</option>
+              </select>
               <div class="evidence-anchor-switch" role="group" aria-label="Claim anchor">
                 <button class="active" data-claim-anchor="source_range" type="button">Source range</button>
                 <button data-claim-anchor="artifact" type="button">Saved output</button>

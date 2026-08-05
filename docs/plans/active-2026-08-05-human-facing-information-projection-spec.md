@@ -143,3 +143,25 @@ Agent output-review contracts passed; browser preview confirmed no visible
 model selector, request ID, broker/runtime term, or editor position in the
 default Agent and expanded Activity views. Installed-app acceptance remains
 `NOT RUN`.
+
+### WP3 Scientific And Review Surfaces
+
+Implemented 2026-08-05. Project guidance now shows titles, descriptions, and a
+project-provided trust reminder without skill IDs or implementation paths.
+Help, References, package inventories, Environment summaries and operation
+reviews map incomplete, unavailable, synchronization, and failure states to
+outcomes and next actions; machine-specific package-library paths are omitted.
+Data Viewer uses preview and partial-data language instead of transport terms.
+Run comparison admits only known fields and maps status, origin, action, and
+environment availability values. Agent Run Review keeps R errors visible and
+places traceback detail in a collapsed disclosure. Evidence claim kinds are a
+controlled Result/Method/Interpretation choice, while claim and structural
+review statuses use friendly labels and unknown limitations fail closed.
+
+JavaScript syntax; focused human-facing projection; Evidence claim;
+Environment package and lockfile; Local Help, Installed Help, Agent Help, and
+Project References; Data Viewer type/query; and Agent output-review contracts
+passed. Browser/mock review covered a missing lockfile/package inventory, the
+Evidence claim form and review labels, and a failed Agent Run with useful R
+error/source evidence and no default traceback. Installed-app acceptance
+remains `NOT RUN`.

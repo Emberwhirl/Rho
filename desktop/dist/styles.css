@@ -295,6 +295,9 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { color: var
 .agent-review-source-action { justify-self: start; min-height: 30px; padding: 5px 9px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--accent-strong); background: #fff; cursor: pointer; }
 .agent-review-loading,
 .agent-review-limitation { grid-column: 1 / -1; margin: 0; padding: 9px 10px; border-left: 3px solid var(--warning); background: #fff7e8; color: #654510; font-size: 11px; line-height: 1.45; }
+.agent-review-traceback { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.agent-review-traceback > summary { width: fit-content; cursor: pointer; color: var(--ink); }
+.agent-review-traceback .review-section { margin-top: 8px; }
 .audit-finding-group { display: grid; gap: 8px; margin-bottom: 16px; }
 .audit-finding-group > h3 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-secondary); font-size: 12px; }
 .audit-finding-group > h3 span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--surface-selected); color: var(--text-secondary); font-size: 10px; }
