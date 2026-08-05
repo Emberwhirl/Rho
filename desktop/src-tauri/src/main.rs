@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as SyncRwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use agent_llm::{
     AgentLlmSettingsView, AgentModelProfile, AgentModelTestControl, AgentProviderProfile,
@@ -113,7 +113,7 @@ struct StartupView {
     issue: Option<StartupIssue>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct AgentRuntimeStatus {
     available: bool,
     aisdk_version: Option<String>,
@@ -145,6 +145,28 @@ struct RRuntimeProbe {
     r_libs: String,
     r_profile_user: Option<PathBuf>,
     r_environ_user: Option<PathBuf>,
+}
+
+const RUNTIME_CACHE_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RuntimeFileSignature {
+    path: String,
+    size: u64,
+    modified_unix_ms: u128,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RuntimeCacheFile {
+    version: u32,
+    rscript: RuntimeFileSignature,
+    ark: RuntimeFileSignature,
+    r_profile_user: Option<RuntimeFileSignature>,
+    r_environ_user: Option<RuntimeFileSignature>,
+    r_home: String,
+    r_version: String,
+    r_libs: String,
+    agent_runtime: AgentRuntimeStatus,
 }
 
 struct ProbeProcessOutput {
@@ -711,10 +733,20 @@ async fn agent_runtime_retry(state: State<'_, AppState>) -> Result<AgentRuntimeS
 
 #[tauri::command]
 async fn workspace_start(state: State<'_, AppState>) -> Result<WorkspaceStatus, String> {
+    let started = Instant::now();
     match start_workspace(&state).await {
-        Ok(status) => Ok(status),
+        Ok(status) => {
+            write_startup_log(&format!(
+                "startup_phase=workspace_start elapsed_ms={}",
+                started.elapsed().as_millis()
+            ));
+            Ok(status)
+        }
         Err(error) => {
-            write_startup_log(&format!("Workspace R startup failed: {error:#}"));
+            write_startup_log(&format!(
+                "startup_phase=workspace_start outcome=failed elapsed_ms={} detail={error:#}",
+                started.elapsed().as_millis()
+            ));
             Err(display_error(error))
         }
     }
@@ -790,6 +822,7 @@ async fn project_restore_session(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ProjectRestoreResponse, String> {
+    let started = Instant::now();
     let requested_root = state
         .project_store
         .last_opened_project()
@@ -805,9 +838,15 @@ async fn project_restore_session(
         }
     };
     let session_snapshot = state.project_store.load_session_or_default(&root);
-    switch_project(root, Some(session_snapshot), app, &state)
+    let result = switch_project(root, Some(session_snapshot), app, &state)
         .await
-        .map_err(display_error)
+        .map_err(display_error);
+    write_startup_log(&format!(
+        "startup_phase=project_restore elapsed_ms={} outcome={}",
+        started.elapsed().as_millis(),
+        if result.is_ok() { "ok" } else { "failed" }
+    ));
+    result
 }
 
 #[tauri::command]
@@ -4013,6 +4052,7 @@ fn prepare_runtime_files_with_rscript(
     ark: PathBuf,
     selected_rscript: Option<&Path>,
 ) -> Result<RuntimeConfig> {
+    let started = Instant::now();
     ensure!(ark.is_file(), "bundled Ark executable was not found");
     std::fs::create_dir_all(&data_dir)?;
     let source_dir = data_dir.join("sources");
@@ -4030,19 +4070,75 @@ fn prepare_runtime_files_with_rscript(
     write_source(&agent_package.join("R/aisdk_adapter.R"), AGENT_ADAPTER)?;
 
     let rscript = locate_rscript(selected_rscript)?;
-    let probe = probe_r_runtime(&rscript)?;
-    let RRuntimeProbe {
-        r_home,
-        r_version,
-        r_libs,
-        r_profile_user,
-        r_environ_user,
-    } = probe;
-    let agent_runtime = probe_agent_runtime(
-        &rscript,
-        r_profile_user.as_deref(),
-        r_environ_user.as_deref(),
-    );
+    let cached = load_runtime_cache(&data_dir, &rscript, &ark);
+    let (r_home, r_version, r_libs, r_profile_user, r_environ_user, agent_runtime) =
+        if let Some(cache) = cached {
+            write_startup_log(&format!(
+                "startup_phase=runtime_cache outcome=hit elapsed_ms={}",
+                started.elapsed().as_millis()
+            ));
+            (
+                cache.r_home,
+                cache.r_version,
+                cache.r_libs,
+                cache
+                    .r_profile_user
+                    .map(|signature| PathBuf::from(signature.path)),
+                cache
+                    .r_environ_user
+                    .map(|signature| PathBuf::from(signature.path)),
+                cache.agent_runtime,
+            )
+        } else {
+            let probe_started = Instant::now();
+            let probe = probe_r_runtime(&rscript)?;
+            let RRuntimeProbe {
+                r_home,
+                r_version,
+                r_libs,
+                r_profile_user,
+                r_environ_user,
+            } = probe;
+            write_startup_log(&format!(
+                "startup_phase=runtime_probe elapsed_ms={} agent_probe=deferred",
+                probe_started.elapsed().as_millis()
+            ));
+            let agent_runtime = AgentRuntimeStatus {
+                available: false,
+                aisdk_version: None,
+                error: Some("Agent runtime check is continuing in the background.".to_string()),
+            };
+            let cache = RuntimeCacheFile {
+                version: RUNTIME_CACHE_VERSION,
+                rscript: runtime_file_signature(&rscript)?,
+                ark: runtime_file_signature(&ark)?,
+                r_profile_user: r_profile_user
+                    .as_deref()
+                    .map(runtime_file_signature)
+                    .transpose()?,
+                r_environ_user: r_environ_user
+                    .as_deref()
+                    .map(runtime_file_signature)
+                    .transpose()?,
+                r_home: r_home.clone(),
+                r_version: r_version.clone(),
+                r_libs: r_libs.clone(),
+                agent_runtime: agent_runtime.clone(),
+            };
+            if let Err(error) = save_runtime_cache(&data_dir, &cache) {
+                write_startup_log(&format!(
+                    "startup_phase=runtime_cache outcome=write_failed detail={error:#}"
+                ));
+            }
+            (
+                r_home,
+                r_version,
+                r_libs,
+                r_profile_user,
+                r_environ_user,
+                agent_runtime,
+            )
+        };
     let runtime_dir = data_dir.join("runtime");
     std::fs::create_dir_all(&runtime_dir)?;
     let empty_site_environ = runtime_dir.join("empty-site.Renviron");
@@ -4109,6 +4205,75 @@ fn prepare_runtime_files_with_rscript(
         agent_runtime,
         store_path: data_dir.join("rho-desktop.sqlite"),
     })
+}
+
+fn runtime_cache_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("runtime").join("runtime-cache.json")
+}
+
+fn runtime_file_signature(path: &Path) -> Result<RuntimeFileSignature> {
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("reading runtime metadata for {}", path.display()))?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map(|value| value.as_millis())
+        .unwrap_or_default();
+    Ok(RuntimeFileSignature {
+        path: path.to_string_lossy().replace('\\', "/"),
+        size: metadata.len(),
+        modified_unix_ms: modified,
+    })
+}
+
+fn runtime_signature_matches(path: &Path, expected: &RuntimeFileSignature) -> bool {
+    runtime_file_signature(path)
+        .map(|actual| {
+            actual.path == expected.path
+                && actual.size == expected.size
+                && actual.modified_unix_ms == expected.modified_unix_ms
+        })
+        .unwrap_or(false)
+}
+
+fn optional_runtime_signature_matches(
+    signature: Option<&RuntimeFileSignature>,
+    missing_name: &str,
+) -> bool {
+    signature
+        .map(|value| runtime_signature_matches(Path::new(&value.path), value))
+        .unwrap_or_else(|| {
+            let path = std::env::var_os("USERPROFILE")
+                .or_else(|| std::env::var_os("HOME"))
+                .map(PathBuf::from)
+                .map(|home| home.join(missing_name));
+            path.map(|value| !value.is_file()).unwrap_or(true)
+        })
+}
+
+fn load_runtime_cache(data_dir: &Path, rscript: &Path, ark: &Path) -> Option<RuntimeCacheFile> {
+    let path = runtime_cache_path(data_dir);
+    let cache = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<RuntimeCacheFile>(&bytes).ok())?;
+    if cache.version != RUNTIME_CACHE_VERSION
+        || !runtime_signature_matches(rscript, &cache.rscript)
+        || !runtime_signature_matches(ark, &cache.ark)
+        || !optional_runtime_signature_matches(cache.r_profile_user.as_ref(), ".Rprofile")
+        || !optional_runtime_signature_matches(cache.r_environ_user.as_ref(), ".Renviron")
+    {
+        return None;
+    }
+    Some(cache)
+}
+
+fn save_runtime_cache(data_dir: &Path, cache: &RuntimeCacheFile) -> Result<()> {
+    let path = runtime_cache_path(data_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    atomic_write(&path, &serde_json::to_vec_pretty(cache)?)
 }
 
 fn locate_ark(app: &tauri::App) -> Result<PathBuf> {
@@ -4782,14 +4947,16 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentModelTestControl, AgentRuntimeStatus, AppState, RUserStartupFiles, RenderJobState,
-        RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep, attach_render_artifact,
-        bounded_diagnostic, classify_startup_error, configure_user_startup, contain_audit_panic,
+        AgentModelTestControl, AgentRuntimeStatus, AppState, RUNTIME_CACHE_VERSION,
+        RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig, StartupView,
+        SwitchTestControl, SwitchTestStep, attach_render_artifact, bounded_diagnostic,
+        classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         durable_project_root, editor_format_result, ensure_artifact_export_target,
         ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
-        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
-        reconcile_render_job, render_job_is_terminal, run_is_retryable, safe_delete_project_file,
+        load_runtime_cache, lockfile_inventory_arguments, parse_r_runtime_probe,
+        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
+        runtime_file_signature, safe_delete_project_file, save_runtime_cache,
         source_claim_snapshot, switch_project_with_watcher_factory, workspace_project_root_code,
         write_r_probe_script,
     };
@@ -4806,12 +4973,71 @@ mod tests {
     };
     use serde_json::json;
     use std::collections::HashMap;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
     use tokio::sync::{Mutex, RwLock};
+
+    fn test_runtime_cache(directory: &Path) -> RuntimeCacheFile {
+        let rscript = directory.join("Rscript.exe");
+        let ark = directory.join("ark.exe");
+        std::fs::write(&rscript, b"rscript").unwrap();
+        std::fs::write(&ark, b"ark").unwrap();
+        let home = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(PathBuf::from);
+        RuntimeCacheFile {
+            version: RUNTIME_CACHE_VERSION,
+            rscript: runtime_file_signature(&rscript).unwrap(),
+            ark: runtime_file_signature(&ark).unwrap(),
+            r_profile_user: home
+                .as_ref()
+                .map(|path| path.join(".Rprofile"))
+                .filter(|path| path.is_file())
+                .map(|path| runtime_file_signature(&path).unwrap()),
+            r_environ_user: home
+                .as_ref()
+                .map(|path| path.join(".Renviron"))
+                .filter(|path| path.is_file())
+                .map(|path| runtime_file_signature(&path).unwrap()),
+            r_home: "C:/R".to_string(),
+            r_version: "R version 4.4.2".to_string(),
+            r_libs: "C:/R/library".to_string(),
+            agent_runtime: AgentRuntimeStatus {
+                available: false,
+                aisdk_version: None,
+                error: None,
+            },
+        }
+    }
+
+    #[test]
+    fn runtime_cache_accepts_matching_inputs_and_rejects_changes() {
+        let directory = TempDir::new().unwrap();
+        let cache = test_runtime_cache(directory.path());
+        save_runtime_cache(directory.path(), &cache).unwrap();
+        let rscript = directory.path().join("Rscript.exe");
+        let ark = directory.path().join("ark.exe");
+        assert!(load_runtime_cache(directory.path(), &rscript, &ark).is_some());
+
+        std::fs::write(&rscript, b"changed").unwrap();
+        assert!(load_runtime_cache(directory.path(), &rscript, &ark).is_none());
+    }
+
+    #[test]
+    fn malformed_runtime_cache_falls_back_without_error() {
+        let directory = TempDir::new().unwrap();
+        let cache_path = directory.path().join("runtime").join("runtime-cache.json");
+        std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        std::fs::write(&cache_path, b"not-json").unwrap();
+        let rscript = directory.path().join("Rscript.exe");
+        let ark = directory.path().join("ark.exe");
+        std::fs::write(&rscript, b"rscript").unwrap();
+        std::fs::write(&ark, b"ark").unwrap();
+        assert!(load_runtime_cache(directory.path(), &rscript, &ark).is_none());
+    }
 
     #[test]
     fn audit_command_boundary_contains_panics() {

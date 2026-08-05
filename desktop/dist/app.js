@@ -14471,16 +14471,26 @@ async function finishWorkbenchStartup(startupView) {
       await listenForProjectChanges();
       state.startupPrepared = true;
     }
+    revealWorkbench();
+    setKernelStatus("starting", "Starting R");
     const status = await invoke("workspace_start");
     state.agentRuntime = status.agent_runtime || startupView?.runtime?.agent_runtime || null;
     updateIdentity(status.workspace);
     $("#rVersion").textContent = status.r_version || "R";
     setKernelStatus("idle", "R idle");
     addLog("SYSTEM", `${status.r_version} · R session ready`);
-    revealWorkbench();
+    void invoke("agent_runtime_retry")
+      .then((runtime) => {
+        state.agentRuntime = runtime;
+        updateAgentHeader();
+        renderAgentTimeline();
+        addLog("SYSTEM", "Agent runtime check completed");
+      })
+      .catch((error) => addLog("SYSTEM", `Agent runtime check failed: ${String(error)}`, "warning"));
     maybeCheckForUpdates();
-    await loadAgentLlmSettings();
+    const agentSettings = loadAgentLlmSettings();
     const response = await invoke("project_restore_session");
+    await agentSettings;
     if (response.status === "ready") {
       await hydrateProject(response);
     } else if (response.status === "blocked") {
@@ -14498,10 +14508,12 @@ async function finishWorkbenchStartup(startupView) {
       setProjectStatus("empty");
       renderActiveDocument();
     }
-    await loadRunData();
-    await loadEnvironmentOperationData();
-    await loadAgentData();
-    await refreshEnvironment();
+    await Promise.all([
+      loadRunData(),
+      loadEnvironmentOperationData(),
+      loadAgentData(),
+      refreshEnvironment(),
+    ]);
     await maybeApplyPreviewScenario();
     if (isDesktop && tauriEvent?.listen) {
       tauriEvent.listen("rho://agent-turn-updated", async () => {

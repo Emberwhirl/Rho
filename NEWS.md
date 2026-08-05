@@ -8,6 +8,10 @@ this file records behavior that is already available in a released build.
 
 ### Improved
 
+- Startup now caches validated R/Ark runtime discovery, records startup phase
+  timings, shows the workbench while Workspace R connects, refreshes Agent
+  runtime availability in the background, and loads secondary project data in
+  parallel after the first usable view.
 - The bottom Plots surface is now Outputs, with a central Viewer for Markdown
   previews, self-contained interactive HTML/htmlwidgets, rendered HTML
   Artifacts, static plots, and bounded CSV/TSV tables. HTML runs in an isolated
