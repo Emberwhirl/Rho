@@ -33,6 +33,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Agent background polling now keeps both Agent history and Run history
+  refreshes quiet when transient records disappear, preventing repeated stale
+  information toasts while a task is running.
 - Agent history polling now treats transiently missing turn details as stale
   list state instead of repeatedly flashing the same error toast; background
   refreshes quietly recover while the Agent list remains usable.

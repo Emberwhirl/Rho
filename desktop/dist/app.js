@@ -4727,7 +4727,7 @@ function activeRunRecord() {
   return state.runs.find((run) => ["queued", "running", "waiting"].includes(run.status)) || null;
 }
 
-async function loadRunData() {
+async function loadRunData({ quiet = false } = {}) {
   try {
     const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
@@ -4756,7 +4756,7 @@ async function loadRunData() {
     renderProblems();
     renderPlots();
   } catch (error) {
-    toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
+    if (!quiet) toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
   }
 }
 
@@ -6456,7 +6456,7 @@ function syncAgentPolling() {
   if (shouldPoll && !state.agentPollTimer) {
     state.agentPollTimer = window.setInterval(() => {
       loadAgentData({ quiet: true }).catch(() => {});
-      loadRunData().catch(() => {});
+      loadRunData({ quiet: true }).catch(() => {});
     }, 1500);
   }
   if (!shouldPoll && state.agentPollTimer) {

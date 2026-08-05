@@ -64,6 +64,8 @@ assert.doesNotMatch(js, /function togglePosture\(/);
 assert.match(js, /function startNewAgentTask\(\)/);
 assert.match(js, /async function loadAgentData\(\{ quiet = false \} = \{\}\)/);
 assert.match(js, /loadAgentData\(\{ quiet: true \}\)/);
+assert.match(js, /async function loadRunData\(\{ quiet = false \} = \{\}\)/);
+assert.match(js, /loadRunData\(\{ quiet: true \}\)/);
 assert.match(js, /function isStaleInformationError\(error\)/);
 assert.match(js, /agentWorkSurface:\s*"none"/);
 assert.match(js, /agentReviewRunId:\s*null/);
