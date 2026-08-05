@@ -52,6 +52,22 @@ const state = {
   selectedPlotId: null,
   selectedArtifactId: null,
   selectedArtifactDetail: null,
+  viewer: {
+    open: false,
+    busy: false,
+    mode: "both",
+    kind: null,
+    path: null,
+    title: null,
+    mediaType: null,
+    content: "",
+    sourceContent: "",
+    projectRoot: null,
+    sourcePath: null,
+    artifactId: null,
+    notice: null,
+    error: null,
+  },
   evidenceEntries: [],
   evidenceClaims: [],
   evidenceClaimReviews: new Map(),
@@ -1676,6 +1692,18 @@ async function mockInvoke(command, args) {
   if (command === "project_read_file") {
     const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
     return { path: args.path, content: project.contents[args.path] || "" };
+  }
+  if (command === "viewer_read_file") {
+    const path = String(args.path || "");
+    const extension = viewerPathExtension(path);
+    const samples = {
+      md: "# Markdown preview\n\nThis preview is rendered from the current project buffer.\n\n```r\nsummary(qc)\n```\n",
+      html: "<!doctype html><html><head><title>Interactive output</title><style>body{font:16px sans-serif;padding:24px}button{padding:8px 12px}</style></head><body><h1>Interactive HTML output</h1><button id='update'>Update</button><p id='value'>Ready</p><script>document.querySelector('#update').onclick=()=>document.querySelector('#value').textContent='Updated inside sandbox';</script></body></html>",
+      csv: "sample,reads,detected\nA,1200,3100\nB,1400,3300\n",
+      tsv: "sample\treads\tdetected\nA\t1200\t3100\nB\t1400\t3300\n",
+    };
+    if (!samples[extension]) throw new Error(`Preview is not available for this file: ${path}`);
+    return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content: samples[extension], size_bytes: samples[extension].length };
   }
   if (command === "project_write_file" || command === "project_create_file") {
     const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
@@ -3389,6 +3417,260 @@ function currentEditorValue() {
   return fallbackEditor().value;
 }
 
+const VIEWER_FILE_LIMIT = 4 * 1024 * 1024;
+const VIEWER_TABLE_ROW_LIMIT = 500;
+const VIEWER_TABLE_COLUMN_LIMIT = 100;
+
+function viewerPathExtension(path) {
+  return String(path || "").split(".").pop()?.toLowerCase() || "";
+}
+
+function viewerTypeLabel(kind, mediaType) {
+  if (kind === "plot") return "Plot";
+  if (mediaType === "text/markdown") return "Markdown preview";
+  if (mediaType === "text/html") return "Interactive HTML";
+  if (mediaType === "text/csv") return "CSV table";
+  if (mediaType === "text/tab-separated-values") return "TSV table";
+  return "Output";
+}
+
+function viewerSetNotice(message) {
+  state.viewer.notice = message || null;
+  const notice = $("#viewerNotice");
+  notice.textContent = message || "";
+  notice.classList.toggle("hidden", !message);
+}
+
+function viewerSafeMarkdown(content) {
+  if (typeof window.marked?.parse !== "function" || typeof window.DOMPurify?.sanitize !== "function") {
+    throw new Error("Markdown preview dependencies are unavailable.");
+  }
+  const html = window.marked.parse(content, { gfm: true, breaks: false });
+  return window.DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "base", "meta"],
+    FORBID_ATTR: ["style", "srcset", "onerror", "onclick", "onload", "onmouseover"],
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+  });
+}
+
+function viewerSandboxHtml(content) {
+  const parser = new DOMParser();
+  const document = parser.parseFromString(content, "text/html");
+  document.querySelectorAll("base, meta[http-equiv='refresh']").forEach((node) => node.remove());
+  const csp = document.createElement("meta");
+  csp.httpEquiv = "Content-Security-Policy";
+  csp.content = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src 'none'; frame-src 'none'; child-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
+  document.head.prepend(csp);
+  const doctype = "<!doctype html>";
+  return `${doctype}${document.documentElement.outerHTML}`;
+}
+
+function viewerHtmlResourceWarning(content) {
+  return /(?:\b(?:src|href)\s*=\s*["'](?!data:|blob:|#|javascript:)|fetch\s*\(|XMLHttpRequest|WebSocket|\burl\s*\()/i.test(content)
+    ? "External resources were blocked. V1 supports self-contained HTML only."
+    : null;
+}
+
+function viewerRenderTable(content, extension) {
+  if (typeof window.Papa?.parse !== "function") throw new Error("CSV preview dependency is unavailable.");
+  const parsed = window.Papa.parse(content, {
+    delimiter: extension === "tsv" ? "\t" : ",",
+    newline: "",
+    skipEmptyLines: false,
+  });
+  if (parsed.errors?.length) throw new Error(`Table parsing failed: ${parsed.errors[0].message || "malformed input"}`);
+  const rows = Array.isArray(parsed.data) ? parsed.data : [];
+  const maxColumns = Math.min(VIEWER_TABLE_COLUMN_LIMIT, rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0));
+  const truncatedRows = rows.length > VIEWER_TABLE_ROW_LIMIT;
+  const truncatedColumns = rows.some((row) => Array.isArray(row) && row.length > VIEWER_TABLE_COLUMN_LIMIT);
+  const table = document.createElement("table");
+  table.className = "viewer-table";
+  const head = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  const headerValues = rows[0] || [];
+  for (let column = 0; column < maxColumns; column += 1) {
+    const cell = document.createElement("th");
+    cell.textContent = headerValues[column] || `Column ${column + 1}`;
+    headerRow.append(cell);
+  }
+  head.append(headerRow);
+  table.append(head);
+  const body = document.createElement("tbody");
+  for (const row of rows.slice(1, VIEWER_TABLE_ROW_LIMIT + 1)) {
+    const tr = document.createElement("tr");
+    for (let column = 0; column < maxColumns; column += 1) {
+      const cell = document.createElement("td");
+      cell.textContent = Array.isArray(row) ? String(row[column] ?? "") : "";
+      tr.append(cell);
+    }
+    body.append(tr);
+  }
+  table.append(body);
+  return { table, truncated: truncatedRows || truncatedColumns, rowCount: Math.max(0, rows.length - 1), columnCount: maxColumns };
+}
+
+function viewerRenderPreview() {
+  const target = $("#viewerPreviewContent");
+  target.replaceChildren();
+  const viewer = state.viewer;
+  if (viewer.error) {
+    const error = document.createElement("div");
+    error.className = "viewer-error";
+    error.textContent = viewer.error;
+    target.append(error);
+    return;
+  }
+  if (viewer.busy) {
+    const loading = document.createElement("div");
+    loading.className = "viewer-empty";
+    loading.textContent = "Loading preview...";
+    target.append(loading);
+    return;
+  }
+  try {
+    if (viewer.kind === "plot") {
+      const image = document.createElement("img");
+      image.className = "plot-image";
+      image.alt = viewer.title || "R plot";
+      image.src = viewer.content;
+      target.append(image);
+      $("#viewerPreviewStatus").textContent = "static image";
+    } else if (viewer.mediaType === "text/markdown") {
+      const article = document.createElement("article");
+      article.className = "viewer-markdown";
+      article.innerHTML = viewerSafeMarkdown(viewer.content);
+      article.querySelectorAll("a").forEach((link) => {
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
+        link.title = "External links are disabled in preview";
+      });
+      target.append(article);
+      $("#viewerPreviewStatus").textContent = "non-executing";
+    } else if (viewer.mediaType === "text/html") {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.setAttribute("title", viewer.title || "Interactive HTML output");
+      frame.srcdoc = viewerSandboxHtml(viewer.content);
+      target.append(frame);
+      $("#viewerPreviewStatus").textContent = "sandboxed";
+      viewerSetNotice(viewerHtmlResourceWarning(viewer.content));
+    } else if (["text/csv", "text/tab-separated-values"].includes(viewer.mediaType)) {
+      const parsed = viewerRenderTable(viewer.content, viewerTypeLabel(viewer.kind, viewer.mediaType).startsWith("TSV") ? "tsv" : "csv");
+      const wrapper = document.createElement("div");
+      wrapper.className = "viewer-table-wrap";
+      wrapper.append(parsed.table);
+      target.append(wrapper);
+      $("#viewerPreviewStatus").textContent = `${parsed.rowCount} rows · ${parsed.columnCount} columns`;
+      if (parsed.truncated) viewerSetNotice(`Table preview is bounded to ${VIEWER_TABLE_ROW_LIMIT} rows and ${VIEWER_TABLE_COLUMN_LIMIT} columns.`);
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "viewer-empty";
+      empty.textContent = "No preview is available for this output.";
+      target.append(empty);
+    }
+  } catch (error) {
+    state.viewer.error = String(error?.message || error);
+    const failure = document.createElement("div");
+    failure.className = "viewer-error";
+    failure.textContent = state.viewer.error;
+    target.replaceChildren(failure);
+  }
+}
+
+function renderViewer() {
+  const viewerRegion = $("#viewerRegion");
+  const viewer = state.viewer;
+  viewerRegion.classList.toggle("hidden", !viewer.open);
+  viewerRegion.classList.remove("viewer-mode-both", "viewer-mode-source", "viewer-mode-preview");
+  viewerRegion.classList.add(`viewer-mode-${viewer.mode}`);
+  $(".workspace").classList.toggle("viewer-open", viewer.open);
+  $("#viewerTitle").textContent = viewer.title || "No output selected";
+  $("#viewerMeta").textContent = viewer.open ? [viewerTypeLabel(viewer.kind, viewer.mediaType), viewer.path || ""].filter(Boolean).join(" · ") : "";
+  $("#viewerSourcePath").textContent = viewer.sourcePath || viewer.path || "";
+  $("#viewerSourceContent").textContent = viewer.sourceContent || viewer.content || "";
+  $("#viewerOpenSource").disabled = !viewer.sourcePath;
+  for (const button of $$('[data-viewer-mode]')) {
+    const selected = button.dataset.viewerMode === viewer.mode;
+    button.setAttribute("aria-pressed", String(selected));
+  }
+  viewerSetNotice(viewer.notice);
+  viewerRenderPreview();
+}
+
+function closeViewer() {
+  state.viewer = { ...state.viewer, open: false, busy: false, error: null, notice: null };
+  renderViewer();
+}
+
+async function openViewer(input) {
+  const requestRoot = state.project.root;
+  const viewer = {
+    ...state.viewer,
+    open: true,
+    busy: true,
+    error: null,
+    notice: null,
+    kind: input.kind || "file",
+    path: input.path || null,
+    title: input.title || input.path || "Output",
+    sourcePath: input.sourcePath || input.path || null,
+    artifactId: input.artifactId || null,
+    sourceContent: input.sourceContent || "",
+    content: "",
+    mediaType: input.mediaType || null,
+  };
+  state.viewer = viewer;
+  renderViewer();
+  try {
+    if (input.kind === "plot") {
+      state.viewer.content = input.content || "";
+      state.viewer.mediaType = "image/png";
+    } else if (input.content !== undefined) {
+      if (String(input.content).length > VIEWER_FILE_LIMIT) throw new Error("Current editor buffer is too large for preview.");
+      state.viewer.content = String(input.content);
+      state.viewer.mediaType = input.mediaType || ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[viewerPathExtension(input.path)] || "text/plain");
+    } else {
+      const result = await invoke("viewer_read_file", { path: input.path });
+      if (result.project_root !== state.project.root || result.project_root !== requestRoot) throw new Error("The project changed while loading this output.");
+      state.viewer.path = result.path;
+      state.viewer.content = result.content;
+      state.viewer.mediaType = result.media_type;
+    }
+    if (!state.viewer.sourceContent && state.viewer.kind !== "plot") state.viewer.sourceContent = state.viewer.content;
+    state.viewer.busy = false;
+    renderViewer();
+  } catch (error) {
+    state.viewer.busy = false;
+    state.viewer.error = reportUiFailure("open Viewer output", error, "The output could not be previewed. Open it as source or refresh the project.");
+    renderViewer();
+  }
+}
+
+async function openViewerForActiveDocument() {
+  const document = activeDocument();
+  if (!document || !state.activeDocument) return;
+  const extension = viewerPathExtension(state.activeDocument);
+  if (!["md", "html", "csv", "tsv"].includes(extension)) {
+    toast("Preview is not available for this file.", true);
+    return;
+  }
+  syncDocumentFromEditor({ render: false, persist: false });
+  await openViewer({ path: state.activeDocument, title: state.activeDocument, sourcePath: state.activeDocument, content: document.content, mediaType: ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" })[extension] });
+}
+
+async function openSelectedOutputInViewer() {
+  if (state.selectedPlotId) {
+    const plot = state.plots.find((item) => item.plot_id === state.selectedPlotId);
+    const payload = plotImageSource(parseJsonObject(plot?.payload_json));
+    if (plot && payload) return openViewer({ kind: "plot", title: "Plot", sourcePath: plot.source_path || null, content: payload });
+  }
+  const artifact = state.selectedArtifactDetail?.artifact || state.artifacts.find((item) => item.artifact_id === state.selectedArtifactId);
+  if (!artifact?.output_path) return toast("Select an output to preview.", true);
+  return openViewer({ kind: "artifact", path: artifact.output_path, title: pathFileName(artifact.output_path), sourcePath: artifact.source_path || null, artifactId: artifact.artifact_id });
+}
+
 function currentEditorOffsets() {
   if (state.editor.mode === "monaco" && state.editor.editor?.getModel()) {
     const model = state.editor.editor.getModel();
@@ -3725,6 +4007,7 @@ function fileExecution() {
 function setProjectStatus(status, unavailable = null) {
   state.projectStatus = status;
   state.unavailable = unavailable;
+  if (status !== "ready" && state.viewer.open) closeViewer();
   const disabled = status !== "ready";
   setEditorDisabled(disabled);
   $("#runButton").disabled = disabled || state.busy;
@@ -12674,6 +12957,13 @@ function renderAgentReviewWorkspace() {
       open.addEventListener("click", () => openDocument(artifact.source_path));
       actions.append(open);
     }
+    if (artifact.output_path && detail?.file_available !== false) {
+      const preview = document.createElement("button");
+      preview.type = "button";
+      preview.textContent = "Open in Viewer";
+      preview.addEventListener("click", () => openAgentArtifactPreview(content, artifact));
+      actions.append(preview);
+    }
     if (actions.childElementCount) summary.append(actions);
   } else {
     const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
@@ -12688,9 +12978,49 @@ function renderAgentReviewWorkspace() {
   content.append(summary);
 }
 
+async function openAgentArtifactPreview(container, artifact) {
+  const existing = container.querySelector(".agent-inline-viewer");
+  if (existing) { existing.remove(); return; }
+  const wrapper = document.createElement("section");
+  wrapper.className = "agent-inline-viewer agent-review-plot";
+  const status = document.createElement("p");
+  status.className = "agent-review-loading";
+  status.textContent = "Loading output preview...";
+  wrapper.append(status);
+  container.append(wrapper);
+  try {
+    const result = await invoke("viewer_read_file", { path: artifact.output_path });
+    if (result.project_root !== state.project.root) throw new Error("The project changed while loading this output.");
+    wrapper.replaceChildren();
+    if (result.media_type === "text/html") {
+      const frame = document.createElement("iframe");
+      frame.className = "agent-inline-viewer-frame";
+      frame.setAttribute("sandbox", "allow-scripts");
+      frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.srcdoc = viewerSandboxHtml(result.content);
+      wrapper.append(frame);
+    } else if (result.media_type === "text/markdown") {
+      const article = document.createElement("article");
+      article.className = "viewer-markdown";
+      article.innerHTML = viewerSafeMarkdown(result.content);
+      wrapper.append(article);
+    } else {
+      const parsed = viewerRenderTable(result.content, result.media_type === "text/tab-separated-values" ? "tsv" : "csv");
+      const table = document.createElement("div");
+      table.className = "viewer-table-wrap";
+      table.append(parsed.table);
+      wrapper.append(table);
+    }
+  } catch (error) {
+    wrapper.replaceChildren(Object.assign(document.createElement("p"), { className: "agent-review-limitation", textContent: reportUiFailure("open output preview", error, "The saved output preview is unavailable.") }));
+  }
+}
+
 function applyPostureLayout() {
   const shell = $(".app-shell");
   const isAgent = state.posture === "agent";
+
+  if (isAgent && state.viewer.open) closeViewer();
 
   shell.classList.toggle("agent-first", isAgent);
   document.body.classList.toggle("agent-posture", isAgent);
@@ -13345,6 +13675,10 @@ function updateWorkbenchMenuState() {
   setDisabled("run-selection", $("#editorRunButton").disabled);
   setDisabled("run-file", $("#editorRunFileButton").disabled);
   setDisabled("render-document", $("#renderDocumentButton").disabled);
+  const previewable = Boolean(documentState && /\.(md|html|csv|tsv)$/i.test(documentState.path));
+  if (previewable) setDisabled("render-document", false);
+  const renderMenu = $('[data-menu-command="render-document"]');
+  if (renderMenu) renderMenu.textContent = previewable ? "Preview Active Document" : "Render Active Document";
   setDisabled("interrupt", $("#interruptButton").disabled);
   setDisabled("restart", $("#restartButton").disabled);
   setDisabled("focus-editor", !hasDocument);
@@ -13378,10 +13712,13 @@ function runWorkbenchMenuCommand(command) {
     "about-rho": () => openAboutDialog(),
     "render-document": () => {
       const button = $("#renderDocumentButton");
-      if (button.disabled) {
-        toast($("#renderDocumentHint").textContent, true);
+      if (activeDocumentCanRender()) {
+        if (button.disabled) toast($("#renderDocumentHint").textContent, true);
+        else button.click();
+      } else if (activeDocument() && /\.(md|html|csv|tsv)$/i.test(activeDocument().path)) {
+        openViewerForActiveDocument();
       } else {
-        button.click();
+        toast($("#renderDocumentHint").textContent, true);
       }
     },
   };
@@ -13970,6 +14307,7 @@ async function hydrateProject(response) {
   state.selectedArtifactId = null;
   state.selectedArtifactDetail = null;
   state.selectedPlotId = null;
+  state.viewer = { ...state.viewer, open: false, busy: false, path: null, content: "", sourceContent: "", error: null, notice: null };
   $("#artifactPanel").open = false;
   state.documents = {};
   state.closedDrafts = {};
@@ -14685,6 +15023,16 @@ $("#renderShowPlotsButton").addEventListener("click", () => {
   if (!state.lastRender?.sourcePath) return;
   switchDockTab("plots");
 });
+$("#viewerClose").addEventListener("click", closeViewer);
+$("#viewerOpenSource").addEventListener("click", async () => {
+  if (state.viewer.sourcePath) await openDocument(state.viewer.sourcePath);
+});
+$$('[data-viewer-mode]').forEach((button) => button.addEventListener("click", () => {
+  state.viewer.mode = button.dataset.viewerMode;
+  renderViewer();
+}));
+$("#plotOpenViewerButton").addEventListener("click", openSelectedOutputInViewer);
+$("#artifactOpenViewerButton").addEventListener("click", openSelectedOutputInViewer);
 $("#plotsShortcut").addEventListener("click", () => switchDockTab("plots"));
 $("#artifactsShortcut").addEventListener("click", () => {
   switchDockTab("plots");

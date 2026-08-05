@@ -4,13 +4,14 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 pub const PROJECT_FILES_CHANGED_EVENT: &str = "project://files-changed";
 pub const MAX_EDITABLE_FILE_BYTES: u64 = 8 * 1024 * 1024;
+pub const MAX_VIEWER_FILE_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_PROJECT_FILES: usize = 2_000;
 pub const MAX_PROJECT_ENTRIES: usize = 10_000;
 pub const MAX_PROJECT_DEPTH: usize = 8;
@@ -20,6 +21,16 @@ pub struct ProjectFile {
     pub path: String,
     pub name: String,
     pub kind: &'static str,
+    pub size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ViewerFile {
+    pub contract: &'static str,
+    pub project_root: String,
+    pub path: String,
+    pub media_type: &'static str,
+    pub content: String,
     pub size_bytes: u64,
 }
 
@@ -421,6 +432,38 @@ pub fn project_path(root: &Path, relative: &str) -> Result<PathBuf> {
     Ok(normalized)
 }
 
+pub fn read_viewer_file(root: &Path, relative: &str) -> Result<ViewerFile> {
+    let file = project_path(root, relative)?;
+    ensure!(file.is_file(), "Viewer file does not exist: {relative}");
+    let extension = file
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let media_type = match extension.as_str() {
+        "html" => "text/html",
+        "md" => "text/markdown",
+        "csv" => "text/csv",
+        "tsv" => "text/tab-separated-values",
+        _ => bail!("Preview is not available for this file: {relative}"),
+    };
+    let size_bytes = file.metadata()?.len();
+    ensure!(
+        size_bytes <= MAX_VIEWER_FILE_BYTES,
+        "Viewer file is too large: {size_bytes} bytes (limit: {MAX_VIEWER_FILE_BYTES} bytes)"
+    );
+    let content = std::fs::read_to_string(&file)
+        .with_context(|| format!("Viewer file is not valid UTF-8: {relative}"))?;
+    Ok(ViewerFile {
+        contract: "rho.viewer_file.v1",
+        project_root: display_path(root),
+        path: relative_project_path(root, &file)?,
+        media_type,
+        content,
+        size_bytes,
+    })
+}
+
 pub fn ensure_editable_file(path: &Path) -> Result<()> {
     let file_name = path
         .file_name()
@@ -672,6 +715,85 @@ mod tests {
         let file = directory.path().join("figure.png");
         std::fs::write(&file, [0_u8, 1, 2]).unwrap();
         assert!(ensure_editable_file(&file).is_err());
+    }
+
+    #[test]
+    fn viewer_file_reads_supported_utf8_types_with_exact_media() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let fixtures = [
+            ("report.html", "text/html", "<h1>Report</h1>"),
+            ("notes.md", "text/markdown", "# Notes"),
+            ("table.csv", "text/csv", "sample,value\nA,1"),
+            (
+                "table.tsv",
+                "text/tab-separated-values",
+                "sample\tvalue\nA\t1",
+            ),
+        ];
+
+        for (path, media_type, content) in fixtures {
+            std::fs::write(root.join(path), content).unwrap();
+            let viewed = read_viewer_file(&root, path).unwrap();
+            assert_eq!(viewed.contract, "rho.viewer_file.v1");
+            assert_eq!(viewed.project_root, display_path(&root));
+            assert_eq!(viewed.path, path);
+            assert_eq!(viewed.media_type, media_type);
+            assert_eq!(viewed.content, content);
+            assert_eq!(viewed.size_bytes, content.len() as u64);
+        }
+    }
+
+    #[test]
+    fn viewer_file_rejects_escape_missing_unsupported_and_invalid_utf8() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().join("project");
+        std::fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        std::fs::write(root.join("analysis.R"), "value <- 1").unwrap();
+        std::fs::write(root.join("invalid.md"), [0xff, 0xfe]).unwrap();
+
+        assert!(read_viewer_file(&root, "../outside.html").is_err());
+        assert!(read_viewer_file(&root, "missing.html").is_err());
+        assert!(read_viewer_file(&root, "analysis.R").is_err());
+        assert!(read_viewer_file(&root, "invalid.md").is_err());
+        assert!(read_viewer_file(&root, ".").is_err());
+    }
+
+    #[test]
+    fn viewer_file_enforces_byte_boundary() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let boundary = root.join("boundary.md");
+        let oversized = root.join("oversized.md");
+        std::fs::write(&boundary, vec![b'x'; MAX_VIEWER_FILE_BYTES as usize]).unwrap();
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_VIEWER_FILE_BYTES + 1).unwrap();
+
+        assert_eq!(
+            read_viewer_file(&root, "boundary.md").unwrap().size_bytes,
+            MAX_VIEWER_FILE_BYTES
+        );
+        assert!(read_viewer_file(&root, "oversized.md").is_err());
+    }
+
+    #[test]
+    fn viewer_file_keeps_identical_paths_project_scoped() {
+        let directory = TempDir::new().unwrap();
+        let project_a = directory.path().join("project-a");
+        let project_b = directory.path().join("project-b");
+        std::fs::create_dir_all(&project_a).unwrap();
+        std::fs::create_dir_all(&project_b).unwrap();
+        std::fs::write(project_a.join("report.html"), "project A").unwrap();
+        std::fs::write(project_b.join("report.html"), "project B").unwrap();
+        let project_a = project_a.canonicalize().unwrap();
+        let project_b = project_b.canonicalize().unwrap();
+
+        let viewed_a = read_viewer_file(&project_a, "report.html").unwrap();
+        let viewed_b = read_viewer_file(&project_b, "report.html").unwrap();
+        assert_eq!(viewed_a.content, "project A");
+        assert_eq!(viewed_b.content, "project B");
+        assert_ne!(viewed_a.project_root, viewed_b.project_root);
     }
 
     #[test]

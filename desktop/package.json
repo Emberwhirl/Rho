@@ -4,9 +4,13 @@
   "version": "0.4.0-dev.0",
   "description": "Static frontend asset tooling for Rho desktop",
   "scripts": {
-    "sync-monaco": "node ../scripts/sync-monaco-assets.mjs"
+    "sync-monaco": "node ../scripts/sync-monaco-assets.mjs",
+    "sync-viewer": "node ../scripts/sync-viewer-assets.mjs"
   },
   "dependencies": {
-    "monaco-editor": "0.55.1"
+    "dompurify": "3.4.13",
+    "marked": "18.0.9",
+    "monaco-editor": "0.55.1",
+    "papaparse": "5.5.4"
   }
 }

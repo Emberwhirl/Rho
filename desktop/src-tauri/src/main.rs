@@ -26,8 +26,8 @@ use project::{
     ProjectSwitchBlocker, ProjectSwitchBlockerKind, ProjectWatcherControl, atomic_write,
     atomic_write_new, default_project_root, display_path, ensure_editable_content_size,
     ensure_editable_file, ensure_editable_file_size, list_project_files,
-    normalize_existing_project_root, project_path, relative_project_path, start_project_watcher,
-    validate_project_root,
+    normalize_existing_project_root, project_path, read_viewer_file, relative_project_path,
+    start_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
 use rho_kernel::{ArkLaunchConfig, ArkSession};
@@ -830,6 +830,15 @@ async fn project_read_file(path: String, state: State<'_, AppState>) -> Result<V
     ensure_editable_file_size(&file).map_err(display_error)?;
     let content = std::fs::read_to_string(&file).map_err(display_error)?;
     Ok(json!({"path": path, "content": content}))
+}
+
+#[tauri::command]
+async fn viewer_read_file(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<project::ViewerFile, String> {
+    let root = state.project_root.read().await.clone();
+    read_viewer_file(&root, &path).map_err(display_error)
 }
 
 #[tauri::command]
@@ -6356,6 +6365,7 @@ fn main() {
             project_restore_session,
             project_save_session,
             project_read_file,
+            viewer_read_file,
             project_write_file,
             project_create_file,
             project_delete_file,

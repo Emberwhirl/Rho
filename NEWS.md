@@ -8,6 +8,10 @@ this file records behavior that is already available in a released build.
 
 ### Improved
 
+- The bottom Plots surface is now Outputs, with a central Viewer for Markdown
+  previews, self-contained interactive HTML/htmlwidgets, rendered HTML
+  Artifacts, static plots, and bounded CSV/TSV tables. HTML runs in an isolated
+  sandbox and blocked external resources are reported explicitly.
 - The workbench now uses five focused File, Edit, Run, View, and Help menus.
   Duplicate Agent and Environment navigation is removed; document execution,
   rendering, session control, surface focus, panel reset, truthful disabled
