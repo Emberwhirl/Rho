@@ -1,7 +1,8 @@
 # System Credential And Simple LLM Settings
 
 Status: active; authorized by the project owner on 2026-08-05; the separately
-owned macOS Keychain adapter is authorized in MAC3 on 2026-08-05
+owned macOS Keychain adapter was implemented and verified in MAC3 on
+2026-08-05; Windows installed acceptance remains open
 
 Change class: D3 credential boundary and cross-process execution configuration
 
@@ -28,9 +29,11 @@ Let a user configure an LLM with only information they normally know:
 - API key when the provider requires one;
 - a custom endpoint only when using a compatible provider.
 
-Rho stores API keys in Windows Credential Manager. Normal settings do not ask
-the user to edit an environment file or understand provider IDs, environment
-variable names, wire protocols, capability sources, or stream options.
+Rho stores API keys in Windows Credential Manager. The separately owned macOS
+adapter stores them in Apple Keychain with the same semantics. Normal settings
+do not ask the user to edit an environment file or understand provider IDs,
+environment variable names, wire protocols, capability sources, or stream
+options.
 
 ## Security And Ownership
 
@@ -79,13 +82,13 @@ Windows uses the operating-system credential store. Other operating systems
 retain `.Renviron` compatibility and report system storage unavailable in this
 Windows-focused work package.
 
-The separately active macOS arm64 specification has authorized Apple Keychain
-behind this same credential abstraction in its MAC3 package. Until MAC3 is
-implemented and verified, non-Windows system storage remains unavailable. The
-extension must preserve this document's stable provider IDs, precedence,
-redaction, Agent-only injection, failure behavior, and compatibility fallback;
-it does not authorize project-scoped credentials, sync, OAuth, key export, or
-new credential state. This document retains the credential semantics; the
+The separately active macOS arm64 specification implemented Apple Keychain
+behind this same credential abstraction in its MAC3 package. The extension
+preserves this document's stable provider IDs, precedence, redaction,
+Agent-only injection, failure behavior, and compatibility fallback; it does
+not authorize project-scoped credentials, sync, OAuth, key export, or new
+credential state. Unsupported non-Windows platforms still report system
+storage unavailable. This document retains the credential semantics; the
 macOS specification owns only the Apple Keychain adapter and macOS acceptance.
 
 `run_agent` and the connection-test path resolve the credential immediately
@@ -218,3 +221,25 @@ Installed-app verification of real Credential Manager persistence,
 replacement, deletion/cancel/failure behavior, `.Renviron` upgrade/fallback,
 uninstall retention, no-console flash, and Windows display scale is `NOT RUN`.
 The document remains active and no release-readiness claim is made.
+
+## macOS Keychain Extension Evidence — 2026-08-05
+
+MAC3 added keyring 4.1.6's Apple-native `v1` backend only for the macOS target.
+The Windows production backend and unsupported-platform failure projection are
+unchanged. The macOS adapter retains service `Rho Agent LLM`, stable provider
+profile accounts, the 16 KiB bound, stored-over-environment precedence,
+Agent-only child injection, presentation redaction, and metadata/credential
+rollback.
+
+Default automated coverage continues to use injected stores and passed the
+complete set/get/replace/delete, missing-delete, provider-isolation,
+validation, failure, rollback, fallback, precedence, injection, and redaction
+matrix. A separately invoked ignored test used a unique MAC3 service/account
+and dummy values to prove native Keychain set/get/replace/delete plus final
+cleanup; it reported one passed test. The unsigned development app opened the
+model-settings surface and projected credential source/status without exposing
+or entering a secret. No provider-network request was made.
+
+This evidence closes only the MAC3 macOS adapter gate. Real Windows Credential
+Manager installed acceptance remains `NOT RUN`, and unsigned development-app
+evidence does not make a release candidate ready.

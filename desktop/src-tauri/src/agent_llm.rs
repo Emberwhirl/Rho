@@ -48,50 +48,70 @@ impl CredentialStore for SystemCredentialStore {
 }
 
 #[cfg(windows)]
-fn system_credential_entry(provider_id: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(CREDENTIAL_SERVICE, provider_id)
-        .context("opening the Windows credential store")
+const SYSTEM_CREDENTIAL_STORE_LABEL: &str = "Windows Credential Manager";
+#[cfg(target_os = "macos")]
+const SYSTEM_CREDENTIAL_STORE_LABEL: &str = "macOS Keychain";
+
+#[cfg(any(windows, target_os = "macos"))]
+fn system_credential_entry_for_service(service: &str, provider_id: &str) -> Result<keyring::Entry> {
+    keyring::Entry::new(service, provider_id)
+        .with_context(|| format!("opening {SYSTEM_CREDENTIAL_STORE_LABEL}"))
 }
 
-#[cfg(windows)]
-fn system_credential_get(provider_id: &str) -> Result<Option<String>> {
-    match system_credential_entry(provider_id)?.get_password() {
+#[cfg(any(windows, target_os = "macos"))]
+fn keyring_credential_get(service: &str, provider_id: &str) -> Result<Option<String>> {
+    match system_credential_entry_for_service(service, provider_id)?.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(anyhow::anyhow!(
-            "reading the Windows credential store: {error}"
+            "reading {SYSTEM_CREDENTIAL_STORE_LABEL}: {error}"
         )),
     }
 }
 
-#[cfg(windows)]
-fn system_credential_set(provider_id: &str, credential: &str) -> Result<()> {
-    system_credential_entry(provider_id)?
+#[cfg(any(windows, target_os = "macos"))]
+fn keyring_credential_set(service: &str, provider_id: &str, credential: &str) -> Result<()> {
+    system_credential_entry_for_service(service, provider_id)?
         .set_password(credential)
-        .context("saving the API key in Windows Credential Manager")
+        .with_context(|| format!("saving the API key in {SYSTEM_CREDENTIAL_STORE_LABEL}"))
 }
 
-#[cfg(windows)]
-fn system_credential_delete(provider_id: &str) -> Result<()> {
-    match system_credential_entry(provider_id)?.delete_credential() {
+#[cfg(any(windows, target_os = "macos"))]
+fn keyring_credential_delete(service: &str, provider_id: &str) -> Result<()> {
+    match system_credential_entry_for_service(service, provider_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(anyhow::anyhow!(
-            "deleting the API key from Windows Credential Manager: {error}"
+            "deleting the API key from {SYSTEM_CREDENTIAL_STORE_LABEL}: {error}"
         )),
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(any(windows, target_os = "macos"))]
+fn system_credential_get(provider_id: &str) -> Result<Option<String>> {
+    keyring_credential_get(CREDENTIAL_SERVICE, provider_id)
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn system_credential_set(provider_id: &str, credential: &str) -> Result<()> {
+    keyring_credential_set(CREDENTIAL_SERVICE, provider_id, credential)
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn system_credential_delete(provider_id: &str) -> Result<()> {
+    keyring_credential_delete(CREDENTIAL_SERVICE, provider_id)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_credential_get(_provider_id: &str) -> Result<Option<String>> {
     bail!("System credential storage is unavailable on this platform.")
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_credential_set(_provider_id: &str, _credential: &str) -> Result<()> {
     bail!("System credential storage is unavailable on this platform.")
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_credential_delete(_provider_id: &str) -> Result<()> {
     bail!("System credential storage is unavailable on this platform.")
 }
@@ -1560,6 +1580,53 @@ mod tests {
             self.entries.lock().unwrap().remove(provider_id);
             Ok(())
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    struct NativeKeychainCleanup {
+        service: String,
+        account: String,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Drop for NativeKeychainCleanup {
+        fn drop(&mut self) {
+            if let Ok(entry) = keyring::Entry::new(&self.service, &self.account) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "opt-in MAC3 smoke touches a unique disposable macOS Keychain entry"]
+    fn macos_native_keychain_set_get_replace_delete_and_cleanup() {
+        let identifier = uuid::Uuid::new_v4().to_string();
+        let service = format!("Rho MAC3 Keychain Test {identifier}");
+        let account = format!("provider-mac3-{identifier}");
+        let _cleanup = NativeKeychainCleanup {
+            service: service.clone(),
+            account: account.clone(),
+        };
+
+        assert_eq!(keyring_credential_get(&service, &account).unwrap(), None);
+        keyring_credential_set(&service, &account, "mac3-disposable-first").unwrap();
+        assert_eq!(
+            keyring_credential_get(&service, &account)
+                .unwrap()
+                .as_deref(),
+            Some("mac3-disposable-first")
+        );
+        keyring_credential_set(&service, &account, "mac3-disposable-replacement").unwrap();
+        assert_eq!(
+            keyring_credential_get(&service, &account)
+                .unwrap()
+                .as_deref(),
+            Some("mac3-disposable-replacement")
+        );
+        keyring_credential_delete(&service, &account).unwrap();
+        keyring_credential_delete(&service, &account).unwrap();
+        assert_eq!(keyring_credential_get(&service, &account).unwrap(), None);
     }
 
     #[test]

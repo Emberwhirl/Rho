@@ -15,6 +15,13 @@ struct CommandSpec {
     arguments: Vec<OsString>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RscriptSelectionSpec {
+    display_name: &'static str,
+    picker_title: &'static str,
+    picker_extension: Option<&'static str>,
+}
+
 fn current_platform() -> DesktopPlatform {
     if cfg!(target_os = "windows") {
         DesktopPlatform::Windows
@@ -23,6 +30,33 @@ fn current_platform() -> DesktopPlatform {
     } else {
         DesktopPlatform::Linux
     }
+}
+
+fn rscript_selection_spec(platform: DesktopPlatform) -> RscriptSelectionSpec {
+    match platform {
+        DesktopPlatform::Windows => RscriptSelectionSpec {
+            display_name: "Rscript.exe",
+            picker_title: "Choose Rscript.exe",
+            picker_extension: Some("exe"),
+        },
+        DesktopPlatform::Macos | DesktopPlatform::Linux => RscriptSelectionSpec {
+            display_name: "Rscript",
+            picker_title: "Choose Rscript",
+            picker_extension: None,
+        },
+    }
+}
+
+pub fn rscript_display_name() -> &'static str {
+    rscript_selection_spec(current_platform()).display_name
+}
+
+pub fn rscript_picker_title() -> &'static str {
+    rscript_selection_spec(current_platform()).picker_title
+}
+
+pub fn rscript_picker_extension() -> Option<&'static str> {
+    rscript_selection_spec(current_platform()).picker_extension
 }
 
 fn open_url_spec(platform: DesktopPlatform, url: &str) -> CommandSpec {
@@ -164,6 +198,28 @@ mod tests {
                 arguments: vec!["/select,".into(), path.into_os_string()],
             }
         );
+    }
+
+    #[test]
+    fn rscript_selection_copy_and_filters_are_platform_correct() {
+        assert_eq!(
+            rscript_selection_spec(DesktopPlatform::Windows),
+            RscriptSelectionSpec {
+                display_name: "Rscript.exe",
+                picker_title: "Choose Rscript.exe",
+                picker_extension: Some("exe"),
+            }
+        );
+        for platform in [DesktopPlatform::Macos, DesktopPlatform::Linux] {
+            assert_eq!(
+                rscript_selection_spec(platform),
+                RscriptSelectionSpec {
+                    display_name: "Rscript",
+                    picker_title: "Choose Rscript",
+                    picker_extension: None,
+                }
+            );
+        }
     }
 
     #[test]

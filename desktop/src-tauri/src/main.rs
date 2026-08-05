@@ -649,7 +649,10 @@ async fn bootstrap_runtime(state: &AppState, selected: Option<PathBuf>) -> Start
                     "probing_base_r",
                     StartupSeverity::Recoverable,
                     "Rho could not check R",
-                    "Retry the check or choose Rscript.exe manually.",
+                    &format!(
+                        "Retry the check or choose {} manually.",
+                        platform::rscript_display_name()
+                    ),
                     detail,
                     startup_recovery_actions(),
                 )),
@@ -669,11 +672,11 @@ async fn startup_bootstrap(state: State<'_, AppState>) -> Result<StartupView, St
 
 #[tauri::command]
 async fn startup_choose_rscript(state: State<'_, AppState>) -> Result<StartupView, String> {
-    let Some(path) = rfd::FileDialog::new()
-        .set_title("Choose Rscript.exe")
-        .add_filter("Rscript", &["exe"])
-        .pick_file()
-    else {
+    let mut dialog = rfd::FileDialog::new().set_title(platform::rscript_picker_title());
+    if let Some(extension) = platform::rscript_picker_extension() {
+        dialog = dialog.add_filter("Rscript", &[extension]);
+    }
+    let Some(path) = dialog.pick_file() else {
         return Ok(current_startup_view(&state));
     };
     Ok(bootstrap_runtime(&state, Some(path)).await)
@@ -5002,91 +5005,107 @@ fn startup_issue(
 }
 
 fn classify_startup_error(detail: &str) -> StartupIssue {
-    let (code, phase, title, message, actions) = if detail.contains("bundled Ark executable") {
-        (
-            "ARK_RESOURCE_MISSING",
-            "checking_installation",
-            "Rho installation needs repair",
-            "The bundled Workspace R engine is missing. Reinstall Rho, then retry.",
-            vec![
-                "retry".to_string(),
-                "open_log".to_string(),
-                "exit".to_string(),
-            ],
-        )
-    } else if detail.contains("selected Rscript path") || detail.contains("RHO_RSCRIPT") {
-        (
-            "R_PATH_INVALID",
-            "locating_r",
-            "The selected R installation is unavailable",
-            "Choose Rscript.exe from an R 4.4 or later installation.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("R_ARCH_MISMATCH") {
-        (
-            "R_ARCH_MISMATCH",
-            "probing_base_r",
-            "This R architecture is not supported",
-            "Rho for Apple Silicon requires an arm64 R 4.4 or later installation.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("Rscript was not found")
-        || detail.contains("Rscript.exe was not found")
-    {
-        (
-            "R_NOT_FOUND",
-            "locating_r",
-            "R was not found",
-            "Rho requires R 4.4 or later. Install R or choose Rscript.exe manually.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("requires R 4.4") {
-        (
-            "R_VERSION_UNSUPPORTED",
-            "probing_base_r",
-            "This R version is not supported",
-            "Choose an R 4.4 or later installation, then retry.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("timed_out=true") {
-        (
-            "R_PROBE_TIMED_OUT",
-            "probing_base_r",
-            "R took too long to start",
-            "Retry the runtime check or choose another Rscript.exe.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("R runtime probe failed") {
-        (
-            "R_PROBE_EXITED",
-            "probing_base_r",
-            "R could not complete its runtime check",
-            "Your R installation was not changed. Retry or choose another Rscript.exe.",
-            startup_recovery_actions(),
-        )
-    } else if detail.contains("absent from runtime probe") {
-        (
-            "R_PROBE_OUTPUT_INVALID",
-            "probing_base_r",
-            "R returned an incomplete runtime result",
-            "Retry the runtime check and copy diagnostics if it continues.",
-            startup_recovery_actions(),
-        )
-    } else {
-        (
-            "R_PROBE_SPAWN_FAILED",
-            "probing_base_r",
-            "Rho could not prepare the R runtime",
-            "Retry the check or choose Rscript.exe manually.",
-            startup_recovery_actions(),
-        )
-    };
+    let (code, phase, title, message, actions): (&str, &str, &str, String, Vec<String>) =
+        if detail.contains("bundled Ark executable") {
+            (
+                "ARK_RESOURCE_MISSING",
+                "checking_installation",
+                "Rho installation needs repair",
+                "The bundled Workspace R engine is missing. Reinstall Rho, then retry.".to_string(),
+                vec![
+                    "retry".to_string(),
+                    "open_log".to_string(),
+                    "exit".to_string(),
+                ],
+            )
+        } else if detail.contains("selected Rscript path") || detail.contains("RHO_RSCRIPT") {
+            (
+                "R_PATH_INVALID",
+                "locating_r",
+                "The selected R installation is unavailable",
+                format!(
+                    "Choose {} from an R 4.4 or later installation.",
+                    platform::rscript_display_name()
+                ),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("R_ARCH_MISMATCH") {
+            (
+                "R_ARCH_MISMATCH",
+                "probing_base_r",
+                "This R architecture is not supported",
+                "Rho for Apple Silicon requires an arm64 R 4.4 or later installation.".to_string(),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("Rscript was not found")
+            || detail.contains("Rscript.exe was not found")
+        {
+            (
+                "R_NOT_FOUND",
+                "locating_r",
+                "R was not found",
+                format!(
+                    "Rho requires R 4.4 or later. Install R or choose {} manually.",
+                    platform::rscript_display_name()
+                ),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("requires R 4.4") {
+            (
+                "R_VERSION_UNSUPPORTED",
+                "probing_base_r",
+                "This R version is not supported",
+                "Choose an R 4.4 or later installation, then retry.".to_string(),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("timed_out=true") {
+            (
+                "R_PROBE_TIMED_OUT",
+                "probing_base_r",
+                "R took too long to start",
+                format!(
+                    "Retry the runtime check or choose another {}.",
+                    platform::rscript_display_name()
+                ),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("R runtime probe failed") {
+            (
+                "R_PROBE_EXITED",
+                "probing_base_r",
+                "R could not complete its runtime check",
+                format!(
+                    "Your R installation was not changed. Retry or choose another {}.",
+                    platform::rscript_display_name()
+                ),
+                startup_recovery_actions(),
+            )
+        } else if detail.contains("absent from runtime probe") {
+            (
+                "R_PROBE_OUTPUT_INVALID",
+                "probing_base_r",
+                "R returned an incomplete runtime result",
+                "Retry the runtime check and copy diagnostics if it continues.".to_string(),
+                startup_recovery_actions(),
+            )
+        } else {
+            (
+                "R_PROBE_SPAWN_FAILED",
+                "probing_base_r",
+                "Rho could not prepare the R runtime",
+                format!(
+                    "Retry the check or choose {} manually.",
+                    platform::rscript_display_name()
+                ),
+                startup_recovery_actions(),
+            )
+        };
     startup_issue(
         code,
         phase,
         StartupSeverity::Recoverable,
         title,
-        message,
+        &message,
         detail.to_string(),
         actions,
     )
@@ -5109,6 +5128,7 @@ mod tests {
         safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
         switch_project_with_watcher_factory, workspace_project_root_code, write_r_probe_script,
     };
+    use crate::platform;
 
     use crate::project::{
         ProjectSessionSnapshot, ProjectSessionStore, ProjectSwitchBlockerKind,
@@ -6149,6 +6169,22 @@ mod tests {
         assert_eq!(issue.code, "R_ARCH_MISMATCH");
         assert_eq!(issue.phase, "probing_base_r");
         assert!(issue.actions.contains(&"choose_rscript".to_string()));
+    }
+
+    #[test]
+    fn startup_recovery_copy_uses_the_platform_rscript_name() {
+        for detail in [
+            "selected Rscript path does not point to a file",
+            "Rscript was not found",
+            "R runtime probe failed (exit_code=Some(1), timed_out=false): stdout= stderr=",
+            "unclassified runtime failure",
+        ] {
+            let issue = classify_startup_error(detail);
+            assert!(issue.message.contains(platform::rscript_display_name()));
+            if !cfg!(windows) {
+                assert!(!issue.message.contains("Rscript.exe"));
+            }
+        }
     }
 
     #[test]

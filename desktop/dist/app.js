@@ -2,6 +2,21 @@ const tauriInvoke = window.__TAURI__?.core?.invoke;
 const isDesktop = typeof tauriInvoke === "function";
 const tauriEvent = window.__TAURI__?.event;
 const previewParams = new URLSearchParams(window.location.search);
+const mockPlatformFixture = previewParams.get("platform") === "macos-aarch64"
+  ? {
+      platform: "macos-aarch64",
+      rscript: "/Library/Frameworks/R.framework/Resources/bin/Rscript",
+      logPath: "/Users/researcher/Library/Logs/Rho/startup.log",
+      projectRoot: "/Users/researcher/Documents/Rho Mac 研究",
+      alternateProjectRoot: "/Users/researcher/Documents/Rho Demo",
+    }
+  : {
+      platform: "windows-x86_64",
+      rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+      logPath: "C:/Users/example/AppData/Local/Rho/logs/startup.log",
+      projectRoot: "D:/Rho",
+      alternateProjectRoot: "D:/Rho-demo",
+    };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -185,7 +200,7 @@ function stringValues(value) {
 }
 
 const mockProjects = {
-  "D:/Rho": {
+  [mockPlatformFixture.projectRoot]: {
     files: [
       { path: "analysis.R", name: "analysis.R", kind: "source", size_bytes: 120 },
       { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
@@ -209,7 +224,7 @@ const mockProjects = {
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
     },
   },
-  "D:/Rho-demo": {
+  [mockPlatformFixture.alternateProjectRoot]: {
     files: [
       { path: "demo.R", name: "demo.R", kind: "source", size_bytes: 64 },
     ],
@@ -368,7 +383,7 @@ async function confirmAction({ title, message, confirmLabel, cancelLabel, destru
   return result === true;
 }
 
-let mockLastProject = "D:/Rho";
+let mockLastProject = mockPlatformFixture.projectRoot;
 const mockProjectSessions = {};
 let mockRunSequence = 0;
 const mockRuns = [];
@@ -1048,14 +1063,14 @@ function mockOutputAbsolutePath(projectRoot, outputPath) {
 }
 
 function mockFileAvailable(projectRoot, outputPath) {
-  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
   return Object.prototype.hasOwnProperty.call(project.contents || {}, outputPath);
 }
 
 function mockUpsertProjectFile(projectRoot, path, content, options = {}) {
   const { trackInTree = true, kind = "source" } = options;
   const normalized = validateProjectRelativePath(path);
-  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
   project.contents[normalized] = content;
   if (!trackInTree) return normalized;
   const size = typeof content === "string" ? content.length : 0;
@@ -1185,7 +1200,7 @@ function mockProblemList() {
 }
 
 function mockProjectState(root = mockLastProject) {
-  const project = mockProjects[root] || mockProjects["D:/Rho"];
+  const project = mockProjects[root] || mockProjects[mockPlatformFixture.projectRoot];
   return { root, files: project.files.map((file) => ({ ...file })), truncated: false };
 }
 
@@ -1608,11 +1623,11 @@ async function mockInvoke(command, args) {
       version: "0.4.0-dev.0",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
-      platform: "windows-x86_64",
+      platform: mockPlatformFixture.platform,
       website_url: "https://yulab-smu.top/Rho/",
       source_url: "https://github.com/YuLab-SMU/Rho",
       runtime: {
-        rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+        rscript: mockPlatformFixture.rscript,
         r_version: "R version 4.6.0",
         agent_available: true,
         aisdk_version: "1.5.0",
@@ -1636,7 +1651,7 @@ async function mockInvoke(command, args) {
       phase: "runtime_ready",
       busy: false,
       runtime: {
-        rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+        rscript: mockPlatformFixture.rscript,
         r_version: "R version 4.6.0",
         agent_runtime: { available: true, aisdk_version: "1.5.0", error: null },
       },
@@ -1644,7 +1659,7 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "startup_diagnostics") return "Rho mock startup diagnostics";
-  if (command === "startup_open_log_directory") return { path: "C:/Users/example/AppData/Local/Rho/logs/startup.log" };
+  if (command === "startup_open_log_directory") return { path: mockPlatformFixture.logPath };
   if (command === "agent_runtime_retry") return { available: true, aisdk_version: "1.5.0", error: null };
   if (command === "workspace_start") {
     return {
@@ -1692,7 +1707,7 @@ async function mockInvoke(command, args) {
     return structuredClone(state.revision);
   }
   if (command === "project_read_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     return { path: args.path, content: project.contents[args.path] || "" };
   }
   if (command === "viewer_read_file") {
@@ -1708,14 +1723,14 @@ async function mockInvoke(command, args) {
     return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content: samples[extension], size_bytes: samples[extension].length };
   }
   if (command === "project_write_file" || command === "project_create_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     mockUpsertProjectFile(mockLastProject, args.path, args.content || "", { trackInTree: true, kind: "source" });
     state.revision.project_revision += 1;
     updateIdentity(state.revision);
     return mockInvoke("project_state", {});
   }
   if (command === "project_delete_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     delete project.contents[args.path];
     project.files = project.files.filter((file) => file.path !== args.path);
     state.revision.project_revision += 1;
@@ -3898,9 +3913,9 @@ async function initializeEditor() {
       contextMenuGroupId: "1_modification",
       run: () => requestFormatDocument(),
     });
-    // Ctrl+Click on a word
+    // Ctrl+Click on Windows/Linux or Command+Click on macOS.
     state.editor.editor.onMouseDown((e) => {
-      if (e.event.ctrlKey && e.target.type === 6 /* CONTENT_WORD */) {
+      if ((e.event.ctrlKey || e.event.metaKey) && e.target.type === 6 /* CONTENT_WORD */) {
         gotoDefinitionAtCursor();
       }
     });
@@ -14745,12 +14760,12 @@ window.addEventListener("beforeunload", () => {
   flushSessionSnapshot().catch(() => {});
 });
 $("#editor").addEventListener("keydown", (event) => {
-  if (event.ctrlKey && event.shiftKey && event.key === "Enter") {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "Enter") {
     event.preventDefault();
     runActiveFile();
     return;
   }
-  if (event.ctrlKey && event.key === "Enter") {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     runSelectionOrCurrentLine();
     return;

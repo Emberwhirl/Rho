@@ -4,9 +4,10 @@ Status: active; full direction authorized by the project owner on 2026-08-05;
 MAC1 implementation, automated verification, and independent contract review
 complete on 2026-08-05; MAC2 implementation, automated verification, arm64
 debug-app runtime acceptance, and separate contract review complete on
-2026-08-05; MAC3 entry review complete and explicitly authorized on
-2026-08-05; MAC3 implementation has not started; MAC4-MAC5 remain proposed and
-unauthorized
+2026-08-05; MAC3 implementation, affected automated verification, isolated
+native-Keychain smoke, unsigned arm64 development-app workflow acceptance, and
+separate contract review complete on 2026-08-05; the MAC3 mandatory stop is
+reached; MAC4-MAC5 remain proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -30,8 +31,9 @@ reported, the project owner requested "激活后续步骤" on 2026-08-05. Per th
 one-package governance rule, this activated MAC2 only. After the MAC2
 checkpoint was committed and its evidence reported, the project owner
 requested "激活 MAC3" on 2026-08-05. This activates MAC3 only after the entry
-review recorded below. MAC4 and MAC5 still require their own entry-condition
-review and recorded authorization amendment before product-code work starts.
+review recorded below. The project owner then confirmed "允许开始 MAC3 实现和验收"
+on 2026-08-05. MAC4 and MAC5 still require their own entry-condition review and
+recorded authorization amendment before product-code work starts.
 
 Mandatory stop: complete MAC3's Apple Keychain, native integration, frontend
 parity, baseline-repair, browser/mock, and installed development-app workflow
@@ -564,3 +566,110 @@ unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
 MAC2 stop is reached. MAC3 was subsequently entry-reviewed and activated by
 the authorization recorded above; MAC4-MAC5 remain inactive until their own
 entry review and authorization record.
+
+## MAC3 Implementation Evidence — 2026-08-05
+
+Implementation present:
+
+- macOS now enables keyring 4.1.6 with its Apple-native `v1` backend behind the
+  existing credential-store abstraction. Production retains service
+  `Rho Agent LLM`, stable provider-profile accounts, the 16 KiB bound,
+  stored-over-environment precedence, Agent-only injection, redacted views,
+  rollback behavior, and unchanged Windows production selection. No Keychain
+  entitlement, access group, migration, project credential, or second store
+  was added.
+- the opt-in macOS Keychain test uses a unique service/account and cleanup
+  guard to prove set, get, replace, delete, idempotent missing delete, and a
+  final missing read without using a provider credential. Default tests still
+  use injected memory/failure stores.
+- R selection dialogs and recovery copy now use platform-owned `Rscript` or
+  `Rscript.exe` names and filters. The existing no-shell open/reveal adapter
+  remains the only native navigation authority.
+- the basic editor accepts Command+Enter and Command+Shift+Enter, Monaco
+  definition navigation accepts Command-click, and existing Ctrl behavior is
+  retained. Browser mode uses only an explicit `platform=macos-aarch64`
+  fixture; unknown or absent fixtures remain Windows and no navigator field is
+  consulted.
+- the three bounded bridge gates are repaired without changing their owners:
+  lint test paths compare canonical roots; local lockfile labels resolve the
+  nearest existing ancestor and reject `..`, sibling-prefix, absolute, and
+  symlink escapes while retaining missing/Unicode paths inside the project;
+  portable fixture provenance is checked independently from the developer's
+  installed Bioconductor package versions.
+
+Automated verification passed:
+
+- `cargo fmt --all -- --check` and `cargo check -p rho-desktop`;
+- `cargo test --workspace --no-fail-fast`; the desktop binary reported 121
+  passed and one intentionally ignored native-Keychain test, and every other
+  workspace unit and documentation test passed;
+- the exact ignored native-Keychain test run reported one passed test and
+  verified its cleanup-bound final missing read;
+- `testthat::test_local('r/rho.agent')` reported 45 passed expectations and
+  `testthat::test_local('r/rho.bridge')` reported 514 passed expectations; its
+  focused workspace run reported 324 passed expectations;
+- `node --check desktop/dist/app.js` and all 32 `scripts/test-*.mjs` suites,
+  including the editor-shortcut and deterministic macOS-platform suites;
+- Tauri CLI 2.11.4 `--debug --bundles app --target
+  aarch64-apple-darwin --no-sign` produced `Rho.app`; `file` and `lipo`
+  reported an arm64 Mach-O desktop executable linked to Apple's Security and
+  WebKit frameworks;
+- the standard `Rho.app` executable, with `RHO_RSCRIPT` unset, passed the
+  complete bundled smoke including Workspace execution, Plot, Environment,
+  Viewer, stale rejection, two-project isolation, interrupt, restart, crash
+  recovery, and durable events;
+- `git diff --check`.
+
+Unsigned development-app acceptance passed with an acceptance-only product
+name and bundle identifier so existing Rho application state was not reused.
+The same built code opened a temporary Git project whose name contained spaces
+and Unicode, displayed its canonical `/private/var` root, and excluded a
+project symlink targeting outside the root. The installed UI then demonstrated:
+
+- Workspace R 4.5.2 startup and `getwd()` at the canonical project root;
+- explicit Quarto discovery at `/usr/local/bin/quarto` with version 1.8.27 and
+  a truthful `Quarto ready` Environment projection;
+- a Console-created data frame and Plot, Environment object projection,
+  Outputs preview, Logs, and a zero-state Problems panel;
+- creation and immediate file-tree observation of
+  `mac3-watcher-研究.R`, Git projection as one untracked working change, and
+  Command+Enter execution returning `42`;
+- the Agent/model-settings surface's presentation-safe system-store wording
+  and existing environment-source projection without displaying, entering, or
+  transmitting a credential; no provider-network request was made;
+- Workspace R restart from the UI followed by a return to `R idle`; the exact
+  bundle smoke separately covered interrupt and crash recovery.
+
+After the app quit, no process command referenced the acceptance bundle or its
+Ark child. The isolated project, application support, cache, and preferences
+were moved to Trash under explicit MAC3 acceptance names; existing Rho state
+and an unrelated already-running Ark session were left untouched.
+
+Separate contract review found no blocking ownership or scope deviation. The
+implementation changes no public protocol, persistence schema, project or
+approval authority, Workspace/Agent process ownership, update feed, signing,
+release workflow, application/R-package version, or `NEWS.md`. The bridge
+source change is the bounded WS1-L2 containment conformance repair authorized
+at entry, and its exported package contract is unchanged. Cargo lockfile
+content did not change because the Apple keyring transitive packages were
+already resolved.
+
+Explicitly open or not accepted:
+
+- only `aarch64-apple-darwin` is installed locally, so Windows compilation,
+  Windows installed regression, and NSIS packaging were not run. Static
+  Windows platform, frontend fallback, and credential-selection regressions
+  passed; this is not equivalent to a Windows runner.
+- Command-click definition behavior is covered deterministically in frontend
+  automation but was not claimed as a separate mouse-level manual result.
+- no real provider-network Agent smoke was run and no real provider credential
+  was written during UI acceptance; credential semantics are covered by
+  injected tests and the isolated native-Keychain smoke.
+- the development app was unsigned and is not a DMG, exact candidate,
+  notarized artifact, quarantined clean install, upgrade/uninstall test, update
+  publication, or public release.
+
+Version outcome: application remains `0.4.0-dev.0`, R package versions are
+unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
+MAC3 stop is reached. MAC4-MAC5 remain inactive until their own entry review
+and explicit authorization are recorded.
