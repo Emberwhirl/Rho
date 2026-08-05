@@ -2,8 +2,8 @@
 
 Status: active
 
-Date: 2026-08-01
-Current baseline: `0.3.0-dev.11`
+Date: 2026-08-05
+Current baseline: `0.4.0-dev.0`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -146,6 +146,14 @@ Acceptance gate:
 ### M3: Cross-platform beta (`0.4.x`)
 
 Priority: after the Windows contract is stable.
+
+Active implementation contract:
+[`plans/active-2026-08-05-macos-arm64-support-spec.md`](../plans/active-2026-08-05-macos-arm64-support-spec.md).
+The project owner authorized the complete Apple Silicon direction on
+2026-08-05. MAC1 implementation and macOS automated verification are present;
+Windows CI and installed acceptance remain open, and MAC2-MAC5 are not
+authorized. This stream delivers macOS arm64 first; macOS x64 and Linux x64
+remain required before the full M3 acceptance gate can close.
 
 Deliverables:
 

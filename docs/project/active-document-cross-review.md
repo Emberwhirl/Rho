@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-04
+Review date: 2026-08-05
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 Manual acceptance ownership: the runnable example workflow and candidate-level
@@ -41,6 +41,7 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1 implementation, macOS automated verification, and independent contract review complete 2026-08-05; Windows CI/installed acceptance open | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | mandatory MAC1 stop reached; MAC2-MAC5 each require a separately recorded entry review and authorization |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -370,6 +371,37 @@ The active release checklist is the sole GO/NO-GO authority for the exact
 own Pages and installed-app gates. It cannot be included in, block, or validate
 that candidate retroactively; inclusion requires a revised candidate and new
 affected evidence.
+
+The macOS arm64 specification does not amend or reuse the exact
+`0.2.0-dev.12` release contract. Its future `0.4.0-dev.1` publication requires
+a new D4 active release checklist. Until MAC4 is separately authorized, the
+existing Windows publication workflow and update-site contract remain the only
+implemented release path.
+
+### macOS arm64 platform ownership
+
+The M3 roadmap retains full cross-platform milestone authority. The active
+macOS specification owns only the Apple Silicon implementation stream; it may
+record a macOS-arm64 sub-gate but cannot close M3 while macOS x64 and Linux x64
+remain open.
+
+The accepted About/update design retains endpoint, channel, allowlist, SemVer,
+fetch, size, timeout, and user-initiated-install policy. The macOS specification
+may add one optional schema-v1 artifact only after MAC4 authorization and a
+two-way amendment of that design. It cannot make updater installation or a
+draft release authoritative.
+
+The active system-credential specification retains stable provider IDs,
+redaction, precedence, Agent-only injection, and failure semantics. Its
+Windows-only production backend remains unchanged through MAC1-MAC2. MAC3 may
+add Apple Keychain behind the same abstraction and tests; it may not introduce
+project credentials, sync, OAuth, key export, or new credential state.
+
+BH1/BH2 retain canonical project identity, containment, switching, and recovery
+authority. MAC1 may select a platform-appropriate default directory only before
+the existing normalization and validation boundary. Jet and the current Ark
+session retain process-launch and watchdog authority; the macOS stream may add
+only the bounded fallback cleanup named in its active contract.
 
 ### aisdk family work
 

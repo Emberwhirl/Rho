@@ -78,6 +78,13 @@ Windows uses the operating-system credential store. Other operating systems
 retain `.Renviron` compatibility and report system storage unavailable in this
 Windows-focused work package.
 
+The separately active macOS arm64 specification may add Apple Keychain behind
+this same credential abstraction in its MAC3 package. Until MAC3 is explicitly
+authorized and verified, non-Windows system storage remains unavailable. The
+extension must preserve this document's stable provider IDs, precedence,
+redaction, Agent-only injection, failure behavior, and compatibility fallback;
+it does not authorize project-scoped credentials, sync, OAuth, or key export.
+
 `run_agent` and the connection-test path resolve the credential immediately
 before process launch. The existing non-secret runtime profile remains the
 stdin contract. The secret is an environment override on the child process,

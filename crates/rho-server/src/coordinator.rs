@@ -240,9 +240,9 @@ pub struct ProjectSkillSummary {
     pub references: Vec<String>,
 }
 
-fn hide_console_window(command: &mut tokio::process::Command) {
+fn hide_console_window(_command: &mut tokio::process::Command) {
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    _command.creation_flags(0x0800_0000);
 }
 
 #[derive(Debug, Clone)]

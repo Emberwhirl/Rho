@@ -362,13 +362,24 @@ pub fn start_project_watcher(app: AppHandle, root: PathBuf) -> Result<ProjectWat
 }
 
 pub fn default_project_root() -> PathBuf {
-    let development = PathBuf::from(r"D:\Rho");
-    if development.is_dir() {
-        return development;
+    #[cfg(windows)]
+    let development = Some(Path::new(r"D:\Rho"));
+    #[cfg(not(windows))]
+    let development = None;
+
+    #[cfg(windows)]
+    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
+    #[cfg(not(windows))]
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+
+    default_project_root_from(development, home)
+}
+
+fn default_project_root_from(development: Option<&Path>, home: Option<PathBuf>) -> PathBuf {
+    if let Some(development) = development.filter(|path| path.is_dir()) {
+        return development.to_path_buf();
     }
-    std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+    home.unwrap_or_else(|| PathBuf::from("."))
         .join("Documents")
         .join("Rho")
 }
@@ -688,6 +699,33 @@ pub fn display_path(path: &Path) -> String {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn default_project_root_prefers_an_existing_development_root() {
+        let directory = TempDir::new().unwrap();
+        let home = directory.path().join("home");
+        assert_eq!(
+            default_project_root_from(Some(directory.path()), Some(home)),
+            directory.path()
+        );
+    }
+
+    #[test]
+    fn default_project_root_uses_unicode_home_without_requiring_it_to_exist() {
+        let home = PathBuf::from("/Users/研究者/Rho Home");
+        assert_eq!(
+            default_project_root_from(None, Some(home.clone())),
+            home.join("Documents").join("Rho")
+        );
+    }
+
+    #[test]
+    fn default_project_root_has_a_relative_recovery_when_home_is_missing() {
+        assert_eq!(
+            default_project_root_from(None, None),
+            PathBuf::from(".").join("Documents").join("Rho")
+        );
+    }
 
     #[test]
     fn project_paths_stay_inside_root() {

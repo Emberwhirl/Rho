@@ -3,6 +3,7 @@
 mod agent_llm;
 mod git;
 mod git_review;
+mod platform;
 mod project;
 mod update;
 
@@ -552,8 +553,7 @@ async fn check_for_updates() -> Result<UpdateCheckResult, String> {
 #[tauri::command]
 async fn open_rho_website(url: String) -> Result<(), String> {
     update::validate_product_url(&url).map_err(display_error)?;
-    let mut command = Command::new("explorer.exe");
-    command.arg(&url);
+    let mut command = platform::open_url_command(&url);
     hide_console_window(&mut command);
     command.spawn().map_err(display_error)?;
     Ok(())
@@ -690,8 +690,8 @@ async fn startup_diagnostics(state: State<'_, AppState>) -> Result<String, Strin
 #[tauri::command]
 async fn startup_open_log_directory() -> Result<Value, String> {
     let path = startup_log_path();
-    let mut command = Command::new("explorer.exe");
-    command.arg("/select,").arg(&path);
+    let mut command = platform::reveal_path_command(&path);
+    hide_console_window(&mut command);
     command
         .spawn()
         .map_err(|error| format!("Could not open the startup log directory: {error}"))?;
@@ -4663,11 +4663,11 @@ async fn clear_agent_history(state: State<'_, AppState>) -> Result<Value, String
     Ok(json!({"deleted": deleted}))
 }
 
-fn hide_console_window(command: &mut Command) {
+fn hide_console_window(_command: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        _command.creation_flags(0x0800_0000);
     }
 }
 
@@ -5930,7 +5930,11 @@ mod tests {
         let outside = outside_dir.path().join("outside.R");
         std::fs::write(&outside, "outside <- TRUE").unwrap();
         let link = root.join("link-outside.R");
-        if let Err(error) = std::os::windows::fs::symlink_file(&outside, &link) {
+        #[cfg(windows)]
+        let symlink_result = std::os::windows::fs::symlink_file(&outside, &link);
+        #[cfg(unix)]
+        let symlink_result = std::os::unix::fs::symlink(&outside, &link);
+        if let Err(error) = symlink_result {
             if error.raw_os_error() == Some(1314) {
                 return;
             }

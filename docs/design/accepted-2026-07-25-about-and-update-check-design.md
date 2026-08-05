@@ -129,7 +129,9 @@ V1 does not include:
 - a domestic object-storage or CDN mirror;
 - fallback mirrors or download-speed selection;
 - delta updates;
-- macOS or Linux packages;
+- macOS or Linux packages in the accepted Windows V1 implementation; the
+  separately active macOS arm64 contract may add one compatible discovery
+  artifact only after its MAC4 package is authorized;
 - an in-application release-notes browser;
 - user-selected update channels or skipped-version preferences.
 
@@ -137,6 +139,16 @@ Because the V1 installer URL still resolves to GitHub Release infrastructure,
 V1 improves release discovery for domestic users but does not guarantee that
 the installer itself is reachable. That limitation must be stated on the
 release page and in release acceptance records.
+
+### 3.3 Authorized macOS extension boundary
+
+The active macOS arm64 specification may extend schema version 1 with an
+optional `artifacts.macos_aarch64` entry using the existing artifact field
+shape and validation policy. It does not change channels, endpoints, SemVer,
+fetch limits, allowlists, user-initiated installation, or the prohibition on
+automatic update execution. This extension remains unimplemented and
+unauthorized until MAC4 is activated, and it requires a new exact-candidate D4
+contract rather than an amendment to the `0.2.0-dev.12` release evidence.
 
 ## 4. User Experience
 
