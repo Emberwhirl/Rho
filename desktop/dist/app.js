@@ -3595,7 +3595,9 @@ function renderViewer() {
   $("#viewerMeta").textContent = viewer.open ? [viewerTypeLabel(viewer.kind, viewer.mediaType), viewer.path || ""].filter(Boolean).join(" · ") : "";
   $("#viewerSourcePath").textContent = viewer.sourcePath || viewer.path || "";
   $("#viewerSourceContent").textContent = viewer.sourceContent || viewer.content || "";
-  $("#viewerOpenSource").disabled = !viewer.sourcePath;
+  const sourceIsActiveDocument = Boolean(viewer.sourcePath && viewer.sourcePath === state.activeDocument);
+  $("#viewerOpenSource").classList.toggle("hidden", !viewer.sourcePath || sourceIsActiveDocument);
+  $("#viewerOpenSource").disabled = !viewer.sourcePath || sourceIsActiveDocument;
   for (const button of $$('[data-viewer-mode]')) {
     const selected = button.dataset.viewerMode === viewer.mode;
     button.setAttribute("aria-pressed", String(selected));
@@ -15129,7 +15131,10 @@ $("#renderShowPlotsButton").addEventListener("click", () => {
 });
 $("#viewerClose").addEventListener("click", closeViewer);
 $("#viewerOpenSource").addEventListener("click", async () => {
-  if (state.viewer.sourcePath) await openDocument(state.viewer.sourcePath);
+  if (state.viewer.sourcePath) {
+    await openDocument(state.viewer.sourcePath);
+    closeViewer();
+  }
 });
 $$('[data-viewer-mode]').forEach((button) => button.addEventListener("click", () => {
   state.viewer.mode = button.dataset.viewerMode;

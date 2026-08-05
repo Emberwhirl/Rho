@@ -33,6 +33,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Viewer no longer shows a redundant `Open Source` action when the source is
+  already the active editor document; artifact sources still open in the
+  editor and close the Viewer as expected.
 - Render status now converges to `Done` when the exact completed render
   Artifact is available, even if the asynchronous job status briefly lags
   behind the generated HTML output.
