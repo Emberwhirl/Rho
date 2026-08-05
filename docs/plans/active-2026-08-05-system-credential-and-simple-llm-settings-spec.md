@@ -1,6 +1,7 @@
 # System Credential And Simple LLM Settings
 
-Status: active; authorized by the project owner on 2026-08-05
+Status: active; authorized by the project owner on 2026-08-05; the separately
+owned macOS Keychain adapter is authorized in MAC3 on 2026-08-05
 
 Change class: D3 credential boundary and cross-process execution configuration
 
@@ -78,12 +79,14 @@ Windows uses the operating-system credential store. Other operating systems
 retain `.Renviron` compatibility and report system storage unavailable in this
 Windows-focused work package.
 
-The separately active macOS arm64 specification may add Apple Keychain behind
-this same credential abstraction in its MAC3 package. Until MAC3 is explicitly
-authorized and verified, non-Windows system storage remains unavailable. The
+The separately active macOS arm64 specification has authorized Apple Keychain
+behind this same credential abstraction in its MAC3 package. Until MAC3 is
+implemented and verified, non-Windows system storage remains unavailable. The
 extension must preserve this document's stable provider IDs, precedence,
 redaction, Agent-only injection, failure behavior, and compatibility fallback;
-it does not authorize project-scoped credentials, sync, OAuth, or key export.
+it does not authorize project-scoped credentials, sync, OAuth, key export, or
+new credential state. This document retains the credential semantics; the
+macOS specification owns only the Apple Keychain adapter and macOS acceptance.
 
 `run_agent` and the connection-test path resolve the credential immediately
 before process launch. The existing non-secret runtime profile remains the

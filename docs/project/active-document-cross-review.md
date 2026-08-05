@@ -41,7 +41,7 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC2 implementation/review complete; unsigned arm64 debug-app runtime acceptance passed; Windows CI/release-candidate acceptance open | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | MAC2 mandatory stop reached; its R-package baseline observations gate MAC3 workflow validation; MAC3-MAC5 each require a separately recorded entry review and authorization |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC2 implementation/review complete; unsigned arm64 debug-app runtime acceptance passed; MAC3 entry-reviewed and authorized 2026-08-05 but not implemented; Windows CI/release-candidate acceptance open | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, and signed DMG handoff | MAC3 may proceed within its bounded Keychain/UI/mock/baseline-repair/installed-development-app contract; MAC4-MAC5 each require a separately recorded entry review and authorization |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -393,9 +393,25 @@ draft release authoritative.
 
 The active system-credential specification retains stable provider IDs,
 redaction, precedence, Agent-only injection, and failure semantics. Its
-Windows-only production backend remains unchanged through MAC1-MAC2. MAC3 may
-add Apple Keychain behind the same abstraction and tests; it may not introduce
-project credentials, sync, OAuth, key export, or new credential state.
+Windows production backend remains unchanged. Authorized MAC3 may add Apple
+Keychain behind the same abstraction and tests; the macOS specification owns
+that adapter and its installed acceptance while the credential specification
+retains shared semantics. MAC3 may not introduce project credentials, sync,
+OAuth, key export, or new credential state.
+
+UX-KEYS-1 retains the common command router, input/dialog ownership, and editor
+action semantics; accepted WS2 retains definition lookup/navigation. MAC3 may
+add only the macOS Command gesture adapters and deterministic platform fixture,
+with existing Ctrl behavior preserved. The fixture is browser/mock test state,
+not a second runtime platform authority.
+
+WS1-L2 retains package-source normalization and project-containment ownership.
+The MAC2-observed escaped local-source failure contradicts its already active
+"provably inside" contract, so MAC3 may repair that implementation deviation
+and add regression cases without widening file or navigation authority. The
+`/private/var` temporary-directory alias and installed-Bioconductor version
+comparisons are test-portability repairs only and do not redefine Lint, Viewer,
+fixture, package, or scientific behavior.
 
 BH1/BH2 retain canonical project identity, containment, switching, and recovery
 authority. MAC1 may select a platform-appropriate default directory only before

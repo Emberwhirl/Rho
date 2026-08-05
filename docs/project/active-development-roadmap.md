@@ -152,11 +152,13 @@ Active implementation contract:
 The project owner authorized the complete Apple Silicon direction on
 2026-08-05. MAC1 and MAC2 implementation, macOS automated verification, and
 the unsigned arm64 debug-app Ark/R runtime smoke are present; Windows CI and
-release-candidate installed acceptance remain open. MAC3-MAC5 remain
-unauthorized. The additional macOS R-package baseline observations recorded by
-MAC2 are an explicit MAC3 workflow-validation gate. This stream delivers macOS
-arm64 first; macOS x64 and Linux x64 remain required before the full M3
-acceptance gate can close.
+release-candidate installed acceptance remain open. MAC3 entry review is
+complete and MAC3 alone was explicitly authorized on 2026-08-05; implementation
+has not started. MAC4-MAC5 remain unauthorized. The additional macOS R-package
+baseline observations recorded by MAC2 are explicit MAC3 workflow-validation
+gates, classified as two portability repairs plus one WS1-L2 containment
+conformance repair. This stream delivers macOS arm64 first; macOS x64 and Linux
+x64 remain required before the full M3 acceptance gate can close.
 
 Deliverables:
 

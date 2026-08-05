@@ -4,7 +4,9 @@ Status: active; full direction authorized by the project owner on 2026-08-05;
 MAC1 implementation, automated verification, and independent contract review
 complete on 2026-08-05; MAC2 implementation, automated verification, arm64
 debug-app runtime acceptance, and separate contract review complete on
-2026-08-05; MAC3-MAC5 remain proposed and unauthorized
+2026-08-05; MAC3 entry review complete and explicitly authorized on
+2026-08-05; MAC3 implementation has not started; MAC4-MAC5 remain proposed and
+unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -25,14 +27,18 @@ Authorization evidence: after reviewing a decision-complete implementation
 plan, the project owner requested "Implement the plan" on 2026-08-05. This
 activated MAC1. After the MAC1 implementation checkpoint and evidence were
 reported, the project owner requested "激活后续步骤" on 2026-08-05. Per the
-one-package governance rule, this activates MAC2 only. Every later package
-still requires entry-condition review and a recorded authorization amendment
-before product-code work starts.
+one-package governance rule, this activated MAC2 only. After the MAC2
+checkpoint was committed and its evidence reported, the project owner
+requested "激活 MAC3" on 2026-08-05. This activates MAC3 only after the entry
+review recorded below. MAC4 and MAC5 still require their own entry-condition
+review and recorded authorization amendment before product-code work starts.
 
-Mandatory stop: complete MAC2's bundled Ark and arm64 R vertical slice,
-affected automated verification, runtime recovery evidence, independent
-contract review, and documentation reconciliation; then stop before Keychain,
-frontend/macOS integration, updater, signing, candidate, or publication work.
+Mandatory stop: complete MAC3's Apple Keychain, native integration, frontend
+parity, baseline-repair, browser/mock, and installed development-app workflow
+slice; run the affected verification matrix; record independent contract
+review and documentation reconciliation; then stop before update schema,
+signing/notarization, candidate version or NEWS changes, draft release, or
+publication work.
 
 ## Goal And Success Criteria
 
@@ -139,11 +145,13 @@ uses `HOME` only as a platform fallback before canonical project validation,
 and removes Windows executable names from macOS-facing picker and recovery
 copy. It does not change canonical project identity or containment rules.
 
-The existing keyring abstraction uses the Keyring 4 Apple native Keychain
-store on macOS. Stable provider IDs, precedence, size bounds, redaction,
-Agent-only injection, idempotent delete, and `.Renviron` compatibility remain
-unchanged. No Keychain entitlement or sharing group is added for the
-non-sandboxed direct-download app.
+The existing keyring abstraction uses Keyring 4.1.6's `v1` Apple native
+Keychain store on macOS. Stable provider IDs, precedence, size bounds,
+redaction, Agent-only injection, idempotent delete, and `.Renviron`
+compatibility remain unchanged. No Keychain entitlement or sharing group is
+added for the non-sandboxed direct-download app. Default automated tests use
+an injected credential store; a native Keychain smoke is explicit, isolated,
+and cleanup-bound so routine tests never alter a developer credential.
 
 The basic editor recognizes Command+Enter on macOS. Monaco uses Command for
 command-or-control actions and Command-click definition navigation. Windows
@@ -219,13 +227,77 @@ arm64 Ark with arm64 R 4.4+ and recover truthfully from missing Ark, checksum or
 architecture failure, missing/old/x86 R, interrupt, shutdown, and crash. Stop
 after MAC2 review even if MAC3 appears mechanically adjacent.
 
-### MAC3: System integration and UI parity — proposed
+### MAC3: System integration and UI parity — authorized 2026-08-05
 
-- activate Apple Keychain through the existing credential abstraction;
+Entry review:
+
+- MAC2 is committed as `8cb1a85`; its pinned Ark/R runtime, full Rust
+  workspace evidence, arm64 bundled-app smoke, baseline observations, version
+  decision, and NO-GO release status are recorded below. The worktree was
+  clean at MAC3 activation and contained no unrelated user changes.
+- Keyring 4.1.6 is already the Windows credential library. Its documented
+  `v1` feature selects Apple native Keychain Services on macOS; MAC3 may add a
+  macOS-target dependency and resulting target-specific lockfile entries, but
+  no second credential library, Tauri credential plugin, entitlement, access
+  group, shared vault, or secret migration.
+- The active system-credential contract retains service `Rho Agent LLM`,
+  stable provider-profile account IDs, the 16 KiB limit, stored-over-
+  `.Renviron` precedence, Agent-only child injection, presentation redaction,
+  replace/delete recovery, and unavailable/fallback truth. MAC3 changes only
+  the production macOS adapter and macOS acceptance evidence.
+- MAC1's allowlisted, no-shell `platform.rs` open/reveal adapter remains the
+  native navigation authority. MAC3 may make R picker titles, filters, paths,
+  and recovery copy platform-correct and exercise the existing adapter from
+  the UI; it may not add arbitrary shell, URL, directory, or file authority.
+- UX-KEYS-1 retains command routing and editor-action semantics; accepted WS2
+  retains definition lookup/navigation. MAC3 adds only Command equivalents to
+  the existing basic-editor execution and Monaco definition gestures while
+  retaining Windows Ctrl behavior. Platform state comes from the desktop
+  descriptor or an explicit mock query fixture, never `navigator.platform` or
+  the developer machine.
+- BH1/BH2 retain normalized project identity, containment, switching,
+  rollback, and two-project truth. Watcher, Git, Quarto, panel, and Agent work
+  in MAC3 are regression/installed-bundle validation of existing contracts,
+  not new workflow or execution authority.
+- MAC2's four `rho.bridge` observations are bounded entry gates. The macOS
+  `/private/var` alias requires canonical-path comparison in the test only.
+  The escaped local lockfile path is an implementation defect against the
+  active WS1-L2 requirement that detail be shown only when the source is
+  provably inside the project; its owner and behavior remain WS1-L2, and MAC3
+  may only restore that contract with regression coverage. Bioconductor
+  fixture provenance must be validated independently of the packages installed
+  on the test machine; fixture viewer semantics remain unchanged.
+- MAC3 is one R3 vertical slice. It may touch the target-specific Keychain
+  adapter, platform-facing runtime copy/dialog behavior, Command gestures,
+  explicit macOS mock fixture, the three bounded baseline repairs, focused
+  regression tests, and this package's evidence documents. It may not change
+  schema, project ownership, approval lanes, public protocol, runtime launch
+  authority, scientific semantics, update feeds, signing, versions, NEWS, or
+  release workflows.
+
+Implementation scope:
+
+- activate Apple Keychain through the existing credential abstraction, with
+  injected-store automated coverage and an opt-in cleanup-bound native smoke;
 - complete native open/dialog/log behavior and macOS recovery copy;
 - add Command shortcuts, Command-click, and deterministic macOS mock parity;
+- repair the three bounded cross-platform test/containment gates without
+  redefining their owning product contracts;
 - validate project paths, watching, Git, Quarto, panels, Agent, and
-  two-project isolation on an installed development app.
+  two-project isolation from an unsigned installed development app bundle.
+
+Exit gate: Keychain success, replacement, deletion, missing-delete,
+provider-isolation, backend-failure, rollback, precedence, Agent-only
+injection, redaction, and cleanup evidence pass without a real provider secret
+in automation. macOS labels, picker filters, recovery copy, safe open/reveal,
+Command gestures, and deterministic mock fixtures pass while Windows behavior
+remains covered. The complete affected Rust workspace, `rho.agent`,
+`rho.bridge`, frontend/mock, two-project, and platform regression matrix passes
+or every unavailable runner is recorded truthfully. A launched app bundle
+passes spaces/Unicode/symlink project paths, watching, Git, Quarto, panels,
+Agent credential projection, and recovery; it is not a signed candidate,
+clean-install, quarantine, update, or release acceptance. Stop after MAC3
+review even if MAC4 appears mechanically adjacent.
 
 ### MAC4: Signed candidate and additive update publication — proposed
 
@@ -283,15 +355,42 @@ prerelease withdrawn. Do not replace a same-version asset; use a new candidate.
 - Windows target/config regression is run in CI or explicitly recorded as
   unrun locally, never inferred from macOS results.
 
-### Later-package evidence
+### MAC3 focused evidence
+
+- injected credential-store tests cover success, replacement, deletion,
+  missing delete, provider isolation, validation, backend failure,
+  metadata/credential rollback, `.Renviron` fallback and precedence, Agent-only
+  process injection, and proof that secrets never enter persisted settings,
+  runtime profiles, command arguments, diagnostics, events, logs, or mock
+  responses;
+- an opt-in serial native-Keychain smoke uses a unique MAC3 service/account,
+  proves set/get/replace/delete, and verifies cleanup even on failure; it is
+  never part of default automation and never uses a real provider credential;
+- platform tests cover macOS R picker title/filter, missing/old/wrong-arch R
+  copy, safe product URL and log reveal, spaces/Unicode paths, missing HOME,
+  and unchanged Windows command selection/copy;
+- frontend tests cover basic-editor Command+Enter and Command+Shift+Enter,
+  Monaco Command-click, existing command-or-control shortcuts, Ctrl regression,
+  input/dialog ownership, and an explicit deterministic macOS mock fixture;
+- `rho.bridge` regressions cover canonical temporary-directory equality,
+  local-source containment including `..`, sibling-prefix, absolute, missing,
+  Unicode, and symlink cases, and fixture provenance checks independent of
+  locally installed Bioconductor versions;
+- the affected Rust workspace, both affected R packages, frontend/mock suites,
+  configuration/syntax checks, `git diff --check`, and available Windows
+  regression run before completion;
+- unsigned app-bundle acceptance exercises spaces, Unicode, symlinks, project
+  watching, supervised Git and Quarto discovery, editor/Console/Environment/
+  Viewer/Plots/Problems/Agent panels, two-project isolation, Keychain status,
+  interrupt/restart/failure recovery, and post-test Keychain/process cleanup.
+
+### MAC4-MAC5 evidence
 
 - R discovery precedence, persisted/invalid/missing R, R 4.3 rejection, arm64
   acceptance, x86 mismatch, Unicode/space paths, PATH bounds and no-shell
   execution;
 - Ark missing/checksum/architecture/bootstrap failures, sidecar lookup, smoke
   execution, interrupt/shutdown/crash recovery, and no orphan process group;
-- Keychain backend success, replace/delete/isolation/failure/redaction and
-  installed prompt behavior without real credentials in automated tests;
 - update compatibility fixtures for Windows-only and two-platform feeds,
   missing current artifact, malformed metadata, untrusted URL, and tampered
   checksum/evidence;
@@ -462,5 +561,6 @@ Explicitly open or not accepted:
 
 Version outcome: application remains `0.4.0-dev.0`, R package versions are
 unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
-MAC2 stop is reached; MAC3-MAC5 remain inactive until their separate entry
-review and authorization record.
+MAC2 stop is reached. MAC3 was subsequently entry-reviewed and activated by
+the authorization recorded above; MAC4-MAC5 remain inactive until their own
+entry review and authorization record.
