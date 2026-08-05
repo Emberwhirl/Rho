@@ -2228,7 +2228,7 @@ async function mockInvoke(command, args) {
           severity: "error",
           category: "evidence",
           summary: "No renv.lock found in project root.",
-          evidence: [{ kind: "file_path", path: "D:/mock-project/renv.lock", excerpt: "file not found" }],
+          evidence: [{ kind: "file_path", path: "renv.lock", excerpt: "file not found" }],
           limitations: []
         },
         {
@@ -9479,11 +9479,11 @@ async function maybeApplyPreviewScenario() {
           status: "findings",
           coverage: { files_scanned: 4, runs_considered: 2, artifacts_considered: 1 },
           findings: [{
-            category: "source",
+            category: "randomness",
             severity: "warning",
-            rule_id: "source.set-seed",
+            rule_id: "rho.repro.v1.randomness.rng_without_seed",
             summary: "Random analysis does not declare a seed.",
-            evidence: [{ kind: "file", path: "analysis.R" }],
+            evidence: [{ kind: "source_range", path: "analysis.R", line: 5, excerpt: "x <- rnorm(100)" }],
             limitations: [],
           }],
           truncated: false,
@@ -11802,6 +11802,7 @@ function switchContextTab(name) {
   $("#localHelpPanel").classList.toggle("hidden", name !== "help");
   $("#projectReferencesPanel").classList.toggle("hidden", name !== "references");
   $("#chunksPanel").classList.toggle("hidden", name !== "chunks");
+  $("#auditPanel").classList.add("hidden");
   if (name === "evidence") loadEvidenceEntries();
   if (name === "git") return loadGitStatus().then(() => loadGitReview());
   return Promise.resolve();
@@ -12049,86 +12050,235 @@ function renderAgentRunReview(content, run) {
   appendAgentReviewSection(timing, "Finished", run.finished_at ? formatTimestamp(run.finished_at) : "Not finished");
 }
 
+const AUDIT_STATUS_PRESENTATION = {
+  running: { label: "Checking", description: "Reviewing project files, runs, and saved outputs." },
+  complete: { label: "No issues found", description: "The available checks completed within the reviewed coverage." },
+  findings: { label: "Needs attention", description: "Some items may make this project harder to reproduce." },
+  incomplete: { label: "Check incomplete", description: "Some required files or records could not be reviewed." },
+  unavailable: { label: "Not available", description: "The project check is not available for this project." },
+  error: { label: "Check failed", description: "The project could not be checked. No conclusion was reached." },
+};
+
+const AUDIT_CATEGORY_LABELS = {
+  evidence: "Results and evidence",
+  portability: "Project portability",
+  randomness: "Randomness",
+  packages: "Package environment",
+  runs: "Run history",
+  other: "Other checks",
+};
+
+const AUDIT_RULE_PRESENTATION = {
+  "rho.repro.v1.evidence.run.env_snapshot_missing": ["Environment was not recorded", "A run has no saved record of the R and package environment used.", "Rerun important work after confirming the project environment."],
+  "rho.repro.v1.evidence.run.source_revision_missing": ["Source version was not recorded", "A run is not linked to the saved source version that produced it.", "Open the related run and confirm which code was executed."],
+  "rho.repro.v1.evidence.artifact.producing_run_missing": ["Saved output has no producing run", "A saved output is not linked to the run that created it.", "Regenerate the output from a recorded run when provenance matters."],
+  "rho.repro.v1.evidence.artifact.provenance_incomplete": ["Saved output has incomplete history", "A saved output is missing source or environment information.", "Review the output and regenerate it from the current project if needed."],
+  "rho.repro.v1.evidence.artifact.file_missing": ["Saved output file is missing", "The output remains in project history, but its file is no longer available.", "Restore the file or regenerate the output."],
+  "rho.repro.v1.evidence.env.snapshot_incomplete": ["Environment record is incomplete", "A recorded environment does not contain all information needed for review.", "Refresh the project environment evidence before sharing results."],
+  "rho.repro.v1.evidence.env.lockfile_drift": ["Package lockfile has changed", "The recorded environment no longer matches the project lockfile.", "Review Environment and update or restore the lockfile intentionally."],
+  "rho.repro.v1.evidence.env.lockfile_missing": ["Package lockfile is missing", "The project has no renv.lock file to record package versions.", "Initialize renv when the project needs a reproducible package environment."],
+  "rho.repro.v1.portability.absolute_path.windows": ["Windows-specific path", "Source code refers to a location tied to one Windows machine.", "Use a project-relative path or a configurable input location."],
+  "rho.repro.v1.portability.absolute_path.posix": ["System-specific path", "Source code refers to an absolute location that may not exist elsewhere.", "Use a project-relative path or a configurable input location."],
+  "rho.repro.v1.portability.home_path.literal": ["Home-folder path", "Source code depends on a file under one user's home folder.", "Move the input into the project or make its location configurable."],
+  "rho.repro.v1.portability.setwd.literal": ["Working directory changed in code", "The analysis changes its working directory to a fixed location.", "Open the intended Rho project and use project-relative paths."],
+  "rho.repro.v1.randomness.rng_without_seed": ["Random result may change", "Random-number generation was found without a nearby fixed seed.", "Set a deliberate seed before the random analysis when repeatability matters."],
+  "rho.repro.v1.packages.not_recorded": ["Package is not in the environment record", "Source code uses a package that is absent from the recorded environment.", "Refresh Environment and record the package dependency."],
+  "rho.repro.v1.packages.installed_not_locked": ["Installed package is not locked", "A package is available now but is not recorded in renv.lock.", "Review and snapshot the intended package environment."],
+  "rho.repro.v1.packages.locked_not_installed": ["Locked package is not installed", "renv.lock expects a package that is unavailable in the current environment.", "Review Environment and restore the lockfile deliberately."],
+  "rho.repro.v1.packages.version_drift": ["Package versions differ", "The installed package version differs from the locked version.", "Choose whether to restore or update the project environment."],
+  "rho.repro.v1.runs.failed": ["A run failed", "A recorded analysis ended with an error.", "Open the related run, review the error, and rerun only after correcting it."],
+  "rho.repro.v1.runs.cancelled": ["A run was cancelled", "A recorded analysis was cancelled before completion.", "Confirm whether a completed replacement run is needed."],
+  "rho.repro.v1.runs.interrupted": ["A run was interrupted", "A recorded analysis stopped before completion.", "Confirm whether a completed replacement run is needed."],
+  "rho.repro.v1.runs.artifact_incomplete_run": ["Output came from an incomplete run", "A saved output is linked to a run that did not complete successfully.", "Review the output carefully and regenerate it from a successful run."],
+};
+
+function auditStatusPresentation(status) {
+  return AUDIT_STATUS_PRESENTATION[status] || { label: "Review needed", description: "The project check returned an unfamiliar state." };
+}
+
+function auditCategoryLabel(category) {
+  return AUDIT_CATEGORY_LABELS[category] || AUDIT_CATEGORY_LABELS.other;
+}
+
+function auditFindingPresentation(finding) {
+  const [title, description, nextStep] = AUDIT_RULE_PRESENTATION[finding?.rule_id] || [
+    "Review needed",
+    "A project check found something that may affect reproducibility.",
+    "Review the linked source or record before relying on this result.",
+  ];
+  return { title, description, nextStep };
+}
+
+function auditRelativePath(path) {
+  const shown = displayPath(path);
+  const root = displayPath(state.project.root).replace(/\/+$/, "");
+  if (root && shown.toLowerCase().startsWith(`${root.toLowerCase()}/`)) return shown.slice(root.length + 1);
+  return shown;
+}
+
+function auditEvidenceLabel(item) {
+  const path = auditRelativePath(String(item.path || ""));
+  if (item.kind === "source_range") return path ? `Open ${path}${item.line ? `:${item.line}` : ""}` : "Source location";
+  if (item.kind === "file_path") return path ? `File: ${path}` : "Project file";
+  if (item.kind === "artifact_id") return path ? `Saved output: ${path}` : "Saved output";
+  if (item.kind === "run_id") {
+    const run = state.runs.find((candidate) => candidate.run_id === item.run_id);
+    return run ? `Run: ${humanRunTitle(run)}` : "Related run";
+  }
+  if (item.kind === "snapshot_id") return "Environment record";
+  return path ? `Evidence: ${path}` : "Supporting evidence";
+}
+
+async function openAuditSourceEvidence(path, item) {
+  await openDocument(path);
+  if (state.activeDocument !== path || !item.line) return;
+  const line = Math.max(1, Number(item.line) || 1);
+  const column = Math.max(1, Number(item.column) || 1);
+  if (state.editor.mode === "monaco" && state.editor.editor) {
+    const model = state.editor.editor.getModel();
+    const boundedLine = Math.min(line, model?.getLineCount() || line);
+    const boundedColumn = Math.min(column, model?.getLineMaxColumn(boundedLine) || column);
+    state.editor.editor.revealLineInCenter(boundedLine);
+    state.editor.editor.setPosition({ lineNumber: boundedLine, column: boundedColumn });
+    state.editor.editor.focus();
+    return;
+  }
+  const editor = fallbackEditor();
+  const lines = editor.value.split("\n");
+  const boundedLine = Math.min(line, lines.length);
+  const offset = lines.slice(0, boundedLine - 1).reduce((total, value) => total + value.length + 1, 0)
+    + Math.min(column - 1, lines[boundedLine - 1]?.length || 0);
+  editor.setSelectionRange(offset, offset);
+  editor.focus();
+}
+
 function appendAuditEvidence(container, evidence) {
   const evidenceRow = document.createElement("div");
-  evidenceRow.className = "agent-audit-evidence";
+  evidenceRow.className = "audit-evidence-links";
   for (const item of evidence || []) {
-    const path = String(item.path || "");
-    const label = `${item.kind || "evidence"}: ${displayPath(path) || item.excerpt || "available"}`;
-    const canOpen = path && state.project.files.some((file) => file.path === path);
-    const element = document.createElement(canOpen ? "button" : "span");
-    if (canOpen) {
+    const path = auditRelativePath(String(item.path || ""));
+    const canOpenPath = path && state.project.files.some((file) => file.path.replace(/\\/g, "/") === path.replace(/\\/g, "/"));
+    const canOpenRun = item.kind === "run_id" && state.posture === "agent" && state.runs.some((run) => run.run_id === item.run_id);
+    const element = document.createElement(canOpenPath || canOpenRun ? "button" : "span");
+    if (canOpenPath) {
       element.type = "button";
-      element.setAttribute("aria-label", `Open audit evidence ${displayPath(path)}`);
-      element.addEventListener("click", () => openDocument(path));
+      element.setAttribute("aria-label", `Open project check evidence ${path}`);
+      element.addEventListener("click", () => openAuditSourceEvidence(path, item));
+    } else if (canOpenRun) {
+      element.type = "button";
+      element.addEventListener("click", () => {
+        state.agentReviewRunId = item.run_id;
+        openAgentWorkSurface("run");
+      });
     }
-    element.textContent = label;
+    element.textContent = auditEvidenceLabel(item);
     evidenceRow.append(element);
+    if (item.kind === "source_range" && item.excerpt) {
+      const excerpt = document.createElement("code");
+      excerpt.className = "audit-evidence-excerpt";
+      excerpt.textContent = item.excerpt;
+      evidenceRow.append(excerpt);
+    } else if (item.kind === "run_id" && item.excerpt) {
+      const excerpt = document.createElement("span");
+      excerpt.className = "audit-evidence-note";
+      excerpt.textContent = `Error: ${item.excerpt}`;
+      evidenceRow.append(excerpt);
+    }
   }
   if (evidenceRow.childElementCount) container.append(evidenceRow);
+}
+
+function createAuditFindingCard(finding) {
+  const presentation = auditFindingPresentation(finding);
+  const card = document.createElement("article");
+  card.className = `audit-finding-card severity-${finding.severity || "warning"}`;
+  const heading = document.createElement("div");
+  heading.className = "audit-finding-heading";
+  const title = document.createElement("strong");
+  title.textContent = presentation.title;
+  const severity = {
+    error: ["Important", "failed"],
+    warning: ["Review", "warning"],
+    info: ["Note", "neutral"],
+  }[finding.severity] || ["Review", "warning"];
+  heading.append(title, createStateChip(severity[0], severity[1]));
+  const description = document.createElement("p");
+  description.textContent = presentation.description;
+  const next = document.createElement("p");
+  next.className = "audit-next-step";
+  next.textContent = `Next: ${presentation.nextStep}`;
+  card.append(heading, description, next);
+  appendAuditEvidence(card, finding.evidence);
+  if (finding.limitations?.length) {
+    const limitation = document.createElement("p");
+    limitation.className = "audit-finding-limitation";
+    limitation.textContent = "Some supporting evidence could not be checked completely.";
+    card.append(limitation);
+  }
+  return card;
+}
+
+function appendAuditFindingGroups(container, findings) {
+  const groups = findings.reduce((all, finding) => {
+    const category = AUDIT_CATEGORY_LABELS[finding.category] ? finding.category : "other";
+    (all[category] ||= []).push(finding);
+    return all;
+  }, {});
+  for (const category of ["evidence", "portability", "randomness", "packages", "runs", "other"]) {
+    const items = groups[category] || [];
+    if (!items.length) continue;
+    const group = document.createElement("section");
+    group.className = "audit-finding-group";
+    const heading = document.createElement("h3");
+    heading.textContent = auditCategoryLabel(category);
+    const count = document.createElement("span");
+    count.textContent = String(items.length);
+    heading.append(count);
+    group.append(heading, ...items.map(createAuditFindingCard));
+    container.append(group);
+  }
+}
+
+function auditCountLabel(value, singular, plural = `${singular}s`) {
+  const count = Number(value) || 0;
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function auditCoverageText(coverage = {}) {
+  const reviewed = `Reviewed ${auditCountLabel(coverage.files_scanned, "file")}, ${auditCountLabel(coverage.runs_considered, "run")}, and ${auditCountLabel(coverage.artifacts_considered, "saved output")}.`;
+  if (!coverage.files_skipped) return reviewed;
+  return `${reviewed} ${auditCountLabel(coverage.files_skipped, "file")} could not be reviewed.`;
 }
 
 function renderAgentAuditWorkspace(content) {
   const result = state.auditResult;
   if (state.auditLoading) {
-    content.innerHTML = '<div class="agent-review-empty" role="status">Auditing project reproducibility...</div>';
+    content.innerHTML = '<div class="agent-review-empty" role="status">Checking project...</div>';
     return;
   }
   if (!result) {
-    content.innerHTML = '<div class="agent-review-empty">Run an audit to inspect deterministic findings.</div>';
+    content.innerHTML = '<div class="agent-review-empty">Check the project to review reproducibility risks.</div>';
     return;
   }
   const summary = document.createElement("div");
   summary.className = "agent-review-summary";
   const coverage = result.coverage || {};
-  appendAgentReviewSection(summary, "Status", result.status || "unknown");
-  appendAgentReviewSection(
-    summary,
-    "Coverage",
-    `Scanned ${coverage.files_scanned || 0} files, ${coverage.runs_considered || 0} runs, ${coverage.artifacts_considered || 0} saved outputs`,
-  );
-  if (result.truncated) appendAgentReviewSection(summary, "Limitations", (result.truncation_reasons || []).join("; ") || "Result is incomplete.");
+  const status = auditStatusPresentation(result.status);
+  appendAgentReviewSection(summary, "Result", status.label);
+  appendAgentReviewSection(summary, "What this means", status.description);
+  appendAgentReviewSection(summary, "Reviewed", auditCoverageText(coverage));
+  if (result.truncated) appendAgentReviewSection(summary, "Coverage limitation", "Some project information could not be reviewed, so this result is incomplete.");
   content.append(summary);
 
   const findings = result.findings || [];
   if (!findings.length) {
     const empty = document.createElement("div");
     empty.className = "agent-review-empty";
-    empty.textContent = result.status === "error" ? "The audit did not complete." : "No reproducibility findings.";
+    empty.textContent = result.status === "error" ? "The project check did not complete." : "No issues were found in the reviewed project information.";
     content.append(empty);
     return;
   }
-  const groups = Object.groupBy
-    ? Object.groupBy(findings, (finding) => finding.category || "other")
-    : findings.reduce((all, finding) => {
-      const category = finding.category || "other";
-      (all[category] ||= []).push(finding);
-      return all;
-    }, {});
-  for (const [category, items] of Object.entries(groups)) {
-    const group = document.createElement("section");
-    group.className = "agent-audit-group";
-    const heading = document.createElement("h3");
-    heading.textContent = `${category} (${items.length})`;
-    group.append(heading);
-    for (const finding of items) {
-      const card = document.createElement("article");
-      card.className = `agent-audit-finding severity-${finding.severity || "warning"}`;
-      const rule = document.createElement("strong");
-      rule.textContent = finding.rule_id || "Finding";
-      const summaryText = document.createElement("p");
-      summaryText.textContent = finding.summary || "No summary supplied.";
-      card.append(rule, summaryText);
-      appendAuditEvidence(card, finding.evidence);
-      if (finding.limitations?.length) {
-        const limitations = document.createElement("p");
-        limitations.textContent = `Limitations: ${finding.limitations.join(", ")}`;
-        card.append(limitations);
-      }
-      group.append(card);
-    }
-    content.append(group);
-  }
+  appendAuditFindingGroups(content, findings);
 }
 
 function renderAgentPlotWorkspace(content, plot) {
@@ -12191,10 +12341,10 @@ function renderAgentReviewWorkspace() {
   const kind = state.agentWorkSurface;
   const content = $("#agentReviewWorkspaceContent");
   content.replaceChildren();
-  $("#agentReviewKind").textContent = kind === "audit" ? "Audit" : kind === "plot" ? "Plot" : kind === "artifact" ? "Saved output" : "Run";
+  $("#agentReviewKind").textContent = kind === "audit" ? "Project check" : kind === "plot" ? "Plot" : kind === "artifact" ? "Saved output" : "Run";
 
   if (kind === "audit") {
-    $("#agentReviewWorkspaceTitle").textContent = "Reproducibility audit";
+    $("#agentReviewWorkspaceTitle").textContent = "Project reproducibility check";
     renderAgentAuditWorkspace(content);
     return;
   }
@@ -12548,12 +12698,22 @@ $("#agentOpenFileButton").addEventListener("click", () => {
 
 // ── Reproducibility Audit ──
 
+function openHumanProjectCheck() {
+  applyWorkbenchLayout("analyze");
+  $$('[data-context-tab]').forEach((button) => {
+    button.classList.remove("active");
+    button.setAttribute("aria-selected", "false");
+  });
+  $("#environmentPanel").classList.add("hidden");
+  $("#auditPanel").classList.remove("hidden");
+}
+
 $("#auditProjectButton").addEventListener("click", async () => {
   state.auditLoading = true;
   state.auditResult = null;
   if (state.posture === "agent") openAgentWorkSurface("audit");
+  else openHumanProjectCheck();
   renderAuditPanel();
-  if (state.posture !== "agent") $("#auditPanel").classList.remove("hidden");
   try {
     state.auditResult = await invoke("audit_reproducibility", { scope: "project" });
   } catch (e) {
@@ -12566,7 +12726,7 @@ $("#auditProjectButton").addEventListener("click", async () => {
 
 $("#auditCloseButton").addEventListener("click", () => {
   if (state.posture === "agent") closeAgentWorkSurface();
-  else $("#auditPanel").classList.add("hidden");
+  else switchContextTab("environment");
 });
 
 async function lintCurrentFile() {
@@ -12640,10 +12800,10 @@ $$('[data-lint-fix-close="true"]').forEach((element) => element.addEventListener
 
 function renderAuditPanel() {
   if (state.auditLoading) {
-    $("#auditStatus").textContent = "running";
+    $("#auditStatus").textContent = auditStatusPresentation("running").label;
     $("#auditStatus").className = "audit-status-badge status-findings";
-    $("#auditCoverage").textContent = "Running audit...";
-    $("#auditFindings").innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">Auditing project reproducibility...</div>';
+    $("#auditCoverage").textContent = "Reviewing files, runs, and saved outputs...";
+    $("#auditFindings").innerHTML = '<div class="audit-empty" role="status">Checking project...</div>';
     $("#auditTruncated").classList.add("hidden");
     return;
   }
@@ -12651,51 +12811,28 @@ function renderAuditPanel() {
   if (!r) return;
 
   const statusColors = { complete: "complete", findings: "findings", incomplete: "incomplete", unavailable: "unavailable", error: "error" };
-  $("#auditStatus").textContent = r.status;
+  $("#auditStatus").textContent = auditStatusPresentation(r.status).label;
   $("#auditStatus").className = "audit-status-badge status-" + (statusColors[r.status] || "findings");
-  $("#auditScope").textContent = r.scope || "project";
+  $("#auditStatus").dataset.status = r.status || "unknown";
 
   const cov = r.coverage || {};
-  let covText = "Scanned " + (cov.files_scanned || 0) + " files, " + (cov.runs_considered || 0) + " runs, " + (cov.artifacts_considered || 0) + " saved outputs";
-  if (cov.files_skipped) covText += " (" + cov.files_skipped + " skipped)";
-  $("#auditCoverage").textContent = covText;
+  $("#auditCoverage").textContent = `${auditStatusPresentation(r.status).description} ${auditCoverageText(cov)}`;
 
   const findings = r.findings || [];
+  const findingsContainer = $("#auditFindings");
+  findingsContainer.replaceChildren();
   if (findings.length === 0) {
-    $("#auditFindings").innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No findings. Project looks clean!</div>';
+    const empty = document.createElement("div");
+    empty.className = "audit-empty";
+    empty.textContent = r.status === "error" ? "The project check did not complete." : "No issues were found in the reviewed project information.";
+    findingsContainer.append(empty);
   } else {
-    const groups = {};
-    for (const f of findings) {
-      const cat = f.category || "other";
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(f);
-    }
-    let html = "";
-    for (const [category, items] of Object.entries(groups)) {
-      html += '<div class="audit-category"><span>' + items.length + '</span>' + category + '</div>';
-      for (const f of items) {
-        html += '<div class="audit-finding severity-' + f.severity + '">';
-        html += '<div class="finding-rule">' + h(f.rule_id) + '</div>';
-        html += '<div class="finding-summary">' + h(f.summary) + '</div>';
-        if (f.evidence && f.evidence.length) {
-          html += '<div class="finding-evidence">';
-          for (const ev of f.evidence) {
-            html += '<span class="evidence-badge">' + h(ev.kind || "") + ': ' + h(ev.path || ev.excerpt || "") + '</span>';
-          }
-          html += '</div>';
-        }
-        if (f.limitations && f.limitations.length) {
-          html += '<div style="margin-top:3px;font-size:10px;color:var(--muted)">Limitations: ' + f.limitations.join(", ") + '</div>';
-        }
-        html += '</div>';
-      }
-    }
-    $("#auditFindings").innerHTML = html;
+    appendAuditFindingGroups(findingsContainer, findings);
   }
 
   if (r.truncated) {
     $("#auditTruncated").classList.remove("hidden");
-    $("#auditTruncated").textContent = "Results truncated: " + (r.truncation_reasons || []).join("; ");
+    $("#auditTruncated").textContent = "Some project information could not be reviewed. This check is incomplete.";
   } else {
     $("#auditTruncated").classList.add("hidden");
   }

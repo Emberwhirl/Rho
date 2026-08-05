@@ -353,8 +353,16 @@ With the QC workflow still loaded:
 3. Select the successful analysis run and the deliberate failed run. Confirm
    their status, source, and timing remain distinguishable, and that the rows do
    not require raw workspace or revision values to understand what happened.
-4. Open Audit with project scope, then inspect run, snapshot, problem, and
-   saved-output categories. Change to a run or saved-output scope when available.
+4. Choose `Check project` in the top bar. Expected: Human-first moves to a
+   visible Analyze result headed `Project check`; it must not finish in a
+   hidden right panel. Confirm the result uses `No issues found`, `Needs
+   attention`, `Check incomplete`, `Not available`, or `Check failed` rather
+   than machine status words. Findings must be grouped under plain-language
+   headings and show a concise explanation, `Important`/`Review`/`Note`, a
+   useful next step, and human-readable evidence. No visible text may contain
+   `rho.repro.v1`, `rule_id`, `artifact_id`, `snapshot_id`, `source_path`, or
+   `document_version`. Open one source link and confirm the intended file and
+   line are selected. Close the result and confirm Environment returns.
 
 ### 6A. Review Real Claims Against Evidence
 
@@ -457,10 +465,13 @@ the preview URLs are references for the expected states, not acceptance proof.
    and execution dock are hidden until an explicit file/run/saved-output/audit
    action. Open `examples/editor-intelligence.R`, use `Back to Task`, and
    verify the draft and active document return unchanged.
-2. Open a Run, saved output, and Audit in turn. Confirm Review is the dominant
+2. Open a Run, saved output, and `Check project` in turn. Confirm Review is the dominant
    surface, structured facts remain visible, and an audit evidence path opens
    the exact source file without discarding the audit result. Repeat with an
-   incomplete audit and record the truthful limitation.
+   incomplete project check and record the truthful limitation. Confirm the
+   Agent Review uses the same friendly status, category, finding, severity,
+   next-step, and evidence language as Human-first and exposes no internal
+   rule or record identifiers.
 3. In the execution dock, enter `1 + 1`, then run
    `source("examples/single-cell-qc/01-generate-qc-data.R")`. Confirm the
    submitted command and R result remain together in Console. Switch to Logs

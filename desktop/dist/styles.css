@@ -295,16 +295,25 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { color: var
 .agent-review-source-action { justify-self: start; min-height: 30px; padding: 5px 9px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--accent-strong); background: #fff; cursor: pointer; }
 .agent-review-loading,
 .agent-review-limitation { grid-column: 1 / -1; margin: 0; padding: 9px 10px; border-left: 3px solid var(--warning); background: #fff7e8; color: #654510; font-size: 11px; line-height: 1.45; }
-.agent-audit-group { display: grid; gap: 8px; margin-bottom: 16px; }
-.agent-audit-group > h3 { margin: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; }
-.agent-audit-finding { padding: 12px; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 5px; background: #fff; }
-.agent-audit-finding.severity-error { border-left-color: var(--danger); }
-.agent-audit-finding strong { display: block; margin-bottom: 5px; font-size: 12px; }
-.agent-audit-finding p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.agent-audit-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.agent-audit-evidence button,
-.agent-audit-evidence span { padding: 3px 7px; border: 1px solid var(--border); border-radius: 4px; color: var(--accent-strong); background: #f5faf9; font-size: 10px; }
-.agent-audit-evidence button { cursor: pointer; }
+.audit-finding-group { display: grid; gap: 8px; margin-bottom: 16px; }
+.audit-finding-group > h3 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-secondary); font-size: 12px; }
+.audit-finding-group > h3 span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--surface-selected); color: var(--text-secondary); font-size: 10px; }
+.audit-finding-card { padding: 12px; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 5px; background: var(--surface-raised); }
+.audit-finding-card.severity-error { border-left-color: var(--danger); }
+.audit-finding-card.severity-info { border-left-color: var(--accent); }
+.audit-finding-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+.audit-finding-heading strong { color: var(--text-primary); font-size: 12px; }
+.audit-finding-heading .state-chip { flex: 0 0 auto; }
+.audit-finding-card p { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.audit-finding-card .audit-next-step { margin-top: 7px; color: var(--text-primary); }
+.audit-finding-card .audit-finding-limitation { margin-top: 7px; color: var(--warning); }
+.audit-evidence-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; }
+.audit-evidence-links button,
+.audit-evidence-links > span { min-height: 26px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 4px; color: var(--accent-strong); background: var(--surface-selected); font-size: 10px; }
+.audit-evidence-links button { cursor: pointer; }
+.audit-evidence-links button:hover { border-color: var(--accent); background: var(--accent-pale); }
+.audit-evidence-excerpt { flex: 1 1 100%; padding: 6px 8px; overflow-wrap: anywhere; color: var(--text-secondary); background: var(--surface); font-size: 10px; }
+.audit-evidence-note { flex: 1 1 100%; color: var(--text-secondary) !important; background: var(--surface) !important; overflow-wrap: anywhere; }
 body:not(.agent-posture) .agent-only-action { display: none; }
 body.agent-posture .run-button { display: none; }
 body.agent-posture .work-modes { display: none; }
@@ -2262,14 +2271,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   padding: 10px 12px; border-bottom: 1px solid var(--border);
   font-size: 14px;
 }
-.audit-scope-badge {
-  padding: 1px 6px; border-radius: 3px;
-  font-size: 10px; font-weight: 600;
-  background: var(--border); color: var(--muted);
-}
 .audit-status-badge {
   padding: 1px 8px; border-radius: 10px;
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  font-size: 10px; font-weight: 600;
 }
 .audit-status-badge.status-complete { background: #d4edda; color: #155724; }
 .audit-status-badge.status-findings { background: #fff3cd; color: #856404; }
@@ -2285,35 +2289,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   padding: 6px 12px; font-size: 11px; color: var(--muted);
   border-bottom: 1px solid var(--border); background: var(--surface);
 }
-.audit-findings { flex: 1; overflow-y: auto; }
-.audit-category {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 12px; font-size: 12px; font-weight: 600;
-  border-bottom: 1px solid var(--border);
-  background: #fafbfb;
-}
-.audit-category span {
-  margin-left: auto; padding: 1px 6px; border-radius: 10px;
-  font-size: 10px; background: var(--border); color: var(--muted);
-}
-.audit-finding {
-  padding: 8px 12px; border-left: 3px solid var(--border);
-  border-bottom: 1px solid var(--border-light);
-}
-.audit-finding.severity-error { border-left-color: var(--error); }
-.audit-finding.severity-warning { border-left-color: var(--warning); }
-.audit-finding.severity-info { border-left-color: var(--accent); }
-.finding-rule {
-  font-family: var(--mono); font-size: 10px; color: var(--muted);
-  margin-bottom: 3px;
-}
-.finding-summary { font-size: 12px; line-height: 1.4; }
-.finding-evidence { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
-.evidence-badge {
-  display: inline-block; padding: 1px 5px; border-radius: 3px;
-  font-size: 10px; font-family: var(--mono);
-  background: var(--surface); color: var(--muted);
-}
+.audit-findings { display: grid; gap: 12px; flex: 1; padding: 12px; overflow-y: auto; }
+.audit-findings .audit-finding-group { margin: 0; }
+.audit-empty { padding: 24px 14px; color: var(--text-secondary); text-align: center; font-size: 12px; line-height: 1.5; }
 .audit-truncated {
   padding: 8px 12px; font-size: 11px; color: #856404;
   background: #fff3cd; border-top: 1px solid #ffc107;
@@ -2379,6 +2357,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .git-change-groups > section + section { border-left: 0; border-top: 1px solid var(--border); }
   .git-diff-header { flex-direction: column; }
   .git-file-actions { width: 100%; flex-wrap: wrap; }
+}
+
+@media (max-width: 960px) {
+  .audit-button { justify-content: center; width: var(--control-default); padding: 0; }
+  .audit-button span { display: none; }
 }
 
 /* Git conflict banner */

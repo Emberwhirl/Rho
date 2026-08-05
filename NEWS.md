@@ -8,6 +8,11 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- The former `Audit` action is now the clearer `Check project` workflow.
+  Human-first and Agent-first share friendly result statuses, categories,
+  finding titles, next steps, and evidence links without exposing rule IDs,
+  backend field names, or opaque record identifiers. Human-first now reliably
+  opens the result in Analyze instead of completing a hidden check.
 - The editor now uses one common command system for Save, Close, Undo, Redo,
   Find, Replace, line comments, New File, and Open Project across keyboard
   shortcuts and menus. Monaco keeps its native editing widgets and history;

@@ -139,7 +139,7 @@
           </button>
           <span id="renderJobStatus" class="render-job-status hidden"></span>
           <button id="renderCancelButton" class="render-cancel-button hidden" type="button" title="Cancel render">Cancel</button>
-          <button id="auditProjectButton" class="audit-button" type="button" title="Audit project reproducibility"><svg class="ui-icon" aria-hidden="true"><use href="#icon-shield-check"></use></svg><span>Audit</span></button>
+          <button id="auditProjectButton" class="audit-button" type="button" title="Check this project for reproducibility risks" aria-label="Check project reproducibility"><svg class="ui-icon" aria-hidden="true"><use href="#icon-shield-check"></use></svg><span>Check project</span></button>
         </div>
       </header>
 
@@ -556,10 +556,9 @@ plot(
 
         <section id="auditPanel" class="context-content hidden">
           <div id="auditHeader" class="audit-header">
-            <strong>Reproducibility Audit</strong>
-            <span id="auditScope" class="audit-scope-badge">project</span>
+            <strong>Project check</strong>
             <span id="auditStatus" class="audit-status-badge">--</span>
-            <button id="auditCloseButton" class="audit-close-button" type="button" title="Close audit panel">×</button>
+            <button id="auditCloseButton" class="audit-close-button" type="button" title="Close project check" aria-label="Close project check">×</button>
           </div>
           <div id="auditCoverage" class="audit-coverage"></div>
           <div id="auditFindings" class="audit-findings"></div>
