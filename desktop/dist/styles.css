@@ -1837,6 +1837,14 @@ body.resizing-vertical { cursor: col-resize; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.menu-popover button:disabled {
+  color: var(--text-disabled);
+  background: transparent;
+  cursor: default;
+}
+.menu-popover button:focus-visible {
+  background: var(--surface-selected);
+}
 .agent-help-context-badge { display: inline-flex; align-items: center; gap: 3px; max-width: 190px; padding: 2px 4px 2px 7px; overflow: hidden; border: 1px solid #b9d6d0; border-radius: 999px; color: var(--accent-strong); background: #e8f4f1; font-size: 10px; }
 .agent-help-context-badge > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-help-context-badge button { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: transparent; cursor: pointer; line-height: 1; }
@@ -2135,10 +2143,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 @media (max-width: 1180px) {
   .app-shell { --left-pane-width: 180px; --right-pane-width: 320px; }
-  .menu { display: none; }
-  .project-switcher { min-width: 150px; }
+  .menu { gap: 0; }
+  .menu > .menu-item > button { padding-inline: 5px; }
+  .project-switcher { min-width: 120px; max-width: 150px; }
+  .run-button, .audit-button { width: var(--control-default); padding: 0; }
+  .run-button span, .audit-button span { display: none; }
   .app-shell.agent-first.has-task-rail { grid-template-columns: 176px minmax(0, 1fr); }
   .app-shell.agent-first.agent-work-open { grid-template-columns: 300px minmax(0, 1fr); }
+}
+
+@media (max-width: 1023px) {
+  .menu { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

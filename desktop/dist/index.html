@@ -61,12 +61,13 @@
           <span class="brand-mark">R</span>
           <span class="brand-name">Rho</span>
         </div>
-        <nav class="menu" aria-label="主菜单">
+        <nav class="menu" aria-label="Main menu">
           <div class="menu-item">
             <button type="button" data-menu-trigger="file" aria-haspopup="menu" aria-expanded="false">File</button>
             <div class="menu-popover" data-menu="file" role="menu" hidden>
               <button type="button" role="menuitem" data-menu-command="open-project">Open Project...</button>
               <button type="button" role="menuitem" data-menu-command="new-file">New File</button>
+              <div class="menu-separator" role="separator"></div>
               <button type="button" role="menuitem" data-menu-command="save-file">Save</button>
               <button type="button" role="menuitem" data-menu-command="close-file">Close File</button>
             </div>
@@ -76,25 +77,37 @@
             <div class="menu-popover" data-menu="edit" role="menu" hidden>
               <button type="button" role="menuitem" data-menu-command="undo">Undo</button>
               <button type="button" role="menuitem" data-menu-command="redo">Redo</button>
+              <div class="menu-separator" role="separator"></div>
               <button type="button" role="menuitem" data-menu-command="find">Find</button>
               <button type="button" role="menuitem" data-menu-command="replace">Replace</button>
+              <button type="button" role="menuitem" data-menu-command="select-all">Select All</button>
+              <div class="menu-separator" role="separator"></div>
               <button type="button" role="menuitem" data-menu-command="toggle-line-comment">Toggle Line Comment</button>
               <button type="button" role="menuitem" data-menu-command="format-document">Format Document</button>
             </div>
           </div>
           <div class="menu-item">
-            <button type="button" data-menu-trigger="session" aria-haspopup="menu" aria-expanded="false">Session</button>
-            <div class="menu-popover" data-menu="session" role="menu" hidden>
+            <button type="button" data-menu-trigger="run" aria-haspopup="menu" aria-expanded="false">Run</button>
+            <div class="menu-popover" data-menu="run" role="menu" hidden>
+              <button type="button" role="menuitem" data-menu-command="run-selection">Run Selection or Line</button>
+              <button type="button" role="menuitem" data-menu-command="run-file">Run File</button>
+              <button type="button" role="menuitem" data-menu-command="render-document">Render Active Document</button>
+              <div class="menu-separator" role="separator"></div>
               <button type="button" role="menuitem" data-menu-command="interrupt">Interrupt R</button>
               <button type="button" role="menuitem" data-menu-command="restart">Restart Workspace R</button>
             </div>
           </div>
           <div class="menu-item">
-            <button type="button" data-menu-trigger="tools" aria-haspopup="menu" aria-expanded="false">Tools</button>
-            <div class="menu-popover" data-menu="tools" role="menu" hidden>
-              <button type="button" role="menuitem" data-menu-command="show-agent">Agent</button>
-              <button type="button" role="menuitem" data-menu-command="show-environment">Environment</button>
-              <button type="button" role="menuitem" data-menu-command="render-document">Render Active Document</button>
+            <button type="button" data-menu-trigger="view" aria-haspopup="menu" aria-expanded="false">View</button>
+            <div class="menu-popover" data-menu="view" role="menu" hidden>
+              <button type="button" role="menuitem" data-menu-command="focus-editor">Focus Editor</button>
+              <button type="button" role="menuitem" data-menu-command="focus-console">Focus Console</button>
+              <div class="menu-separator" role="separator"></div>
+              <button type="button" role="menuitem" data-menu-command="show-logs">Show Logs</button>
+              <button type="button" role="menuitem" data-menu-command="show-plots">Show Plots</button>
+              <button type="button" role="menuitem" data-menu-command="show-problems">Show Problems</button>
+              <div class="menu-separator" role="separator"></div>
+              <button type="button" role="menuitem" data-menu-command="reset-panel-sizes">Reset Panel Sizes</button>
             </div>
           </div>
           <div class="menu-item">
@@ -129,7 +142,7 @@
           <button id="agentOpenFileButton" class="agent-only-action" type="button" title="Open a project file"><svg class="ui-icon" aria-hidden="true"><use href="#icon-file-text"></use></svg><span>File</span></button>
           <button id="restartButton" class="icon-button" type="button" title="Restart Workspace R" aria-label="Restart Workspace R"><svg class="ui-icon" aria-hidden="true"><use href="#icon-rotate-ccw"></use></svg></button>
           <button id="interruptButton" class="icon-button danger" type="button" title="Interrupt R" aria-label="Interrupt R"><svg class="ui-icon" aria-hidden="true"><use href="#icon-square"></use></svg></button>
-          <button id="runButton" class="run-button" type="button" title="Run selection or document">
+          <button id="runButton" class="run-button" type="button" title="Run selection or document" aria-label="Run selection or document">
             <svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg><span>Run</span>
           </button>
           <span id="renderJobStatus" class="render-job-status hidden"></span>

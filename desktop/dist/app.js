@@ -3434,6 +3434,8 @@ function updateRunButtonLabel() {
   const label = runButtonLabel();
   const span = document.querySelector("#runButton span:last-child");
   if (span) span.textContent = label;
+  $("#runButton").title = label;
+  $("#runButton").setAttribute("aria-label", label);
   // Also update the editor Run button title
   $("#editorRunButton").title = label;
 }
@@ -3469,7 +3471,7 @@ function updateEditorChrome() {
   $("#saveFileButton").disabled = state.projectStatus !== "ready" || documentReadOnly;
   $("#editorRenameButton").disabled = documentActionsDisabled;
   $("#editorExtractButton").disabled = documentActionsDisabled;
-  $("#editorFormatButton").disabled = documentActionsDisabled;
+  $("#editorFormatButton").disabled = documentActionsDisabled || !activeDocument()?.path?.toLowerCase().endsWith(".r");
   $("#editorCheckCodeButton").disabled = documentActionsDisabled || !activeDocument()?.path?.toLowerCase().endsWith(".r");
   renderEnvironmentSummary();
 }
@@ -13287,6 +13289,7 @@ function runEditorCommand(command) {
       redo: "redo",
       find: "actions.find",
       replace: "editor.action.startFindReplaceAction",
+      "select-all": "editor.action.selectAll",
       "toggle-line-comment": "editor.action.commentLine",
     }[command];
     if (monacoCommand) state.editor.editor.trigger("rho-workbench", monacoCommand, null);
@@ -13299,9 +13302,53 @@ function runEditorCommand(command) {
     restoreFallbackEditorHistory(command);
   } else if (command === "find" || command === "replace") {
     findInFallbackEditor(command === "replace");
+  } else if (command === "select-all") {
+    editor.select();
   } else if (command === "toggle-line-comment") {
     toggleFallbackLineComment();
   }
+}
+
+function focusActiveEditor() {
+  if (!activeDocument()) return;
+  if (state.editor.mode === "monaco" && state.editor.editor) state.editor.editor.focus();
+  else fallbackEditor().focus();
+}
+
+function resetWorkbenchPanelSizes() {
+  setPanelSize("left", panelDefaults.left);
+  setPanelSize("right", panelDefaults.right);
+  setPanelSize("dock", panelDefaults.dock);
+  const button = $("#toggleDockMaximize");
+  button.dataset.expanded = "false";
+  delete button.dataset.previousHeight;
+  button.querySelector("use").setAttribute("href", "#icon-maximize-2");
+  button.title = "Expand execution panel";
+  button.setAttribute("aria-label", "Expand execution panel");
+}
+
+function updateWorkbenchMenuState() {
+  const documentState = activeDocument();
+  const hasDocument = Boolean(documentState);
+  const projectReady = state.projectStatus === "ready";
+  const setDisabled = (command, disabled) => {
+    const item = $(`[data-menu-command="${command}"]`);
+    if (item) item.disabled = Boolean(disabled);
+  };
+  setDisabled("new-file", !projectReady);
+  setDisabled("save-file", !hasDocument || Boolean(documentState?.readOnly));
+  setDisabled("close-file", !hasDocument);
+  for (const command of ["undo", "redo", "find", "replace", "select-all", "toggle-line-comment"]) {
+    setDisabled(command, !hasDocument);
+  }
+  setDisabled("format-document", $("#editorFormatButton").disabled);
+  setDisabled("run-selection", $("#editorRunButton").disabled);
+  setDisabled("run-file", $("#editorRunFileButton").disabled);
+  setDisabled("render-document", $("#renderDocumentButton").disabled);
+  setDisabled("interrupt", $("#interruptButton").disabled);
+  setDisabled("restart", $("#restartButton").disabled);
+  setDisabled("focus-editor", !hasDocument);
+  setDisabled("focus-console", !projectReady);
 }
 
 function runWorkbenchMenuCommand(command) {
@@ -13315,11 +13362,18 @@ function runWorkbenchMenuCommand(command) {
     redo: () => runEditorCommand("redo"),
     find: () => runEditorCommand("find"),
     replace: () => runEditorCommand("replace"),
+    "select-all": () => runEditorCommand("select-all"),
     "toggle-line-comment": () => runEditorCommand("toggle-line-comment"),
+    "run-selection": () => $("#editorRunButton").click(),
+    "run-file": () => $("#editorRunFileButton").click(),
     interrupt: () => $("#interruptButton").click(),
     restart: () => $("#restartButton").click(),
-    "show-agent": () => applyWorkbenchLayout("agent"),
-    "show-environment": () => applyWorkbenchLayout("analyze"),
+    "focus-editor": () => focusActiveEditor(),
+    "focus-console": () => switchDockTab("console"),
+    "show-logs": () => switchDockTab("logs"),
+    "show-plots": () => switchDockTab("plots"),
+    "show-problems": () => switchDockTab("problems"),
+    "reset-panel-sizes": () => resetWorkbenchPanelSizes(),
     "check-updates": () => openUpdateDialog(),
     "about-rho": () => openAboutDialog(),
     "render-document": () => {
@@ -13801,6 +13855,35 @@ async function listenForProjectChanges() {
       if (!$("#gitPanel").classList.contains("hidden")) await loadGitReview();
     }
   });
+}
+
+function workbenchMenuItems(name) {
+  return $$(`[data-menu="${name}"] [role="menuitem"]`).filter((item) => !item.disabled);
+}
+
+function focusWorkbenchMenuEdge(name, edge = "first") {
+  const items = workbenchMenuItems(name);
+  const item = edge === "last" ? items.at(-1) : items[0];
+  if (item) requestAnimationFrame(() => item.focus());
+}
+
+function moveWorkbenchMenuFocus(item, delta) {
+  const name = item.closest("[data-menu]")?.dataset.menu;
+  const items = workbenchMenuItems(name);
+  const current = items.indexOf(item);
+  if (current < 0 || !items.length) return;
+  items[(current + delta + items.length) % items.length].focus();
+}
+
+function switchWorkbenchMenu(item, delta) {
+  const triggers = $$('[data-menu-trigger]');
+  const currentName = item.closest("[data-menu]")?.dataset.menu;
+  const current = triggers.findIndex((trigger) => trigger.dataset.menuTrigger === currentName);
+  if (current < 0 || !triggers.length) return;
+  const trigger = triggers[(current + delta + triggers.length) % triggers.length];
+  updateWorkbenchMenuState();
+  closeWorkbenchMenus(trigger.dataset.menuTrigger);
+  focusWorkbenchMenuEdge(trigger.dataset.menuTrigger);
 }
 
 async function handleExternalDocumentChange(path) {
@@ -14662,11 +14745,41 @@ $("#toggleDockMaximize").addEventListener("click", toggleDockMaximize);
 $$('[data-menu-trigger]').forEach((trigger) => trigger.addEventListener("click", (event) => {
   event.stopPropagation();
   const name = trigger.dataset.menuTrigger;
+  updateWorkbenchMenuState();
   closeWorkbenchMenus(trigger.getAttribute("aria-expanded") === "true" ? null : name);
+}));
+$$('[data-menu-trigger]').forEach((trigger) => trigger.addEventListener("keydown", (event) => {
+  if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  const name = trigger.dataset.menuTrigger;
+  updateWorkbenchMenuState();
+  closeWorkbenchMenus(name);
+  focusWorkbenchMenuEdge(name, event.key === "ArrowUp" ? "last" : "first");
 }));
 $$('[data-menu-command]').forEach((item) => item.addEventListener("click", () => {
   closeWorkbenchMenus();
   runWorkbenchMenuCommand(item.dataset.menuCommand);
+}));
+$$('[data-menu-command]').forEach((item) => item.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveWorkbenchMenuFocus(item, 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveWorkbenchMenuFocus(item, -1);
+  } else if (event.key === "Home" || event.key === "End") {
+    event.preventDefault();
+    focusWorkbenchMenuEdge(item.closest("[data-menu]").dataset.menu, event.key === "End" ? "last" : "first");
+  } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+    event.preventDefault();
+    switchWorkbenchMenu(item, event.key === "ArrowRight" ? 1 : -1);
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    const name = item.closest("[data-menu]").dataset.menu;
+    closeWorkbenchMenus();
+    $(`[data-menu-trigger="${name}"]`).focus();
+  }
 }));
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".menu-item")) closeWorkbenchMenus();

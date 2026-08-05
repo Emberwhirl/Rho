@@ -8,6 +8,10 @@ this file records behavior that is already available in a released build.
 
 ### Improved
 
+- The workbench now uses five focused File, Edit, Run, View, and Help menus.
+  Duplicate Agent and Environment navigation is removed; document execution,
+  rendering, session control, surface focus, panel reset, truthful disabled
+  states, and keyboard menu traversal reuse the existing command system.
 - Model settings now keep API keys in Windows Credential Manager and present a
   single required-fields-first setup flow. Existing user `.Renviron`
   credentials remain a read-only fallback, while provider protocol,

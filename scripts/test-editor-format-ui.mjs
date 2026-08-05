@@ -9,6 +9,7 @@ assert.match(html, /data-menu-command="format-document"/);
 assert.match(html, /id="editorFormatButton"[^>]+aria-label="Format document"/);
 assert.match(js, /"format-document": \(\) => \$\("#editorFormatButton"\)\.click\(\)/);
 assert.match(js, /editorFormatButton"\)\.addEventListener\("click"/);
+assert.match(js, /editorFormatButton"\)\.disabled = documentActionsDisabled \|\| !activeDocument\(\)\?\.path\?\.toLowerCase\(\)\.endsWith\("\.r"\)/);
 assert.match(js, /invoke\("editor_format_source", \{\s*request:/);
 assert.match(js, /const request = args\.request \|\| args/);
 assert.match(rust, /fn editor_format_result\(response: Value\) -> Result<Value>/);
