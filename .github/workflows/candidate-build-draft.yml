@@ -1,10 +1,18 @@
-name: Build Rho Candidate Draft
+name: Build Rho Candidate / Rehearsal
 
 on:
   workflow_dispatch:
     inputs:
+      build_mode:
+        description: Rehearsal uploads review artifacts; candidate creates a main-repository draft
+        required: true
+        default: rehearsal
+        type: choice
+        options:
+          - rehearsal
+          - candidate
       ref:
-        description: Exact Git ref to build
+        description: Exact current default-branch commit or ref to build
         required: true
         default: main
       release_tag:
@@ -20,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rho-candidate-${{ inputs.release_tag }}
+  group: rho-${{ inputs.build_mode }}-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
@@ -28,26 +36,37 @@ jobs:
     name: Resolve immutable candidate identity
     runs-on: ubuntu-latest
     outputs:
+      build_mode: ${{ steps.identity.outputs.build_mode }}
       commit: ${{ steps.identity.outputs.commit }}
       version: ${{ steps.identity.outputs.version }}
       release_tag: ${{ steps.identity.outputs.release_tag }}
       release_name: ${{ steps.identity.outputs.release_name }}
     steps:
-      - name: Check out exact candidate ref
+      - name: Check out trusted default-branch dispatcher
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate candidate identity and contract tools
         id: identity
         shell: bash
         env:
+          BUILD_MODE: ${{ inputs.build_mode }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_REF: ${{ inputs.ref }}
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           INPUT_RELEASE_NAME: ${{ inputs.release_name }}
         run: |
           set -euo pipefail
-          commit="$(git rev-parse HEAD)"
+          node scripts/candidate-release.mjs --mode admission --build_mode "$BUILD_MODE" --repository "$GITHUB_REPOSITORY" --workflow_ref "$GITHUB_REF" --default_branch "$DEFAULT_BRANCH"
+          commit="$(git rev-parse "${INPUT_REF}^{commit}")"
+          default_commit="$(git rev-parse HEAD)"
+          if [[ "$commit" != "$default_commit" ]]; then
+            echo "Requested commit $commit is not the current default-branch commit $default_commit." >&2
+            exit 1
+          fi
           version="$(node -e 'const fs=require("fs"); const value=fs.readFileSync("Cargo.toml", "utf8").match(/^version = "([^"]+)"/m); if(!value) process.exit(1); process.stdout.write(value[1])')"
           test "$INPUT_RELEASE_NAME" = "Rho $version"
           node scripts/candidate-release.mjs --mode identity --version "$version" --tag "$INPUT_RELEASE_TAG" --commit "$commit"
@@ -55,6 +74,7 @@ jobs:
           node scripts/generate-update-site.mjs --test true
           node scripts/test-mac4-release-contract.mjs
           {
+            echo "build_mode=$BUILD_MODE"
             echo "commit=$commit"
             echo "version=$version"
             echo "release_tag=$INPUT_RELEASE_TAG"
@@ -73,6 +93,7 @@ jobs:
         with:
           ref: ${{ needs.identity.outputs.commit }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Prove checked-out identity
         shell: pwsh
@@ -163,12 +184,13 @@ jobs:
       - name: Upload immutable Windows candidate inputs
         uses: actions/upload-artifact@v4
         with:
-          name: rho-${{ needs.identity.outputs.version }}-windows-x86-64
+          name: rho-${{ needs.identity.outputs.version }}-windows-x86-64-${{ github.run_id }}
           path: |
             target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe
             target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe.sha256
             target/candidate/rho-${{ needs.identity.outputs.version }}-windows-x86_64-evidence.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
   macos-candidate:
@@ -185,6 +207,7 @@ jobs:
         with:
           ref: ${{ needs.identity.outputs.commit }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Prove runner, Xcode and source identity
         shell: bash
@@ -324,12 +347,13 @@ jobs:
       - name: Upload immutable macOS candidate inputs
         uses: actions/upload-artifact@v4
         with:
-          name: rho-${{ needs.identity.outputs.version }}-macos-arm64
+          name: rho-${{ needs.identity.outputs.version }}-macos-arm64-${{ github.run_id }}
           path: |
             target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg
             target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg.sha256
             target/candidate/rho-${{ needs.identity.outputs.version }}-macos-aarch64-evidence.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 14
 
       - name: Remove temporary Apple credentials
@@ -338,12 +362,68 @@ jobs:
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
-          security delete-keychain "$RUNNER_TEMP/rho-signing.keychain-db" 2>/dev/null || true
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
+          if [[ -e "$keychain_path" ]]; then security delete-keychain "$keychain_path"; fi
           rm -f "$RUNNER_TEMP/rho-developer-id.p12"
           if [[ -n "$APPLE_API_KEY" ]]; then rm -f "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"; fi
+          test ! -e "$keychain_path"
+          test ! -e "$RUNNER_TEMP/rho-developer-id.p12"
+          if [[ -n "$APPLE_API_KEY" ]]; then test ! -e "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"; fi
+
+  rehearsal-evidence:
+    name: Assemble review-only rehearsal artifact
+    if: ${{ needs.identity.outputs.build_mode == 'rehearsal' && github.repository == 'YuLab-SMU/Rho_for_mac' }}
+    needs: [identity, windows-candidate, macos-candidate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out rehearsal contract tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+
+      - name: Download both platform rehearsal inputs
+        uses: actions/download-artifact@v5
+        with:
+          pattern: rho-${{ needs.identity.outputs.version }}-*-${{ github.run_id }}
+          path: target/candidate
+          merge-multiple: true
+
+      - name: Validate both platforms and create bounded rehearsal evidence
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          candidate_evidence="target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json"
+          rehearsal_evidence="target/candidate/rho-${CANDIDATE_VERSION}-rehearsal-evidence.json"
+          node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "$candidate_evidence"
+          node scripts/candidate-release.mjs --mode rehearsal --input "$candidate_evidence" --repository "$GITHUB_REPOSITORY" --run_id "$GITHUB_RUN_ID" --run_attempt "$GITHUB_RUN_ATTEMPT" --output "$rehearsal_evidence"
+          node -e 'require("node:fs").unlinkSync(process.argv[1])' "$candidate_evidence"
+
+      - name: Upload exact review-only rehearsal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-${{ needs.identity.outputs.version }}-rehearsal-${{ needs.identity.outputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe.sha256
+            target/candidate/rho-${{ needs.identity.outputs.version }}-windows-x86_64-evidence.json
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg.sha256
+            target/candidate/rho-${{ needs.identity.outputs.version }}-macos-aarch64-evidence.json
+            target/candidate/rho-${{ needs.identity.outputs.version }}-rehearsal-evidence.json
+          if-no-files-found: error
+          retention-days: 14
 
   draft-candidate:
     name: Assemble immutable draft prerelease
+    if: ${{ needs.identity.outputs.build_mode == 'candidate' && github.repository == 'YuLab-SMU/Rho' }}
     needs: [identity, windows-candidate, macos-candidate]
     runs-on: ubuntu-latest
     permissions:
@@ -353,11 +433,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
 
       - name: Download both platform candidates
         uses: actions/download-artifact@v5
         with:
-          pattern: rho-${{ needs.identity.outputs.version }}-*
+          pattern: rho-${{ needs.identity.outputs.version }}-*-${{ github.run_id }}
           path: target/candidate
           merge-multiple: true
 

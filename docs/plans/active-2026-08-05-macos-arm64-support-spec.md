@@ -12,7 +12,8 @@ MAC4 implementation, locally available verification, version/NEWS review, and
 separate contract review complete on 2026-08-05; hosted signing/notarization,
 candidate assets, and draft creation remain NOT RUN; the MAC4 mandatory stop
 is reached; MAC4-R fork rehearsal entry review complete and explicitly
-authorized on 2026-08-05; its implementation and credentialed hosted run remain
+authorized on 2026-08-05; its implementation, local automated verification,
+and separate contract review are complete; the credentialed hosted run remains
 NOT RUN; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
@@ -421,6 +422,10 @@ Contract:
   `YuLab-SMU/Rho_for_mac`; `candidate` is admitted only when it is exactly
   `YuLab-SMU/Rho`; every other mode/repository pairing fails in the identity
   job before a platform build uses credentials;
+- the selected workflow ref and repository default branch must both be `main`,
+  and the requested source ref must resolve to the current default-branch HEAD.
+  Every checkout disables persisted Git credentials. This prevents a manual
+  run from redirecting Apple secrets into unreviewed branch code;
 - both modes resolve and check out one full commit and run the same Windows x64
   and signed/notarized macOS arm64 platform jobs. Secret names, temporary-file
   handling, unconditional Keychain cleanup, and platform evidence remain the
@@ -450,7 +455,10 @@ Failure and recovery:
   later fails, but such partial artifacts have no aggregate rehearsal record and
   therefore are not passing evidence;
 - a retry is a new run attempt bound into new evidence. It does not delete or
-  replace a release because rehearsal has no release permission or mutation;
+  replace a release because rehearsal has no release permission or mutation.
+  Intermediate platform artifact containers are scoped to the GitHub Run ID
+  and may be replaced within that Run; the final rehearsal artifact includes
+  both Run ID and Attempt and is never overwritten by a later attempt;
 - cancellation still executes the existing unconditional Apple credential
   cleanup step. Absence of final rehearsal evidence is reported as failure or
   cancellation, never success.
@@ -840,7 +848,7 @@ Implementation present:
   hashes, requires both platforms and exact source identity, caps evidence,
   and rejects missing/duplicate/foreign/stale, NO-GO, oversized, or
   content-mismatched inputs;
-- `Build Rho Candidate Draft` resolves one full commit, runs parallel
+- `Build Rho Candidate / Rehearsal` resolves one full commit, runs parallel
   least-privilege Windows x64 and `macos-26` jobs, selects Xcode 26.6, stages
   the API `.p8` under `RUNNER_TEMP`, imports Developer ID credentials into a
   temporary Keychain, uses Tauri's App Store Connect variables, verifies
@@ -907,3 +915,50 @@ unchanged; NEWS records the user-visible Mac and cross-platform update support.
 Release decision: NO-GO. The MAC4 mandatory stop is reached. MAC5 remains
 unauthorized, and no acceptance evidence upload, release publication, or live
 Pages acceptance may proceed without its own activation.
+
+## MAC4-R Local Implementation Evidence — 2026-08-05
+
+Implementation present:
+
+- the manual workflow has a safe-default `rehearsal` choice and uses the same
+  complete Windows and signed/notarized macOS platform jobs for both modes;
+- deterministic admission accepts only rehearsal/fork and candidate/main
+  pairings, requires the workflow and source commit to be the current default
+  `main`, and disables persisted credentials on all five checkouts;
+- rehearsal aggregation has only `contents: read`, validates both platform
+  inputs, deletes transient candidate aggregate evidence, and uploads exactly
+  six platform files plus one bounded rehearsal record for 14 days;
+- candidate draft assembly alone retains `contents: write` and is additionally
+  guarded to `build_mode=candidate` in `YuLab-SMU/Rho`;
+- rehearsal evidence has an exact schema, 256-KiB limit, fork repository, full
+  source commit, Run ID/Attempt, and both platform artifact/evidence hashes.
+  Candidate publish admission rejects it;
+- credential cleanup now fails closed: the conditional always-run step removes
+  and verifies absence of the temporary Keychain, `.p12`, and `.p8`, so final
+  rehearsal evidence cannot follow an observed cleanup failure;
+- intermediate artifact containers use Run-ID names and explicit v4 overwrite
+  semantics for retry recovery, while final rehearsal artifacts are unique per
+  Run Attempt.
+
+Local automated evidence passed:
+
+- `node scripts/candidate-release.mjs --test true`, including accepted and
+  rejected repository/mode pairs, non-main workflow ref, foreign repository,
+  invalid Run ID/Attempt, stale commit, output containment, byte budget, and
+  candidate/publish type-confusion rejection;
+- `node scripts/generate-update-site.mjs --test true`, all deterministic
+  `scripts/test-*.mjs` suites, and JavaScript syntax checks;
+- Ruby YAML parsing, actionlint 1.7.12, and `git diff --check` for the affected
+  workflow and repository state.
+
+The separate post-test review found no unresolved ownership, schema, secret,
+permission, recovery, update, or release-authority conflict. The review added
+the default-branch source guard and retry-safe intermediate artifact naming;
+both corrections remain inside the authorized rehearsal boundary.
+
+Version outcome: application and R package versions remain unchanged;
+`NEWS.md` is unchanged because this lane is internal review tooling. Hosted
+Windows build, credential import, Developer ID signing, notarization, stapling,
+Gatekeeper, rehearsal artifact upload, and recorded hosted hashes remain
+`NOT RUN` until the committed workflow is pushed to fork `main`. Release
+decision remains NO-GO; MAC5 remains unauthorized.

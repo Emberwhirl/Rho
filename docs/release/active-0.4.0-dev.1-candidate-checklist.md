@@ -3,7 +3,8 @@
 Status: active; MAC4 candidate/update/signing/draft tooling implemented and
 locally verified on 2026-08-05; no exact hosted draft, installed-candidate
 acceptance, or release GO exists yet; MAC4-R fork rehearsal authorized on
-2026-08-05 and NOT RUN
+2026-08-05, implemented and locally verified; credentialed hosted rehearsal
+NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -116,10 +117,16 @@ import, hosted signing, notarization result, stapling, Gatekeeper, platform
 artifact uploads, aggregate hosted evidence, and draft creation all remain
 `NOT RUN`. No GitHub release or Pages state was changed.
 
-## MAC4-R Fork Rehearsal Gate — AUTHORIZED / NOT RUN
+## MAC4-R Fork Rehearsal Gate — IMPLEMENTED / HOSTED NOT RUN
 
 The review-only rehearsal must run from the exact fork and cannot satisfy any
 row in Required Draft Assets or MAC5 Installed Acceptance.
+
+Local contract evidence covers exact repository/mode and default-branch
+admission, candidate-only write permission, seven-file rehearsal upload,
+bounded schema, type-confusion rejection, cleanup verification, and retry-safe
+Run/Attempt artifact identity. Hosted rows remain open until the committed
+workflow runs from fork `main` with repository secrets.
 
 | Gate | Required evidence | State |
 | --- | --- | --- |
@@ -223,5 +230,6 @@ publication do not by themselves prove live Pages acceptance.
 ## Current Decision
 
 `NO-GO`. MAC4 implementation and locally available verification are complete,
-and MAC4-R is authorized but NOT RUN. No credentialed hosted rehearsal or
-candidate, immutable draft, MAC5 installed acceptance, or explicit GO exists.
+and MAC4-R is implemented and locally verified but its hosted run is NOT RUN.
+No credentialed hosted rehearsal or candidate, immutable draft, MAC5 installed
+acceptance, or explicit GO exists.

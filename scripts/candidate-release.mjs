@@ -7,6 +7,8 @@ import { isDeepStrictEqual } from "node:util";
 
 export const CANDIDATE_PLATFORMS = ["windows_x86_64", "macos_aarch64"];
 export const MAX_EVIDENCE_BYTES = 256 * 1024;
+export const REHEARSAL_REPOSITORY = "YuLab-SMU/Rho_for_mac";
+export const CANDIDATE_REPOSITORY = "YuLab-SMU/Rho";
 
 const MAX_CHECKSUM_BYTES = 1024;
 const PRERELEASE_IDENTIFIER = "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
@@ -66,6 +68,19 @@ export function validateCandidateIdentity(version, releaseTag, commit) {
   if (releaseTag !== `v${version}`) fail(`Release tag ${releaseTag} does not match version ${version}`);
   if (!/^[0-9a-f]{40}$/.test(commit)) fail("Candidate commit must be a full lowercase Git SHA");
   return { version, release_tag: releaseTag, commit };
+}
+
+export function validateBuildAdmission(buildMode, repository, workflowRef, defaultBranch) {
+  if (defaultBranch !== "main" || workflowRef !== `refs/heads/${defaultBranch}`) {
+    fail(`Candidate workflow must run from the default main branch, received ${workflowRef || "<empty>"}`);
+  }
+  if (buildMode === "rehearsal" && repository === REHEARSAL_REPOSITORY) {
+    return { build_mode: buildMode, repository, workflow_ref: workflowRef, default_branch: defaultBranch };
+  }
+  if (buildMode === "candidate" && repository === CANDIDATE_REPOSITORY) {
+    return { build_mode: buildMode, repository, workflow_ref: workflowRef, default_branch: defaultBranch };
+  }
+  fail(`Build mode ${buildMode || "<empty>"} is not authorized for repository ${repository || "<empty>"}`);
 }
 
 export function expectedPlatformNames(version, platform) {
@@ -259,6 +274,89 @@ export function createAggregateEvidence({ version, releaseTag, commit, directory
   return aggregate;
 }
 
+export function validateRehearsalEvidence(value, expected = {}) {
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_EVIDENCE_BYTES) {
+    fail("Rehearsal evidence exceeds its byte budget");
+  }
+  assertExactKeys(
+    value,
+    [
+      "schema_version",
+      "type",
+      "status",
+      "source_repository",
+      "version",
+      "release_tag",
+      "commit",
+      "run_id",
+      "run_attempt",
+      "platforms",
+    ],
+    "rehearsal evidence",
+  );
+  if (
+    value.schema_version !== 1
+    || value.type !== "rho_candidate_rehearsal_evidence"
+    || value.status !== "passed"
+  ) fail("Rehearsal evidence header is invalid");
+  if (value.source_repository !== REHEARSAL_REPOSITORY) fail("Rehearsal source repository is not authorized");
+  if (!/^[1-9]\d{0,19}$/.test(value.run_id)) fail("Rehearsal run ID is invalid");
+  if (!Number.isSafeInteger(value.run_attempt) || value.run_attempt <= 0 || value.run_attempt > 1000) {
+    fail("Rehearsal run attempt is invalid");
+  }
+  const candidate = validateAggregateEvidence({
+    schema_version: value.schema_version,
+    type: "rho_candidate_evidence",
+    status: value.status,
+    version: value.version,
+    release_tag: value.release_tag,
+    commit: value.commit,
+    platforms: value.platforms,
+  });
+  if (expected.source_repository && value.source_repository !== expected.source_repository) {
+    fail("Rehearsal source repository mismatch");
+  }
+  if (expected.version && value.version !== expected.version) fail("Rehearsal version mismatch");
+  if (expected.release_tag && value.release_tag !== expected.release_tag) fail("Rehearsal tag mismatch");
+  if (expected.commit && value.commit !== expected.commit) fail("Rehearsal commit mismatch");
+  if (expected.run_id && value.run_id !== String(expected.run_id)) fail("Rehearsal run ID mismatch");
+  if (expected.run_attempt && value.run_attempt !== Number(expected.run_attempt)) fail("Rehearsal run attempt mismatch");
+  return { ...value, platforms: candidate.platforms };
+}
+
+export function createRehearsalEvidence({ candidateEvidencePath, sourceRepository, runId, runAttempt, outputPath }) {
+  const candidateRecord = fileRecord(candidateEvidencePath);
+  if (candidateRecord.size_bytes > MAX_EVIDENCE_BYTES) fail("Candidate evidence exceeds its byte budget");
+  const candidate = validateAggregateEvidence(JSON.parse(fs.readFileSync(candidateEvidencePath, "utf8")));
+  const expectedName = `rho-${candidate.version}-rehearsal-evidence.json`;
+  if (path.basename(outputPath) !== expectedName) fail(`Expected rehearsal evidence ${expectedName}`);
+  if (path.resolve(path.dirname(outputPath)) !== path.resolve(path.dirname(candidateEvidencePath))) {
+    fail("Rehearsal evidence output is outside the candidate directory");
+  }
+  const rehearsal = {
+    schema_version: 1,
+    type: "rho_candidate_rehearsal_evidence",
+    status: "passed",
+    source_repository: sourceRepository,
+    version: candidate.version,
+    release_tag: candidate.release_tag,
+    commit: candidate.commit,
+    run_id: String(runId),
+    run_attempt: Number(runAttempt),
+    platforms: candidate.platforms,
+  };
+  validateRehearsalEvidence(rehearsal, {
+    source_repository: REHEARSAL_REPOSITORY,
+    version: candidate.version,
+    release_tag: candidate.release_tag,
+    commit: candidate.commit,
+    run_id: runId,
+    run_attempt: runAttempt,
+  });
+  writeJson(outputPath, rehearsal);
+  return rehearsal;
+}
+
 function requiredCandidateAssetRecords(candidateEvidence) {
   return Object.values(candidateEvidence.platforms).flatMap((entry) => [entry.artifact, entry.checksum, entry.evidence]);
 }
@@ -360,6 +458,28 @@ export function selfTest() {
     const version = "0.4.0-dev.1";
     const releaseTag = `v${version}`;
     const commit = "a".repeat(40);
+    validateBuildAdmission("rehearsal", REHEARSAL_REPOSITORY, "refs/heads/main", "main");
+    validateBuildAdmission("candidate", CANDIDATE_REPOSITORY, "refs/heads/main", "main");
+    expectFailure(
+      () => validateBuildAdmission("candidate", REHEARSAL_REPOSITORY, "refs/heads/main", "main"),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validateBuildAdmission("rehearsal", CANDIDATE_REPOSITORY, "refs/heads/main", "main"),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validateBuildAdmission("unknown", REHEARSAL_REPOSITORY, "refs/heads/main", "main"),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validateBuildAdmission("rehearsal", REHEARSAL_REPOSITORY, "refs/heads/feature", "main"),
+      /default main branch/,
+    );
+    expectFailure(
+      () => validateBuildAdmission("rehearsal", REHEARSAL_REPOSITORY, "refs/heads/main", "trunk"),
+      /default main branch/,
+    );
     const evidencePaths = {};
     for (const platform of CANDIDATE_PLATFORMS) {
       const names = expectedPlatformNames(version, platform);
@@ -385,6 +505,22 @@ export function selfTest() {
       windowsEvidencePath: evidencePaths.windows_x86_64,
       macosEvidencePath: evidencePaths.macos_aarch64,
       outputPath: aggregatePath,
+    });
+    const rehearsalPath = path.join(root, `rho-${version}-rehearsal-evidence.json`);
+    const rehearsal = createRehearsalEvidence({
+      candidateEvidencePath: aggregatePath,
+      sourceRepository: REHEARSAL_REPOSITORY,
+      runId: "123456789",
+      runAttempt: 1,
+      outputPath: rehearsalPath,
+    });
+    validateRehearsalEvidence(rehearsal, {
+      source_repository: REHEARSAL_REPOSITORY,
+      version,
+      release_tag: releaseTag,
+      commit,
+      run_id: "123456789",
+      run_attempt: 1,
     });
     const candidateAsset = fileRecord(aggregatePath);
     const acceptance = {
@@ -418,6 +554,53 @@ export function selfTest() {
       acceptance_evidence: acceptance,
     };
     validatePublishRecord(record);
+    expectFailure(
+      () => validateRehearsalEvidence({ ...rehearsal, source_repository: "YuLab-SMU/Rho" }),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validateRehearsalEvidence(rehearsal, { commit: "b".repeat(40) }),
+      /commit mismatch/,
+    );
+    expectFailure(
+      () => validateRehearsalEvidence({ ...rehearsal, run_id: "0" }),
+      /run ID is invalid/,
+    );
+    expectFailure(
+      () => validateRehearsalEvidence({ ...rehearsal, run_attempt: 0 }),
+      /run attempt is invalid/,
+    );
+    expectFailure(
+      () => validateRehearsalEvidence({ ...rehearsal, padding: "x".repeat(MAX_EVIDENCE_BYTES) }),
+      /byte budget/,
+    );
+    expectFailure(
+      () => createRehearsalEvidence({
+        candidateEvidencePath: aggregatePath,
+        sourceRepository: "YuLab-SMU/Rho",
+        runId: "123456789",
+        runAttempt: 1,
+        outputPath: path.join(root, `rho-${version}-rehearsal-evidence-foreign.json`),
+      }),
+      /Expected rehearsal evidence/,
+    );
+    const foreignRehearsalDirectory = path.join(root, "foreign-rehearsal");
+    fs.mkdirSync(foreignRehearsalDirectory);
+    expectFailure(
+      () => createRehearsalEvidence({
+        candidateEvidencePath: aggregatePath,
+        sourceRepository: REHEARSAL_REPOSITORY,
+        runId: "123456789",
+        runAttempt: 1,
+        outputPath: path.join(foreignRehearsalDirectory, `rho-${version}-rehearsal-evidence.json`),
+      }),
+      /outside the candidate directory/,
+    );
+    expectFailure(() => validateAggregateEvidence(rehearsal), /candidate evidence keys are invalid/);
+    expectFailure(
+      () => validatePublishRecord({ ...record, candidate_evidence: rehearsal }),
+      /candidate evidence keys are invalid/,
+    );
     expectFailure(() => validateCandidateIdentity("0.4.0-dev..1", "v0.4.0-dev..1", commit), /not prerelease SemVer/);
     expectFailure(() => validateCandidateIdentity("0.4.0-dev.01", "v0.4.0-dev.01", commit), /not prerelease SemVer/);
     expectFailure(() => validatePublishRecord({ ...record, draft: false }), /draft prerelease/);
@@ -477,6 +660,15 @@ export function selfTest() {
 function runCli() {
   const args = parseArgs(process.argv.slice(2));
   if (args.test === "true") return selfTest();
+  if (args.mode === "admission") {
+    process.stdout.write(`${JSON.stringify(validateBuildAdmission(
+      args.build_mode,
+      args.repository,
+      args.workflow_ref,
+      args.default_branch,
+    ))}\n`);
+    return;
+  }
   if (args.mode === "identity") {
     process.stdout.write(`${JSON.stringify(validateCandidateIdentity(args.version, args.tag, args.commit))}\n`);
     return;
@@ -505,12 +697,22 @@ function runCli() {
     });
     return;
   }
+  if (args.mode === "rehearsal") {
+    createRehearsalEvidence({
+      candidateEvidencePath: args.input,
+      sourceRepository: args.repository,
+      runId: args.run_id,
+      runAttempt: args.run_attempt,
+      outputPath: args.output,
+    });
+    return;
+  }
   if (args.mode === "publish") {
     const result = validatePublishRecord(JSON.parse(fs.readFileSync(args.input, "utf8")));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
-  fail("Use --test true or --mode identity|platform|aggregate|publish with the required arguments");
+  fail("Use --test true or --mode admission|identity|platform|aggregate|rehearsal|publish with the required arguments");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runCli();
