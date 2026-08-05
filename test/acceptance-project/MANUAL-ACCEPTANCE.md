@@ -291,10 +291,29 @@ Open `examples/editor-intelligence.R`:
     third edit, focus Console or a dialog text field, press Ctrl+S, and confirm
     that unrelated input keeps ownership of the shortcut and the file remains
     dirty until you return to the editor and save.
-15. Modify the same saved file in an external editor and verify Rho detects the
-   change. Then create an unsaved Rho draft, overwrite the file externally, and
-   verify the draft is preserved for review rather than silently replaced.
-16. After running the QC workflow, open `examples/editor-formatting.R` and
+15. In `examples/editor-intelligence.R`, exercise the complete common shortcut
+    set with actual edits. Add `shortcut_probe <- 1`; use Ctrl+Z to remove it,
+    Ctrl+Y to restore it, Ctrl+Shift+Z to redo after another undo, and Ctrl+/
+    twice to comment and uncomment the line. Use Ctrl+F to find
+    `shortcut_probe` and Ctrl+H to replace its first match with
+    `shortcut_review_probe`; verify Find/Replace neither changes another match
+    nor saves the file implicitly. Use Ctrl+W to close the dirty tab, reopen
+    it, and choose Restore draft; the exact unsaved text must return. Use
+    Ctrl+N for a new file and Ctrl+O for the project chooser, cancelling the
+    chooser without switching projects. Repeat Close, Undo, Redo, Find,
+    Replace, and Toggle Line Comment from the File/Edit menus. Confirm
+    Ctrl+C/X/V/A remain native selection/clipboard operations and that
+    Ctrl+Enter, Ctrl+Shift+Enter, F2, F12, Shift+F12, Ctrl+Shift+E, and
+    Shift+Alt+F still perform their documented editor actions. Finally focus
+    Console and Agent inputs and press Ctrl+W/Ctrl+Z; neither may close or edit
+    the project document. For the browser/developer fallback check, repeat the
+    edit, Undo/Redo, comment, Find, Replace, and Console-focus cases at
+    `?preview=usability-problems&editor=basic`; record this separately because
+    it does not replace installed-candidate Monaco acceptance.
+16. Modify the same saved file in an external editor and verify Rho detects the
+    change. Then create an unsaved Rho draft, overwrite the file externally, and
+    verify the draft is preserved for review rather than silently replaced.
+17. After running the QC workflow, open `examples/editor-formatting.R` and
     choose Edit > Format Document (or the editor Format action). If `styler` is
     unavailable, verify Rho names that exact missing provider and does not use a
     substitute. Otherwise verify the review preserves the leading comment and

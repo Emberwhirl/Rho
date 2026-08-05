@@ -154,6 +154,7 @@ const state = {
     ready: false,
     loading: false,
     fallbackNotice: "",
+    fallbackHistories: new Map(),
     suppressChange: false,
     highlightDecorations: [],
   },
@@ -2983,18 +2984,30 @@ function activeDocument() {
   return state.documents[state.activeDocument] || null;
 }
 
-function isDocumentSaveShortcut(event) {
-  return (event.ctrlKey || event.metaKey)
-    && !event.altKey
-    && !event.shiftKey
-    && event.key.toLowerCase() === "s";
+function workbenchShortcutCommand(event) {
+  if (!(event.ctrlKey || event.metaKey)) return null;
+  const key = event.key.toLowerCase();
+  if (event.altKey) return event.metaKey && !event.shiftKey && key === "f" ? "replace" : null;
+  if (key === "z") return event.shiftKey ? "redo" : "undo";
+  if (event.shiftKey) return null;
+  return {
+    s: "save-file",
+    w: "close-file",
+    y: "redo",
+    f: "find",
+    h: "replace",
+    "/": "toggle-line-comment",
+    n: "new-file",
+    o: "open-project",
+  }[key] || null;
 }
 
-function saveShortcutOwnedByInput(target) {
+function workbenchShortcutOwnedByInput(target) {
+  if (target?.closest?.("#editorFallback")) return false;
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
 
-function saveShortcutOwnedByDialog() {
+function workbenchShortcutOwnedByDialog() {
   return Boolean(document.querySelector('[role="dialog"]:not(.hidden)'));
 }
 
@@ -3007,6 +3020,7 @@ function activeProjectName() {
 }
 
 function supportsMonaco() {
+  if (!isDesktop && previewParams.get("editor") === "basic") return false;
   return typeof window.Worker === "function";
 }
 
@@ -3441,6 +3455,7 @@ function applyDocumentSelection(documentState) {
     editor.value = documentState.content;
     editor.selectionStart = Math.min(documentState.cursorStart ?? 0, editor.value.length);
     editor.selectionEnd = Math.min(documentState.cursorEnd ?? documentState.cursorStart ?? 0, editor.value.length);
+    ensureFallbackEditorHistory(documentState);
   }
   updateEditorChrome();
 }
@@ -3506,7 +3521,17 @@ async function initializeEditor() {
     });
     const KeyMod = state.editor.monaco.KeyMod;
     const KeyCode = state.editor.monaco.KeyCode;
-    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyS, () => saveActiveDocument());
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyS, () => runWorkbenchMenuCommand("save-file"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyW, () => runWorkbenchMenuCommand("close-file"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyZ, () => runWorkbenchMenuCommand("undo"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyZ, () => runWorkbenchMenuCommand("redo"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyY, () => runWorkbenchMenuCommand("redo"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyF, () => runWorkbenchMenuCommand("find"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyH, () => runWorkbenchMenuCommand("replace"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyF, () => runWorkbenchMenuCommand("replace"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.Slash, () => runWorkbenchMenuCommand("toggle-line-comment"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyN, () => runWorkbenchMenuCommand("new-file"));
+    state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyO, () => runWorkbenchMenuCommand("open-project"));
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyCode.Enter, () => runSelectionOrCurrentLine());
     state.editor.editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, () => runActiveFile());
     state.editor.editor.addCommand(KeyCode.F12, () => gotoDefinitionAtCursor());
@@ -6824,6 +6849,7 @@ async function applyLintQuickFix() {
       documentState.content = lines.join("\n");
       documentState.versionId = (documentState.versionId || 0) + 1;
       fallbackEditor().value = documentState.content;
+      recordFallbackEditorChange("lint-quick-fix");
     }
     syncDocumentFromEditor({ render: true, persist: true });
     state.problems = state.problems.filter((item) => item.origin !== "lintr" || item.source_path !== proposal.sourcePath);
@@ -7347,6 +7373,13 @@ function replaceRefactorDocumentContent(target, content) {
     documentState.content = model.getValue();
     documentState.versionId = model.getAlternativeVersionId();
   } else {
+    if (state.editor.mode === "textarea" && state.activeDocument === target.path) {
+      const editor = fallbackEditor();
+      editor.value = content;
+      editor.selectionStart = 0;
+      editor.selectionEnd = 0;
+      recordFallbackEditorChange("refactor");
+    }
     documentState.content = content;
     documentState.versionId = (documentState.versionId || 0) + 1;
   }
@@ -12677,25 +12710,201 @@ function closeWorkbenchMenus(except = null) {
   });
 }
 
-function runEditorMenuCommand(command) {
+function syncFallbackEditorChange() {
+  syncDocumentFromEditor({ render: true, persist: true });
+  updateEditorChrome();
+}
+
+const FALLBACK_HISTORY_LIMIT = 100;
+const FALLBACK_HISTORY_COALESCE_MS = 750;
+
+function fallbackEditorHistoryKey(path = activeDocument()?.path) {
+  return path ? `${state.project.root}\u0000${path}` : null;
+}
+
+function fallbackEditorSnapshot() {
+  const editor = fallbackEditor();
+  return {
+    value: editor.value,
+    start: editor.selectionStart,
+    end: editor.selectionEnd,
+  };
+}
+
+function ensureFallbackEditorHistory(documentState = activeDocument()) {
+  if (!documentState) return null;
+  const historyKey = fallbackEditorHistoryKey(documentState.path);
+  const snapshot = fallbackEditorSnapshot();
+  let history = state.editor.fallbackHistories.get(historyKey);
+  if (!history || history.current.value !== snapshot.value) {
+    history = {
+      undo: [],
+      redo: [],
+      current: snapshot,
+      lastInputType: null,
+      lastInputAt: 0,
+    };
+    state.editor.fallbackHistories.set(historyKey, history);
+  } else {
+    history.current = snapshot;
+  }
+  return history;
+}
+
+function recordFallbackEditorChange(inputType = "programmatic", coalesce = false) {
+  const documentState = activeDocument();
+  if (!documentState) return;
+  const historyKey = fallbackEditorHistoryKey(documentState.path);
+  let history = state.editor.fallbackHistories.get(historyKey);
+  if (!history) {
+    history = {
+      undo: [],
+      redo: [],
+      current: {
+        value: documentState.content,
+        start: documentState.cursorStart ?? 0,
+        end: documentState.cursorEnd ?? documentState.cursorStart ?? 0,
+      },
+      lastInputType: null,
+      lastInputAt: 0,
+    };
+    state.editor.fallbackHistories.set(historyKey, history);
+  }
+  const next = fallbackEditorSnapshot();
+  if (next.value === history.current.value) {
+    history.current = next;
+    return;
+  }
+  const now = performance.now();
+  const continueInput = coalesce
+    && history.lastInputType === inputType
+    && now - history.lastInputAt <= FALLBACK_HISTORY_COALESCE_MS;
+  if (!continueInput) {
+    history.undo.push(history.current);
+    if (history.undo.length > FALLBACK_HISTORY_LIMIT) history.undo.shift();
+  }
+  history.current = next;
+  history.redo = [];
+  history.lastInputType = coalesce ? inputType : null;
+  history.lastInputAt = coalesce ? now : 0;
+}
+
+function restoreFallbackEditorHistory(direction) {
+  const history = ensureFallbackEditorHistory();
+  if (!history) return;
+  const source = direction === "undo" ? history.undo : history.redo;
+  const destination = direction === "undo" ? history.redo : history.undo;
+  const snapshot = source.pop();
+  if (!snapshot) return;
+  destination.push(history.current);
+  if (destination.length > FALLBACK_HISTORY_LIMIT) destination.shift();
+  history.current = snapshot;
+  history.lastInputType = null;
+  history.lastInputAt = 0;
+  const editor = fallbackEditor();
+  editor.value = snapshot.value;
+  editor.setSelectionRange(snapshot.start, snapshot.end);
+  syncFallbackEditorChange();
+}
+
+function toggleFallbackLineComment() {
+  const editor = fallbackEditor();
+  const value = editor.value;
+  const selectionStart = editor.selectionStart;
+  const selectionEnd = editor.selectionEnd;
+  const blockStart = value.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  let blockEnd = value.indexOf("\n", selectionEnd);
+  if (blockEnd < 0) blockEnd = value.length;
+  if (selectionEnd > selectionStart && value[selectionEnd - 1] === "\n") blockEnd = selectionEnd - 1;
+  const lines = value.slice(blockStart, blockEnd).split("\n");
+  const nonEmpty = lines.filter((line) => line.trim());
+  const uncomment = nonEmpty.length > 0 && nonEmpty.every((line) => /^\s*#/.test(line));
+  const replacement = lines.map((line) => {
+    if (!line.trim()) return line;
+    return uncomment ? line.replace(/^(\s*)# ?/, "$1") : line.replace(/^(\s*)/, "$1# ");
+  }).join("\n");
+  editor.setRangeText(replacement, blockStart, blockEnd, "select");
+  recordFallbackEditorChange("toggle-line-comment");
+  syncFallbackEditorChange();
+}
+
+async function findInFallbackEditor(replace = false) {
+  const editor = fallbackEditor();
+  const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd);
+  const query = await showInputDialog({
+    title: replace ? "Replace in file" : "Find in file",
+    message: "Search the active basic-editor document.",
+    label: "Find",
+    defaultValue: selected,
+    validate: (value) => Boolean(value),
+  });
+  if (!query) {
+    editor.focus();
+    return;
+  }
+  let match = editor.value.indexOf(query, editor.selectionEnd);
+  if (match < 0) match = editor.value.indexOf(query);
+  if (match < 0) {
+    toast(`No match found for ${query}.`, true);
+    editor.focus();
+    return;
+  }
+  editor.focus();
+  editor.setSelectionRange(match, match + query.length);
+  if (!replace) return;
+  const replacement = await showInputDialog({
+    title: "Replace in file",
+    message: `Replace the selected match for ${query}.`,
+    label: "Replace with",
+    defaultValue: query,
+  });
+  if (replacement === null) {
+    editor.focus();
+    return;
+  }
+  editor.setRangeText(replacement, match, match + query.length, "select");
+  recordFallbackEditorChange("replace");
+  syncFallbackEditorChange();
+  editor.focus();
+}
+
+function runEditorCommand(command) {
+  if (!activeDocument()) return;
   if (state.editor.mode === "monaco" && state.editor.editor) {
-    state.editor.editor.trigger("rho-menu", command, null);
+    const monacoCommand = {
+      undo: "undo",
+      redo: "redo",
+      find: "actions.find",
+      replace: "editor.action.startFindReplaceAction",
+      "toggle-line-comment": "editor.action.commentLine",
+    }[command];
+    if (monacoCommand) state.editor.editor.trigger("rho-workbench", monacoCommand, null);
     state.editor.editor.focus();
     return;
   }
   const editor = fallbackEditor();
   editor.focus();
-  document.execCommand(command);
+  if (command === "undo" || command === "redo") {
+    restoreFallbackEditorHistory(command);
+  } else if (command === "find" || command === "replace") {
+    findInFallbackEditor(command === "replace");
+  } else if (command === "toggle-line-comment") {
+    toggleFallbackLineComment();
+  }
 }
 
 function runWorkbenchMenuCommand(command) {
   const actions = {
     "open-project": () => $("#projectSwitcher").click(),
     "new-file": () => $(".new-tab").click(),
-    "save-file": () => $("#saveFileButton").click(),
+    "save-file": () => saveActiveDocument(),
+    "close-file": () => state.activeDocument && closeDocument(state.activeDocument),
     "format-document": () => $("#editorFormatButton").click(),
-    undo: () => runEditorMenuCommand("undo"),
-    redo: () => runEditorMenuCommand("redo"),
+    undo: () => runEditorCommand("undo"),
+    redo: () => runEditorCommand("redo"),
+    find: () => runEditorCommand("find"),
+    replace: () => runEditorCommand("replace"),
+    "toggle-line-comment": () => runEditorCommand("toggle-line-comment"),
     interrupt: () => $("#interruptButton").click(),
     restart: () => $("#restartButton").click(),
     "show-agent": () => applyWorkbenchLayout("agent"),
@@ -13541,8 +13750,9 @@ $("#consoleInput").addEventListener("keydown", (event) => {
     $("#consoleRunButton").click();
   }
 });
-$("#editor").addEventListener("input", () => {
+$("#editor").addEventListener("input", (event) => {
   clearAgentEditHighlight();
+  recordFallbackEditorChange(event.inputType || "input", true);
   syncDocumentFromEditor({ render: true, persist: true });
   updateEditorChrome();
 });
@@ -13562,11 +13772,6 @@ window.addEventListener("beforeunload", () => {
   flushSessionSnapshot().catch(() => {});
 });
 $("#editor").addEventListener("keydown", (event) => {
-  if (isDocumentSaveShortcut(event)) {
-    event.preventDefault();
-    saveActiveDocument();
-    return;
-  }
   if (event.ctrlKey && event.shiftKey && event.key === "Enter") {
     event.preventDefault();
     runActiveFile();
@@ -13582,6 +13787,7 @@ $("#editor").addEventListener("keydown", (event) => {
     const editor = event.currentTarget;
     const start = editor.selectionStart;
     editor.setRangeText("  ", start, editor.selectionEnd, "end");
+    recordFallbackEditorChange("insert-tab");
     updateEditorChrome();
     syncDocumentFromEditor({ render: true, persist: true });
   }
@@ -14067,10 +14273,11 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (isDocumentSaveShortcut(event) && !event.defaultPrevented) {
-    if (saveShortcutOwnedByInput(event.target) || saveShortcutOwnedByDialog()) return;
+  const shortcutCommand = event.defaultPrevented ? null : workbenchShortcutCommand(event);
+  if (shortcutCommand) {
+    if (workbenchShortcutOwnedByInput(event.target) || workbenchShortcutOwnedByDialog()) return;
     event.preventDefault();
-    saveActiveDocument();
+    runWorkbenchMenuCommand(shortcutCommand);
     return;
   }
   if (event.key === "Tab" && state.product.dialog) {

@@ -8,6 +8,11 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- The editor now uses one common command system for Save, Close, Undo, Redo,
+  Find, Replace, line comments, New File, and Open Project across keyboard
+  shortcuts and menus. Monaco keeps its native editing widgets and history;
+  the basic editor has bounded per-file history and search/replace dialogs;
+  Console, Agent, forms, and dialogs retain ownership of their input shortcuts.
 - Problems now provides a `Clear lint results` action that removes only
   transient `lintr` diagnostics and stale Quick Fix state; failed-Run Problems
   and their audit history remain intact.

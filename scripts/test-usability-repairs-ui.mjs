@@ -20,12 +20,12 @@ assert.match(js, /scenario === "usability-problems"/);
 assert.match(js, /"usability-problems"(?:, "[^"]+")*\]\.includes\(scenario\)/);
 assert.match(css, /\.problem-source-unavailable/);
 
-assert.match(js, /function isDocumentSaveShortcut\(event\)/);
+assert.match(js, /function workbenchShortcutCommand\(event\)/);
 assert.match(js, /event\.ctrlKey \|\| event\.metaKey/);
-assert.match(js, /KeyMod\.CtrlCmd \| KeyCode\.KeyS, \(\) => saveActiveDocument\(\)/);
-assert.match(js, /function saveShortcutOwnedByInput\(target\)/);
+assert.match(js, /KeyMod\.CtrlCmd \| KeyCode\.KeyS, \(\) => runWorkbenchMenuCommand\("save-file"\)/);
+assert.match(js, /function workbenchShortcutOwnedByInput\(target\)/);
 assert.match(js, /\[role="dialog"\]:not\(\.hidden\)/);
-assert.match(js, /isDocumentSaveShortcut\(event\) && !event\.defaultPrevented/);
+assert.match(js, /const shortcutCommand = event\.defaultPrevented \? null : workbenchShortcutCommand\(event\)/);
 assert.match(js, /scenario === "usability-save"/);
 
 assert.match(html, /id="icon-folder"/);

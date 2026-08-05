@@ -101,7 +101,8 @@ and document-level shortcuts where appropriate:
 - Redo: `Ctrl+Y`, plus `Ctrl+Shift+Z` (`Cmd+Shift+Z`), using the active editor
   redo stack;
 - Find: `Ctrl+F` (`Cmd+F`) and Replace: `Ctrl+H` (`Cmd+Alt+F` on macOS where
-  Monaco defines it), using editor-native widgets;
+  Monaco defines it), using Monaco's native widgets; the basic editor uses
+  bounded Rho find and single-replacement dialogs;
 - Toggle line comment: `Ctrl+/` (`Cmd+/`), using Monaco's command and a bounded
   line-based equivalent in the basic editor;
 - New file: `Ctrl+N` (`Cmd+N`) and Open project: `Ctrl+O` (`Cmd+O`), reusing
@@ -212,4 +213,34 @@ transition from five to three Problems with the durable failure preserved, and
 `git diff --check` passed. Installed acceptance is NOT RUN. No version bump was
 made because this is not yet a new distributable candidate.
 
-The final UX-KEYS-1 package is pending.
+### UX-KEYS-1
+
+Implemented and verified 2026-08-05. File and Edit menus, Monaco, the basic
+editor, and document-level handling now share one command router for Save,
+Close, Undo, Redo, Find, Replace, line comments, New File, and Open Project.
+Monaco retains its native history and search widgets. The basic editor uses a
+bounded 100-step per-document history with coalesced typing plus bounded find
+and single-replacement dialogs; programmatic comment, replacement, Quick Fix,
+Tab, and active refactor edits join that history. Clipboard and selection
+chords are not intercepted, and Console, Agent, form, and dialog inputs keep
+their shortcut ownership.
+
+JavaScript syntax, an executable basic-editor history regression, focused and
+adjacent editor/workbench contracts, Monaco and basic-editor browser
+interaction, dirty-draft restoration, Console focus isolation, and two-project
+same-path history isolation passed. The final affected matrix passed 14
+frontend contract scripts, `cargo fmt --all -- --check`, 234 GNU Rust workspace
+tests, 478 `rho.bridge` tests with two Windows file-symlink skips, 45
+`rho.agent` tests, and `git diff --check`.
+
+An intentionally broader all-frontend-script run also found one unrelated
+baseline assertion drift in `test-evidence-claim-ui.mjs`: the test expects the
+old phrase `anchored Artifact`, while the checked-in `HEAD` implementation
+already says `linked saved output`. UX-KEYS-1 does not change that function or
+test, so this repair is not included in the scoped commit. Installed-app
+acceptance is NOT RUN. The application remains `0.4.0-dev.0`; no R package
+version changed.
+
+All five source packages in this contract are implemented. This document
+remains active until the exact installed-candidate workflow in
+`test/acceptance-project/MANUAL-ACCEPTANCE.md` is completed.
