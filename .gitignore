@@ -12,6 +12,6 @@
 /desktop/resources/runtime/LICENSE
 /desktop/resources/runtime/NOTICE
 /desktop/src-tauri/gen/
+/desktop/src-tauri/binaries/ark-*
 .worktrees/
 /test/generated-manual-fixtures/
-

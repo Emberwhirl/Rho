@@ -8,6 +8,7 @@ mod project;
 mod update;
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -31,7 +32,7 @@ use project::{
     start_project_watcher, validate_project_root,
 };
 use rho_core::{BrokerState, ExecutionOrigin};
-use rho_kernel::{ArkLaunchConfig, ArkSession};
+use rho_kernel::{ArkLaunchConfig, ArkSession, KernelEvent};
 use rho_server::coordinator::{
     ApprovalResponseInput, CoordinatorRuntime, EnvironmentOperationArguments,
     PendingApprovalRegistry, ProjectSkillDiscoverySummary, bootstrap_bridge,
@@ -72,6 +73,7 @@ struct RuntimeConfig {
     rscript: PathBuf,
     r_version: String,
     r_home: String,
+    process_path: OsString,
     r_profile_user: Option<PathBuf>,
     r_environ_user: Option<PathBuf>,
     bridge_package: PathBuf,
@@ -140,15 +142,19 @@ struct AppInfo {
     runtime: AppRuntimeInfo,
 }
 
+#[derive(Debug)]
 struct RRuntimeProbe {
     r_home: String,
+    r_bin: String,
+    r_arch: String,
+    path_sep: String,
     r_version: String,
     r_libs: String,
     r_profile_user: Option<PathBuf>,
     r_environ_user: Option<PathBuf>,
 }
 
-const RUNTIME_CACHE_VERSION: u32 = 1;
+const RUNTIME_CACHE_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct RuntimeFileSignature {
@@ -165,6 +171,9 @@ struct RuntimeCacheFile {
     r_profile_user: Option<RuntimeFileSignature>,
     r_environ_user: Option<RuntimeFileSignature>,
     r_home: String,
+    r_bin: String,
+    r_arch: String,
+    path_sep: String,
     r_version: String,
     r_libs: String,
     agent_runtime: AgentRuntimeStatus,
@@ -601,6 +610,7 @@ async fn bootstrap_runtime(state: &AppState, selected: Option<PathBuf>) -> Start
 
     let view = match result {
         Ok(Ok(config)) => {
+            git::set_process_path(config.process_path.clone());
             let runtime = StartupRuntimeView {
                 rscript: config.rscript.to_string_lossy().replace('\\', "/"),
                 r_version: config.r_version.clone(),
@@ -2854,6 +2864,7 @@ async fn run_agent(
     let approvals = state.approvals.clone();
     let environment_approvals = state.environment_approvals.clone();
     let rscript = config.rscript.clone();
+    let process_path = config.process_path.clone();
     let agent_package = config.agent_package.clone();
     let task_turn_id = turn_id.clone();
     let task_agent_tasks = state.agent_tasks.clone();
@@ -2865,6 +2876,7 @@ async fn run_agent(
             session.as_ref(),
             context,
             rscript,
+            Some(process_path),
             agent_package,
             resolved_model.effective_model_ref,
             Some(runtime_profile),
@@ -3463,6 +3475,7 @@ async fn shutdown_application(state: &AppState) -> Result<(), String> {
 
     let context = state.context.lock().await.take();
     let session = state.session.write().await.take();
+    #[cfg(windows)]
     let kernel_pid = session.as_ref().and_then(|session| session.child_pid());
 
     if let Some(session) = session.as_ref() {
@@ -3491,7 +3504,12 @@ async fn shutdown_application(state: &AppState) -> Result<(), String> {
                     "Ark session still has {} active references; terminating its process tree",
                     Arc::strong_count(&session)
                 ));
+                #[cfg(unix)]
+                if let Err(error) = session.terminate_process_group().await {
+                    write_startup_log(&format!("Ark process-group termination failed: {error:#}"));
+                }
                 drop(session);
+                #[cfg(windows)]
                 if let Some(pid) = kernel_pid
                     && let Err(error) = terminate_process_tree(pid)
                 {
@@ -3518,11 +3536,6 @@ fn terminate_process_tree(pid: u32) -> Result<()> {
         .status()
         .context("starting taskkill for Ark")?;
     ensure!(status.success(), "taskkill failed with status {status}");
-    Ok(())
-}
-
-#[cfg(not(windows))]
-fn terminate_process_tree(_pid: u32) -> Result<()> {
     Ok(())
 }
 
@@ -4071,86 +4084,104 @@ fn prepare_runtime_files_with_rscript(
 
     let rscript = locate_rscript(selected_rscript)?;
     let cached = load_runtime_cache(&data_dir, &rscript, &ark);
-    let (r_home, r_version, r_libs, r_profile_user, r_environ_user, agent_runtime) =
-        if let Some(cache) = cached {
-            write_startup_log(&format!(
-                "startup_phase=runtime_cache outcome=hit elapsed_ms={}",
-                started.elapsed().as_millis()
-            ));
-            (
-                cache.r_home,
-                cache.r_version,
-                cache.r_libs,
-                cache
-                    .r_profile_user
-                    .map(|signature| PathBuf::from(signature.path)),
-                cache
-                    .r_environ_user
-                    .map(|signature| PathBuf::from(signature.path)),
-                cache.agent_runtime,
-            )
-        } else {
-            let probe_started = Instant::now();
-            let probe = probe_r_runtime(&rscript)?;
-            let RRuntimeProbe {
-                r_home,
-                r_version,
-                r_libs,
-                r_profile_user,
-                r_environ_user,
-            } = probe;
-            write_startup_log(&format!(
-                "startup_phase=runtime_probe elapsed_ms={} agent_probe=deferred",
-                probe_started.elapsed().as_millis()
-            ));
-            let agent_runtime = AgentRuntimeStatus {
-                available: false,
-                aisdk_version: None,
-                error: Some("Agent runtime check is continuing in the background.".to_string()),
-            };
-            let cache = RuntimeCacheFile {
-                version: RUNTIME_CACHE_VERSION,
-                rscript: runtime_file_signature(&rscript)?,
-                ark: runtime_file_signature(&ark)?,
-                r_profile_user: r_profile_user
-                    .as_deref()
-                    .map(runtime_file_signature)
-                    .transpose()?,
-                r_environ_user: r_environ_user
-                    .as_deref()
-                    .map(runtime_file_signature)
-                    .transpose()?,
-                r_home: r_home.clone(),
-                r_version: r_version.clone(),
-                r_libs: r_libs.clone(),
-                agent_runtime: agent_runtime.clone(),
-            };
-            if let Err(error) = save_runtime_cache(&data_dir, &cache) {
-                write_startup_log(&format!(
-                    "startup_phase=runtime_cache outcome=write_failed detail={error:#}"
-                ));
-            }
-            (
-                r_home,
-                r_version,
-                r_libs,
-                r_profile_user,
-                r_environ_user,
-                agent_runtime,
-            )
+    let (
+        r_home,
+        r_bin,
+        r_arch,
+        path_sep,
+        r_version,
+        r_libs,
+        r_profile_user,
+        r_environ_user,
+        agent_runtime,
+    ) = if let Some(cache) = cached {
+        write_startup_log(&format!(
+            "startup_phase=runtime_cache outcome=hit elapsed_ms={}",
+            started.elapsed().as_millis()
+        ));
+        (
+            cache.r_home,
+            cache.r_bin,
+            cache.r_arch,
+            cache.path_sep,
+            cache.r_version,
+            cache.r_libs,
+            cache
+                .r_profile_user
+                .map(|signature| PathBuf::from(signature.path)),
+            cache
+                .r_environ_user
+                .map(|signature| PathBuf::from(signature.path)),
+            cache.agent_runtime,
+        )
+    } else {
+        let probe_started = Instant::now();
+        let probe = probe_r_runtime(&rscript)?;
+        let RRuntimeProbe {
+            r_home,
+            r_bin,
+            r_arch,
+            path_sep,
+            r_version,
+            r_libs,
+            r_profile_user,
+            r_environ_user,
+        } = probe;
+        write_startup_log(&format!(
+            "startup_phase=runtime_probe elapsed_ms={} agent_probe=deferred",
+            probe_started.elapsed().as_millis()
+        ));
+        let agent_runtime = AgentRuntimeStatus {
+            available: false,
+            aisdk_version: None,
+            error: Some("Agent runtime check is continuing in the background.".to_string()),
         };
+        let cache = RuntimeCacheFile {
+            version: RUNTIME_CACHE_VERSION,
+            rscript: runtime_file_signature(&rscript)?,
+            ark: runtime_file_signature(&ark)?,
+            r_profile_user: r_profile_user
+                .as_deref()
+                .map(runtime_file_signature)
+                .transpose()?,
+            r_environ_user: r_environ_user
+                .as_deref()
+                .map(runtime_file_signature)
+                .transpose()?,
+            r_home: r_home.clone(),
+            r_bin: r_bin.clone(),
+            r_arch: r_arch.clone(),
+            path_sep: path_sep.clone(),
+            r_version: r_version.clone(),
+            r_libs: r_libs.clone(),
+            agent_runtime: agent_runtime.clone(),
+        };
+        if let Err(error) = save_runtime_cache(&data_dir, &cache) {
+            write_startup_log(&format!(
+                "startup_phase=runtime_cache outcome=write_failed detail={error:#}"
+            ));
+        }
+        (
+            r_home,
+            r_bin,
+            r_arch,
+            path_sep,
+            r_version,
+            r_libs,
+            r_profile_user,
+            r_environ_user,
+            agent_runtime,
+        )
+    };
+    ensure_supported_r_architecture(&r_arch)?;
+    let process_path = platform::child_process_path(Some(Path::new(&r_bin)))
+        .context("constructing the desktop child-process PATH")?;
     let runtime_dir = data_dir.join("runtime");
     std::fs::create_dir_all(&runtime_dir)?;
     let empty_site_environ = runtime_dir.join("empty-site.Renviron");
     write_source(&empty_site_environ, "")?;
     let log_path = runtime_dir.join("ark.log");
     let kernelspec = runtime_dir.join("kernel.json");
-    let r_bin = Path::new(&r_home).join("bin").join("x64");
-    let path = format!(
-        "{};{}",
-        r_bin.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
     let mut argv = vec![
         json!(ark),
         json!("--connection_file"),
@@ -4166,7 +4197,10 @@ fn prepare_runtime_files_with_rscript(
     let mut environment = serde_json::Map::from_iter([
         ("R_HOME".to_string(), json!(r_home)),
         ("R_LIBS".to_string(), json!(r_libs)),
-        ("PATH".to_string(), json!(path)),
+        (
+            "PATH".to_string(),
+            json!(process_path.to_string_lossy().into_owned()),
+        ),
     ]);
     if let Some(r_profile_user) = &r_profile_user {
         environment.insert("R_PROFILE_USER".to_string(), json!(r_profile_user));
@@ -4190,7 +4224,13 @@ fn prepare_runtime_files_with_rscript(
     atomic_write(&kernelspec, &serde_json::to_vec_pretty(&spec)?)?;
     atomic_write(
         &kernelspec.with_extension("runtime.json"),
-        &serde_json::to_vec_pretty(&json!({"r_version": r_version, "r_home": r_home}))?,
+        &serde_json::to_vec_pretty(&json!({
+            "r_version": r_version,
+            "r_home": r_home,
+            "r_bin": r_bin,
+            "r_arch": r_arch,
+            "path_sep": path_sep
+        }))?,
     )?;
     Ok(RuntimeConfig {
         data_dir: data_dir.clone(),
@@ -4198,6 +4238,7 @@ fn prepare_runtime_files_with_rscript(
         rscript,
         r_version,
         r_home,
+        process_path,
         r_profile_user,
         r_environ_user,
         bridge_package,
@@ -4277,19 +4318,64 @@ fn save_runtime_cache(data_dir: &Path, cache: &RuntimeCacheFile) -> Result<()> {
 }
 
 fn locate_ark(app: &tauri::App) -> Result<PathBuf> {
-    let development = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/runtime/ark.exe");
-    let installed = app
+    let resource_dir = app
         .path()
         .resource_dir()
-        .context("resolving Rho resource directory")?
-        .join("resources/runtime/ark.exe");
-    Ok(if installed.is_file() {
-        installed
-    } else if development.is_file() {
-        development
-    } else {
-        installed
-    })
+        .context("resolving Rho resource directory")?;
+    let current_exe = std::env::current_exe().context("resolving the Rho executable path")?;
+    locate_ark_from_candidates(ark_candidate_paths(
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        Path::new(env!("CARGO_MANIFEST_DIR")),
+        &resource_dir,
+        &current_exe,
+    ))
+}
+
+fn ark_candidate_paths(
+    os: &str,
+    arch: &str,
+    manifest_dir: &Path,
+    resource_dir: &Path,
+    current_exe: &Path,
+) -> Vec<PathBuf> {
+    match (os, arch) {
+        ("windows", "x86_64") => vec![
+            resource_dir.join("resources/runtime/ark.exe"),
+            manifest_dir.join("../resources/runtime/ark.exe"),
+        ],
+        ("macos", "aarch64") => vec![
+            current_exe.parent().unwrap_or(current_exe).join("ark"),
+            manifest_dir.join("binaries/ark-aarch64-apple-darwin"),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn locate_ark_from_candidates(candidates: Vec<PathBuf>) -> Result<PathBuf> {
+    ensure!(
+        !candidates.is_empty(),
+        "bundled Ark is unavailable for {}-{}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+    Ok(candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .unwrap_or_else(|| candidates[0].clone()))
+}
+
+fn development_ark_path() -> Result<PathBuf> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let current_exe = std::env::current_exe().context("resolving the Rho executable path")?;
+    locate_ark_from_candidates(ark_candidate_paths(
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        manifest_dir,
+        manifest_dir,
+        &current_exe,
+    ))
 }
 
 fn locate_rscript(selected: Option<&Path>) -> Result<PathBuf> {
@@ -4305,40 +4391,65 @@ fn locate_rscript(selected: Option<&Path>) -> Result<PathBuf> {
         ensure!(path.is_file(), "RHO_RSCRIPT does not point to a file");
         return Ok(path);
     }
-    let mut command = Command::new("where.exe");
-    hide_console_window(&mut command);
-    let output = command
-        .arg("Rscript.exe")
-        .output()
-        .context("searching for Rscript.exe")?;
-    if output.status.success() {
-        return String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-            .map(PathBuf::from)
-            .context("where.exe returned no Rscript path");
-    }
-    let program_files = std::env::var_os("ProgramFiles")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
-    if let Ok(entries) = std::fs::read_dir(program_files.join("R")) {
-        let mut candidates = entries
-            .flatten()
-            .map(|entry| entry.path().join("bin/Rscript.exe"))
-            .filter(|path| path.is_file())
-            .collect::<Vec<_>>();
-        candidates.sort();
-        if let Some(path) = candidates.pop() {
-            return Ok(path);
+
+    #[cfg(target_os = "macos")]
+    for candidate in [
+        PathBuf::from("/Library/Frameworks/R.framework/Resources/bin/Rscript"),
+        PathBuf::from("/Library/Frameworks/R.framework/Versions/Current/Resources/bin/Rscript"),
+    ] {
+        if candidate.is_file() {
+            return Ok(candidate);
         }
     }
-    bail!("Rscript.exe was not found. Install R 4.4 or later, then restart Rho.")
+
+    let search_path =
+        platform::child_process_path(None).context("constructing the Rscript search PATH")?;
+    let executable = if cfg!(windows) {
+        "Rscript.exe"
+    } else {
+        "Rscript"
+    };
+    if let Some(path) = find_executable_on_path(executable, &search_path) {
+        return Ok(path);
+    }
+
+    #[cfg(windows)]
+    {
+        let program_files = std::env::var_os("ProgramFiles")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
+        if let Ok(entries) = std::fs::read_dir(program_files.join("R")) {
+            let mut candidates = entries
+                .flatten()
+                .map(|entry| entry.path().join("bin/Rscript.exe"))
+                .filter(|path| path.is_file())
+                .collect::<Vec<_>>();
+            candidates.sort();
+            if let Some(path) = candidates.pop() {
+                return Ok(path);
+            }
+        }
+    }
+    #[cfg(windows)]
+    bail!("Rscript.exe was not found. Install R 4.4 or later, then restart Rho.");
+    #[cfg(target_os = "macos")]
+    bail!("Rscript was not found. Install arm64 R 4.4 or later, then restart Rho.");
+    #[cfg(not(any(windows, target_os = "macos")))]
+    bail!("Rscript was not found. Install R 4.4 or later, then restart Rho.")
+}
+
+fn find_executable_on_path(executable: &str, search_path: &std::ffi::OsStr) -> Option<PathBuf> {
+    std::env::split_paths(search_path)
+        .map(|directory| directory.join(executable))
+        .find(|candidate| candidate.is_file())
 }
 
 fn probe_r_runtime(rscript: &Path) -> Result<RRuntimeProbe> {
     let expression = r#"
 cat("__RHO_HOME__", normalizePath(R.home(), winslash = "/"), "\n", sep = "")
+cat("__RHO_BIN__", normalizePath(R.home("bin"), winslash = "/"), "\n", sep = "")
+cat("__RHO_ARCH__", R.version$arch, "\n", sep = "")
+cat("__RHO_PATH_SEP__", .Platform$path.sep, "\n", sep = "")
 cat("__RHO_VERSION__", R.version.string, "\n", sep = "")
 cat("__RHO_VERSION_NUMBER__", as.character(getRversion()), "\n", sep = "")
 cat("__RHO_PROFILE_USER__", normalizePath(path.expand("~/.Rprofile"), winslash = "/", mustWork = FALSE), "\n", sep = "")
@@ -4418,6 +4529,13 @@ cat(
 fn parse_r_runtime_probe(stdout: &str) -> Result<RRuntimeProbe> {
     let r_home =
         probe_value(stdout, "__RHO_HOME__").context("R home was absent from runtime probe")?;
+    let r_bin =
+        probe_value(stdout, "__RHO_BIN__").context("R bin was absent from runtime probe")?;
+    let r_arch = probe_value(stdout, "__RHO_ARCH__")
+        .context("R architecture was absent from runtime probe")?;
+    let path_sep = probe_value(stdout, "__RHO_PATH_SEP__")
+        .context("R path separator was absent from runtime probe")?;
+    ensure_supported_r_architecture(&r_arch)?;
     let r_version = probe_value(stdout, "__RHO_VERSION__")
         .context("R version was absent from runtime probe")?;
     let r_version_number = probe_value(stdout, "__RHO_VERSION_NUMBER__")
@@ -4435,6 +4553,9 @@ fn parse_r_runtime_probe(stdout: &str) -> Result<RRuntimeProbe> {
     );
     Ok(RRuntimeProbe {
         r_home,
+        r_bin,
+        r_arch,
+        path_sep,
         r_version,
         r_libs,
         r_profile_user,
@@ -4690,6 +4811,23 @@ fn ensure_supported_r_version(version: &str) -> Result<()> {
     Ok(())
 }
 
+fn r_architecture_supported(target_os: &str, target_arch: &str, r_arch: &str) -> bool {
+    if target_os == "macos" && target_arch == "aarch64" {
+        matches!(r_arch.trim(), "aarch64" | "arm64")
+    } else {
+        true
+    }
+}
+
+fn ensure_supported_r_architecture(r_arch: &str) -> Result<()> {
+    ensure!(
+        r_architecture_supported(std::env::consts::OS, std::env::consts::ARCH, r_arch),
+        "R_ARCH_MISMATCH: Rho for Apple Silicon requires arm64 R; found `{}`",
+        r_arch.trim()
+    );
+    Ok(())
+}
+
 #[tauri::command]
 async fn cancel_agent_turn(
     turn_id: String,
@@ -4884,7 +5022,17 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
             "Choose Rscript.exe from an R 4.4 or later installation.",
             startup_recovery_actions(),
         )
-    } else if detail.contains("Rscript.exe was not found") {
+    } else if detail.contains("R_ARCH_MISMATCH") {
+        (
+            "R_ARCH_MISMATCH",
+            "probing_base_r",
+            "This R architecture is not supported",
+            "Rho for Apple Silicon requires an arm64 R 4.4 or later installation.",
+            startup_recovery_actions(),
+        )
+    } else if detail.contains("Rscript was not found")
+        || detail.contains("Rscript.exe was not found")
+    {
         (
             "R_NOT_FOUND",
             "locating_r",
@@ -4949,16 +5097,17 @@ mod tests {
     use super::{
         AgentModelTestControl, AgentRuntimeStatus, AppState, RUNTIME_CACHE_VERSION,
         RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig, StartupView,
-        SwitchTestControl, SwitchTestStep, attach_render_artifact, bounded_diagnostic,
-        classify_startup_error, configure_user_startup, contain_audit_panic,
+        SwitchTestControl, SwitchTestStep, ark_candidate_paths, attach_render_artifact,
+        bounded_diagnostic, classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         durable_project_root, editor_format_result, ensure_artifact_export_target,
-        ensure_supported_r_version, existing_startup_file, finish_render_job, has_png_signature,
-        load_runtime_cache, lockfile_inventory_arguments, parse_r_runtime_probe,
-        project_switch_blocker, reconcile_render_job, render_job_is_terminal, run_is_retryable,
-        runtime_file_signature, safe_delete_project_file, save_runtime_cache,
-        source_claim_snapshot, switch_project_with_watcher_factory, workspace_project_root_code,
-        write_r_probe_script,
+        ensure_supported_r_architecture, ensure_supported_r_version, existing_startup_file,
+        find_executable_on_path, finish_render_job, has_png_signature, load_runtime_cache,
+        locate_ark_from_candidates, locate_rscript, lockfile_inventory_arguments,
+        parse_r_runtime_probe, project_switch_blocker, r_architecture_supported,
+        reconcile_render_job, render_job_is_terminal, run_is_retryable, runtime_file_signature,
+        safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
+        switch_project_with_watcher_factory, workspace_project_root_code, write_r_probe_script,
     };
 
     use crate::project::{
@@ -5003,6 +5152,9 @@ mod tests {
                 .filter(|path| path.is_file())
                 .map(|path| runtime_file_signature(&path).unwrap()),
             r_home: "C:/R".to_string(),
+            r_bin: "C:/R/bin/x64".to_string(),
+            r_arch: "x86_64".to_string(),
+            path_sep: ";".to_string(),
             r_version: "R version 4.4.2".to_string(),
             r_libs: "C:/R/library".to_string(),
             agent_runtime: AgentRuntimeStatus {
@@ -5265,6 +5417,7 @@ mod tests {
             rscript: Path::new("Rscript").to_path_buf(),
             r_version: "R version 4.6.1".to_string(),
             r_home: "C:/R".to_string(),
+            process_path: std::env::var_os("PATH").unwrap_or_default(),
             r_profile_user: None,
             r_environ_user: None,
             bridge_package: data_dir.join("rho.bridge"),
@@ -5728,6 +5881,102 @@ mod tests {
     }
 
     #[test]
+    fn requires_arm64_r_only_for_apple_silicon_macos() {
+        assert!(r_architecture_supported("macos", "aarch64", "aarch64"));
+        assert!(r_architecture_supported("macos", "aarch64", "arm64"));
+        assert!(!r_architecture_supported("macos", "aarch64", "x86_64"));
+        assert!(r_architecture_supported("windows", "x86_64", "x86_64"));
+
+        if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            assert!(ensure_supported_r_architecture("aarch64").is_ok());
+            assert!(ensure_supported_r_architecture("x86_64").is_err());
+        }
+    }
+
+    #[test]
+    fn executable_path_search_preserves_spaces_and_unicode() {
+        let directory = TempDir::new().unwrap();
+        let first = directory.path().join("missing path");
+        let second = directory.path().join("R 工具");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        let executable = if cfg!(windows) {
+            "Rscript.exe"
+        } else {
+            "Rscript"
+        };
+        let expected = second.join(executable);
+        std::fs::write(&expected, b"fixture").unwrap();
+        let search_path = std::env::join_paths([first, second]).unwrap();
+
+        assert_eq!(
+            find_executable_on_path(executable, &search_path),
+            Some(expected)
+        );
+    }
+
+    #[test]
+    fn invalid_persisted_r_selection_fails_without_falling_through() {
+        let directory = TempDir::new().unwrap();
+        let missing = directory.path().join("missing R/Rscript");
+        let error = locate_rscript(Some(&missing)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("selected Rscript path does not point to a file")
+        );
+    }
+
+    #[test]
+    fn ark_lookup_prefers_installed_macos_sidecar_and_falls_back_to_development() {
+        let directory = TempDir::new().unwrap();
+        let manifest_dir = directory.path().join("desktop/src-tauri");
+        let resource_dir = directory.path().join("Rho.app/Contents/Resources");
+        let current_exe = directory.path().join("Rho.app/Contents/MacOS/rho-desktop");
+        std::fs::create_dir_all(current_exe.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(manifest_dir.join("binaries")).unwrap();
+        let candidates = ark_candidate_paths(
+            "macos",
+            "aarch64",
+            &manifest_dir,
+            &resource_dir,
+            &current_exe,
+        );
+        let installed = current_exe.parent().unwrap().join("ark");
+        let development = manifest_dir.join("binaries/ark-aarch64-apple-darwin");
+        assert_eq!(candidates, vec![installed.clone(), development.clone()]);
+
+        std::fs::write(&development, b"development").unwrap();
+        assert_eq!(
+            locate_ark_from_candidates(candidates.clone()).unwrap(),
+            development
+        );
+        std::fs::write(&installed, b"installed").unwrap();
+        assert_eq!(locate_ark_from_candidates(candidates).unwrap(), installed);
+    }
+
+    #[test]
+    fn ark_lookup_retains_windows_resources_and_rejects_unknown_targets() {
+        let root = Path::new("C:/rho");
+        let windows = ark_candidate_paths(
+            "windows",
+            "x86_64",
+            root,
+            Path::new("C:/installed"),
+            Path::new("C:/installed/rho-desktop.exe"),
+        );
+        assert_eq!(
+            windows,
+            vec![
+                PathBuf::from("C:/installed/resources/runtime/ark.exe"),
+                PathBuf::from("C:/rho/../resources/runtime/ark.exe")
+            ]
+        );
+        assert!(ark_candidate_paths("macos", "x86_64", root, root, root).is_empty());
+        assert!(locate_ark_from_candidates(Vec::new()).is_err());
+    }
+
+    #[test]
     fn writes_probe_code_to_a_utf8_r_script() {
         let expression = "cat('Rho UTF-8: 中文')\n";
         let script = write_r_probe_script(expression).unwrap();
@@ -5742,6 +5991,9 @@ mod tests {
     fn parses_base_r_probe_without_requiring_user_startup_files() {
         let probe = parse_r_runtime_probe(
             "__RHO_HOME__C:/Program Files/R/R-4.4.2\n\
+             __RHO_BIN__C:/Program Files/R/R-4.4.2/bin/x64\n\
+             __RHO_ARCH__aarch64\n\
+             __RHO_PATH_SEP__;\n\
              __RHO_VERSION__R version 4.4.2\n\
              __RHO_VERSION_NUMBER__4.4.2\n\
              __RHO_PROFILE_USER__C:/Users/test/Documents/.Rprofile\n\
@@ -5750,10 +6002,36 @@ mod tests {
         )
         .unwrap();
         assert_eq!(probe.r_home, "C:/Program Files/R/R-4.4.2");
+        assert!(probe.r_bin.ends_with("bin/x64"));
+        assert_eq!(probe.r_arch, "aarch64");
+        assert_eq!(probe.path_sep, ";");
         assert_eq!(probe.r_version, "R version 4.4.2");
         assert!(probe.r_libs.contains("win-library"));
         assert!(probe.r_profile_user.is_none());
         assert!(probe.r_environ_user.is_none());
+    }
+
+    #[test]
+    fn rejects_x86_and_old_r_probe_results_before_runtime_generation() {
+        let x86 = parse_r_runtime_probe(
+            "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\
+             __RHO_BIN__/Library/Frameworks/R.framework/Resources/bin\n\
+             __RHO_ARCH__x86_64\n\
+             __RHO_PATH_SEP__:\n",
+        )
+        .unwrap_err();
+        assert!(x86.to_string().contains("R_ARCH_MISMATCH"));
+
+        let old = parse_r_runtime_probe(
+            "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\
+             __RHO_BIN__/Library/Frameworks/R.framework/Resources/bin\n\
+             __RHO_ARCH__aarch64\n\
+             __RHO_PATH_SEP__:\n\
+             __RHO_VERSION__R version 4.3.3\n\
+             __RHO_VERSION_NUMBER__4.3.3\n",
+        )
+        .unwrap_err();
+        assert!(old.to_string().contains("requires R 4.4"));
     }
 
     #[test]
@@ -5860,6 +6138,32 @@ mod tests {
             "R runtime probe failed (exit_code=Some(1), timed_out=false): stdout= stderr=",
         );
         assert_eq!(issue.code, "R_PROBE_EXITED");
+        assert!(issue.actions.contains(&"choose_rscript".to_string()));
+    }
+
+    #[test]
+    fn classifies_macos_architecture_mismatch_with_stable_recovery_code() {
+        let issue = classify_startup_error(
+            "R_ARCH_MISMATCH: Rho for Apple Silicon requires arm64 R; found `x86_64`",
+        );
+        assert_eq!(issue.code, "R_ARCH_MISMATCH");
+        assert_eq!(issue.phase, "probing_base_r");
+        assert!(issue.actions.contains(&"choose_rscript".to_string()));
+    }
+
+    #[test]
+    fn classifies_missing_ark_as_repairable_installation_failure() {
+        let issue = classify_startup_error("bundled Ark executable was not found");
+        assert_eq!(issue.code, "ARK_RESOURCE_MISSING");
+        assert_eq!(issue.phase, "checking_installation");
+        assert!(issue.actions.contains(&"retry".to_string()));
+    }
+
+    #[test]
+    fn classifies_missing_r_as_recoverable_discovery_failure() {
+        let issue = classify_startup_error("Rscript was not found");
+        assert_eq!(issue.code, "R_NOT_FOUND");
+        assert_eq!(issue.phase, "locating_r");
         assert!(issue.actions.contains(&"choose_rscript".to_string()));
     }
 
@@ -6207,8 +6511,9 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
     let project_b_root = smoke_root.join("project-b");
     std::fs::create_dir_all(&project_a_root)?;
     std::fs::create_dir_all(&project_b_root)?;
-    let ark = Path::new(env!("CARGO_MANIFEST_DIR")).join("../resources/runtime/ark.exe");
+    let ark = development_ark_path()?;
     let config = prepare_runtime_files(data_dir, ark)?;
+    git::set_process_path(config.process_path.clone());
     let mut session = ArkSession::launch(&ArkLaunchConfig::new(&config.kernelspec)).await?;
     let mut store = Store::open(&config.store_path)?;
     let mut broker = BrokerState::new("desktop_smoke");
@@ -6216,6 +6521,25 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
     store.save_identity(broker.identity())?;
     bootstrap_bridge(&session, &mut broker, &mut store, &config.bridge_package).await?;
     set_smoke_project_root(&session, &mut broker, &mut store, &project_a_root).await?;
+    let mut interrupt_requested = false;
+    session
+        .execute_with_options(
+            "Sys.sleep(30)",
+            |event| {
+                interrupt_requested |= matches!(event.event, KernelEvent::InterruptRequested);
+                Ok(())
+            },
+            |prompt, _| bail!("unexpected smoke-test input request: {prompt}"),
+            Some(Duration::from_millis(150)),
+        )
+        .await?;
+    ensure!(
+        interrupt_requested,
+        "desktop smoke did not request an Ark interrupt"
+    );
+    session
+        .execute("stopifnot(identical(1L + 1L, 2L))", |_| Ok(()))
+        .await?;
     let execute_payload = json!({
         "arguments": {
             "code": "rho_desktop_smoke <- data.frame(x = 1:5, y = (1:5)^2); plot(rho_desktop_smoke$x, rho_desktop_smoke$y, pch = 19)"
@@ -6381,6 +6705,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
     );
 
     session.shutdown().await?;
+    #[allow(unused_mut)]
     let mut session = ArkSession::launch(&ArkLaunchConfig::new(&config.kernelspec)).await?;
     let mut broker = BrokerState::new("desktop_smoke_restart");
     store.save_identity(broker.identity())?;
@@ -6462,6 +6787,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             &session,
             context.clone(),
             config.rscript.clone(),
+            Some(config.process_path.clone()),
             config.agent_package.clone(),
             resolved_model.effective_model_ref.clone(),
             Some(resolved_model.runtime_profile),
@@ -6486,6 +6812,22 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
     } else {
         None
     };
+    #[cfg(unix)]
+    let crash_recovered = {
+        session.terminate_process_group().await?;
+        drop(session);
+        let mut recovered = ArkSession::launch(&ArkLaunchConfig::new(&config.kernelspec)).await?;
+        recovered
+            .execute("stopifnot(identical(2L + 2L, 4L))", |_| Ok(()))
+            .await?;
+        recovered.shutdown().await?;
+        true
+    };
+    #[cfg(not(unix))]
+    let crash_recovered = {
+        session.shutdown().await?;
+        false
+    };
     let report = {
         let context = context.lock().await;
         json!({
@@ -6497,6 +6839,8 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             "stale_view_rejected": true,
             "project_switch_isolated": true,
             "workspace_restart_project_isolated": true,
+            "interrupt_recovered": interrupt_requested,
+            "crash_recovered": crash_recovered,
             "project_a_run_count": initial_a_runs.len(),
             "project_b_run_count": project_b_runs.len(),
             "agent": agent,
@@ -6504,7 +6848,6 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             "python_required": false
         })
     };
-    session.shutdown().await?;
     Ok(report)
 }
 

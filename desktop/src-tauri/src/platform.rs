@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,6 +73,56 @@ pub fn reveal_path_command(path: &Path) -> Command {
     command_from_spec(reveal_path_spec(current_platform(), path))
 }
 
+fn merge_process_path(
+    inherited: impl IntoIterator<Item = PathBuf>,
+    r_bin: Option<&Path>,
+    defaults: impl IntoIterator<Item = PathBuf>,
+    user_local_bin: Option<PathBuf>,
+) -> Result<OsString, std::env::JoinPathsError> {
+    let mut paths = Vec::<PathBuf>::new();
+    for path in inherited
+        .into_iter()
+        .chain(r_bin.map(Path::to_path_buf))
+        .chain(defaults)
+        .chain(user_local_bin)
+    {
+        if path.as_os_str().is_empty() || paths.iter().any(|known| known == &path) {
+            continue;
+        }
+        paths.push(path);
+    }
+    std::env::join_paths(paths)
+}
+
+pub fn child_process_path(r_bin: Option<&Path>) -> Result<OsString, std::env::JoinPathsError> {
+    let inherited = std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let defaults = match current_platform() {
+        DesktopPlatform::Windows => Vec::new(),
+        DesktopPlatform::Macos => [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect(),
+        DesktopPlatform::Linux => ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+    };
+    let user_local_bin = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join(".local/bin"))
+        .filter(|path| path.is_dir());
+    merge_process_path(inherited, r_bin, defaults, user_local_bin)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,6 +175,34 @@ mod tests {
                 program: "xdg-open".into(),
                 arguments: vec![PathBuf::from("/tmp/Rho logs").into_os_string()],
             }
+        );
+    }
+
+    #[test]
+    fn process_path_is_ordered_deduplicated_and_drops_empty_entries() {
+        let joined = merge_process_path(
+            [
+                PathBuf::from("/usr/bin"),
+                PathBuf::new(),
+                PathBuf::from("/opt/homebrew/bin"),
+            ],
+            Some(Path::new("/Library/Frameworks/R.framework/Resources/bin")),
+            [
+                PathBuf::from("/opt/homebrew/bin"),
+                PathBuf::from("/usr/local/bin"),
+            ],
+            Some(PathBuf::from("/Users/研究者/Rho Home/.local/bin")),
+        )
+        .unwrap();
+        assert_eq!(
+            std::env::split_paths(&joined).collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/opt/homebrew/bin"),
+                PathBuf::from("/Library/Frameworks/R.framework/Resources/bin"),
+                PathBuf::from("/usr/local/bin"),
+                PathBuf::from("/Users/研究者/Rho Home/.local/bin"),
+            ]
         );
     }
 }

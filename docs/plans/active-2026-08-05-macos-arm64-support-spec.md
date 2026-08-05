@@ -2,8 +2,9 @@
 
 Status: active; full direction authorized by the project owner on 2026-08-05;
 MAC1 implementation, automated verification, and independent contract review
-complete on 2026-08-05; MAC2 authorized on 2026-08-05; MAC3-MAC5 remain
-proposed and unauthorized
+complete on 2026-08-05; MAC2 implementation, automated verification, arm64
+debug-app runtime acceptance, and separate contract review complete on
+2026-08-05; MAC3-MAC5 remain proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -193,8 +194,10 @@ Entry review:
 - The worktree was clean at activation and contained no unrelated user changes.
 - Ark 0.1.252 remains the project-pinned runtime. The macOS arm64 archive and
   exact SHA-256 named in this contract are the only authorized new runtime
-  input; redirects, alternate versions, universal/x64 archives, and unverified
-  local binaries are rejected.
+  input. The pinned GitHub HTTPS URL may follow HTTPS-only release-asset
+  redirects, but the result is accepted only after the exact hash and arm64
+  Mach-O checks pass; alternate versions, universal/x64 archives, manifest
+  overrides, and unverified local binaries are rejected.
 - Existing Jet process groups/watchdog, broker project identity, Workspace R
   authority, Agent R separation, R 4.4 minimum, and user startup-file policy
   are unchanged entry constraints.
@@ -368,3 +371,96 @@ Explicitly not run or not accepted:
 Version outcome: application remains `0.4.0-dev.0`, R package versions are
 unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO; MAC1 is a
 reviewed development checkpoint, not a distributable candidate.
+
+## MAC2 Implementation Evidence — 2026-08-05
+
+Implementation present:
+
+- `runtime/ark.json` pins the official Ark 0.1.252 macOS arm64 archive and
+  lowercase SHA-256. The macOS bootstrap accepts only the repository manifest,
+  uses HTTPS-only redirects, verifies the hash before extraction, requires the
+  expected binary plus license and notice, validates arm64 Mach-O, stages the
+  Tauri target-triple sidecar atomically, and leaves generated runtime inputs
+  ignored.
+- Tauri packages the sidecar beside the app executable as `ark` and installs
+  Ark's `LICENSE` and `NOTICE` under app resources. Installed lookup prefers
+  that sibling; development lookup falls back to the ignored staged sidecar.
+  Existing Windows resource paths and x64 discovery behavior remain present.
+- R discovery now follows the authorized persisted selection, `RHO_RSCRIPT`,
+  standard macOS framework locations, and deterministic child PATH order. The
+  probe records R home/bin, architecture, native path separator, version,
+  libraries, and effective startup-file paths. Apple Silicon rejects non-arm64
+  R with stable code `R_ARCH_MISMATCH`; R 4.4 remains the minimum.
+- Kernelspec, supervised Git, and Agent R processes consume the same native,
+  deduplicated child PATH without invoking a shell. The runtime cache moved to
+  version 2 so older records cannot omit architecture or R-bin evidence.
+- The desktop's exceptional shared-`Arc` shutdown path now delegates to a
+  narrow Unix Ark process-group fallback: SIGTERM, one-second bounded wait,
+  then SIGKILL. Jet remains the sole launch, interrupt, watchdog, and ordinary
+  shutdown authority.
+- The desktop smoke path now uses the platform sidecar, verifies an interrupt
+  followed by successful execution, retains the existing two-project and
+  graceful-restart checks, kills one Ark process group to simulate failure,
+  and proves a fresh Ark session can execute afterward.
+
+Automated and local runtime evidence passed:
+
+- `bash -n scripts/bootstrap-ark-macos.sh scripts/test-bootstrap-ark-macos.sh`;
+- `scripts/test-bootstrap-ark-macos.sh`, covering checksum mismatch, missing
+  Ark, and non-Mach-O architecture rejection;
+- a real `scripts/bootstrap-ark-macos.sh` run against the pinned archive; its
+  downloaded SHA-256 was
+  `aa1186f6e1ad271abaf246fd76e0aa9039cdeeff2cb52147e8887060afd5fb07`,
+  staged Ark reported `Ark 0.1.252`, and `file`/`lipo` reported arm64 Mach-O;
+- `node scripts/test-desktop-platform-config.mjs` and
+  `node --check desktop/dist/app.js`;
+- `cargo fmt --all -- --check`, `cargo check -p rho-desktop`, focused kernel,
+  Agent-environment, runtime-discovery, Ark-lookup, recovery-code, PATH, cache,
+  and platform tests;
+- `cargo test -p rho-desktop` and `cargo test --workspace`;
+- `testthat::test_local('r/rho.agent')`;
+- Tauri CLI 2.11.4 `--debug --bundles app --target
+  aarch64-apple-darwin --no-sign` produced an arm64 debug `Rho.app` containing
+  arm64 `rho-desktop`, arm64 Ark 0.1.252, and the Ark license/notice;
+- the bundled app executable, with `RHO_RSCRIPT` unset, selected arm64 R 4.5.2
+  from the standard framework and passed Workspace execution, Plot,
+  Environment, paged Viewer, stale-view rejection, two-project isolation,
+  interrupt/recovery, graceful restart, simulated crash/restart, and durable
+  event smoke checks;
+- after smoke exit, `pgrep` found no process whose command referenced the
+  bundled `Rho.app/Contents/MacOS/ark`;
+- `git diff --check`.
+
+Separate contract review found no blocking ownership or scope deviation. The
+implementation does not change public protocol, persistence schema, project
+identity, approval lanes, credentials, frontend command state, update schema,
+signing, publication, application/R-package version, or `NEWS.md`. The only
+contract wording correction permits the pinned GitHub URL's HTTPS-only asset
+redirect while retaining exact hash and architecture admission. Browser/mock
+changes were unnecessary because no Tauri command or visible runtime-state
+shape changed.
+
+Explicitly open or not accepted:
+
+- the local Rust installation has only the `aarch64-apple-darwin` target, so
+  Windows compilation, Windows installed regression, and NSIS packaging were
+  not run. Static Windows Ark lookup, R discovery, command behavior, and Tauri
+  configuration tests passed; this is not equivalent to a Windows runner.
+- an additional, non-affected `rho.bridge` full-suite run exposed four existing
+  environment/fixture differences: macOS `/private/var` canonicalization, one
+  escaped local-source expectation, and two installed Bioconductor versions
+  newer than the checked-in fixture. No R source changed in MAC2, the actual
+  embedded bridge passed the bundled-app smoke, and these results are not
+  reported as passing. They remain a bounded MAC3 workflow-validation gate.
+- network-dependent Agent model smoke was not run; deterministic tests prove
+  the supervised Agent R command receives the child PATH without exposing its
+  credential, and MAC2 does not claim provider/network acceptance.
+- the debug app was intentionally unsigned and was not a DMG, release
+  candidate, notarized artifact, clean install, or public distribution.
+  Keychain, native UI parity, exact-candidate signing, update publication, and
+  release acceptance remain MAC3-MAC5 work.
+
+Version outcome: application remains `0.4.0-dev.0`, R package versions are
+unchanged, and `NEWS.md` is unchanged. Release decision: NO-GO. The mandatory
+MAC2 stop is reached; MAC3-MAC5 remain inactive until their separate entry
+review and authorization record.

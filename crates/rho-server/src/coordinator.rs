@@ -1619,9 +1619,13 @@ fn desktop_agent_turn_stdin(
 
 fn configure_agent_process_environment(
     command: &mut tokio::process::Command,
+    process_path: Option<&std::ffi::OsStr>,
     user_environ: Option<&str>,
     credential_override: Option<(&str, &str)>,
 ) {
+    if let Some(process_path) = process_path {
+        command.env("PATH", process_path);
+    }
     if let Some(path) = user_environ {
         command.env("R_ENVIRON_USER", path);
     }
@@ -1635,6 +1639,7 @@ pub async fn run_agent_turn(
     session: &ArkSession,
     context: Arc<Mutex<CoordinatorRuntime>>,
     rscript: PathBuf,
+    process_path: Option<OsString>,
     agent_package: PathBuf,
     model: String,
     runtime_profile: Option<AgentRuntimeModelProfile>,
@@ -1687,6 +1692,7 @@ pub async fn run_agent_turn(
         hide_console_window(&mut command);
         configure_agent_process_environment(
             &mut command,
+            process_path.as_deref(),
             user_environ.as_deref(),
             credential_override
                 .as_ref()
@@ -4683,6 +4689,7 @@ mod tests {
         let mut command = tokio::process::Command::new("Rscript");
         configure_agent_process_environment(
             &mut command,
+            Some(std::ffi::OsStr::new("/opt/homebrew/bin:/usr/bin")),
             Some("C:/Users/test/.Renviron"),
             Some(("DEEPSEEK_API_KEY", secret)),
         );
@@ -4713,6 +4720,10 @@ mod tests {
                 .get("R_ENVIRON_USER")
                 .and_then(|value| value.as_deref()),
             Some("C:/Users/test/.Renviron")
+        );
+        assert_eq!(
+            environment.get("PATH").and_then(|value| value.as_deref()),
+            Some("/opt/homebrew/bin:/usr/bin")
         );
     }
 
