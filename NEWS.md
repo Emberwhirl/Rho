@@ -33,6 +33,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Render status now converges to `Done` when the exact completed render
+  Artifact is available, even if the asynchronous job status briefly lags
+  behind the generated HTML output.
 - Git Review now uses the installed Tauri camelCase command envelope for diff,
   stage/unstage, restore, conflict resolution, and commit operations. Staged
   review and commit controls no longer fail because the browser mock accepted a

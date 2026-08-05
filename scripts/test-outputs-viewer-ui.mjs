@@ -38,6 +38,8 @@ assert.match(js, /VIEWER_TABLE_ROW_LIMIT = 500/);
 assert.match(js, /VIEWER_TABLE_COLUMN_LIMIT = 100/);
 assert.match(js, /result\.project_root !== state\.project\.root/);
 assert.match(js, /function openViewerForActiveDocument\(\)/);
+assert.match(js, /function findCompletedRenderArtifact\(job\)/);
+assert.match(js, /artifact_\$\{job\.job_id\}_render/);
 assert.match(js, /if \(activeDocumentCanRender\(\)\)/);
 assert.match(js, /Preview Active Document/);
 

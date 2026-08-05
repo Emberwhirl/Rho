@@ -11679,7 +11679,20 @@ function startRenderPoll(jobId, path) {
     if (_renderPollBusy || _activeRenderJobId !== jobId) return;
     _renderPollBusy = true;
     try {
-      const job = await invoke("render_job_status", { job_id: jobId });
+      let job = await invoke("render_job_status", { job_id: jobId });
+      if (["submitted", "running"].includes(job.status)) {
+        const artifact = await findCompletedRenderArtifact(job);
+        if (artifact) {
+          job = {
+            ...job,
+            status: "completed",
+            artifact_id: artifact.artifact?.artifact_id || job.artifact_id,
+            output_path: artifact.artifact?.output_path || job.output_path,
+            media_type: artifact.artifact?.media_type || job.media_type,
+            provenance_complete: artifact.artifact?.provenance_complete ?? job.provenance_complete,
+          };
+        }
+      }
       if (job.status === "completed") {
         stopRenderPoll();
         statusEl.textContent = "Done";
@@ -11789,6 +11802,20 @@ function startRenderPoll(jobId, path) {
   };
   void poll();
   _renderPollTimer = setInterval(poll, 2000);
+}
+
+async function findCompletedRenderArtifact(job) {
+  if (!job?.job_id || !isDesktop) return null;
+  try {
+    const detail = await invoke("get_artifact_record", {
+      artifact_id: `artifact_${job.job_id}_render`,
+    });
+    if (!detail?.artifact || detail.artifact.run_id !== job.job_id) return null;
+    if (detail.run && detail.run.status !== "completed") return null;
+    return detail;
+  } catch {
+    return null;
+  }
 }
 
 function stopRenderPoll() {
