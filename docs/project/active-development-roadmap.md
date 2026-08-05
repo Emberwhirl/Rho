@@ -156,9 +156,11 @@ Keychain adapter, native/UI parity, bounded bridge repairs, complete affected
 automation, and isolated unsigned development-app workflow acceptance also
 completed on 2026-08-05. Its two portability gates and WS1-L2 containment
 conformance gate are closed. Windows CI, signed exact-candidate acceptance, and
-release work remain open; MAC4-MAC5 remain unauthorized. This stream delivers
-macOS arm64 first; macOS x64 and Linux x64 remain required before the full M3
-acceptance gate can close.
+release work remain open. MAC4 entry review is complete and its bounded
+candidate/update/signing workflow package was explicitly authorized on
+2026-08-05; implementation has not started. MAC5 remains unauthorized. This
+stream delivers macOS arm64 first; macOS x64 and Linux x64 remain required
+before the full M3 acceptance gate can close.
 
 Deliverables:
 

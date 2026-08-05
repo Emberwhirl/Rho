@@ -2,7 +2,8 @@
 
 Date: 2026-07-25
 
-Status: Implementation active; live Pages deployment and installed-app acceptance pending
+Status: implementation active; MAC4 macOS artifact extension authorized on
+2026-08-05; live Pages deployment and installed-app acceptance pending
 
 Release inclusion boundary: this feature was implemented after the locked
 `0.2.0-dev.12` candidate baseline. It is not retroactively part of that
@@ -142,13 +143,15 @@ release page and in release acceptance records.
 
 ### 3.3 Authorized macOS extension boundary
 
-The active macOS arm64 specification may extend schema version 1 with an
+The active macOS arm64 specification extends schema version 1 with an
 optional `artifacts.macos_aarch64` entry using the existing artifact field
 shape and validation policy. It does not change channels, endpoints, SemVer,
 fetch limits, allowlists, user-initiated installation, or the prohibition on
-automatic update execution. This extension remains unimplemented and
-unauthorized until MAC4 is activated, and it requires a new exact-candidate D4
-contract rather than an amendment to the `0.2.0-dev.12` release evidence.
+automatic update execution. Existing Windows-only manifests remain valid; the
+new `0.4.0-dev.1` candidate requires both Windows x64 and macOS arm64 entries.
+Generation validates every present recognized artifact and rejects unknown
+artifact keys. This extension is authorized only in MAC4 and uses the new
+exact-candidate D4 checklist rather than amending `0.2.0-dev.12` evidence.
 
 ## 4. User Experience
 

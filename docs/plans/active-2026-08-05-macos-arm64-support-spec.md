@@ -7,7 +7,8 @@ debug-app runtime acceptance, and separate contract review complete on
 2026-08-05; MAC3 implementation, affected automated verification, isolated
 native-Keychain smoke, unsigned arm64 development-app workflow acceptance, and
 separate contract review complete on 2026-08-05; the MAC3 mandatory stop is
-reached; MAC4-MAC5 remain proposed and unauthorized
+reached; MAC4 entry review complete and explicitly authorized on 2026-08-05;
+MAC4 implementation has not started; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -33,14 +34,19 @@ checkpoint was committed and its evidence reported, the project owner
 requested "激活 MAC3" on 2026-08-05. This activates MAC3 only after the entry
 review recorded below. The project owner then confirmed "允许开始 MAC3 实现和验收"
 on 2026-08-05. MAC4 and MAC5 still require their own entry-condition review and
-recorded authorization amendment before product-code work starts.
+recorded authorization amendment before product-code work starts. After the
+MAC3 checkpoint and evidence were committed, the project owner requested
+"开始完成MAC4" on 2026-08-05. This activates MAC4 only under the entry review
+and mandatory stop recorded below; MAC5 remains unauthorized.
 
-Mandatory stop: complete MAC3's Apple Keychain, native integration, frontend
-parity, baseline-repair, browser/mock, and installed development-app workflow
-slice; run the affected verification matrix; record independent contract
-review and documentation reconciliation; then stop before update schema,
-signing/notarization, candidate version or NEWS changes, draft release, or
-publication work.
+Mandatory stop: implement MAC4's additive update schema, synchronized
+`0.4.0-dev.1` candidate identity, deterministic evidence tooling, parallel
+Windows/macOS candidate build, signed/notarized macOS packaging, immutable
+draft-release assembly, and separately gated publish workflow; run all locally
+available validation and record every hosted secret/signing/draft gate that was
+not run; reconcile NEWS and contracts; then stop before MAC5 exact-candidate
+installed acceptance, acceptance-evidence upload, release publication, or live
+Pages acceptance.
 
 ## Goal And Success Criteria
 
@@ -301,7 +307,47 @@ Agent credential projection, and recovery; it is not a signed candidate,
 clean-install, quarantine, update, or release acceptance. Stop after MAC3
 review even if MAC4 appears mechanically adjacent.
 
-### MAC4: Signed candidate and additive update publication — proposed
+### MAC4: Signed candidate and additive update publication — authorized 2026-08-05
+
+Entry review:
+
+- MAC3 is committed as `94aabf1`; its Keychain/UI/bridge implementation,
+  complete affected automation, final arm64 app smoke, isolated development-app
+  acceptance, version decision, and NO-GO release state are recorded below.
+  The worktree was clean at MAC4 activation and contained no unrelated user
+  changes.
+- This package is D4/R4 because it changes candidate identity, release
+  evidence, signing/notarization, GitHub Release draft creation, and update-site
+  publication inputs. The new exact-candidate checklist is
+  `docs/release/active-0.4.0-dev.1-candidate-checklist.md`; the old `0.2.0`
+  checklist and `rho-0.2-release.json` remain authorities for their own
+  candidate and are not reused as MAC4 acceptance.
+- The accepted About/update design retains schema version 1, endpoints,
+  channels, SemVer, bounds, allowlists, and user-initiated redirect behavior.
+  MAC4 may add optional `artifacts.macos_aarch64` data and multi-platform page
+  projection. Existing Windows-only manifests stay valid and Windows remains a
+  required artifact for the new cross-platform candidate.
+- GitHub's current standard Apple Silicon label is `macos-26`, not
+  `macos-26-arm64`. The runner image provides Xcode 26.6 at
+  `/Applications/Xcode_26.6.app`; the workflow must select that exact developer
+  directory and fail if `xcodebuild -version` does not report 26.6.
+- Tauri consumes `APPLE_API_ISSUER`, `APPLE_API_KEY`, and a filesystem path in
+  `APPLE_API_KEY_PATH`. GitHub stores the base64 `.p8` content in
+  `APPLE_API_PRIVATE_KEY`; the workflow writes it under `RUNNER_TEMP`, exports
+  the real temporary path, and removes it in an unconditional cleanup step.
+  Treating secret content as the path variable is forbidden.
+- Candidate construction and publication are separate authorities. MAC4 may
+  create a draft prerelease only after both platform jobs and aggregate
+  evidence validate. The publish workflow may only flip an existing immutable
+  draft after MAC5 uploads bounded GO acceptance evidence matching the same
+  version, tag, commit, asset names, sizes, and hashes. MAC4 never publishes.
+- A tag/version is single-use. Candidate assembly fails if any release with the
+  same tag already exists, never deletes or replaces release assets, and uses a
+  new version after withdrawal or failed accepted-candidate replacement.
+- MAC4 may update Cargo/Tauri/frontend/cache-busting identities to
+  `0.4.0-dev.1` and add truthful NEWS only after implementation verification.
+  R package versions remain independent and unchanged because their exported
+  contracts do not change.
 
 - amend the accepted About/update implementation and generator for
   `macos_aarch64`;
@@ -309,7 +355,7 @@ review even if MAC4 appears mechanically adjacent.
 - replace immediate single-platform publication with parallel candidate build
   jobs that create a draft release, followed by a separate verified publish
   workflow;
-- pin the hosted runner to `macos-26-arm64` and Xcode 26.6; import a Developer
+- pin the hosted runner to `macos-26` and Xcode 26.6; import a Developer
   ID `.p12` into a temporary keychain, notarize through App Store Connect API
   credentials, staple, and emit checksums and evidence;
 - synchronize Cargo, Tauri, and frontend versions to `0.4.0-dev.1` only after
@@ -318,14 +364,28 @@ review even if MAC4 appears mechanically adjacent.
 Required CI secret interfaces are `APPLE_CERTIFICATE`,
 `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_ISSUER`,
-`APPLE_API_KEY`, and `APPLE_API_KEY_PATH`. Secret values and local keychain
-paths never enter logs, artifacts, manifests, or repository files.
+`APPLE_API_KEY`, and `APPLE_API_PRIVATE_KEY`. The workflow alone sets
+`APPLE_API_KEY_PATH` to its temporary `.p8` file. Secret values and local
+keychain/key paths never enter logs, artifacts, manifests, or repository files.
 
-Candidate assets are:
+The cross-platform draft contains:
 
+- `Rho_0.4.0-dev.1_x64-setup.exe` and its `.sha256` sidecar;
+- `rho-0.4.0-dev.1-windows-x86_64-evidence.json`;
 - `Rho_0.4.0-dev.1_aarch64.dmg`;
 - `Rho_0.4.0-dev.1_aarch64.dmg.sha256`;
-- `rho-0.4.0-dev.1-macos-aarch64-evidence.json`.
+- `rho-0.4.0-dev.1-macos-aarch64-evidence.json`;
+- `rho-0.4.0-dev.1-candidate-evidence.json`, binding both platform records to
+  one version, tag, commit, asset set, sizes, and hashes.
+
+Exit gate: deterministic tests reject malformed identity, missing platforms,
+duplicate names, stale/foreign evidence, checksum/size mismatches, draft input
+to Pages, and publish attempts without exact MAC5 GO evidence. Local unsigned
+DMG builds may validate configuration but are never reported as signed. Hosted
+Developer ID signing, notarization, stapling, Gatekeeper checks, draft creation,
+and uploaded hashes are separate facts and remain `NOT RUN` until a credentialed
+workflow creates the exact draft. Stop after MAC4 implementation/review and any
+available draft evidence; do not perform MAC5 acceptance or publish the release.
 
 ### MAC5: Exact-candidate acceptance and publication — proposed
 
