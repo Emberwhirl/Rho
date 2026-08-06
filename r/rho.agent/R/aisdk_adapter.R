@@ -277,6 +277,9 @@ rho_run_r_preview <- function(value) {
     message <- text_value(message)
     return(sprintf("Error\n%s", if (nzchar(message)) message else "R execution failed."))
   }
+  if (isTRUE(parsed$response_truncated)) {
+    return("R completed successfully. Detailed output was omitted because it exceeded the Agent response limit.")
+  }
 
   sections <- character()
   add_section <- function(label, content) {

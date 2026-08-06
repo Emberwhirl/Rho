@@ -157,6 +157,89 @@ test_that("run_r previews report concise empty and error states", {
   expect_identical(failed, "Error\nobject 'x' not found")
 })
 
+test_that("run_r previews report successful response truncation truthfully", {
+  preview <- rho.agent:::rho_tool_result_preview(
+    "run_r",
+    list(
+      execution = list(ok = TRUE),
+      response_truncated = TRUE,
+      response_truncation_reason = "agent_frame_budget"
+    )
+  )
+
+  expect_identical(
+    preview,
+    "R completed successfully. Detailed output was omitted because it exceeded the Agent response limit."
+  )
+})
+
+test_that("correlated responses and identity events refresh transport identity", {
+  written <- list()
+  frames <- list(
+    list(
+      kind = "event",
+      payload = list(
+        type = "workspace.identity",
+        identity = list(state_revision = 2L, project_revision = 0L)
+      )
+    ),
+    list(
+      kind = "response",
+      payload = list(
+        request_id = NULL,
+        ok = TRUE,
+        workspace = list(state_revision = 3L, project_revision = 0L),
+        result = list(ok = TRUE)
+      )
+    )
+  )
+  local_mocked_bindings(
+    rho_write_frame = function(connection, message) {
+      written[[length(written) + 1L]] <<- message
+      frames[[2L]]$payload$request_id <<- message$id
+    },
+    rho_read_frame = function(connection) {
+      frame <- frames[[1L]]
+      frames <<- frames[-1L]
+      frame
+    },
+    .package = "rho.agent"
+  )
+  .rho_agent_state$workspace_identity <- list(state_revision = 1L, project_revision = 0L)
+
+  result <- rho_agent_request("workspace.snapshot", connection = "mock")
+
+  expect_true(result$ok)
+  expect_length(written, 1L)
+  expect_identical(.rho_agent_state$workspace_identity$state_revision, 3L)
+})
+
+test_that("error responses refresh transport identity before raising", {
+  request_id <- NULL
+  local_mocked_bindings(
+    rho_write_frame = function(connection, message) request_id <<- message$id,
+    rho_read_frame = function(connection) list(
+      kind = "response",
+      payload = list(
+        request_id = request_id,
+        ok = FALSE,
+        error = "workspace state changed",
+        workspace = list(state_revision = 4L, project_revision = 1L)
+      )
+    ),
+    .package = "rho.agent"
+  )
+  .rho_agent_state$workspace_identity <- list(state_revision = 3L, project_revision = 0L)
+
+  expect_error(
+    rho_agent_request("workspace.snapshot", connection = "mock"),
+    "workspace state changed",
+    fixed = TRUE
+  )
+  expect_identical(.rho_agent_state$workspace_identity$state_revision, 4L)
+  expect_identical(.rho_agent_state$workspace_identity$project_revision, 1L)
+})
+
 test_that("broker tool results refresh the workspace identity", {
   requests <- list()
   local_mocked_bindings(

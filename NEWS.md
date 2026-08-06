@@ -4,6 +4,15 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.1 - 2026-08-06
+
+### Fixed
+
+- Long Agent-run analyses no longer lose their completed result to a transport
+  disconnect when Plot/display events exceed the framed response limit. Agent
+  requests now receive bounded result projections and synchronize the current
+  Workspace revision after both successful and rejected broker responses.
+
 ## 0.4.0-dev.0 - 2026-08-01
 
 ### Improved

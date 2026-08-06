@@ -60,6 +60,7 @@ changes.
 - Active Agent-first adaptive work surface: [`plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md`](plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md)
 - Active native context, diagnostics, and editor shortcuts repair: [`plans/active-2026-08-05-native-context-lint-problems-editor-shortcuts-spec.md`](plans/active-2026-08-05-native-context-lint-problems-editor-shortcuts-spec.md)
 - Active human-facing information projection: [`plans/active-2026-08-05-human-facing-information-projection-spec.md`](plans/active-2026-08-05-human-facing-information-projection-spec.md)
+- Active Agent result transport recovery: [`plans/active-2026-08-06-agent-result-transport-recovery-spec.md`](plans/active-2026-08-06-agent-result-transport-recovery-spec.md)
 - Active Plot payload normalization repair: [`plans/active-2026-08-04-plot-payload-normalization-repair-spec.md`](plans/active-2026-08-04-plot-payload-normalization-repair-spec.md)
 - Active guarded Git review: [`plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md`](plans/active-2026-08-02-ws4-reviewable-git-mutations-spec.md)
 - Verified adversarial Git hardening: [`plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md`](plans/active-2026-08-03-ws4-adversarial-git-hardening-spec.md)

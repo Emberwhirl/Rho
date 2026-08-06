@@ -1898,26 +1898,13 @@ async fn serve_desktop_agent(
                         Err(error) => Err(error),
                     }
                 };
-                let response = match result {
-                    Ok(value) => Envelope::new(
-                        MessageKind::Response,
-                        json!({
-                            "type": format!("{request_type}.result"),
-                            "request_id": incoming.id,
-                            "ok": true,
-                            "result": value
-                        }),
-                    ),
-                    Err(error) => Envelope::new(
-                        MessageKind::Response,
-                        json!({
-                            "type": format!("{request_type}.result"),
-                            "request_id": incoming.id,
-                            "ok": false,
-                            "error": error.to_string()
-                        }),
-                    ),
-                };
+                let workspace = context.lock().await.broker.identity().clone();
+                let response = desktop_agent_response(
+                    request_type,
+                    &incoming.id,
+                    result.map_err(|error| error.to_string()),
+                    json!(workspace),
+                );
                 let ok = response.payload["ok"].as_bool().unwrap_or(false);
                 context.lock().await.store.append_event(&response)?;
                 write_async_frame(&mut agent.stream, &response).await?;
@@ -1953,6 +1940,78 @@ async fn serve_desktop_agent(
             }
         }
     }
+}
+
+const DESKTOP_AGENT_RESULT_MAX_BYTES: usize = MAX_FRAME_BYTES / 2;
+
+fn desktop_agent_response(
+    request_type: &str,
+    request_id: &str,
+    result: Result<Value, String>,
+    workspace: Value,
+) -> Envelope {
+    match result {
+        Ok(value) => Envelope::new(
+            MessageKind::Response,
+            json!({
+                "type": format!("{request_type}.result"),
+                "request_id": request_id,
+                "ok": true,
+                "result": desktop_agent_result_projection(request_type, value),
+                "workspace": workspace
+            }),
+        ),
+        Err(error) => Envelope::new(
+            MessageKind::Response,
+            json!({
+                "type": format!("{request_type}.result"),
+                "request_id": request_id,
+                "ok": false,
+                "error": error,
+                "workspace": workspace
+            }),
+        ),
+    }
+}
+
+fn desktop_agent_result_projection(request_type: &str, mut value: Value) -> Value {
+    if let Some(result) = value.as_object_mut()
+        && let Some(events) = result.remove("events")
+    {
+        let event_count = events.as_array().map_or(0, Vec::len);
+        result.insert("event_count".to_string(), json!(event_count));
+        result.insert("events_omitted".to_string(), Value::Bool(true));
+    }
+
+    let encoded_bytes = serde_json::to_vec(&value)
+        .map(|encoded| encoded.len())
+        .unwrap_or(usize::MAX);
+    if encoded_bytes <= DESKTOP_AGENT_RESULT_MAX_BYTES {
+        return value;
+    }
+
+    let execution = value.get("execution");
+    let execution_error = execution
+        .and_then(|item| item.get("error"))
+        .and_then(|item| item.get("message"))
+        .and_then(Value::as_str)
+        .map(|message| bounded_agent_context_text(message, 2_000));
+    json!({
+        "execution_id": value.get("execution_id").cloned().unwrap_or(Value::Null),
+        "artifact_id": value.get("artifact_id").cloned().unwrap_or(Value::Null),
+        "artifact_media_type": value.get("artifact_media_type").cloned().unwrap_or(Value::Null),
+        "workspace": value.get("workspace").cloned().unwrap_or(Value::Null),
+        "execution": {
+            "ok": execution.and_then(|item| item.get("ok")).cloned().unwrap_or(Value::Null),
+            "error": execution_error.map(|message| json!({"message": message}))
+        },
+        "event_count": value.get("event_count").cloned().unwrap_or(json!(0)),
+        "events_omitted": value.get("events_omitted").cloned().unwrap_or(Value::Bool(false)),
+        "response_truncated": true,
+        "response_truncation_reason": "agent_frame_budget",
+        "request_type": request_type,
+        "original_result_bytes": encoded_bytes
+    })
 }
 
 fn authorize_agent_workspace_request(
@@ -4675,6 +4734,78 @@ mod tests {
         assert!(stdin_payload.starts_with("secret-token\n"));
         assert!(stdin_payload.ends_with(&prompt));
         assert!(stdin_payload.len() > 32 * 1024);
+    }
+
+    #[test]
+    fn desktop_agent_result_omits_large_persisted_kernel_events() {
+        let workspace = json!({
+            "workspace_id": "workspace_1",
+            "kernel_instance_id": "kernel_1",
+            "execution_seq": 11,
+            "state_revision": 11,
+            "project_revision": 0
+        });
+        let result = json!({
+            "execution_id": "exec_1",
+            "execution": {"ok": true, "stdout": "analysis complete"},
+            "events": [{
+                "parent_id": "exec_1",
+                "data": {"image/png": "x".repeat(MAX_FRAME_BYTES)}
+            }],
+            "workspace": workspace
+        });
+
+        let projected = desktop_agent_result_projection("workspace.execute", result);
+
+        assert_eq!(projected["execution"]["stdout"], "analysis complete");
+        assert_eq!(projected["workspace"]["state_revision"], 11);
+        assert_eq!(projected["event_count"], 1);
+        assert_eq!(projected["events_omitted"], true);
+        assert!(projected.get("events").is_none());
+        assert!(serde_json::to_vec(&projected).unwrap().len() < MAX_FRAME_BYTES);
+    }
+
+    #[test]
+    fn desktop_agent_oversized_non_event_result_returns_truthful_completion_projection() {
+        let result = json!({
+            "execution_id": "exec_oversized",
+            "execution": {"ok": true, "stdout": "x".repeat(DESKTOP_AGENT_RESULT_MAX_BYTES + 1)},
+            "workspace": {"state_revision": 12}
+        });
+
+        let projected = desktop_agent_result_projection("workspace.execute", result);
+
+        assert_eq!(projected["execution_id"], "exec_oversized");
+        assert_eq!(projected["execution"]["ok"], true);
+        assert_eq!(projected["workspace"]["state_revision"], 12);
+        assert_eq!(projected["response_truncated"], true);
+        assert_eq!(
+            projected["response_truncation_reason"],
+            "agent_frame_budget"
+        );
+        assert!(serde_json::to_vec(&projected).unwrap().len() < MAX_FRAME_BYTES);
+    }
+
+    #[test]
+    fn desktop_agent_success_and_error_responses_include_current_workspace() {
+        let workspace = json!({"state_revision": 13, "project_revision": 2});
+        let success = desktop_agent_response(
+            "workspace.snapshot",
+            "req_success",
+            Ok(json!({"ok": true})),
+            workspace.clone(),
+        );
+        let error = desktop_agent_response(
+            "workspace.snapshot",
+            "req_error",
+            Err("workspace state changed".to_string()),
+            workspace,
+        );
+
+        assert_eq!(success.payload["workspace"]["state_revision"], 13);
+        assert_eq!(error.payload["workspace"]["state_revision"], 13);
+        assert_eq!(success.payload["ok"], true);
+        assert_eq!(error.payload["ok"], false);
     }
 
     #[test]
