@@ -32,6 +32,7 @@ const REQUIRED_CHECKS = {
     "workspace_smoke",
     "arm64",
     "codesign",
+    "entitlements",
     "notarization",
     "staple",
     "gatekeeper",
@@ -496,6 +497,14 @@ export function selfTest() {
         checks: REQUIRED_CHECKS[platform],
       });
     }
+    const macosEvidence = JSON.parse(fs.readFileSync(evidencePaths.macos_aarch64, "utf8"));
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...macosEvidence,
+        checks: macosEvidence.checks.filter((check) => check.name !== "entitlements"),
+      }),
+      /missing required check entitlements/,
+    );
     const aggregatePath = path.join(root, `rho-${version}-candidate-evidence.json`);
     const candidate = createAggregateEvidence({
       version,

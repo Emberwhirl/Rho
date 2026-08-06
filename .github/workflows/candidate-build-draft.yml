@@ -18,11 +18,11 @@ on:
       release_tag:
         description: Single-use prerelease tag
         required: true
-        default: v0.4.0-dev.1
+        default: v0.4.0-dev.2
       release_name:
         description: Draft release title
         required: true
-        default: Rho 0.4.0-dev.1
+        default: Rho 0.4.0-dev.2
 
 permissions:
   contents: read
@@ -338,6 +338,20 @@ jobs:
           ark_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -name 'ark*' -print -quit)"
           test -n "$ark_path"
           require_exact_arm64 "Bundled Ark executable" "$ark_path"
+          require_exact_library_validation_entitlement() {
+            local label="$1"
+            local binary_path="$2"
+            local output_stem="$3"
+            local plist_path="$RUNNER_TEMP/${output_stem}.plist"
+            local json_path="$RUNNER_TEMP/${output_stem}.json"
+            codesign -d --entitlements - --xml "$binary_path" > "$plist_path"
+            plutil -convert json -o "$json_path" "$plist_path"
+            node scripts/validate-macos-entitlements.mjs "$json_path"
+            rm -f "$plist_path" "$json_path"
+            printf '%s has the exact reviewed macOS entitlement set (%s)\n' "$label" "$binary_path"
+          }
+          require_exact_library_validation_entitlement "Rho app executable" "$app_path/Contents/MacOS/rho-desktop" "rho-app-entitlements"
+          require_exact_library_validation_entitlement "Bundled Ark executable" "$ark_path" "rho-ark-entitlements"
           xcrun notarytool submit "$dmg_path" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait --output-format json > target/notary-dmg-submit.json
           node scripts/validate-notary-receipt.mjs target/notary-dmg-submit.json
           xcrun stapler staple "$dmg_path"
@@ -356,7 +370,7 @@ jobs:
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
-          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,notarization,staple,gatekeeper
+          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,staple,gatekeeper
 
       - name: Upload immutable macOS candidate inputs
         uses: actions/upload-artifact@v4

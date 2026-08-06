@@ -44,7 +44,15 @@ assert.equal(macos.bundle.macOS.hardenedRuntime, true);
 assert.equal(macos.bundle.macOS.entitlements, "Entitlements.plist");
 
 const entitlements = await readFile(path.join(tauriRoot, "Entitlements.plist"), "utf8");
-assert.match(entitlements, /<dict\s*\/>/);
+assert.deepEqual(
+  [...entitlements.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]),
+  ["com.apple.security.cs.disable-library-validation"],
+  "macOS signing must use only the reviewed library-validation exception",
+);
+assert.match(
+  entitlements,
+  /<key>com\.apple\.security\.cs\.disable-library-validation<\/key>\s*<true\/>/,
+);
 assert.doesNotMatch(entitlements, /com\.apple\.security\.app-sandbox/);
 
 for (const name of ["32x32.png", "128x128.png", "128x128@2x.png", "icon-512.png"]) {

@@ -14,7 +14,12 @@ candidate assets and draft creation remain NOT RUN; the MAC4 mandatory stop is
 reached; MAC4-R fork rehearsal entry review complete and explicitly authorized
 on 2026-08-05; its implementation, local automated verification, separate
 contract review, and exact-commit credentialed hosted rehearsal completed on
-2026-08-06; MAC5 remains proposed and unauthorized
+2026-08-06; installed-app testing then rejected that `0.4.0-dev.1` rehearsal
+artifact because hardened-runtime library validation prevented bundled Ark
+from loading the official CRAN R shared library; the bounded `0.4.0-dev.2`
+repair was explicitly authorized, implemented, and locally verified on
+2026-08-06; replacement hosted rehearsal remains NOT RUN; MAC5 remains
+proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -49,6 +54,11 @@ that the main repository requires pre-merge hosted build evidence and then
 approved the bounded fork rehearsal proposal with "行，那就这样做吧" on
 2026-08-05. This activates MAC4-R only; it does not authorize a fork Release,
 an authoritative candidate, MAC5 acceptance, or publication.
+After the installed `0.4.0-dev.1` DMG reproduced a different-Team-ID library
+validation failure, the project owner requested "修复这个问题，并push" on
+2026-08-06. This activates only the bounded MAC4-R2 entitlement, version,
+diagnostic-gate, and replacement-rehearsal repair recorded below. It does not
+authorize an authoritative candidate, MAC5, a tag, a Release, or publication.
 
 Mandatory stop: implement MAC4's additive update schema, synchronized
 `0.4.0-dev.1` candidate identity, deterministic evidence tooling, parallel
@@ -66,14 +76,23 @@ fork repository secrets; record the run, artifact hashes, and any failure
 truthfully; then stop. Do not create a Git tag or Release, do not promote fork
 artifacts into the main candidate, and do not activate MAC5.
 
+MAC4-R2 mandatory stop: advance the distributed development identity to
+`0.4.0-dev.2`; grant only the Apple library-validation exception required for
+Ark to load a separately signed arm64 R; prove the signed Ark and app contain
+the exact entitlement and no other exception; reproduce a successful Workspace
+smoke against official CRAN arm64 R; run one new exact-commit fork rehearsal;
+record its immutable evidence; then stop before MAC5 or publication.
+
 ## Goal And Success Criteria
 
 Deliver Rho as a public, Developer-ID-signed and Apple-notarized direct-download
 DMG for Apple Silicon Macs while preserving Windows x64 behavior and the same
 Workspace/Agent ownership boundaries.
 
-The first candidate is `0.4.0-dev.1`. It supports macOS 14 or later, arm64 R
-4.4 or later, and an arm64 Ark 0.1.252 sidecar. It is developed in
+The first rehearsal identity was `0.4.0-dev.1`; installed-app evidence rejected
+it before any authoritative candidate or draft existed. The replacement
+candidate is `0.4.0-dev.2`. It supports macOS 14 or later, arm64 R 4.4 or
+later, and an arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
 
@@ -337,7 +356,7 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.1-candidate-checklist.md`; the old `0.2.0`
+  `docs/release/active-0.4.0-dev.2-candidate-checklist.md`; the old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
 - The accepted About/update design retains schema version 1, endpoints,
@@ -1073,3 +1092,80 @@ updating action majors is a bounded follow-up, not a release-gate failure.
 
 Release decision remains NO-GO. The MAC4-R mandatory stop is reached. The main
 repository must rebuild any authoritative candidate; MAC5 remains unauthorized.
+
+## MAC4-R2 Installed-App Library Validation Repair — LOCAL PASSED 2026-08-06
+
+The installed `0.4.0-dev.1` rehearsal DMG passed signature, notarization,
+staple, Gatekeeper, and CI Workspace smoke, but failed on the project owner's
+Apple Silicon Mac with official CRAN R 4.5.2. Runtime discovery completed and
+recorded arm64 R successfully; bundled Ark then received `kernel_info_request`
+and panicked while opening `libR.dylib`. The bounded Ark log recorded macOS
+rejecting the mapping because the process and library had different Team IDs:
+
+- signed Rho and bundled Ark: `GAAY6Z9874`;
+- official CRAN `libR.dylib`: `VZLD955F6P`;
+- both Rho executables used hardened runtime with an empty entitlement set.
+
+This proves a release-blocking installed-app defect, not missing R. The
+`0.4.0-dev.1` rehearsal remains historical automation evidence but its DMG is
+rejected and may not enter candidate, MAC5, update, or publication evidence.
+Because it was distributed and installed, replacement behavior must use the
+new single-use identity `0.4.0-dev.2`.
+
+Apple's hardened runtime allows libraries signed by Apple or the executable's
+own Team ID by default. Rho intentionally embeds Ark as an R front end while R
+is installed and signed independently, so the exact required exception is
+`com.apple.security.cs.disable-library-validation = true`. Tauri applies the
+configured macOS entitlement file while signing each executable target; both
+the app executable and Ark therefore receive the same exact one-key plist.
+No App Sandbox, DYLD environment, JIT, unsigned executable memory, debugger,
+or executable-protection exception is authorized.
+
+The repair acceptance gate requires all of the following:
+
+- the tracked plist has exactly the one authorized Boolean entitlement;
+- negative tests reject missing, false, unknown, malformed, oversized, and
+  symlinked entitlement evidence;
+- the hosted job extracts the final code-signature entitlements from both
+  `rho-desktop` and bundled Ark, validates the exact key set, and does so before
+  notarization, Gatekeeper, and Workspace smoke;
+- a temporary locally re-signed copy of the installed app starts bundled Ark
+  and completes Workspace smoke against the observed official CRAN arm64 R;
+- the exact `0.4.0-dev.2` fork commit passes the full Windows/macOS rehearsal,
+  final-DMG notarization, staple, Gatekeeper, smoke, and cleanup gates;
+- no tag, Release, Pages state, candidate evidence, or MAC5 acceptance is
+  created.
+
+Version impact: application version and synchronized frontend metadata advance
+to `0.4.0-dev.2`; R package versions remain unchanged because their package
+contracts do not change. `NEWS.md` receives a Fixed entry only after the local
+runtime regression passes; that entry is now present because the regression
+passed. Release decision remains NO-GO.
+
+Local implementation evidence passed on 2026-08-06:
+
+- `Entitlements.plist` contains exactly the one authorized Boolean key, and
+  `plutil -lint` passes;
+- the bounded validator accepts the exact JSON projection and rejects null,
+  array, missing, false, extra-key, malformed, oversized, and symlink inputs;
+- the MAC4 contract test proves final Rho/Ark signature extraction and
+  validation precede final-DMG submission, receipt validation, staple, and
+  Gatekeeper;
+- an isolated copy of the rejected installed app was re-signed with the new
+  plist; both executable signatures validated and the complete Workspace smoke
+  passed against official arm64 R 4.5.2, including project isolation,
+  interrupt, restart, and crash recovery;
+- Tauri CLI 2.11.4 then built and Developer-ID-signed the actual
+  `0.4.0-dev.2` app; extracted final `rho-desktop` and Ark signatures each
+  passed the exact entitlement validator, `codesign --verify --deep --strict`
+  passed, and the same complete Workspace smoke passed;
+- all deterministic `scripts/test-*.mjs` suites, JavaScript syntax,
+  candidate/update self-tests, workflow YAML parse, both R package suites,
+  Rust format, and the complete Rust workspace tests passed. The existing
+  unrelated Rust dead-code warnings remained; `actionlint` was unavailable
+  locally and is not reported as run.
+
+The replacement hosted signing, final-DMG notarization, staple, Gatekeeper,
+two-platform rehearsal, immutable hashes, and zero-publication audit remain
+`NOT RUN` until the reviewed commit is pushed. Release decision remains NO-GO;
+MAC5 remains unauthorized.

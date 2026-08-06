@@ -4,6 +4,15 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.2 - 2026-08-06
+
+### Fixed
+
+- Fixed signed macOS builds failing to start Workspace R when bundled Ark loads
+  an official arm64 R installation signed by a different Apple Developer team.
+  The final app and Ark signatures are now checked for the exact reviewed
+  hardened-runtime library-validation entitlement before notarization.
+
 ## 0.4.0-dev.1 - 2026-08-05
 
 ### Added

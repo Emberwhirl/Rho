@@ -5,7 +5,7 @@ const normalizeLineEndings = (text) => text.replace(/\r\n/g, "\n");
 const read = (file) => normalizeLineEndings(fs.readFileSync(file, "utf8"));
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 
-const expectedVersion = "0.4.0-dev.1";
+const expectedVersion = "0.4.0-dev.2";
 const cargo = read("Cargo.toml");
 const cargoVersion = cargo.match(/^version = "([^"]+)"/m)?.[1];
 assert.equal(cargoVersion, expectedVersion, "Cargo candidate version must be synchronized");
@@ -14,13 +14,13 @@ assert.equal(JSON.parse(read("desktop/package.json")).version, expectedVersion);
 const packageLock = JSON.parse(read("desktop/package-lock.json"));
 assert.equal(packageLock.version, expectedVersion);
 assert.equal(packageLock.packages[""].version, expectedVersion);
-assert.match(read("desktop/dist/index.html"), /styles\.css\?v=0\.4\.0-dev\.1/);
-assert.match(read("desktop/dist/index.html"), /app\.js\?v=0\.4\.0-dev\.1/);
-assert.ok(count(read("desktop/dist/app.js"), /0\.4\.0-dev\.1/g) >= 3, "Mock identity must be synchronized");
+assert.match(read("desktop/dist/index.html"), /styles\.css\?v=0\.4\.0-dev\.2/);
+assert.match(read("desktop/dist/index.html"), /app\.js\?v=0\.4\.0-dev\.2/);
+assert.ok(count(read("desktop/dist/app.js"), /0\.4\.0-dev\.2/g) >= 3, "Mock identity must be synchronized");
 
 const localPackagePattern = /name = "rho-[^"]+"\r?\nversion = "([^"]+)"/g;
 assert.deepEqual(
-  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.1"'.matchAll(localPackagePattern)].map((match) => match[1]),
+  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.2"'.matchAll(localPackagePattern)].map((match) => match[1]),
   [expectedVersion],
   "Cargo.lock parsing must accept Windows CRLF checkouts",
 );
@@ -45,6 +45,8 @@ assert.match(
 );
 assert.match(build, /name: Build Rho Candidate \/ Rehearsal/);
 assert.match(build, buildModePattern);
+assert.match(build, /release_tag:\n[\s\S]*?default: v0\.4\.0-dev\.2/);
+assert.match(build, /release_name:\n[\s\S]*?default: Rho 0\.4\.0-dev\.2/);
 assert.match(build, /candidate-release\.mjs --mode admission --build_mode "\$BUILD_MODE" --repository "\$GITHUB_REPOSITORY" --workflow_ref "\$GITHUB_REF" --default_branch "\$DEFAULT_BRANCH"/);
 assert.match(build, /commit="\$\(git rev-parse "\$\{INPUT_REF\}\^\{commit\}"\)"/);
 assert.match(build, /Requested commit \$commit is not the current default-branch commit \$default_commit/);
@@ -84,25 +86,45 @@ assert.doesNotMatch(build, /xcrun notarytool history/);
 assert.match(build, /env -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH npx/);
 assert.match(build, /require_exact_arm64 "Rho app executable"/);
 assert.match(build, /require_exact_arm64 "Bundled Ark executable"/);
+assert.equal(
+  count(build, /require_exact_library_validation_entitlement "(?:Rho app executable|Bundled Ark executable)"/g),
+  2,
+  "The final app and Ark signatures must both prove the exact entitlement set",
+);
+assert.match(build, /codesign -d --entitlements - --xml "\$binary_path"/);
+assert.match(build, /plutil -convert json -o "\$json_path" "\$plist_path"/);
+assert.match(build, /node scripts\/validate-macos-entitlements\.mjs "\$json_path"/);
+assert.match(
+  build,
+  /--checks [^\n]*arm64,codesign,entitlements,notarization,staple,gatekeeper/,
+  "The candidate evidence must record the exact-entitlement gate independently from codesign",
+);
 assert.match(
   build,
   /xcrun notarytool submit "\$dmg_path" --key "\$APPLE_API_KEY_PATH" --key-id "\$APPLE_API_KEY" --issuer "\$APPLE_API_ISSUER" --wait --output-format json > target\/notary-dmg-submit\.json/,
 );
 assert.match(build, /node scripts\/validate-notary-receipt\.mjs target\/notary-dmg-submit\.json/);
 const dmgSubmitIndex = build.indexOf('xcrun notarytool submit "$dmg_path"');
+const entitlementValidationIndex = build.indexOf('require_exact_library_validation_entitlement "Rho app executable"');
 const receiptValidationIndex = build.indexOf("node scripts/validate-notary-receipt.mjs");
 const dmgStapleIndex = build.indexOf('xcrun stapler staple "$dmg_path"');
 const gatekeeperIndex = build.indexOf("spctl --assess --type execute");
 assert.ok(
-  dmgSubmitIndex < receiptValidationIndex
+  entitlementValidationIndex < dmgSubmitIndex
+    && dmgSubmitIndex < receiptValidationIndex
     && receiptValidationIndex < dmgStapleIndex
     && dmgStapleIndex < gatekeeperIndex,
-  "Final DMG submission, receipt validation, staple, and Gatekeeper gates must stay ordered",
+  "Entitlement validation, final DMG submission, receipt validation, staple, and Gatekeeper gates must stay ordered",
 );
+const entitlementValidator = read("scripts/validate-macos-entitlements.mjs");
+assert.match(entitlementValidator, /MAX_MACOS_ENTITLEMENTS_BYTES = 4 \* 1024/);
+assert.match(entitlementValidator, /com\.apple\.security\.cs\.disable-library-validation/);
+assert.match(entitlementValidator, /keys\.length !== 1/);
 const notaryValidator = read("scripts/validate-notary-receipt.mjs");
 assert.match(notaryValidator, /MAX_NOTARY_RECEIPT_BYTES = 64 \* 1024/);
 assert.match(notaryValidator, /receipt\.status !== "Accepted"/);
 assert.match(notaryValidator, /submissionIdPattern\.test\(receipt\.id\)/);
+assert.match(read(".github/workflows/candidate-publish.yml"), /default: v0\.4\.0-dev\.2/);
 assert.match(build, /draft: true/);
 assert.match(build, /prerelease: true/);
 assert.match(build, /getReleaseByTag/);

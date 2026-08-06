@@ -237,7 +237,7 @@ function fakeCandidateRecord(version) {
   };
   const checks = {
     windows_x86_64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke"],
-    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "notarization", "staple", "gatekeeper"],
+    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "staple", "gatekeeper"],
   };
   record.platform_evidence = Object.fromEntries(CANDIDATE_PLATFORMS.map((platform) => [platform, {
     size_bytes: platforms[platform].evidence.size_bytes,
