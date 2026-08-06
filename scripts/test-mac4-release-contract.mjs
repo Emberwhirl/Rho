@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const read = (file) => fs.readFileSync(file, "utf8");
+const normalizeLineEndings = (text) => text.replace(/\r\n/g, "\n");
+const read = (file) => normalizeLineEndings(fs.readFileSync(file, "utf8"));
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 
 const expectedVersion = "0.4.0-dev.1";
@@ -28,8 +29,22 @@ assert.ok(lockLocalVersions.length >= 9, "Expected local Rho workspace packages 
 assert.ok(lockLocalVersions.every((version) => version === expectedVersion), "Cargo.lock local package versions must match the candidate");
 
 const build = read(".github/workflows/candidate-build-draft.yml");
+const buildModePattern = /build_mode:\n[\s\S]*?default: rehearsal\n[\s\S]*?type: choice\n[\s\S]*?- rehearsal\n[\s\S]*?- candidate/;
+const crlfBuildModeFixture = [
+  "build_mode:",
+  "  default: rehearsal",
+  "  type: choice",
+  "  options:",
+  "    - rehearsal",
+  "    - candidate",
+].join("\r\n");
+assert.match(
+  normalizeLineEndings(crlfBuildModeFixture),
+  buildModePattern,
+  "Workflow contract parsing must accept Windows CRLF checkouts",
+);
 assert.match(build, /name: Build Rho Candidate \/ Rehearsal/);
-assert.match(build, /build_mode:\n[\s\S]*?default: rehearsal\n[\s\S]*?type: choice\n[\s\S]*?- rehearsal\n[\s\S]*?- candidate/);
+assert.match(build, buildModePattern);
 assert.match(build, /candidate-release\.mjs --mode admission --build_mode "\$BUILD_MODE" --repository "\$GITHUB_REPOSITORY" --workflow_ref "\$GITHUB_REF" --default_branch "\$DEFAULT_BRANCH"/);
 assert.match(build, /commit="\$\(git rev-parse "\$\{INPUT_REF\}\^\{commit\}"\)"/);
 assert.match(build, /Requested commit \$commit is not the current default-branch commit \$default_commit/);

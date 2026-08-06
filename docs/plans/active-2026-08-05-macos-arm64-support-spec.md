@@ -496,9 +496,14 @@ Hosted defect-repair checkpoint:
   existing explicit target-OS/target-architecture predicate. A test running on
   Windows must not require the current Windows process to reject x86 R; product
   behavior and stable `R_ARCH_MISMATCH` recovery on Apple Silicon are unchanged;
-- release-contract parsing of checked-out text must accept both LF and CRLF.
-  The Cargo lockfile assertion continues to require all local Rho packages and
-  synchronized versions; only line-ending portability may change;
+- release-contract parsing of every checked-out text input must accept both LF
+  and CRLF. The hosted Windows failure at the workflow `build_mode` assertion
+  proves that fixing only the Cargo lockfile record separator is insufficient;
+  the test harness must normalize line endings before all existing workflow,
+  metadata, and source contract assertions. The Cargo lockfile assertion
+  continues to require all local Rho packages and synchronized versions, and
+  every workflow assertion retains its exact semantic pattern; only
+  line-ending portability may change;
 - each observed defect retains or gains a deterministic regression. The full
   hosted replacement run, not a rerun of only the failed job, is required for
   MAC4-R exit because admission binds the exact current fork `main` commit and

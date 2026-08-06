@@ -391,10 +391,13 @@ About/update, Pages, or publication gates. Candidate mode remains restricted to
 Hosted MAC4-R failures may repair only an existing owning contract: WS1-L2
 continues to own fail-closed local-source containment, MAC2 continues to own
 Apple-Silicon R architecture policy, and the exact-candidate checklist continues
-to own synchronized Cargo identity. Windows path handling and CRLF/current-host
-test portability do not transfer those authorities to MAC4-R. Any repair must
-be regression-covered and accepted by a new exact-commit two-platform rehearsal;
-cross-run artifact composition is forbidden.
+to own synchronized Cargo identity and the existing candidate workflow
+contract. Windows path handling and CRLF/current-host test portability do not
+transfer those authorities to MAC4-R. CRLF repair applies uniformly at the
+release-contract test input boundary while leaving every workflow and metadata
+assertion unchanged. Any repair must be regression-covered and accepted by a
+new exact-commit two-platform rehearsal; cross-run artifact composition is
+forbidden.
 
 ### macOS arm64 platform ownership
 

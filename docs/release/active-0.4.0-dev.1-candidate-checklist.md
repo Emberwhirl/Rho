@@ -92,7 +92,10 @@ replacement must be a new full run of the exact updated fork `main` commit;
 combining artifacts or results from different commits or runs is forbidden.
 Windows checkout line endings, current-platform architecture, and lexical
 local-source containment are explicit portability gates, not grounds to relax
-the candidate contract.
+the candidate contract. Every checked-out text input consumed by the MAC4
+release-contract test must be normalized consistently before the unchanged
+semantic assertions run; a one-off CRLF exception for only `Cargo.lock` does
+not satisfy this gate.
 
 ## MAC4 Local Implementation Evidence — 2026-08-05
 
