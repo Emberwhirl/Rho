@@ -9,12 +9,12 @@ native-Keychain smoke, unsigned arm64 development-app workflow acceptance, and
 separate contract review complete on 2026-08-05; the MAC3 mandatory stop is
 reached; MAC4 entry review complete and explicitly authorized on 2026-08-05;
 MAC4 implementation, locally available verification, version/NEWS review, and
-separate contract review complete on 2026-08-05; hosted signing/notarization,
-candidate assets, and draft creation remain NOT RUN; the MAC4 mandatory stop
-is reached; MAC4-R fork rehearsal entry review complete and explicitly
-authorized on 2026-08-05; its implementation, local automated verification,
-and separate contract review are complete; the credentialed hosted run remains
-NOT RUN; MAC5 remains proposed and unauthorized
+separate contract review complete on 2026-08-05; authoritative main-repository
+candidate assets and draft creation remain NOT RUN; the MAC4 mandatory stop is
+reached; MAC4-R fork rehearsal entry review complete and explicitly authorized
+on 2026-08-05; its implementation, local automated verification, separate
+contract review, and exact-commit credentialed hosted rehearsal completed on
+2026-08-06; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1015,8 +1015,61 @@ the default-branch source guard and retry-safe intermediate artifact naming;
 both corrections remain inside the authorized rehearsal boundary.
 
 Version outcome: application and R package versions remain unchanged;
-`NEWS.md` is unchanged because this lane is internal review tooling. Hosted
-Windows build, credential import, Developer ID signing, notarization, stapling,
-Gatekeeper, rehearsal artifact upload, and recorded hosted hashes remain
-`NOT RUN` until the committed workflow is pushed to fork `main`. Release
-decision remains NO-GO; MAC5 remains unauthorized.
+`NEWS.md` is unchanged because this lane is internal review tooling.
+
+## MAC4-R Hosted Rehearsal Evidence — PASSED 2026-08-06
+
+Failure and recovery chronology remained inside the authorized repair lane:
+
+- run `31046586627` passed admission and validation but the original PKCS#12
+  did not expose the configured Developer ID identity; it produced no platform
+  or aggregate evidence and was canceled after success became impossible;
+- run `31047725385` exposed three deterministic Windows portability defects.
+  Its macOS job signed the app and submitted notarization, then failed with
+  `NSURLErrorDomain Code=-1009` (`No network route`) while polling Apple. The
+  temporary Apple credential cleanup passed;
+- run `31052585442` proved those three repairs and exposed the remaining CRLF
+  workflow-regex defect. The macOS job was canceled after the sibling Windows
+  result made aggregate success impossible; cancellation cleanup passed;
+- run `31065316772` at
+  `6f55fac14ccbc291c87dced48dab96b84b35dba1` passed Windows and received an
+  Accepted Tauri app submission, but correctly blocked aggregate evidence
+  because the final DMG had not been independently submitted. Cleanup passed;
+- run `31079170163` attempt 1 at
+  `f951db593cd1d48c7a862431b691a852a37e840f` passed admission, complete
+  Windows and macOS validation, both platform builds/smokes, and aggregate
+  rehearsal assembly. It is the only run used for passing evidence; no result
+  or artifact was composed across runs.
+
+The successful macOS job selected Xcode 26.6, imported the exact Developer ID
+identity into a temporary Keychain, signed the app, Ark and DMG, observed exact
+arm64 architectures for both executables, and explicitly skipped Tauri's app
+submission. Final DMG submission `40373d62-63be-4d75-bf22-0ed6c668b69c`
+returned `Accepted`; DMG staple/validate, app and DMG Gatekeeper assessment
+(`Notarized Developer ID`), complete Workspace smoke, platform evidence upload,
+and unconditional `.p12`/`.p8`/Keychain cleanup all passed.
+
+The final review-only Actions artifact is ID `8965129826`, named
+`rho-0.4.0-dev.1-rehearsal-f951db593cd1d48c7a862431b691a852a37e840f-31079170163-1`,
+37,992,384 bytes in the Actions API, retained through 2026-08-20. Independent
+download verification found exactly seven regular files and passed both
+checksum sidecars plus aggregate size/hash/content binding:
+
+- Windows installer: 17,686,967 bytes,
+  SHA-256 `9462d57f2f50dbbcbf182dcd300860a392738892a8fd815d2c14298b86d472f0`;
+- macOS DMG: 20,391,851 bytes,
+  SHA-256 `bb57b9f8cc1f8db1a3ea3c92ba3a7d28b2e43ff3acff95239ed77c5d1a983866`;
+- Windows platform evidence SHA-256
+  `5fe2628fd03b898fcaa533cfcf55187c013b3e73069b8ce3c0cc69e19dd65e41`;
+- macOS platform evidence SHA-256
+  `f3f679b929fd1a3801c6f7d376c6de84134ea5472eb0fb30edf00f212247f86b`;
+- rehearsal evidence SHA-256
+  `777b623e9bc83e79283074b763626781d4d73b8195b8baa7f33d9b52d441ecc1`.
+
+Read-only post-run checks found no fork tag or Release and a 404 Pages state;
+the candidate draft job was skipped. GitHub emitted Node 20 action-deprecation
+and upload-action Node API deprecation warnings, but all affected steps passed;
+updating action majors is a bounded follow-up, not a release-gate failure.
+
+Release decision remains NO-GO. The MAC4-R mandatory stop is reached. The main
+repository must rebuild any authoritative candidate; MAC5 remains unauthorized.

@@ -3,8 +3,8 @@
 Status: active; MAC4 candidate/update/signing/draft tooling implemented and
 locally verified on 2026-08-05; no exact hosted draft, installed-candidate
 acceptance, or release GO exists yet; MAC4-R fork rehearsal authorized on
-2026-08-05, implemented and locally verified; credentialed hosted rehearsal
-NOT RUN
+2026-08-05, implemented and locally verified; exact-commit credentialed hosted
+rehearsal passed on 2026-08-06; authoritative candidate/draft remains NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -134,31 +134,31 @@ size/hash are not candidate identity and must not be copied into hosted
 evidence. The Windows GNU target and PowerShell are absent locally; the hosted
 Windows build is `NOT RUN`, not inferred from static configuration.
 
-The repository does not contain signing/notarization credentials. Developer ID
-import, hosted signing, notarization result, stapling, Gatekeeper, platform
-artifact uploads, aggregate hosted evidence, and draft creation all remain
-`NOT RUN`. No GitHub release or Pages state was changed.
+The repository does not contain signing/notarization credentials. At this local
+checkpoint Developer ID import, hosted signing/notarization, stapling,
+Gatekeeper, and platform/aggregate uploads were `NOT RUN`; the later bounded
+fork rehearsal recorded below passed those automated gates. Authoritative
+candidate draft creation remains `NOT RUN`.
 
-## MAC4-R Fork Rehearsal Gate — IMPLEMENTED / HOSTED NOT RUN
+## MAC4-R Fork Rehearsal Gate — HOSTED PASSED 2026-08-06
 
 The review-only rehearsal must run from the exact fork and cannot satisfy any
 row in Required Draft Assets or MAC5 Installed Acceptance.
 
-Local contract evidence covers exact repository/mode and default-branch
-admission, candidate-only write permission, seven-file rehearsal upload,
-bounded schema, type-confusion rejection, cleanup verification, and retry-safe
-Run/Attempt artifact identity. Hosted rows remain open until the committed
-workflow runs from fork `main` with repository secrets.
+Run `31079170163` attempt 1 passed from fork `main` at exact commit
+`f951db593cd1d48c7a862431b691a852a37e840f`. The final artifact is Actions ID
+`8965129826`, retained through 2026-08-20. This evidence is review-only and does
+not satisfy any Required Draft Asset or MAC5 row.
 
 | Gate | Required evidence | State |
 | --- | --- | --- |
-| Repository admission | `build_mode=rehearsal` and exact `YuLab-SMU/Rho_for_mac` identity | NOT RUN |
-| Immutable source | one full fork commit shared by both platform jobs | NOT RUN |
-| Windows rehearsal | installer, checksum, platform evidence and Workspace smoke | NOT RUN |
-| macOS rehearsal | signed/notarized/stapled DMG, checksum, Gatekeeper and Workspace smoke | NOT RUN |
-| Aggregate rehearsal | bounded rehearsal record agrees with both platform files and hashes | NOT RUN |
-| Credential cleanup | temporary `.p12`, `.p8`, and Keychain removed on every outcome | NOT RUN |
-| Mutation boundary | Actions artifact only; no tag, Release, Pages, environment, or repository mutation | NOT RUN |
+| Repository admission | `build_mode=rehearsal` and exact `YuLab-SMU/Rho_for_mac` identity | PASSED — run `31079170163` |
+| Immutable source | one full fork commit shared by both platform jobs | PASSED — `f951db593cd1d48c7a862431b691a852a37e840f` |
+| Windows rehearsal | installer, checksum, platform evidence and Workspace smoke | PASSED — 17,686,967 bytes; SHA-256 `9462d57f…72f0` |
+| macOS rehearsal | signed/notarized/stapled DMG, checksum, Gatekeeper and Workspace smoke | PASSED — 20,391,851 bytes; SHA-256 `bb57b9f8…3866` |
+| Aggregate rehearsal | bounded rehearsal record agrees with both platform files and hashes | PASSED — exact seven-file independent verification |
+| Credential cleanup | temporary `.p12`, `.p8`, and Keychain removed on every outcome | PASSED — success, failure and cancellation paths observed |
+| Mutation boundary | Actions artifact only; no tag, Release, Pages, environment, or repository mutation | PASSED — draft job skipped; no tag/Release; Pages 404 |
 
 The final Actions artifact is retained for 14 days and contains only the two
 platform artifact/checksum/evidence triplets plus
@@ -254,6 +254,6 @@ publication do not by themselves prove live Pages acceptance.
 ## Current Decision
 
 `NO-GO`. MAC4 implementation and locally available verification are complete,
-and MAC4-R is implemented and locally verified but its hosted run is NOT RUN.
-No credentialed hosted rehearsal or candidate, immutable draft, MAC5 installed
-acceptance, or explicit GO exists.
+and the review-only MAC4-R hosted rehearsal passed at exact commit
+`f951db593cd1d48c7a862431b691a852a37e840f`. No authoritative main-repository
+candidate, immutable draft, MAC5 installed acceptance, or explicit GO exists.
