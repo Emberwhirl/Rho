@@ -140,6 +140,9 @@ const state = {
   fileEditProposal: null,
   fileEditUndo: null,
   fileEditDecisions: new Map(),
+  actAuthorizedTurnIds: new Set(),
+  fileEditAutoApplyAttempts: new Set(),
+  fileEditApplyBusy: false,
   agentFileMention: { items: [], index: 0, start: -1, end: -1, mode: "mention", contextSource: null },
   agentContextSource: "editor",
   agentContextPath: null,
@@ -792,22 +795,23 @@ function mockTurnSummary(turn) {
   };
 }
 
-function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
+function createMockAgentTurn({ prompt, mode, model, editorContext = null, autoApprove = false }) {
   const startedAt = new Date().toISOString();
+  const waitingForApproval = mode === "act" && !autoApprove;
   const turn = {
     turn_id: nextMockTurnId(),
     mode,
-    status: mode === "act" ? "waiting" : "completed",
+    status: waitingForApproval ? "waiting" : "completed",
     started_at: startedAt,
-    finished_at: mode === "act" ? null : startedAt,
+    finished_at: waitingForApproval ? null : startedAt,
     prompt_preview: prompt.replace(/\s+/g, " ").trim().slice(0, 120) || "<empty>",
     model,
     workspace_id_before: "desktop_mock",
     state_revision_before: state.revision.state_revision,
     project_revision_before: state.revision.project_revision,
-    workspace_id_after: mode === "act" ? null : "desktop_mock",
-    state_revision_after: mode === "act" ? null : state.revision.state_revision,
-    project_revision_after: mode === "act" ? null : state.revision.project_revision,
+    workspace_id_after: waitingForApproval ? null : "desktop_mock",
+    state_revision_after: waitingForApproval ? null : state.revision.state_revision,
+    project_revision_after: waitingForApproval ? null : state.revision.project_revision,
     final_message: null,
     error_message: null,
     events: [
@@ -822,7 +826,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
         tool: null,
         request_id: null,
         code: null,
-        details_json: JSON.stringify({ prompt, mode, editor_context: editorContext }),
+        details_json: JSON.stringify({ prompt, mode, auto_approve: autoApprove, editor_context: editorContext }),
       },
       {
         id: 2,
@@ -840,7 +844,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
     ],
   };
   turn.events.forEach((event) => { event.turn_id = turn.turn_id; });
-  if (mode === "act") {
+  if (waitingForApproval) {
     const requestId = nextMockApprovalId();
     mockApprovalRequests.unshift({
       request_id: requestId,
@@ -1605,7 +1609,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.1",
+      version: "0.4.0-dev.2",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: "windows-x86_64",
@@ -1623,8 +1627,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.1",
-      available_version: "0.4.0-dev.1",
+      installed_version: "0.4.0-dev.2",
+      available_version: "0.4.0-dev.2",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2460,6 +2464,7 @@ async function mockInvoke(command, args) {
       mode: args.mode || "ask",
       model: modelProfile ? mockEffectiveModelRef(providerProfile, modelProfile) : "deepseek:deepseek-v4-flash",
       editorContext: args.editorContext || null,
+      autoApprove: Boolean(args.autoApprove ?? args.auto_approve),
     });
     return { status: "started", turn_id: turn.turn_id };
   }
@@ -5582,6 +5587,7 @@ async function loadAgentData({ quiet = false } = {}) {
     renderAgentTimeline();
     renderApprovalPanel();
     renderFileEditPanel();
+    maybeAutoApplyFileEditProposal();
     renderTaskRail();
     updateAgentHeader();
     syncAgentPolling();
@@ -6640,6 +6646,7 @@ async function selectTaskTurn(turnId) {
   renderAgentTimeline();
   renderApprovalPanel();
   renderFileEditPanel();
+  maybeAutoApplyFileEditProposal();
   updateAgentHeader();
 }
 
@@ -8095,6 +8102,7 @@ function artifactKindLabel(kind) {
     plot_export: "Plot export",
     table_export: "Table export",
     render_output: "Render output",
+    generated_file: "Generated file",
   }[kind] || kind || "Artifact";
 }
 
@@ -9917,7 +9925,7 @@ async function maybeApplyPreviewScenario() {
       switchAgentSurface("monitor");
     } else if (previewState === "outputs-empty") {
       switchAgentSurface("outputs");
-    } else if (["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact"].includes(previewState)) {
+    } else if (["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact", "outputs-generated"].includes(previewState)) {
       const run = recordMockRun({
         runId: "run_agent_output_review",
         origin: "agent",
@@ -9943,6 +9951,30 @@ async function maybeApplyPreviewScenario() {
         created_at: run.started_at,
       };
       mockPlots.unshift(plot);
+      if (previewState === "outputs-generated") {
+        mockUpsertProjectFile(mockLastProject, "results/qc-summary.csv", "sample,score\nA,0.92\n", { trackInTree: false, kind: "artifact" });
+        mockUpsertProjectFile(mockLastProject, "results/qc-figure.png", "mock-png", { trackInTree: false, kind: "artifact" });
+        createMockArtifactRecord({
+          artifactKind: "generated_file",
+          runId: run.run_id,
+          outputPath: "results/qc-summary.csv",
+          sourcePath: run.source_path,
+          executionMode: run.execution_mode,
+          documentVersion: run.document_version,
+          mediaType: "text/csv",
+          metadata: { discovery: "project_file_delta", change_kind: "created", size_bytes: 20 },
+        });
+        createMockArtifactRecord({
+          artifactKind: "generated_file",
+          runId: run.run_id,
+          outputPath: "results/qc-figure.png",
+          sourcePath: run.source_path,
+          executionMode: run.execution_mode,
+          documentVersion: run.document_version,
+          mediaType: "image/png",
+          metadata: { discovery: "project_file_delta", change_kind: "created", size_bytes: 8 },
+        });
+      }
       await loadRunData();
       if (previewState === "outputs-artifact") {
         await invoke("export_plot_artifact", { request: { plot_id: plot.plot_id, path: "artifacts/qc-review.png" } });
@@ -12098,11 +12130,19 @@ function renderFileEditPanel() {
   state.fileEditProposal = proposal;
   const decision = proposal ? state.fileEditDecisions.get(proposal.key) : null;
   const visible = Boolean(proposal);
-  $("#fileEditPanel").classList.toggle("hidden", !visible);
-  if (!visible) return;
-  $("#fileEditPanel").dataset.state = decision || "waiting";
+  const panel = $("#fileEditPanel");
+  panel.classList.toggle("hidden", !visible);
+  if (!visible) {
+    delete panel.dataset.proposalKey;
+    return;
+  }
+  const proposalChanged = panel.dataset.proposalKey !== proposal.key;
+  panel.dataset.proposalKey = proposal.key;
+  if (proposalChanged) panel.open = true;
+  panel.dataset.state = decision || "waiting";
   $("#fileEditPanelTitle").textContent = `${fileEditOperationLabel(proposal.operation)} proposal`;
   $("#fileEditPath").textContent = proposal.path;
+  $("#fileEditPath").title = proposal.path;
   const summaryState = decision === "accepted"
     ? "Already applied"
     : decision === "rejected"
@@ -12119,6 +12159,17 @@ function renderFileEditPanel() {
   $("#fileEditAccept").classList.toggle("hidden", accepted || rejected);
   $("#fileEditReject").classList.toggle("hidden", accepted || rejected);
   $("#fileEditUndo").classList.toggle("hidden", !undoAvailable);
+}
+
+function maybeAutoApplyFileEditProposal() {
+  const proposal = state.fileEditProposal;
+  if (!proposal
+    || state.fileEditDecisions.has(proposal.key)
+    || !state.actAuthorizedTurnIds.has(proposal.turnId)
+    || state.fileEditAutoApplyAttempts.has(proposal.key)
+    || proposal.editorContext?.project_root !== state.project.root) return;
+  state.fileEditAutoApplyAttempts.add(proposal.key);
+  acceptFileEditProposal({ automatic: true });
 }
 
 async function projectFileContent(path) {
@@ -12218,10 +12269,11 @@ async function updateDocumentAfterFileEdit(path, content, start, end) {
   scheduleSessionSave();
 }
 
-async function acceptFileEditProposal() {
+async function acceptFileEditProposal({ automatic = false } = {}) {
   const proposal = state.fileEditProposal;
-  if (!proposal) return;
+  if (!proposal || state.fileEditApplyBusy) return;
   const button = $("#fileEditAccept");
+  state.fileEditApplyBusy = true;
   button.disabled = true;
   try {
     const exists = state.project.files.some((file) => file.path === proposal.path);
@@ -12252,11 +12304,12 @@ async function acceptFileEditProposal() {
     persistFileEditDecisions();
     scheduleSessionSave();
     renderFileEditPanel();
-    toast(`Applied Agent edit to ${proposal.path}.`);
+    toast(`${automatic ? "Automatically applied" : "Applied"} Agent edit to ${proposal.path}.`);
   } catch (error) {
     state.internalProjectWrites.delete(proposal.path);
     toast(reportUiFailure("apply Agent file edit", error, "The proposed edit could not be applied. Refresh the project and review the proposal again."), true);
   } finally {
+    state.fileEditApplyBusy = false;
     button.disabled = false;
   }
 }
@@ -12380,16 +12433,20 @@ async function sendAgentPrompt() {
   $("#agentStateDot").className = "agent-state-dot busy";
   try {
     const editorContext = buildAgentEditorContext();
+    const authorizeChanges = state.agentMode === "act" && state.actAutoApprove;
     const response = await invoke("run_agent", {
       prompt,
       mode: state.agentMode,
       modelId: selectedModelId,
-      autoApprove: state.agentMode === "act" && state.actAutoApprove,
+      autoApprove: authorizeChanges,
       editorContext,
     });
+    if (authorizeChanges && response?.turn_id) state.actAuthorizedTurnIds.add(response.turn_id);
     resetAgentContext();
     resetAgentLocalHelpContext();
     state.activeAgentTurnId = response?.turn_id || null;
+    state.selectedTurnId = response?.turn_id || state.selectedTurnId;
+    state.selectedTurnDetail = null;
     await Promise.all([loadAgentData(), loadRunData()]);
   } catch (error) {
     const message = String(error);
@@ -14431,6 +14488,9 @@ async function hydrateProject(response) {
   state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   state.fileEditProposal = null;
   state.fileEditUndo = null;
+  state.actAuthorizedTurnIds.clear();
+  state.fileEditAutoApplyAttempts.clear();
+  state.fileEditApplyBusy = false;
   state.agentWorkSurface = "none";
   state.auditResult = null;
   state.auditLoading = false;
@@ -14941,6 +15001,8 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     state.agentActivityExpanded.clear();
     state.fileEditProposal = null;
     state.fileEditUndo = null;
+    state.actAuthorizedTurnIds.clear();
+    state.fileEditAutoApplyAttempts.clear();
     state.fileEditDecisions = new Map();
     clearFileEditDecisions();
     clearAgentEditHighlight();

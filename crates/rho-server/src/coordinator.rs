@@ -1,10 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result, bail, ensure};
 use rho_agent_transport::{
@@ -58,6 +59,29 @@ const MAX_PROJECT_SKILL_REFERENCES: usize = 4;
 const MAX_PROJECT_SKILL_INSTRUCTION_BYTES: u64 = 8_192;
 const MAX_PROJECT_SKILL_REFERENCE_BYTES: u64 = 16_384;
 const MAX_PROJECT_SKILL_PROMPT_CHARS: usize = 32_768;
+const MAX_GENERATED_OUTPUT_DEPTH: usize = 8;
+const MAX_GENERATED_OUTPUT_ENTRIES: usize = 10_000;
+const MAX_GENERATED_OUTPUT_FILES: usize = 2_000;
+const MAX_GENERATED_OUTPUT_RECORDS: usize = 100;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct GeneratedOutputSnapshot {
+    files: BTreeMap<String, GeneratedOutputSignature>,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeneratedOutputSignature {
+    size_bytes: u64,
+    modified_nanos: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeneratedOutputDelta {
+    path: String,
+    change_kind: &'static str,
+    signature: GeneratedOutputSignature,
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnvironmentOperationArguments {
@@ -858,6 +882,8 @@ pub async fn dispatch_workspace_request_with_execution_id(
     } else {
         None
     };
+    let generated_output_before = (request_type == "workspace.execute")
+        .then(|| capture_generated_output_snapshot(Path::new(&project_root)));
     store.create_run(&RunDraft {
         run_id: request.execution_id.clone(),
         parent_run_id: arguments
@@ -1027,6 +1053,13 @@ pub async fn dispatch_workspace_request_with_execution_id(
     store.save_identity(broker.identity())?;
     let after = broker.identity().clone();
     let failed = !result["ok"].as_bool().unwrap_or(false);
+    let generated_output_after = (!failed && request_type == "workspace.execute")
+        .then(|| capture_generated_output_snapshot(Path::new(&project_root)));
+    let generated_output_deltas = generated_output_before
+        .as_ref()
+        .zip(generated_output_after.as_ref())
+        .map(|(before, after)| generated_output_deltas(before, after))
+        .unwrap_or_default();
     let environment_snapshot_id_after =
         if environment_operation_requires_after_snapshot(request_type) {
             capture_environment_snapshot_id(session, store).await.ok()
@@ -1107,6 +1140,51 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     .and_then(Value::as_i64)
                     .is_some(),
         })?;
+    }
+    if !generated_output_deltas.is_empty() {
+        let source_path = arguments
+            .get("source_path")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let document_version = arguments.get("document_version").and_then(Value::as_i64);
+        let (provenance_complete, incomplete_reason) = artifact_provenance_status(
+            Some(&request.execution_id),
+            source_path.as_deref(),
+            document_version,
+        );
+        for delta in generated_output_deltas {
+            let path_hash = sha256_hex(delta.path.as_bytes());
+            store.create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: format!(
+                    "artifact_{}_file_{}",
+                    request.execution_id,
+                    &path_hash[..16]
+                ),
+                artifact_kind: "generated_file".to_string(),
+                run_id: Some(request.execution_id.clone()),
+                project_root: project_root.clone(),
+                output_path: delta.path.clone(),
+                source_path: source_path.clone(),
+                execution_mode: arguments
+                    .get("execution_mode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                document_version,
+                workspace_id: Some(after.workspace_id.clone()),
+                state_revision: Some(after.state_revision as i64),
+                project_revision: Some(after.project_revision as i64),
+                media_type: infer_output_media_type(&delta.path),
+                metadata_json: serde_json::to_string(&json!({
+                    "discovery": "project_file_delta",
+                    "change_kind": delta.change_kind,
+                    "size_bytes": delta.signature.size_bytes,
+                    "scan_truncated": generated_output_before.as_ref().is_some_and(|value| value.truncated)
+                        || generated_output_after.as_ref().is_some_and(|value| value.truncated),
+                }))?,
+                provenance_complete,
+                incomplete_reason: incomplete_reason.clone(),
+            })?;
+        }
     }
     let mut artifact_id = None;
     let mut artifact_media_type = None;
@@ -4032,6 +4110,164 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
     }
 }
 
+fn generated_output_extension(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "csv"
+            | "tsv"
+            | "txt"
+            | "json"
+            | "rds"
+            | "rda"
+            | "rdata"
+            | "html"
+            | "htm"
+            | "pdf"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "svg"
+            | "xlsx"
+            | "xls"
+            | "parquet"
+            | "feather"
+            | "arrow"
+            | "docx"
+            | "pptx"
+            | "zip"
+            | "gz"
+    )
+}
+
+fn ignored_generated_output_directory(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        ".git" | ".rho" | ".rproj.user" | ".worktrees" | "target" | "renv" | "node_modules"
+    )
+}
+
+fn capture_generated_output_snapshot(root: &Path) -> GeneratedOutputSnapshot {
+    let Ok(root) = root.canonicalize() else {
+        return GeneratedOutputSnapshot {
+            truncated: true,
+            ..Default::default()
+        };
+    };
+    let mut snapshot = GeneratedOutputSnapshot::default();
+    let mut scanned_entries = 0;
+    collect_generated_output_files(&root, &root, 0, &mut scanned_entries, &mut snapshot);
+    snapshot
+}
+
+fn collect_generated_output_files(
+    root: &Path,
+    directory: &Path,
+    depth: usize,
+    scanned_entries: &mut usize,
+    snapshot: &mut GeneratedOutputSnapshot,
+) {
+    if depth > MAX_GENERATED_OUTPUT_DEPTH
+        || *scanned_entries >= MAX_GENERATED_OUTPUT_ENTRIES
+        || snapshot.files.len() >= MAX_GENERATED_OUTPUT_FILES
+    {
+        snapshot.truncated = true;
+        return;
+    }
+    let Ok(read_dir) = fs::read_dir(directory) else {
+        snapshot.truncated = true;
+        return;
+    };
+    let mut entries = read_dir.filter_map(|entry| entry.ok()).collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_ascii_lowercase());
+    for entry in entries {
+        if *scanned_entries >= MAX_GENERATED_OUTPUT_ENTRIES
+            || snapshot.files.len() >= MAX_GENERATED_OUTPUT_FILES
+        {
+            snapshot.truncated = true;
+            return;
+        }
+        *scanned_entries += 1;
+        let Ok(file_type) = entry.file_type() else {
+            snapshot.truncated = true;
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if file_type.is_dir() {
+            if ignored_generated_output_directory(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
+            let Ok(canonical) = path.canonicalize() else {
+                snapshot.truncated = true;
+                continue;
+            };
+            if canonical.starts_with(root) {
+                collect_generated_output_files(
+                    root,
+                    &canonical,
+                    depth + 1,
+                    scanned_entries,
+                    snapshot,
+                );
+            }
+            continue;
+        }
+        if !file_type.is_file() || !generated_output_extension(&path) {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            snapshot.truncated = true;
+            continue;
+        };
+        let Ok(relative) = path.strip_prefix(root) else {
+            continue;
+        };
+        let modified_nanos = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        snapshot.files.insert(
+            relative.to_string_lossy().replace('\\', "/"),
+            GeneratedOutputSignature {
+                size_bytes: metadata.len(),
+                modified_nanos,
+            },
+        );
+    }
+}
+
+fn generated_output_deltas(
+    before: &GeneratedOutputSnapshot,
+    after: &GeneratedOutputSnapshot,
+) -> Vec<GeneratedOutputDelta> {
+    after
+        .files
+        .iter()
+        .filter_map(|(path, signature)| match before.files.get(path) {
+            None => Some(GeneratedOutputDelta {
+                path: path.clone(),
+                change_kind: "created",
+                signature: signature.clone(),
+            }),
+            Some(previous) if previous != signature => Some(GeneratedOutputDelta {
+                path: path.clone(),
+                change_kind: "modified",
+                signature: signature.clone(),
+            }),
+            _ => None,
+        })
+        .take(MAX_GENERATED_OUTPUT_RECORDS)
+        .collect()
+}
+
 fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String {
     let normalized_output = output_path.replace('\\', "/");
     let Some(project_root) = project_root else {
@@ -4063,9 +4299,21 @@ fn infer_output_media_type(path: &str) -> String {
         "html" | "htm" => "text/html",
         "pdf" => "application/pdf",
         "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
         "csv" => "text/csv",
-        "tsv" | "txt" => "text/tab-separated-values",
+        "tsv" => "text/tab-separated-values",
+        "txt" => "text/plain",
+        "json" => "application/json",
+        "rds" | "rda" | "rdata" => "application/x-r-data",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
+        "parquet" => "application/vnd.apache.parquet",
+        "feather" | "arrow" => "application/vnd.apache.arrow.file",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "zip" => "application/zip",
+        "gz" => "application/gzip",
         _ => "application/octet-stream",
     }
     .to_string()
@@ -4364,6 +4612,81 @@ mod tests {
             render_artifact_id("render_a"),
             render_artifact_id("render_b")
         );
+    }
+
+    #[test]
+    fn generated_output_delta_discovers_created_and_modified_project_results() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir_all(project.path().join("results")).unwrap();
+        fs::create_dir_all(project.path().join(".rho")).unwrap();
+        fs::write(project.path().join("existing.csv"), "a\n1\n").unwrap();
+        fs::write(project.path().join("analysis.R"), "summary(x)\n").unwrap();
+        fs::write(project.path().join(".rho").join("internal.csv"), "hidden\n").unwrap();
+        let before = capture_generated_output_snapshot(project.path());
+
+        fs::write(project.path().join("existing.csv"), "a\n1\n2\n").unwrap();
+        fs::write(
+            project.path().join("results").join("plot.png"),
+            b"png-bytes",
+        )
+        .unwrap();
+        let after = capture_generated_output_snapshot(project.path());
+        let deltas = generated_output_deltas(&before, &after);
+
+        assert_eq!(
+            deltas
+                .iter()
+                .map(|delta| (delta.path.as_str(), delta.change_kind))
+                .collect::<Vec<_>>(),
+            vec![
+                ("existing.csv", "modified"),
+                ("results/plot.png", "created")
+            ]
+        );
+        assert!(!after.files.contains_key("analysis.R"));
+        assert!(!after.files.contains_key(".rho/internal.csv"));
+    }
+
+    #[test]
+    fn generated_output_snapshots_are_root_isolated_and_delta_bounded() {
+        let project_a = tempfile::tempdir().unwrap();
+        let project_b = tempfile::tempdir().unwrap();
+        let before_a = capture_generated_output_snapshot(project_a.path());
+        fs::write(project_a.path().join("result.csv"), "project-a\n").unwrap();
+        fs::write(project_b.path().join("result.csv"), "project-b\n").unwrap();
+        for index in 0..=MAX_GENERATED_OUTPUT_RECORDS {
+            fs::write(
+                project_a.path().join(format!("output-{index:03}.json")),
+                "{}\n",
+            )
+            .unwrap();
+        }
+
+        let deltas_a = generated_output_deltas(
+            &before_a,
+            &capture_generated_output_snapshot(project_a.path()),
+        );
+        let snapshot_b = capture_generated_output_snapshot(project_b.path());
+        assert_eq!(deltas_a.len(), MAX_GENERATED_OUTPUT_RECORDS);
+        assert!(snapshot_b.files.contains_key("result.csv"));
+        assert!(!snapshot_b.files.contains_key("output-000.json"));
+    }
+
+    #[test]
+    fn generated_output_media_types_cover_analysis_files() {
+        assert_eq!(
+            infer_output_media_type("results/table.xlsx"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_eq!(
+            infer_output_media_type("results/object.rds"),
+            "application/x-r-data"
+        );
+        assert_eq!(
+            infer_output_media_type("results/data.parquet"),
+            "application/vnd.apache.parquet"
+        );
+        assert_eq!(infer_output_media_type("results/figure.jpeg"), "image/jpeg");
     }
 
     #[test]

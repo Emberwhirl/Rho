@@ -28,7 +28,7 @@ assert.match(js, /No outputs yet\. Plots and saved results produced in this proj
 assert.match(js, /Rho removed this preview to save space\. The Plot remains in history\./);
 assert.match(js, /previewState === "outputs-empty"/);
 assert.match(js, /previewState === "paths"/);
-assert.match(js, /\["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact"\]\.includes\(previewState\)/);
+assert.match(js, /\["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact", "outputs-generated"\]\.includes\(previewState\)/);
 assert.match(js, /state\.agentSelectedOutput = null;[\s\S]*state\.selectedPlotId = null;/);
 
 const displayPathMatch = js.match(/function displayPath\(value\) \{([\s\S]*?)\n\}/);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rho</title>
-    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.1&rev=m3-scientific-review-v3&agent=output-review-v3" />
+    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.2&rev=m3-scientific-review-v3&agent=output-review-v3" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -521,29 +521,31 @@ plot(
               <button id="approvalCancel" type="button">Cancel</button>
             </div>
           </div>
-          <div id="fileEditPanel" class="file-edit-panel review-surface hidden" role="region" aria-labelledby="fileEditPanelTitle">
-            <div class="file-edit-header">
-              <div><span class="review-kind file-review-kind"><svg class="ui-icon" aria-hidden="true"><use href="#icon-file-diff"></use></svg>File proposal</span><strong id="fileEditPanelTitle">Review editor change</strong></div>
+          <details id="fileEditPanel" class="file-edit-panel review-surface hidden" role="region" aria-labelledby="fileEditPanelTitle" open>
+            <summary class="file-edit-header">
+              <span class="file-edit-heading"><span class="review-kind file-review-kind"><svg class="ui-icon" aria-hidden="true"><use href="#icon-file-diff"></use></svg>File proposal</span><strong id="fileEditPanelTitle">Review editor change</strong></span>
               <code id="fileEditPath" class="technical-meta">file</code>
-            </div>
-            <p id="fileEditSummary" class="file-edit-summary"></p>
-            <p id="fileEditDecisionNote" class="file-edit-note hidden"></p>
-            <div class="file-edit-diff" aria-label="File edit diff">
-              <div id="fileEditBeforeBlock">
-                <span>Before</span>
-                <pre id="fileEditBefore"></pre>
+            </summary>
+            <div class="file-edit-detail">
+              <p id="fileEditSummary" class="file-edit-summary"></p>
+              <p id="fileEditDecisionNote" class="file-edit-note hidden"></p>
+              <div class="file-edit-diff" aria-label="File edit diff">
+                <div id="fileEditBeforeBlock">
+                  <span>Before</span>
+                  <pre id="fileEditBefore"></pre>
+                </div>
+                <div>
+                  <span>After</span>
+                  <pre id="fileEditAfter"></pre>
+                </div>
               </div>
-              <div>
-                <span>After</span>
-                <pre id="fileEditAfter"></pre>
+              <div class="file-edit-actions">
+                <button id="fileEditAccept" type="button">Accept</button>
+                <button id="fileEditReject" type="button">Reject</button>
+                <button id="fileEditUndo" class="hidden" type="button">Undo</button>
               </div>
             </div>
-            <div class="file-edit-actions">
-              <button id="fileEditAccept" type="button">Accept</button>
-              <button id="fileEditReject" type="button">Reject</button>
-              <button id="fileEditUndo" class="hidden" type="button">Undo</button>
-            </div>
-          </div>
+          </details>
           <details id="projectSkillsPanel" class="project-skills-panel hidden">
             <summary class="project-skills-header">
               <strong>Project context</strong>
@@ -557,7 +559,7 @@ plot(
           <div id="agentComposerResizeHandle" class="agent-composer-resize" role="separator" aria-label="Resize Agent input" aria-orientation="horizontal" aria-valuemin="118" aria-valuenow="154" tabindex="0"></div>
           <div class="agent-composer">
             <p id="agentCapabilityNote" class="agent-capability-note hidden"></p>
-            <label class="act-authorization hidden"><input id="actAutoApprove" type="checkbox" /> Authorize R execution for this session</label>
+            <label class="act-authorization hidden"><input id="actAutoApprove" type="checkbox" /> Authorize R execution and file changes for this session</label>
             <div id="agentFileMentions" class="agent-file-mentions hidden" role="listbox" aria-label="Project files"></div>
             <textarea id="agentInput" rows="3" aria-label="Ask Rho" placeholder="Ask Rho about this project..."></textarea>
             <div class="composer-footer">
@@ -1100,6 +1102,6 @@ plot(
     <script src="vendor/viewer/marked.umd.js"></script>
     <script src="vendor/viewer/purify.min.js"></script>
     <script src="vendor/viewer/papaparse.min.js"></script>
-    <script src="app.js?v=0.4.0-dev.1&rev=m3-scientific-review-v3&projection=wp4&help=console-v3"></script>
+    <script src="app.js?v=0.4.0-dev.2&rev=m3-scientific-review-v3&projection=wp4&help=console-v3&afo=act-output-v1"></script>
   </body>
 </html>

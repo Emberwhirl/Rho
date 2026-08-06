@@ -4,6 +4,20 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.2 - 2026-08-06
+
+### Improved
+
+- First launch, or startup without a saved project, now opens the current
+  user's directory instead of a machine-specific development path.
+- File proposals in the Agent Task surface can now be collapsed like Project
+  context, keeping long Before/After previews out of the way while preserving
+  the existing review actions and proposal state.
+- Authorized Act turns can apply their file proposals automatically through
+  the existing project and stale-edit safeguards, without a second Accept.
+- Files created or updated by successful R analysis runs are registered beside
+  Plots in Outputs with their producing Run and project provenance.
+
 ## 0.4.0-dev.1 - 2026-08-06
 
 ### Fixed

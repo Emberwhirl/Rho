@@ -1167,10 +1167,8 @@ body.resizing-vertical { cursor: col-resize; }
 .environment-review-kind { color: var(--info); }
 .approval-panel { flex: 0 0 auto; margin: 0 10px 10px; padding: 10px; border: 1px solid #e0bf93; border-left-width: 3px; border-radius: 6px; background: #fff9ef; }
 .approval-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.approval-header > div,
-.file-edit-header > div { display: grid; min-width: 0; }
-.approval-header .technical-meta,
-.file-edit-header .technical-meta { max-width: 45%; text-align: right; }
+.approval-header > div { display: grid; min-width: 0; }
+.approval-header .technical-meta { max-width: 45%; text-align: right; }
 .approval-summary { margin: 0 0 6px; color: #6f5a43; font-size: 11.5px; line-height: 1.45; }
 .approval-revision { color: var(--muted); font: 10px "Cascadia Code", Consolas, monospace; }
 .approval-actions { display: flex; gap: 6px; margin-top: 8px; }
@@ -1178,8 +1176,15 @@ body.resizing-vertical { cursor: col-resize; }
 .approval-actions button:first-child { color: #fff; border-color: #2d8a63; background: #2d8a63; }
 .approval-actions button:nth-child(2) { border-color: #d08d67; color: #8a4021; background: #fff3ec; }
 .approval-actions button:disabled { opacity: 0.6; cursor: wait; }
-.file-edit-panel { flex: 0 0 auto; max-height: 48%; margin: 0 10px 10px; padding: 10px; overflow: auto; border: 1px solid #9bbfbb; border-left-width: 3px; border-radius: 6px; background: #f5fbfa; }
-.file-edit-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.file-edit-panel { flex: 0 0 auto; max-height: 48%; margin: 0 10px 10px; overflow: hidden; border: 1px solid #9bbfbb; border-left-width: 3px; border-radius: 6px; background: #f5fbfa; }
+.file-edit-panel[open] { overflow: auto; }
+.file-edit-header { display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; list-style: none; }
+.file-edit-header::-webkit-details-marker { display: none; }
+.file-edit-header::before { flex: 0 0 auto; color: var(--subtle); content: ">"; font: 11px var(--mono); transform: rotate(0deg); transition: transform 0.12s ease; }
+.file-edit-panel[open] .file-edit-header::before { transform: rotate(90deg); }
+.file-edit-heading { display: grid; min-width: 0; margin-right: auto; }
+.file-edit-header .technical-meta { max-width: 45%; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.file-edit-detail { padding: 0 10px 10px; border-top: 1px solid #d6e5e3; }
 .file-edit-summary { margin: 0 0 7px; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 .file-edit-note { margin: 0 0 7px; padding: 6px 8px; border-radius: 4px; color: #5a604d; background: #edf3dd; font-size: 11px; line-height: 1.4; }
 .file-edit-note.rejected { color: #8a4021; background: #fff3ec; }
@@ -2394,8 +2399,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .approval-header,
   .file-edit-header,
   .environment-operation-surface .product-dialog-header { align-items: stretch; flex-direction: column; }
+  .file-edit-header::before { position: absolute; margin-top: 3px; }
+  .file-edit-heading { padding-left: 18px; }
   .approval-header .technical-meta,
-  .file-edit-header .technical-meta { max-width: 100%; text-align: left; }
+  .file-edit-header .technical-meta { max-width: 100%; padding-left: 18px; text-align: left; }
   .approval-actions,
   .file-edit-actions,
   .environment-operation-surface .product-dialog-actions { flex-wrap: wrap; }

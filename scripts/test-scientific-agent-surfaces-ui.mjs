@@ -9,8 +9,8 @@ const html = read("desktop", "dist", "index.html");
 const css = read("desktop", "dist", "styles.css");
 const js = read("desktop", "dist", "app.js");
 
-assert.match(html, /styles\.css\?v=0\.4\.0-dev\.0(?:&amp;|&)rev=m3-scientific-review-v3/);
-assert.match(html, /app\.js\?v=0\.4\.0-dev\.0(?:&amp;|&)rev=m3-scientific-review-v3/);
+assert.match(html, /styles\.css\?v=0\.4\.0-dev\.2(?:&amp;|&)rev=m3-scientific-review-v3/);
+assert.match(html, /app\.js\?v=0\.4\.0-dev\.2(?:&amp;|&)rev=m3-scientific-review-v3/);
 
 for (const icon of ["check", "clock-3", "circle-x", "ban", "triangle-alert", "info", "image", "bot", "file-diff", "package-check"]) {
   assert.match(html, new RegExp(`id="icon-${icon}"`), `Missing M3 icon ${icon}`);
@@ -30,7 +30,7 @@ assert.match(html, /id="fileEditPanel"[^>]*role="region"[^>]*aria-labelledby="fi
 assert.match(html, /File proposal/);
 assert.match(html, /Environment request/);
 assert.match(js, /\$\("#approvalPanel"\)\.dataset\.state = approval \? "waiting" : "empty"/);
-assert.match(js, /\$\("#fileEditPanel"\)\.dataset\.state = decision \|\| "waiting"/);
+assert.match(js, /panel\.dataset\.state = decision \|\| "waiting"/);
 
 assert.match(html, /id="plotEmpty"[^>]*class="empty-state surface-state"[^>]*data-state="empty"/);
 assert.match(js, /showPlotSurfaceState\(\s*"failed",\s*"Plot preview unavailable"/);

@@ -234,6 +234,12 @@ acceptance is explicitly left open.
 
 ## Implementation And Evidence
 
+Generated-file extension (2026-08-06):
+[`active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md`](active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md)
+adds bounded `workspace.execute` generated-file records to the existing WP3
+Artifact authority. This document continues to own the Agent-first Outputs
+projection; no new Outputs state or query is introduced.
+
 Implementation and automated/browser verification completed on 2026-08-04.
 
 - Agent-first navigation now projects `Task | Runs | Outputs | Review` over the

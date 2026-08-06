@@ -362,15 +362,19 @@ pub fn start_project_watcher(app: AppHandle, root: PathBuf) -> Result<ProjectWat
 }
 
 pub fn default_project_root() -> PathBuf {
-    let development = PathBuf::from(r"D:\Rho");
-    if development.is_dir() {
-        return development;
-    }
-    std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Documents")
-        .join("Rho")
+    default_project_root_from_env(
+        std::env::var_os("USERPROFILE").map(PathBuf::from),
+        std::env::var_os("HOME").map(PathBuf::from),
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    )
+}
+
+fn default_project_root_from_env(
+    user_profile: Option<PathBuf>,
+    home: Option<PathBuf>,
+    current_dir: PathBuf,
+) -> PathBuf {
+    user_profile.or(home).unwrap_or(current_dir)
 }
 
 pub fn validate_project_root(path: &Path) -> Result<PathBuf> {
@@ -896,6 +900,32 @@ mod tests {
         let directory = TempDir::new().unwrap();
         let path = directory.path().join("missing");
         assert!(normalize_existing_project_root(&path).is_err());
+    }
+
+    #[test]
+    fn default_project_root_prefers_user_profile_without_project_subdirectory() {
+        let root = default_project_root_from_env(
+            Some(PathBuf::from(r"C:\Users\Analyst")),
+            Some(PathBuf::from(r"C:\Users\Fallback")),
+            PathBuf::from(r"C:\Work"),
+        );
+        assert_eq!(root, PathBuf::from(r"C:\Users\Analyst"));
+    }
+
+    #[test]
+    fn default_project_root_uses_home_then_current_directory() {
+        assert_eq!(
+            default_project_root_from_env(
+                None,
+                Some(PathBuf::from(r"/home/analyst")),
+                PathBuf::from(r"/work"),
+            ),
+            PathBuf::from(r"/home/analyst")
+        );
+        assert_eq!(
+            default_project_root_from_env(None, None, PathBuf::from(r"/work")),
+            PathBuf::from(r"/work")
+        );
     }
 
     #[test]
