@@ -745,8 +745,8 @@ function defaultMockAgentLlmSettingsView() {
     ],
     selected_model: null,
     user_environ: {
-      path: "C:/Users/demo/.Renviron",
-      source: "default",
+      path: "",
+      source: "system",
     },
     validation_error: null,
   };
@@ -2377,12 +2377,9 @@ async function mockInvoke(command, args) {
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
-    provider.credential_status = "detected";
-    provider.credential_source = "environment";
+    provider.credential_status = "not_detected";
+    provider.credential_source = "none";
     return structuredClone(rebuildMockAgentLlmSettings());
-  }
-  if (command === "agent_llm_open_user_environ") {
-    return structuredClone(mockAgentLlmSettings.user_environ);
   }
   if (command === "agent_llm_catalog") {
     return [
@@ -5693,7 +5690,7 @@ function emptyAgentLlmSettings(message) {
     providers: [],
     models: [],
     selected_model: null,
-    user_environ: { path: "", source: "default" },
+    user_environ: { path: "", source: "system" },
     validation_error: message,
   };
 }
@@ -6051,9 +6048,6 @@ function credentialStatusLabel(provider) {
   if (!provider?.api_key_required || provider?.credential_status === "not_required") return "Not required";
   if (provider.credential_status === "unavailable") return "Credential storage unavailable";
   if (provider.credential_status === "detected" && provider.credential_source === "system") return "Stored securely";
-  if (provider.credential_status === "detected" && provider.credential_source === "environment") {
-    return "Available from user environment";
-  }
   return "Not set";
 }
 
@@ -6138,9 +6132,26 @@ function renderAgentModelForm() {
   $("#agentLlmModelEnabled").checked = model ? Boolean(model.enabled) : true;
 }
 
+function renderAgentLlmCurrentSelection(settings) {
+  const model = (settings.models || []).find((item) => item.id === settings.selected_model_id)
+    || settings.selected_model
+    || null;
+  const provider = model
+    ? (settings.providers || []).find((item) => item.id === model.provider_id)
+    : null;
+  const status = model
+    ? ({ selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled", unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested" }[String(model.selector_status || "").toLowerCase()] || (model.enabled ? "Available" : "Disabled"))
+    : "No model selected";
+  $("#agentLlmCurrentStatus").textContent = status;
+  $("#agentLlmCurrentSelection").textContent = model
+    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"} · ${status}`
+    : "No model selected. Choose or add a model below.";
+}
+
 function renderAgentLlmDialog() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   ensureAgentLlmSelectionState();
+  renderAgentLlmCurrentSelection(settings);
   $("#agentLlmUserEnviron").textContent = "Choose the model Rho should use. API keys are kept in the system credential store.";
   $("#agentLlmValidation").textContent = settings.validation_error
     ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
@@ -6530,15 +6541,6 @@ async function cancelAgentModelTest() {
     $("#agentLlmTestResult").textContent = "Cancelling connection test...";
   } catch (error) {
     toast(reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."), true);
-  }
-}
-
-async function openAgentUserEnviron() {
-  try {
-    await invoke("agent_llm_open_user_environ");
-    toast("Opened the credential file.");
-  } catch (error) {
-    toast(reportUiFailure("open model credentials", error, "The credential file could not be opened."), true);
   }
 }
 
@@ -15129,11 +15131,18 @@ $("#updateView").addEventListener("click", async () => {
   localStorage.setItem("rho.update.dismissed", result.available_version);
   await invoke("open_rho_website", { url: result.release_page_url });
 });
-$("#agentLlmAddProvider").addEventListener("click", clearAgentProviderForm);
+$("#agentLlmAddProvider").addEventListener("click", () => {
+  clearAgentProviderForm();
+  $("#agentLlmAdvanced").open = true;
+  $("#agentLlmProviderDisplayName").focus();
+});
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
 $("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
-$("#agentLlmOpenEnviron").addEventListener("click", openAgentUserEnviron);
-$("#agentLlmAddModel").addEventListener("click", clearAgentModelForm);
+$("#agentLlmAddModel").addEventListener("click", () => {
+  clearAgentModelForm();
+  $("#agentLlmAdvanced").open = true;
+  $("#agentLlmModelId").focus();
+});
 $("#agentLlmLoadCatalog").addEventListener("click", loadAgentLlmCatalog);
 $("#agentLlmCatalogModel").addEventListener("change", applySelectedCatalogModel);
 $("#agentLlmModelProvider").addEventListener("change", () => {

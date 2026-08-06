@@ -1539,7 +1539,14 @@ body.resizing-vertical { cursor: col-resize; }
   padding: 14px;
   background: #fff;
 }
-.agent-llm-primary .agent-llm-form { gap: 11px; }
+.agent-llm-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.agent-llm-section-heading p { margin: 3px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.agent-llm-current-status { flex: 0 0 auto; padding: 3px 8px; border: 1px solid #b9ddd7; border-radius: 12px; color: #275c55; background: #f2fbf9; font-size: 10px; }
+.agent-llm-current-selection { padding: 10px 11px; border: 1px solid #b9ddd7; border-radius: 5px; color: var(--text); background: #f2fbf9; font-size: 12px; font-weight: 600; }
+.agent-llm-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.agent-llm-overview-card { display: grid; gap: 7px; min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 6px; background: #fbfcfc; }
+.agent-llm-overview-card .agent-llm-list { min-height: 74px; max-height: 150px; }
+.agent-llm-hint { color: var(--muted); font-size: 10px; }
 .agent-llm-primary-actions { justify-content: flex-end; }
 .agent-llm-primary-actions button.primary {
   color: #fff;
@@ -1577,12 +1584,16 @@ body.resizing-vertical { cursor: col-resize; }
   padding: 6px 2px;
   font-size: 11px;
 }
+.agent-llm-advanced-note { margin: 4px 2px 8px; color: var(--muted); font-size: 10px; line-height: 1.45; }
 .agent-llm-management-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 6px;
 }
+.agent-llm-management-form { gap: 11px; }
+.agent-llm-simple-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.agent-llm-simple-fields .agent-llm-checkbox { align-self: end; }
 .agent-llm-management-grid .agent-llm-list { min-height: 0; }
 .agent-llm-management-grid .agent-llm-row { align-self: start; }
 .agent-llm-column {
@@ -2374,7 +2385,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .context-panel { grid-column: 2; }
   .project-switcher { display: none; }
   .agent-llm-layout { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-overview-grid { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-section-heading { flex-direction: column; }
   .agent-llm-management-grid { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-simple-fields { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-grid { grid-template-columns: minmax(0, 1fr); }
   .environment-operation-body { min-height: 110px; max-height: 210px; }
   .viewer-body { grid-template-columns: minmax(0, 1fr); }

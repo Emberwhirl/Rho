@@ -1706,12 +1706,9 @@ const DESKTOP_AGENT_TURN_TIMEOUT: std::time::Duration = std::time::Duration::fro
 
 fn configure_agent_process_environment(
     command: &mut tokio::process::Command,
-    user_environ: Option<&str>,
+    _user_environ: Option<&str>,
     credential_override: Option<(&str, &str)>,
 ) {
-    if let Some(path) = user_environ {
-        command.env("R_ENVIRON_USER", path);
-    }
     if let Some((name, value)) = credential_override {
         command.env(name, value);
     }
@@ -5202,12 +5199,7 @@ mod tests {
                 .and_then(|value| value.as_deref()),
             Some(secret)
         );
-        assert_eq!(
-            environment
-                .get("R_ENVIRON_USER")
-                .and_then(|value| value.as_deref()),
-            Some("C:/Users/test/.Renviron")
-        );
+        assert!(!environment.contains_key("R_ENVIRON_USER"));
     }
 
     #[test]

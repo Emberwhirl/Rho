@@ -18,6 +18,12 @@ complete provider/model/key settings workflow. Mandatory stop: review and
 verify CRED-UX1 before any OAuth, account sync, per-project credential, model
 routing, or non-Windows vault work.
 
+Authorized follow-up: simplify the delivered settings surface and make the
+Windows system credential the only Agent LLM API-key source. Legacy
+`.Renviron` credential detection, editing, and fallback are intentionally
+removed; this does not change Workspace R's separate project-environment
+workflow.
+
 ## Goal
 
 Let a user configure an LLM with only information they normally know:
@@ -46,9 +52,9 @@ variable names, wire protocols, capability sources, or stream options.
   that short-lived Agent R child process. Workspace R never receives it.
 - Exact key values never cross back from Rust. Views return only `stored`,
   `environment`, `not_detected`, `not_required`, or `unavailable` projections.
-- Existing effective user `.Renviron` credentials remain a read-only
-  compatibility fallback. Rho does not copy, alter, or delete them. A stored
-  system credential takes precedence for Agent R only.
+- Agent LLM API keys are read only from the Windows system credential store.
+  `.Renviron` is not inspected, opened, edited, or used as an Agent credential
+  fallback. Workspace R environment handling remains a separate workflow.
 - Replacing a stored key is explicit. An empty key never deletes or overwrites
   an existing key. Deletion requires confirmation and affects only the system
   credential for the selected provider.
@@ -101,12 +107,13 @@ environment`, `Not set`, or `Not required`. The key is never redisplayed.
 
 Provider ID, environment-variable names, Wire API, stream behavior, explicit
 capability declarations, model enablement, catalog maintenance, and destructive
-provider/model management remain under `Advanced settings`. The old primary
-actions for opening the credential file, copying an environment template, and
-reloading environment credentials are removed from the default flow. Legacy
-environment credentials remain discoverable in Advanced for migration support.
+provider/model management remain under one closed `Advanced settings` section.
+The default flow contains only the provider/model choice, API key, connection
+test, save, and enable actions. Provider and model advanced fields are not split
+into separate disclosure panels. Credential-file actions and environment
+credential migration controls are removed.
 
-Loading, empty, stored, legacy-environment, not-set, unavailable, save-failure,
+Loading, empty, stored, not-set, unavailable, save-failure,
 delete-confirmation, narrow-window, keyboard, and dialog-close states must be
 deterministic in mock mode. Password fields disable browser spellcheck and
 autocomplete uses `new-password`; no visible key-length or key-fragment hint is
@@ -115,7 +122,8 @@ allowed.
 ## Compatibility And Recovery
 
 - Existing profile schema and stable IDs are unchanged.
-- Existing `.Renviron` users continue working without migration.
+- Existing `.Renviron` API keys are no longer detected or used; users must save
+  the key once in Windows Credential Manager.
 - System credentials survive provider display-name and model changes because
   they are keyed by stable provider ID.
 - Provider deletion first deletes the system credential. If credential
@@ -144,14 +152,14 @@ Automated evidence must include:
 
 Manual installed-app evidence remains `NOT RUN` until a built candidate is used
 to verify Windows Credential Manager persistence, replacement, deletion,
-cancel/failure behavior, no console flash, display scaling, and upgrade from a
-real `.Renviron` credential. Automation does not make the candidate release
+cancel/failure behavior, no console flash, display scaling, and rejection of a
+legacy `.Renviron` API key. Automation does not make the candidate release
 ready.
 
 ## Version And Documentation
 
-This is user-visible behavior in the existing `0.4.0-dev.0` development
-candidate. Keep synchronized application version metadata at `0.4.0-dev.0`,
+This is user-visible behavior in the existing `0.4.0-dev.14` development
+candidate. Keep synchronized application version metadata at `0.4.0-dev.14`,
 update `NEWS.md`, amend the delivered LLM configuration design, update the
 integrated manual acceptance project, and record exact automated and unrun
 manual evidence here after it is true. No R package contract changes.
@@ -169,13 +177,23 @@ Implementation and automated/browser verification completed on 2026-08-05.
   before launch and pass it only through the short-lived Agent R child
   environment. Tests prove the value is absent from settings JSON, runtime
   profiles, stdin, and process arguments.
-- Existing effective user `.Renviron` credentials remain a read-only fallback.
-  Presentation state exposes only source/status projections; no credential
-  value returns from Rust or mock commands.
+- System credentials are the only Agent LLM API-key source. Presentation state
+  exposes only system-store status; no credential value returns from Rust or
+  mock commands, and Agent R is not launched with a user `.Renviron` path.
 - Model settings now use the required-fields-first primary flow and one closed
   Advanced disclosure. The transient password input is conditional, is never
   repopulated, and clears after save completion, close, provider change, and
   project change. Base URL is visible only for compatible/local provider types.
+- The Issue #4 follow-up keeps the primary flow focused on choosing a provider
+  and model, showing the current selection/status, API-key state, connection
+  test, and Use this model action. Provider/model editing and destructive
+  management remain behind the closed Manage providers and models disclosure;
+  Add provider and Add model open that management surface and focus the first
+  required field. The chooser collapses to one column at narrow widths.
+- The simplified follow-up removes the `.Renviron` credential fallback and
+  credential-file action. The management surface now uses one Advanced section
+  for low-frequency provider/model fields instead of separate Provider and
+  Model advanced disclosures.
 - Provider deletion retains metadata when credential deletion fails. If the
   credential deletion succeeds but metadata persistence fails, the previous
   credential is restored and the operation reports failure truthfully.
@@ -205,6 +223,25 @@ LLM design, cross-review matrix, and integrated manual acceptance project were
 updated.
 
 Installed-app verification of real Credential Manager persistence,
-replacement, deletion/cancel/failure behavior, `.Renviron` upgrade/fallback,
+replacement, deletion/cancel/failure behavior, legacy `.Renviron` rejection,
 uninstall retention, no-console flash, and Windows display scale is `NOT RUN`.
 The document remains active and no release-readiness claim is made.
+
+## CRED-UX1 simplification follow-up evidence
+
+Implementation and automated verification completed on 2026-08-06.
+
+- Agent LLM credential presentation and resolution now query only the system
+  credential store. Missing system credentials remain `not_detected`; no
+  process-environment scan or `.Renviron` fallback remains.
+- Agent connection probes and Agent R turns run without `R_ENVIRON_USER`; the
+  system credential is still injected only as the configured API-key variable.
+- Model settings now have one simple chooser plus one unified Advanced section;
+  the prior Provider/Model advanced split and user-environment action were
+  removed.
+- `node --check desktop/dist/app.js`, `test-system-credential-llm-ui.mjs`,
+  `test-human-facing-information-ui.mjs`, `cargo fmt --all -- --check`,
+  `cargo test -p rho-desktop` (107 tests), and `cargo test -p rho-server`
+  (46 tests) passed.
+
+Installed-app verification remains `NOT RUN`.

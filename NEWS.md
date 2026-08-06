@@ -12,6 +12,10 @@ this file records behavior that is already available in a released build.
   Agent Output Review. Other preview types retain their 4 MiB limit, and files
   that exceed their limit now report the size restriction instead of a generic
   preview failure.
+- Model settings now use a compact model chooser by default. Provider and model
+  management, deletion, catalogs, and low-frequency connection fields are
+  progressively disclosed under one Advanced settings section; Agent LLM API
+  keys now use the Windows system credential store only.
 
 ## 0.4.0-dev.13 - 2026-08-06
 

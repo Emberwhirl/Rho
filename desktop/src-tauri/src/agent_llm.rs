@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -10,7 +9,6 @@ use anyhow::{Context, Result, bail, ensure};
 use chrono::Utc;
 use rho_server::coordinator::AgentRuntimeModelProfile;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 
 use crate::project::atomic_write;
 
@@ -477,16 +475,14 @@ pub fn select_model(data_dir: &Path, model_id: &str) -> Result<AgentLlmSettings>
     Ok(settings)
 }
 
-pub fn settings_view(data_dir: &Path, rscript: &Path) -> Result<AgentLlmSettingsView> {
+pub fn settings_view(data_dir: &Path, _rscript: &Path) -> Result<AgentLlmSettingsView> {
     let settings = load_settings(data_dir)?;
-    let user_environ = resolve_user_environ(rscript)?;
-    let statuses = credential_status_map(
-        rscript,
-        &user_environ.path,
-        &settings.providers,
-        &SystemCredentialStore,
-    )?;
-    Ok(build_settings_view(settings, user_environ, statuses))
+    let statuses = credential_status_map(&settings.providers, &SystemCredentialStore)?;
+    Ok(build_settings_view(
+        settings,
+        system_credential_info(),
+        statuses,
+    ))
 }
 
 pub fn refresh_credentials_view(data_dir: &Path, rscript: &Path) -> Result<AgentLlmSettingsView> {
@@ -547,21 +543,6 @@ cat(jsonlite::toJSON(unname(rows), auto_unbox = TRUE, null = "null"))
     run_r_json(rscript, script, &[], None, None, None, None)
 }
 
-pub fn open_user_environ(rscript: &Path) -> Result<AgentUserEnvironInfo> {
-    let info = resolve_user_environ(rscript)?;
-    let path = PathBuf::from(&info.path);
-    if !path.exists() {
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            std::fs::create_dir_all(parent)?;
-        }
-        atomic_write(&path, b"")?;
-    }
-    open_path(&path)?;
-    Ok(info)
-}
-
 pub fn test_model(
     data_dir: &Path,
     rscript: &Path,
@@ -570,14 +551,8 @@ pub fn test_model(
     test_control: Option<&AgentModelTestControl>,
 ) -> Result<AgentLlmSettingsView> {
     let settings = load_settings(data_dir)?;
-    let user_environ = resolve_user_environ(rscript)?;
     let resolved = resolve_model_with_settings(&settings, Some(model_id))?;
-    let credential_statuses = credential_status_map(
-        rscript,
-        &user_environ.path,
-        &settings.providers,
-        &SystemCredentialStore,
-    )?;
+    let credential_statuses = credential_status_map(&settings.providers, &SystemCredentialStore)?;
     let provider_credential = credential_statuses.get(&resolved.provider_id).cloned();
     let credential_status = provider_credential
         .as_ref()
@@ -624,7 +599,6 @@ pub fn test_model(
         run_connection_test(
             rscript,
             agent_package,
-            &user_environ.path,
             &resolved.runtime_profile,
             credential_override.as_ref(),
             test_control,
@@ -638,13 +612,12 @@ pub fn test_model(
     );
     update_model_after_test(&mut latest_settings, model_id, &result)?;
     save_settings(data_dir, &latest_settings)?;
-    let statuses = credential_status_map(
-        rscript,
-        &user_environ.path,
-        &latest_settings.providers,
-        &SystemCredentialStore,
-    )?;
-    Ok(build_settings_view(latest_settings, user_environ, statuses))
+    let statuses = credential_status_map(&latest_settings.providers, &SystemCredentialStore)?;
+    Ok(build_settings_view(
+        latest_settings,
+        system_credential_info(),
+        statuses,
+    ))
 }
 
 pub fn resolve_model_for_turn(
@@ -657,30 +630,11 @@ pub fn resolve_model_for_turn(
 
 pub fn credential_override_for_model(
     data_dir: &Path,
-    rscript: &Path,
     requested_model_id: Option<&str>,
 ) -> Result<Option<(String, String)>> {
     let settings = load_settings(data_dir)?;
     let resolved = resolve_model_with_settings(&settings, requested_model_id)?;
-    match credential_override_with_store(&settings, &resolved.provider_id, &SystemCredentialStore) {
-        Ok(value) => Ok(value),
-        Err(system_error) => {
-            let user_environ = resolve_user_environ(rscript)?;
-            let environment = environment_credential_status_map(
-                rscript,
-                &user_environ.path,
-                &settings.providers,
-            )?;
-            if environment
-                .get(&resolved.provider_id)
-                .is_some_and(|status| status.status == "detected")
-            {
-                Ok(None)
-            } else {
-                Err(system_error)
-            }
-        }
-    }
+    credential_override_with_store(&settings, &resolved.provider_id, &SystemCredentialStore)
 }
 
 fn credential_override_with_store(
@@ -758,38 +712,11 @@ pub fn validate_settings(settings: &AgentLlmSettings) -> Result<()> {
     Ok(())
 }
 
-pub fn resolve_user_environ(rscript: &Path) -> Result<AgentUserEnvironInfo> {
-    resolve_user_environ_with_inherited(rscript, std::env::var_os("R_ENVIRON_USER"))
-}
-
-fn resolve_user_environ_with_inherited(
-    rscript: &Path,
-    inherited: Option<OsString>,
-) -> Result<AgentUserEnvironInfo> {
-    if let Some(inherited) = inherited
-        && !inherited.is_empty()
-    {
-        return Ok(AgentUserEnvironInfo {
-            path: PathBuf::from(inherited)
-                .to_string_lossy()
-                .replace('\\', "/"),
-            source: "inherited".to_string(),
-        });
+fn system_credential_info() -> AgentUserEnvironInfo {
+    AgentUserEnvironInfo {
+        path: String::new(),
+        source: "system".to_string(),
     }
-    let script = r#"
-path <- normalizePath(path.expand("~/.Renviron"), winslash = "/", mustWork = FALSE)
-cat(path)
-"#;
-    let path: String = run_r_text(rscript, script, &[], None)?;
-    let trimmed = path.trim().to_string();
-    ensure!(
-        !trimmed.is_empty(),
-        "Could not resolve the user R environment file."
-    );
-    Ok(AgentUserEnvironInfo {
-        path: trimmed,
-        source: "default".to_string(),
-    })
 }
 
 fn build_settings_view(
@@ -1110,13 +1037,9 @@ struct CredentialPresentation {
 }
 
 fn credential_status_map(
-    rscript: &Path,
-    user_environ_path: &str,
     providers: &[AgentProviderProfile],
     credential_store: &impl CredentialStore,
 ) -> Result<HashMap<String, CredentialPresentation>> {
-    let environment_statuses =
-        environment_credential_status_map(rscript, user_environ_path, providers)?;
     Ok(providers
         .iter()
         .map(|provider| {
@@ -1128,84 +1051,14 @@ fn credential_status_map(
                         status: "detected".to_string(),
                         source: "system".to_string(),
                     },
-                    Ok(None) => environment_statuses
-                        .get(&provider.id)
-                        .cloned()
-                        .unwrap_or_else(|| credential_presentation_for_provider(provider)),
-                    Err(_) => {
-                        let environment = environment_statuses
-                            .get(&provider.id)
-                            .cloned()
-                            .unwrap_or_else(|| credential_presentation_for_provider(provider));
-                        if environment.status == "detected" {
-                            environment
-                        } else {
-                            CredentialPresentation {
-                                status: "unavailable".to_string(),
-                                source: "unavailable".to_string(),
-                            }
-                        }
-                    }
+                    Ok(None) => credential_presentation_for_provider(provider),
+                    Err(_) => CredentialPresentation {
+                        status: "unavailable".to_string(),
+                        source: "unavailable".to_string(),
+                    },
                 }
             };
             (provider.id.clone(), presentation)
-        })
-        .collect())
-}
-
-fn environment_credential_status_map(
-    rscript: &Path,
-    user_environ_path: &str,
-    providers: &[AgentProviderProfile],
-) -> Result<HashMap<String, CredentialPresentation>> {
-    let script = r#"
-args <- commandArgs(TRUE)
-required <- jsonlite::fromJSON(args[[1]], simplifyVector = FALSE)
-statuses <- lapply(required, function(item) {
-  env_name <- if (is.null(item$env_name)) "" else as.character(item$env_name[[1L]])
-  required <- isTRUE(item$required)
-  if (!required) {
-    return(list(provider_id = item$provider_id, status = "not_required"))
-  }
-  value <- Sys.getenv(env_name, unset = "")
-  status <- if (nzchar(value)) "detected" else "not_detected"
-  list(provider_id = item$provider_id, status = status)
-})
-cat(jsonlite::toJSON(unname(statuses), auto_unbox = TRUE, null = "null"))
-"#;
-    let payload = providers
-        .iter()
-        .map(|provider| {
-            json!({
-                "provider_id": provider.id,
-                "env_name": provider.api_key_env.clone().unwrap_or_default(),
-                "required": provider.api_key_required
-            })
-        })
-        .collect::<Vec<_>>();
-    let rows: Vec<Value> = run_r_json(
-        rscript,
-        script,
-        &[serde_json::to_string(&payload)?],
-        Some(user_environ_path),
-        None,
-        None,
-        None,
-    )?;
-    Ok(rows
-        .into_iter()
-        .filter_map(|row| {
-            Some((
-                row.get("provider_id")?.as_str()?.to_string(),
-                CredentialPresentation {
-                    status: row.get("status")?.as_str()?.to_string(),
-                    source: if row.get("status")?.as_str()? == "detected" {
-                        "environment".to_string()
-                    } else {
-                        "none".to_string()
-                    },
-                },
-            ))
         })
         .collect())
 }
@@ -1272,7 +1125,6 @@ fn inferred_capabilities(profile: &AgentRuntimeModelProfile) -> AgentModelCapabi
 fn run_connection_test(
     rscript: &Path,
     agent_package: &Path,
-    user_environ_path: &str,
     profile: &AgentRuntimeModelProfile,
     credential_override: Option<&(String, String)>,
     test_control: Option<&AgentModelTestControl>,
@@ -1293,31 +1145,11 @@ cat(jsonlite::toJSON(result, auto_unbox = TRUE, null = "null"))
         rscript,
         script,
         &[agent_package.to_string_lossy().replace('\\', "/")],
-        Some(user_environ_path),
+        None,
         Some(serde_json::to_string(profile)?),
         credential_override.map(|(name, value)| (name.as_str(), value.as_str())),
         test_control,
     )
-}
-
-fn run_r_text(
-    rscript: &Path,
-    script: &str,
-    args: &[String],
-    user_environ: Option<&str>,
-) -> Result<String> {
-    let script_file = write_r_probe_script(script)?;
-    let mut command = Command::new(rscript);
-    hide_console_window(&mut command);
-    configure_r_probe(&mut command, user_environ);
-    command.arg(script_file.path()).args(args);
-    let output = command.output().context("running Rscript probe")?;
-    ensure!(
-        output.status.success(),
-        "R probe failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn run_r_json<T: for<'de> Deserialize<'de>>(
@@ -1477,48 +1309,8 @@ fn kill_process(pid: u32) -> Result<()> {
     bail!("Cancelling an Agent model test is unsupported on this platform.")
 }
 
-fn open_path(path: &Path) -> Result<()> {
-    #[cfg(target_os = "windows")]
-    {
-        let mut command = Command::new("explorer.exe");
-        hide_console_window(&mut command);
-        command.arg(path);
-        command.spawn().context("opening file in explorer")?;
-        return Ok(());
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(path)
-            .spawn()
-            .context("opening file")?;
-        return Ok(());
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .context("opening file")?;
-        return Ok(());
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
-    bail!("Opening the user environment file is unsupported on this platform.")
-}
-
-fn configure_r_probe(command: &mut Command, user_environ: Option<&str>) {
-    if let Some(path) = user_environ {
-        command
-            .args([
-                "--no-save",
-                "--no-restore",
-                "--no-site-file",
-                "--no-init-file",
-            ])
-            .env("R_ENVIRON_USER", path);
-    } else {
-        command.arg("--vanilla");
-    }
+fn configure_r_probe(command: &mut Command, _user_environ: Option<&str>) {
+    command.arg("--vanilla");
 }
 
 fn hide_console_window(command: &mut Command) {
@@ -1662,6 +1454,15 @@ mod tests {
             .is_err()
         );
         assert!(store.entries.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn missing_system_credential_is_not_reported_from_process_environment() {
+        let store = MemoryCredentialStore::default();
+        let statuses = credential_status_map(&default_settings().providers, &store).unwrap();
+        let status = statuses.get("provider-deepseek-existing").unwrap();
+        assert_eq!(status.status, "not_detected");
+        assert_eq!(status.source, "none");
     }
 
     #[test]
@@ -1825,34 +1626,16 @@ mod tests {
     }
 
     #[test]
-    fn inherited_r_environ_user_is_preserved() {
-        let temp = TempDir::new().unwrap();
-        let environ = temp.path().join("custom.Renviron");
-        let resolved = resolve_user_environ_with_inherited(
-            Path::new("Rscript"),
-            Some(environ.clone().into_os_string()),
-        )
-        .unwrap();
-        assert_eq!(resolved.path, environ.to_string_lossy().replace('\\', "/"));
-        assert_eq!(resolved.source, "inherited");
-    }
-
-    #[test]
-    fn user_environ_probes_do_not_disable_environ_loading() {
+    fn agent_probes_always_ignore_user_environ() {
         let mut command = Command::new("Rscript");
         configure_r_probe(&mut command, Some("C:/Users/test/.Renviron"));
-        let args = command
-            .get_args()
-            .map(|value| value.to_string_lossy().to_string())
-            .collect::<Vec<_>>();
-        assert!(!args.iter().any(|value| value == "--vanilla"));
-        assert!(args.iter().any(|value| value == "--no-init-file"));
-        let environ = command
-            .get_envs()
-            .find(|(name, _)| *name == "R_ENVIRON_USER")
-            .and_then(|(_, value)| value)
-            .map(|value| value.to_string_lossy().to_string());
-        assert_eq!(environ.as_deref(), Some("C:/Users/test/.Renviron"));
+        assert!(command.get_args().any(|value| value == "--vanilla"));
+        assert!(
+            command
+                .get_envs()
+                .find(|(name, _)| *name == "R_ENVIRON_USER")
+                .is_none()
+        );
     }
 
     #[test]

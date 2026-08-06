@@ -2826,15 +2826,9 @@ async fn run_agent(
     let turn_id = format!("agent_turn_{}", Uuid::new_v4());
     let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, model_id.as_deref())
         .map_err(display_error)?;
-    let credential_override = agent_llm::credential_override_for_model(
-        &config.data_dir,
-        &config.rscript,
-        model_id.as_deref(),
-    )
-    .map_err(display_error)?;
-    let user_environ = agent_llm::resolve_user_environ(&config.rscript)
-        .map_err(display_error)?
-        .path;
+    let credential_override =
+        agent_llm::credential_override_for_model(&config.data_dir, model_id.as_deref())
+            .map_err(display_error)?;
     if mode == "act" && resolved_model.runtime_profile.tool_calling != "yes" {
         return Err("The selected model does not support Act mode.".to_string());
     }
@@ -2904,7 +2898,7 @@ async fn run_agent(
             agent_package,
             resolved_model.effective_model_ref,
             Some(runtime_profile),
-            Some(user_environ),
+            None,
             credential_override,
             prompt,
             mode,
@@ -3015,13 +3009,6 @@ async fn agent_llm_refresh_credentials(
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
     agent_llm::refresh_credentials_view(&config.data_dir, &config.rscript).map_err(display_error)
-}
-
-#[tauri::command]
-async fn agent_llm_open_user_environ(state: State<'_, AppState>) -> Result<Value, String> {
-    let config = runtime_config(&state).map_err(display_error)?;
-    let info = agent_llm::open_user_environ(&config.rscript).map_err(display_error)?;
-    Ok(json!({ "path": info.path, "source": info.source }))
 }
 
 #[tauri::command]
@@ -6456,7 +6443,6 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         let prompt =
             "请检查 rho_desktop_smoke 对象，告诉我它有多少行和多少列。不要修改工作区。".to_string();
         let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, None)?;
-        let user_environ = agent_llm::resolve_user_environ(&config.rscript)?.path;
         {
             let mut context_guard = context.lock().await;
             let identity = context_guard.broker.identity().clone();
@@ -6497,7 +6483,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
             config.agent_package.clone(),
             resolved_model.effective_model_ref.clone(),
             Some(resolved_model.runtime_profile),
-            Some(user_environ),
+            None,
             None,
             prompt,
             "ask".to_string(),
@@ -6697,7 +6683,6 @@ fn main() {
             agent_llm_delete_model,
             agent_llm_select_model,
             agent_llm_refresh_credentials,
-            agent_llm_open_user_environ,
             agent_llm_test_model,
             agent_llm_cancel_test,
             agent_llm_catalog,
