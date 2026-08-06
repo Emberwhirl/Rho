@@ -5,6 +5,7 @@ use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -12,6 +13,7 @@ use tauri::{AppHandle, Emitter};
 pub const PROJECT_FILES_CHANGED_EVENT: &str = "project://files-changed";
 pub const MAX_EDITABLE_FILE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_VIEWER_FILE_BYTES: u64 = 4 * 1024 * 1024;
+pub const MAX_VIEWER_HTML_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_PROJECT_FILES: usize = 2_000;
 pub const MAX_PROJECT_ENTRIES: usize = 10_000;
 pub const MAX_PROJECT_DEPTH: usize = 8;
@@ -30,6 +32,7 @@ pub struct ViewerFile {
     pub project_root: String,
     pub path: String,
     pub media_type: &'static str,
+    pub content_encoding: &'static str,
     pub content: String,
     pub size_bytes: u64,
 }
@@ -444,25 +447,43 @@ pub fn read_viewer_file(root: &Path, relative: &str) -> Result<ViewerFile> {
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    let media_type = match extension.as_str() {
-        "html" => "text/html",
-        "md" => "text/markdown",
-        "csv" => "text/csv",
-        "tsv" => "text/tab-separated-values",
+    let (media_type, content_encoding) = match extension.as_str() {
+        "html" => ("text/html", "utf-8"),
+        "md" => ("text/markdown", "utf-8"),
+        "r" => ("text/x-r", "utf-8"),
+        "rmd" => ("text/x-r-markdown", "utf-8"),
+        "txt" | "log" => ("text/plain", "utf-8"),
+        "json" => ("application/json", "utf-8"),
+        "csv" => ("text/csv", "utf-8"),
+        "tsv" => ("text/tab-separated-values", "utf-8"),
+        "png" => ("image/png", "base64"),
+        "jpg" | "jpeg" => ("image/jpeg", "base64"),
+        "gif" => ("image/gif", "base64"),
+        "webp" => ("image/webp", "base64"),
         _ => bail!("Preview is not available for this file: {relative}"),
     };
     let size_bytes = file.metadata()?.len();
+    let max_size_bytes = if media_type == "text/html" {
+        MAX_VIEWER_HTML_BYTES
+    } else {
+        MAX_VIEWER_FILE_BYTES
+    };
     ensure!(
-        size_bytes <= MAX_VIEWER_FILE_BYTES,
-        "Viewer file is too large: {size_bytes} bytes (limit: {MAX_VIEWER_FILE_BYTES} bytes)"
+        size_bytes <= max_size_bytes,
+        "Viewer file is too large: {size_bytes} bytes (limit: {max_size_bytes} bytes)"
     );
-    let content = std::fs::read_to_string(&file)
-        .with_context(|| format!("Viewer file is not valid UTF-8: {relative}"))?;
+    let content = if content_encoding == "base64" {
+        BASE64_STANDARD.encode(std::fs::read(&file)?)
+    } else {
+        std::fs::read_to_string(&file)
+            .with_context(|| format!("Viewer file is not valid UTF-8: {relative}"))?
+    };
     Ok(ViewerFile {
         contract: "rho.viewer_file.v1",
         project_root: display_path(root),
         path: relative_project_path(root, &file)?,
         media_type,
+        content_encoding,
         content,
         size_bytes,
     })
@@ -728,6 +749,7 @@ mod tests {
         let fixtures = [
             ("report.html", "text/html", "<h1>Report</h1>"),
             ("notes.md", "text/markdown", "# Notes"),
+            ("analysis.R", "text/x-r", "value <- 1"),
             ("table.csv", "text/csv", "sample,value\nA,1"),
             (
                 "table.tsv",
@@ -743,9 +765,24 @@ mod tests {
             assert_eq!(viewed.project_root, display_path(&root));
             assert_eq!(viewed.path, path);
             assert_eq!(viewed.media_type, media_type);
+            assert_eq!(viewed.content_encoding, "utf-8");
             assert_eq!(viewed.content, content);
             assert_eq!(viewed.size_bytes, content.len() as u64);
         }
+    }
+
+    #[test]
+    fn viewer_file_returns_safe_base64_image_content() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let bytes = [0_u8, 1, 2, 3, 255];
+        std::fs::write(root.join("figure.png"), bytes).unwrap();
+
+        let viewed = read_viewer_file(&root, "figure.png").unwrap();
+        assert_eq!(viewed.media_type, "image/png");
+        assert_eq!(viewed.content_encoding, "base64");
+        assert_eq!(viewed.content, BASE64_STANDARD.encode(bytes));
+        assert_eq!(viewed.size_bytes, bytes.len() as u64);
     }
 
     #[test]
@@ -759,7 +796,10 @@ mod tests {
 
         assert!(read_viewer_file(&root, "../outside.html").is_err());
         assert!(read_viewer_file(&root, "missing.html").is_err());
-        assert!(read_viewer_file(&root, "analysis.R").is_err());
+        assert_eq!(
+            read_viewer_file(&root, "analysis.R").unwrap().media_type,
+            "text/x-r"
+        );
         assert!(read_viewer_file(&root, "invalid.md").is_err());
         assert!(read_viewer_file(&root, ".").is_err());
     }
@@ -779,6 +819,23 @@ mod tests {
             MAX_VIEWER_FILE_BYTES
         );
         assert!(read_viewer_file(&root, "oversized.md").is_err());
+    }
+
+    #[test]
+    fn viewer_file_allows_bounded_self_contained_html_reports() {
+        let directory = TempDir::new().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let report = root.join("report.html");
+        let oversized = root.join("oversized.html");
+        std::fs::write(&report, vec![b'x'; (MAX_VIEWER_FILE_BYTES + 1) as usize]).unwrap();
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_VIEWER_HTML_BYTES + 1).unwrap();
+
+        assert_eq!(
+            read_viewer_file(&root, "report.html").unwrap().size_bytes,
+            MAX_VIEWER_FILE_BYTES + 1
+        );
+        assert!(read_viewer_file(&root, "oversized.html").is_err());
     }
 
     #[test]

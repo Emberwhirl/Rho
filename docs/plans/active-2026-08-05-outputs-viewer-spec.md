@@ -134,8 +134,11 @@ Rules:
 - Resolve the requested relative path through the canonical project containment
   guard. Reject absolute, parent, drive-prefixed, symlink-escape, missing,
   directory, non-UTF-8, unsupported, and over-limit inputs.
-- The file budget is 4 MiB. The frontend separately rejects an over-budget
-  current editor buffer before Markdown parsing.
+- The default file budget is 4 MiB. Self-contained HTML uses a separate 32 MiB
+  budget because embedded report figures routinely exceed 4 MiB; this remains
+  bounded and does not broaden filesystem or network authority. The frontend
+  applies the same media-specific budget to a current editor buffer before
+  parsing or iframe construction.
 - The response carries the captured normalized project root. The frontend
   rejects it as stale if the active project changed before presentation.
 - Artifact opening first resolves the exact same-project Artifact record, then
@@ -319,31 +322,86 @@ DOMPurify 3.4.13 asset and does not invoke Monaco's bundled dependency. This is
 recorded residual dependency risk for a future Monaco upgrade, not a Viewer
 security-boundary acceptance.
 
+### HTML budget defect repair (2026-08-06)
+
+The user authorized repair after a real self-contained scientific report
+(`reports/pbmc3k_analysis_report.html`, 4,694,609 bytes) was rejected by both
+the central Viewer and Agent Saved Output preview. OUTPUTS-VIEWER-1 remains the
+owning contract. The repair raises only the HTML budget to 32 MiB, retains the
+4 MiB default for Markdown, tables, source text, and images, uses the same
+byte-based check for unsaved HTML buffers, and preserves a truthful oversized
+error instead of collapsing it into generic preview failure. Acceptance
+requires regression coverage above 4 MiB, rejection above 32 MiB, unchanged
+non-HTML bounds, frontend contract checks, JavaScript syntax, Rust formatting,
+the focused Rust Viewer tests, and `git diff --check`. Installed acceptance
+remains open and separate.
+
+Implementation and automated verification completed 2026-08-06 for
+`0.4.0-dev.14`:
+
+- the real 4,694,609-byte report is within the new bounded HTML contract;
+- all 107 `rho-desktop` tests passed, including six Viewer file tests;
+- Outputs Viewer, Agent Output Review, and Evidence Claim UI contracts passed;
+- JavaScript syntax, Rust formatting, version/cache metadata consistency, and
+  `git diff --check` passed.
+
+The repository-wide UI contract sweep also exposed an unrelated pre-existing
+Git Review assertion pinned to the obsolete `0.4.0-dev.2` asset URL. It is not
+part of this repair and remains a bounded validation-maintenance follow-up.
+The rebuilt installed application, display-scale behavior, and exact report
+interaction have not been manually accepted, so this candidate is not yet
+release-ready.
+
 ### HTML fragment-navigation defect repair (2026-08-06)
 
-The user reported that clicking a table-of-contents link in an installed HTML
-preview replaced the report with a nested Rho startup screen. The report uses
-ordinary percent-encoded `href="#..."` fragment links. In an iframe `srcdoc`,
-those fragments inherit the embedding Rho page URL, so default navigation can
-load the application shell inside the opaque-origin sandbox; that nested shell
-cannot access Tauri and reports a runtime-check failure.
+The user reported that clicking a table-of-contents link in the installed
+`pbmc3k_分析报告.html` preview replaced the report with a nested Rho startup
+screen. Inspection confirmed that the report uses ordinary percent-encoded
+`href="#..."` fragment links. In an iframe `srcdoc`, those fragments inherit
+the embedding Rho page URL, so default navigation loads the application shell
+inside the opaque-origin sandbox; that nested shell cannot access Tauri and
+reports a runtime-check failure.
 
-Authorization: the user requested this Viewer defect be repaired. Change class:
-D1. Risk class: R2 because the behavior is local frontend navigation inside
-the HTML sandbox security boundary. The `HTML-FRAGMENT-NAV-1` slice requires
-fragment-only links to scroll to matching `id` or named targets, including
-percent-encoded Unicode fragments, while all non-fragment link activations
-remain blocked. Central Viewer and Agent inline HTML Review use the same
-sandbox transformation without changing Artifact, project, read, or execution
-authority.
+Authorization: the user reported this Viewer defect and requested the broken
+preview workflow be repaired. Change class: D1. Risk class: R2 because the
+behavior is local frontend navigation but lies inside the HTML sandbox security
+boundary. The authorized `HTML-FRAGMENT-NAV-1` slice requires:
+
+- fragment-only links scroll to the matching `id` or named target inside the
+  same preview document, including percent-encoded Unicode fragments;
+- fragment navigation must not reload the Rho application, escape the iframe,
+  or gain parent/Tauri access;
+- empty fragments remain inside the preview and return to its top;
+- relative, absolute, external, `javascript:`, popup, form, download, and all
+  other non-fragment link activations remain blocked;
+- the same sandbox transformation applies to central Viewer and Agent inline
+  HTML preview without changing Artifact, project, read, or execution authority;
+- focused static and browser/mock regression checks cover a working internal
+  link, unchanged inline script interaction, and blocked non-fragment links.
+
+The mandatory stop is after implementation, focused frontend/browser evidence,
+security-contract review, syntax and diff checks, and version/NEWS assessment.
+Exact installed-report acceptance remains separate.
 
 Implementation and focused verification completed on 2026-08-06. The shared
-`viewerSandboxHtml()` transformation injects a capture-phase link guard after
-the restrictive CSP. It prevents default link navigation, decodes fragments,
-and scrolls only inside the same opaque-origin document. `node --check`, the
-Outputs Viewer, Agent output-review, and Agent-first frontend contracts passed,
-as did `git diff --check`.
+`viewerSandboxHtml()` transformation now injects a capture-phase link guard
+after the restrictive CSP. It prevents default link navigation, decodes
+fragment identifiers, and scrolls only to a matching `id` or named target in
+the same opaque-origin document. Non-fragment link events are stopped before
+author handlers can navigate the frame. Central Viewer and Agent inline Review
+continue to use the same transformation.
 
-Browser/mock interaction with a percent-encoded Unicode fragment moved the
-iframe from `scrollY = 0` to `937`; the inline script button still updated its
-content, and an external-link click retained the report and one iframe without
+`node --check desktop/dist/app.js`, Outputs Viewer, Agent output-review, and
+Agent-first frontend contracts passed, as did `git diff --check`. Browser/mock
+interaction with a percent-encoded Unicode fragment moved the iframe from
+`scrollY = 0` to `937` and exposed the target heading. The existing inline
+script button still updated its content, while an external-link click retained
+the report and one iframe without loading a nested Rho shell.
+
+Post-implementation security review found no change to project containment,
+Artifact selection, file reads, parent/Tauri access, network, persistence,
+execution, approval, schema, or sandbox tokens. No version or `NEWS.md` update
+is made because no new distributable candidate was produced and this repair is
+not present in `0.4.0-dev.14`. The next rebuilt candidate must advance to
+`0.4.0-dev.15`, record the repair in `NEWS.md`, and repeat the exact installed
+`pbmc3k_分析报告.html` link acceptance.

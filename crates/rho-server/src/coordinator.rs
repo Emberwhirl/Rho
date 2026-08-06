@@ -1203,31 +1203,36 @@ pub async fn dispatch_workspace_request_with_execution_id(
                 );
                 let created_artifact_id = render_artifact_id(&request.execution_id);
                 let created_media_type = infer_output_media_type(output_path);
-                store.create_artifact_record(&ArtifactRecordDraft {
-                    artifact_id: created_artifact_id.clone(),
-                    artifact_kind: "render_output".to_string(),
-                    run_id: Some(request.execution_id.clone()),
-                    project_root: project_root.clone(),
-                    output_path: artifact_output_path(Some(&project_root), output_path),
-                    source_path,
-                    execution_mode: arguments
-                        .get("execution_mode")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    document_version,
-                    workspace_id: Some(after.workspace_id.clone()),
-                    state_revision: Some(after.state_revision as i64),
-                    project_revision: Some(after.project_revision as i64),
-                    media_type: created_media_type.clone(),
-                    metadata_json: serde_json::to_string(&json!({
-                        "tool": result.get("tool").and_then(Value::as_str),
-                        "source_path": arguments.get("source_path").and_then(Value::as_str),
-                    }))?,
-                    provenance_complete,
-                    incomplete_reason,
-                })?;
-                artifact_id = Some(created_artifact_id);
-                artifact_media_type = Some(created_media_type);
+                let relative_output = artifact_output_path(Some(&project_root), output_path);
+                let output_materialized =
+                    materialized_project_output(Path::new(&project_root), &relative_output);
+                if output_materialized {
+                    store.create_artifact_record(&ArtifactRecordDraft {
+                        artifact_id: created_artifact_id.clone(),
+                        artifact_kind: "render_output".to_string(),
+                        run_id: Some(request.execution_id.clone()),
+                        project_root: project_root.clone(),
+                        output_path: relative_output,
+                        source_path,
+                        execution_mode: arguments
+                            .get("execution_mode")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        document_version,
+                        workspace_id: Some(after.workspace_id.clone()),
+                        state_revision: Some(after.state_revision as i64),
+                        project_revision: Some(after.project_revision as i64),
+                        media_type: created_media_type.clone(),
+                        metadata_json: serde_json::to_string(&json!({
+                            "tool": result.get("tool").and_then(Value::as_str),
+                            "source_path": arguments.get("source_path").and_then(Value::as_str),
+                        }))?,
+                        provenance_complete,
+                        incomplete_reason,
+                    })?;
+                    artifact_id = Some(created_artifact_id);
+                    artifact_media_type = Some(created_media_type);
+                }
             }
         }
     }
@@ -1645,6 +1650,7 @@ session <- rho_create_aisdk_session(
     mode_policy
   ),
   tools = tools,
+   max_steps = if (identical(mode, "act")) 512L else 128L,
   connection = connection
 )
 turn_error <- tryCatch(
@@ -1694,6 +1700,9 @@ fn desktop_agent_turn_stdin(
         serde_json::to_string(runtime_profile)?
     ))
 }
+
+const DESKTOP_AGENT_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+const DESKTOP_AGENT_TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(86_400);
 
 fn configure_agent_process_environment(
     command: &mut tokio::process::Command,
@@ -1836,7 +1845,7 @@ pub async fn run_agent_turn(
         )
         .await;
         let output = tokio::time::timeout(
-            std::time::Duration::from_secs(180),
+            DESKTOP_AGENT_TURN_TIMEOUT,
             child.wait_with_output(),
         )
         .await
@@ -1914,7 +1923,7 @@ async fn serve_desktop_agent(
     let mut approved_mutations = HashMap::new();
     loop {
         let incoming = tokio::time::timeout(
-            std::time::Duration::from_secs(120),
+            DESKTOP_AGENT_REQUEST_TIMEOUT,
             read_async_frame(&mut agent.stream),
         )
         .await
@@ -4289,6 +4298,18 @@ fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String
     }
 }
 
+fn materialized_project_output(project_root: &Path, relative_output: &str) -> bool {
+    let Ok(canonical_root) = project_root.canonicalize() else {
+        return false;
+    };
+    let output_file = project_root.join(relative_output);
+    output_file.is_file()
+        && output_file
+            .canonicalize()
+            .map(|path| path.starts_with(&canonical_root))
+            .unwrap_or(false)
+}
+
 fn infer_output_media_type(path: &str) -> String {
     let extension = Path::new(path)
         .extension()
@@ -4612,6 +4633,25 @@ mod tests {
             render_artifact_id("render_a"),
             render_artifact_id("render_b")
         );
+    }
+
+    #[test]
+    fn render_output_requires_a_materialized_project_file() {
+        let project = tempfile::tempdir().unwrap();
+        assert!(!materialized_project_output(
+            project.path(),
+            "results/missing.rds"
+        ));
+        fs::create_dir_all(project.path().join("results")).unwrap();
+        fs::write(project.path().join("results/output.rds"), b"rds").unwrap();
+        assert!(materialized_project_output(
+            project.path(),
+            "results/output.rds"
+        ));
+        assert!(!materialized_project_output(
+            project.path(),
+            "../outside.rds"
+        ));
     }
 
     #[test]
@@ -5191,6 +5231,7 @@ mod tests {
         assert!(script.contains("never claim execution without a successful tool result"));
         assert!(script.contains("Explanation-only requests do not require execution."));
         assert!(script.contains("tools <- if (identical(profile$tool_calling %||% \"unknown\", \"yes\")) rho_create_workspace_tools() else list()"));
+        assert!(script.contains("max_steps = if (identical(mode, \"act\")) 512L else 128L"));
     }
 
     #[test]

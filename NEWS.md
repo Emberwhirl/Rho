@@ -4,6 +4,98 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.14 - 2026-08-06
+
+### Fixed
+
+- Self-contained HTML reports up to 32 MiB now open in the central Viewer and
+  Agent Output Review. Other preview types retain their 4 MiB limit, and files
+  that exceed their limit now report the size restriction instead of a generic
+  preview failure.
+
+## 0.4.0-dev.13 - 2026-08-06
+
+### Fixed
+
+- Project check results now use a bounded scrollable region when the window
+  cannot show all findings.
+- Environment approval now reconciles terminal request states separately from
+  post-approval view refreshes, so stale or completed requests no longer stay
+  visibly stuck at `Requested`.
+
+## 0.4.0-dev.12 - 2026-08-06
+
+### Fixed
+
+- Agent Outputs no longer register render paths that were not materialized as
+  files inside the active project. Review now distinguishes available files,
+  missing historical files, unsupported formats, and in-memory Plot previews.
+- Missing source-document provenance is no longer shown as a misleading file
+  review warning.
+
+## 0.4.0-dev.11 - 2026-08-06
+
+### Improved
+
+- Agent Markdown previews now render inline and block LaTeX formulas offline
+  with KaTeX while Copy continues to preserve the original Markdown source.
+
+## 0.4.0-dev.10 - 2026-08-06
+
+### Improved
+
+- Check Project now checks the current project directory without treating
+  deleted historical outputs as current failures. Project check results in
+  Agent Review also use a dedicated scrollable content region.
+
+## 0.4.0-dev.9 - 2026-08-06
+
+### Improved
+
+- Agent answers now render as a safe Markdown preview while the Copy action
+  preserves and copies the original Markdown source.
+
+## 0.4.0-dev.8 - 2026-08-06
+
+### Fixed
+
+- Agent Output Review now passes the desktop artifact detail command's
+  `artifactId` argument correctly, allowing Viewer previews to load instead of
+  falling back to misleading metadata-only and missing-file messages.
+
+## 0.4.0-dev.7 - 2026-08-06
+
+### Improved
+
+- Agent Outputs now has a dedicated scrolling list for large result sets. Cards
+  use concise file-type and source context labels, and Workspace R outputs no
+  longer appear as falsely incomplete source links.
+
+## 0.4.0-dev.6 - 2026-08-06
+
+### Improved
+
+- Generated files in Agent Outputs now open directly into Review with useful
+  output, creation, provenance, and availability information. PNG/JPEG/GIF/WebP
+  files preview as images, while CSV/TSV tables and R/Rmd/text/JSON files show
+  bounded browsable content.
+
+## 0.4.0-dev.5 - 2026-08-06
+
+### Improved
+
+- Selected Agent answers now provide a Copy action that preserves the complete
+  Markdown or code output and reports clipboard failures truthfully.
+
+## 0.4.0-dev.4 - 2026-08-06
+
+### Fixed
+
+- Long authorized Agent analyses can use more tool steps and more wall-clock
+  time before the Agent R session is considered interrupted. Act receives a
+  high exploratory budget, and each new request renews the idle lease. Rho
+  still reports a failure when the Agent process ends without a terminal event.
+
 ## 0.4.0-dev.2 - 2026-08-06
 
 ### Improved

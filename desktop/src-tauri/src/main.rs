@@ -450,6 +450,7 @@ struct ArtifactRecordView {
     #[serde(flatten)]
     artifact: ArtifactRecordSummary,
     file_available: bool,
+    file_status: String,
     output_absolute_path: String,
     run: Option<RunDetail>,
 }
@@ -990,13 +991,42 @@ fn ensure_artifact_export_target(
     Ok((file, relative, absolute))
 }
 
-fn artifact_file_status(root: &Path, output_path: &str) -> (String, bool) {
+fn artifact_file_status(root: &Path, output_path: &str) -> (String, bool, &'static str) {
     match project_path(root, output_path) {
         Ok(path) => {
             let absolute = path.to_string_lossy().replace('\\', "/");
-            (absolute, path.is_file())
+            if !path.is_file() {
+                return (absolute, false, "missing");
+            }
+            let supported = matches!(
+                path.extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .as_str(),
+                "html"
+                    | "htm"
+                    | "md"
+                    | "r"
+                    | "rmd"
+                    | "txt"
+                    | "log"
+                    | "json"
+                    | "csv"
+                    | "tsv"
+                    | "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "webp"
+            );
+            if supported {
+                (absolute, true, "available")
+            } else {
+                (absolute, true, "unsupported")
+            }
         }
-        Err(_) => (output_path.to_string(), false),
+        Err(_) => (output_path.to_string(), false, "missing"),
     }
 }
 
@@ -1915,13 +1945,15 @@ async fn audit_reproducibility(
     let project_root = root.to_string_lossy().replace('\\', "/");
     let audit_scope = if scope == "project" {
         AuditScope::Project
+    } else if scope == "project_current" {
+        AuditScope::CurrentProject
     } else if let Some(rest) = scope.strip_prefix("run:") {
         AuditScope::Run(rest.to_string())
     } else if let Some(rest) = scope.strip_prefix("artifact:") {
         AuditScope::Artifact(rest.to_string())
     } else {
         return Err(format!(
-            "invalid audit scope: {scope} (expected 'project', 'run:<id>', or 'artifact:<id>')"
+            "invalid audit scope: {scope} (expected 'project', 'project_current', 'run:<id>', or 'artifact:<id>')"
         ));
     };
     let store = read_store(&state).map_err(display_error)?;
@@ -2188,6 +2220,7 @@ async fn export_plot_artifact(
     Ok(ArtifactRecordView {
         artifact: detail,
         file_available: true,
+        file_status: "available".to_string(),
         output_absolute_path,
         run,
     })
@@ -2308,6 +2341,7 @@ async fn export_data_view_artifact(
     Ok(ArtifactRecordView {
         artifact: detail,
         file_available: true,
+        file_status: "available".to_string(),
         output_absolute_path,
         run,
     })
@@ -2354,10 +2388,12 @@ async fn get_artifact_record(
         .transpose()
         .map_err(display_error)?
         .flatten();
-    let (output_absolute_path, file_available) = artifact_file_status(&root, &artifact.output_path);
+    let (output_absolute_path, file_available, file_status) =
+        artifact_file_status(&root, &artifact.output_path);
     Ok(Some(ArtifactRecordView {
         artifact,
         file_available,
+        file_status: file_status.to_string(),
         output_absolute_path,
         run,
     }))

@@ -1056,6 +1056,14 @@ function mockFileAvailable(projectRoot, outputPath) {
   return Object.prototype.hasOwnProperty.call(project.contents || {}, outputPath);
 }
 
+function mockFileStatus(record) {
+  if (!mockFileAvailable(record.project_root, record.output_path)) return "missing";
+  const extension = pathFileName(record.output_path).split(".").pop()?.toLowerCase();
+  return ["html", "htm", "md", "r", "rmd", "txt", "log", "json", "csv", "tsv", "png", "jpg", "jpeg", "gif", "webp"].includes(extension)
+    ? "available"
+    : "unsupported";
+}
+
 function mockUpsertProjectFile(projectRoot, path, content, options = {}) {
   const { trackInTree = true, kind = "source" } = options;
   const normalized = validateProjectRelativePath(path);
@@ -1122,6 +1130,7 @@ function mockArtifactView(record) {
   return {
     artifact: structuredClone(record),
     file_available: mockFileAvailable(record.project_root, record.output_path),
+    file_status: mockFileStatus(record),
     output_absolute_path: mockOutputAbsolutePath(record.project_root, record.output_path),
     run: record.run_id ? structuredClone(mockRuns.find((run) => run.run_id === record.run_id) || null) : null,
   };
@@ -1704,12 +1713,16 @@ async function mockInvoke(command, args) {
     const extension = viewerPathExtension(path);
     const samples = {
       md: "# Markdown preview\n\nThis preview is rendered from the current project buffer.\n\n```r\nsummary(qc)\n```\n",
+      r: "counts <- read.csv('counts.csv')\nsummary(counts)\n",
+      rmd: "---\ntitle: 'Analysis'\n---\n\n```{r}\nsummary(counts)\n```\n",
+      txt: "Generated text output\n",
+      json: "{\"status\":\"complete\"}\n",
       html: "<!doctype html><html><head><title>Interactive output</title><style>body{font:16px sans-serif;padding:24px}button{padding:8px 12px}</style></head><body><h1>Interactive HTML output</h1><button id='update'>Update</button><p id='value'>Ready</p><script>document.querySelector('#update').onclick=()=>document.querySelector('#value').textContent='Updated inside sandbox';</script></body></html>",
       csv: "sample,reads,detected\nA,1200,3100\nB,1400,3300\n",
       tsv: "sample\treads\tdetected\nA\t1200\t3100\nB\t1400\t3300\n",
     };
     if (!samples[extension]) throw new Error(`Preview is not available for this file: ${path}`);
-    return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content: samples[extension], size_bytes: samples[extension].length };
+    return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content_encoding: "utf-8", content: samples[extension], size_bytes: samples[extension].length };
   }
   if (command === "project_write_file" || command === "project_create_file") {
     const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
@@ -3428,6 +3441,7 @@ function currentEditorValue() {
 }
 
 const VIEWER_FILE_LIMIT = 4 * 1024 * 1024;
+const VIEWER_HTML_LIMIT = 32 * 1024 * 1024;
 const VIEWER_TABLE_ROW_LIMIT = 500;
 const VIEWER_TABLE_COLUMN_LIMIT = 100;
 
@@ -3439,8 +3453,13 @@ function viewerTypeLabel(kind, mediaType) {
   if (kind === "plot") return "Plot";
   if (mediaType === "text/markdown") return "Markdown preview";
   if (mediaType === "text/html") return "Interactive HTML";
+  if (mediaType === "image/png") return "PNG image";
+  if (mediaType === "image/jpeg") return "JPEG image";
+  if (mediaType === "image/gif") return "GIF image";
+  if (mediaType === "image/webp") return "WebP image";
   if (mediaType === "text/csv") return "CSV table";
   if (mediaType === "text/tab-separated-values") return "TSV table";
+  if (mediaType === "text/x-r" || mediaType === "text/x-r-markdown") return "R source";
   return "Output";
 }
 
@@ -3456,12 +3475,27 @@ function viewerSafeMarkdown(content) {
     throw new Error("Markdown preview dependencies are unavailable.");
   }
   const html = window.marked.parse(content, { gfm: true, breaks: false });
-  return window.DOMPurify.sanitize(html, {
+  const sanitizeOptions = {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "base", "meta"],
     FORBID_ATTR: ["style", "srcset", "onerror", "onclick", "onload", "onmouseover"],
     ALLOW_UNKNOWN_PROTOCOLS: false,
+  };
+  const sanitized = window.DOMPurify.sanitize(html, sanitizeOptions);
+  if (typeof window.renderMathInElement !== "function") return sanitized;
+  const container = document.createElement("div");
+  container.innerHTML = sanitized;
+  window.renderMathInElement(container, {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "\\[", right: "\\]", display: true },
+      { left: "$", right: "$", display: false },
+      { left: "\\(", right: "\\)", display: false },
+    ],
+    throwOnError: false,
+    output: "html",
   });
+  return window.DOMPurify.sanitize(container.innerHTML, sanitizeOptions);
 }
 
 function viewerSandboxHtml(content) {
@@ -3590,6 +3624,19 @@ function viewerRenderPreview() {
       target.append(frame);
       $("#viewerPreviewStatus").textContent = "sandboxed";
       viewerSetNotice(viewerHtmlResourceWarning(viewer.content));
+    } else if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(viewer.mediaType)) {
+      const image = document.createElement("img");
+      image.className = "viewer-image-output";
+      image.alt = viewer.title || "Image output";
+      image.src = "data:" + viewer.mediaType + ";base64," + viewer.content;
+      target.append(image);
+      $("#viewerPreviewStatus").textContent = "image preview";
+    } else if (["text/x-r", "text/x-r-markdown", "text/plain", "application/json"].includes(viewer.mediaType)) {
+      const code = document.createElement("pre");
+      code.className = "viewer-code-output";
+      code.textContent = viewer.content;
+      target.append(code);
+      $("#viewerPreviewStatus").textContent = "source preview";
     } else if (["text/csv", "text/tab-separated-values"].includes(viewer.mediaType)) {
       const parsed = viewerRenderTable(viewer.content, viewerTypeLabel(viewer.kind, viewer.mediaType).startsWith("TSV") ? "tsv" : "csv");
       const wrapper = document.createElement("div");
@@ -3664,9 +3711,10 @@ async function openViewer(input) {
       state.viewer.content = input.content || "";
       state.viewer.mediaType = "image/png";
     } else if (input.content !== undefined) {
-      if (String(input.content).length > VIEWER_FILE_LIMIT) throw new Error("Current editor buffer is too large for preview.");
+      const contentLimit = viewerPathExtension(input.path) === "html" ? VIEWER_HTML_LIMIT : VIEWER_FILE_LIMIT;
+      if (new Blob([String(input.content)]).size > contentLimit) throw new Error(`Current editor buffer is too large for preview (limit: ${contentLimit} bytes).`);
       state.viewer.content = String(input.content);
-      state.viewer.mediaType = input.mediaType || ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[viewerPathExtension(input.path)] || "text/plain");
+      state.viewer.mediaType = input.mediaType || ({ md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" }[viewerPathExtension(input.path)] || "text/plain");
     } else {
       const result = await invoke("viewer_read_file", { path: input.path });
       if (result.project_root !== state.project.root || result.project_root !== requestRoot) throw new Error("The project changed while loading this output.");
@@ -3688,12 +3736,12 @@ async function openViewerForActiveDocument() {
   const document = activeDocument();
   if (!document || !state.activeDocument) return;
   const extension = viewerPathExtension(state.activeDocument);
-  if (!["md", "html", "csv", "tsv"].includes(extension)) {
+  if (!["md", "html", "r", "rmd", "txt", "json", "csv", "tsv"].includes(extension)) {
     toast("Preview is not available for this file.", true);
     return;
   }
   syncDocumentFromEditor({ render: false, persist: false });
-  await openViewer({ path: state.activeDocument, title: state.activeDocument, sourcePath: state.activeDocument, content: document.content, mediaType: ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" })[extension] });
+  await openViewer({ path: state.activeDocument, title: state.activeDocument, sourcePath: state.activeDocument, content: document.content, mediaType: ({ md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" })[extension] });
 }
 
 async function openSelectedOutputInViewer() {
@@ -4609,6 +4657,7 @@ function prettyStatus(status) {
 }
 
 const USER_ERROR_PRESENTATIONS = [
+  { matches: /too large|over.?limit/i, message: "This file is too large to preview. Open it as source instead." },
   { matches: /stale|revision|changed since|changed after|out of date/i, message: "The underlying information changed. Refresh it and try again." },
   { matches: /not found|missing|no longer available|unavailable/i, message: "The requested information is no longer available. Refresh this view and try again." },
   { matches: /permission|policy|denied|not allowed|outside (?:the )?project/i, message: "This action is not allowed in the current project state. Review the project and try a permitted action." },
@@ -4783,7 +4832,7 @@ async function loadRunData({ quiet = false } = {}) {
     if (state.selectedArtifactId) {
       const listedArtifact = state.artifacts.find((item) => item.artifact_id === state.selectedArtifactId);
       try {
-        const detail = await invoke("get_artifact_record", { artifact_id: state.selectedArtifactId });
+        const detail = await invoke("get_artifact_record", { artifactId: state.selectedArtifactId });
         state.selectedArtifactDetail = detail || (listedArtifact ? { artifact: listedArtifact, file_available: null } : null);
       } catch (error) {
         state.selectedArtifactDetail = listedArtifact ? { artifact: listedArtifact, file_available: null } : null;
@@ -6257,7 +6306,7 @@ async function copyText(text) {
   input.value = text;
   document.body.append(input);
   input.select();
-  document.execCommand("copy");
+  if (!document.execCommand("copy")) throw new Error("Clipboard access was unavailable.");
   input.remove();
 }
 
@@ -6549,7 +6598,41 @@ function renderAgentTimeline() {
     if (selected && turn.final_message) {
       const fullMessage = document.createElement("div");
       fullMessage.className = "timeline-final-message";
-      fullMessage.textContent = turn.final_message;
+      const answerHeader = document.createElement("div");
+      answerHeader.className = "timeline-final-message-header";
+      const answerLabel = document.createElement("span");
+      answerLabel.textContent = "Output";
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "timeline-copy-output";
+      copyButton.title = "Copy output";
+      copyButton.setAttribute("aria-label", "Copy output");
+      const copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      copyIcon.classList.add("ui-icon");
+      copyIcon.setAttribute("aria-hidden", "true");
+      const copyUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      copyUse.setAttribute("href", "#icon-copy");
+      copyIcon.append(copyUse);
+      copyButton.append(copyIcon, document.createTextNode("Copy"));
+      copyButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        try {
+          await copyText(turn.final_message);
+          copyButton.classList.add("is-copied");
+          copyButton.lastChild.textContent = "Copied";
+          window.setTimeout(() => {
+            copyButton.classList.remove("is-copied");
+            copyButton.lastChild.textContent = "Copy";
+          }, 1600);
+        } catch (error) {
+          toast(reportUiFailure("copy Agent output", error, "The output could not be copied."), true);
+        }
+      });
+      answerHeader.append(answerLabel, copyButton);
+      const renderedMessage = document.createElement("article");
+      renderedMessage.className = "timeline-markdown viewer-markdown";
+      renderedMessage.innerHTML = viewerSafeMarkdown(turn.final_message);
+      fullMessage.append(answerHeader, renderedMessage);
       content.append(fullMessage);
       appendAgentLocalHelpEvidence(content, state.selectedTurnDetail);
     }
@@ -8142,6 +8225,35 @@ function artifactKindLabel(kind) {
   }[kind] || kind || "Artifact";
 }
 
+function artifactFileTypeLabel(artifact) {
+  const mediaType = String(artifact?.media_type || "").toLowerCase();
+  const mediaLabels = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/gif": "GIF",
+    "image/webp": "WebP",
+    "text/csv": "CSV",
+    "text/tab-separated-values": "TSV",
+    "text/html": "HTML",
+    "text/markdown": "Markdown",
+    "text/x-r": "R source",
+    "text/x-r-markdown": "R Markdown",
+    "application/json": "JSON",
+    "text/plain": "Text",
+  };
+  if (mediaLabels[mediaType]) return mediaLabels[mediaType];
+  const filename = pathFileName(artifact?.output_path);
+  const extension = filename.split(".").at(-1);
+  return extension && extension !== filename ? extension.toUpperCase() : "File";
+}
+
+function artifactListSourceLabel(artifact) {
+  const sourcePath = String(artifact?.source_path || "");
+  if (!sourcePath) return "Workspace R output";
+  if (artifact?.provenance_complete) return `From ${displayPath(sourcePath)}`;
+  return `Source link incomplete · ${displayPath(sourcePath)}`;
+}
+
 function artifactStateLabel(detail) {
   if (!detail) return "Not selected";
   if (!detail.file_available) return "File missing";
@@ -8271,7 +8383,7 @@ function renderArtifactRecords() {
     row.addEventListener("click", async () => {
       state.selectedArtifactId = artifact.artifact_id;
       try {
-        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifactId: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
         toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
@@ -8294,7 +8406,7 @@ function renderArtifactRecords() {
       switchDockTab("plots");
       state.selectedArtifactId = artifact.artifact_id;
       try {
-        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifactId: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
         toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
@@ -8918,7 +9030,7 @@ async function runActiveFile() {
   await executeCode(request);
 }
 
-async function refreshEnvironment() {
+async function refreshEnvironment({ quiet = false } = {}) {
   try {
     const response = await invoke("snapshot_workspace");
     updateIdentity(response.workspace);
@@ -8926,8 +9038,10 @@ async function refreshEnvironment() {
     state.environment = response.execution?.environment || null;
     renderEnvironment();
     loadPackageInventories();
+    return true;
   } catch (error) {
-    toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
+    if (!quiet) toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
+    return false;
   }
 }
 
@@ -9260,7 +9374,7 @@ async function openClaimSource(claim) {
 async function openClaimArtifact(claim) {
   if (!claim?.artifact_id) return;
   try {
-    const detail = await invoke("get_artifact_record", { artifact_id: claim.artifact_id });
+    const detail = await invoke("get_artifact_record", { artifactId: claim.artifact_id });
     if (!detail) { toast("The linked saved output is no longer available.", true); return; }
     state.selectedArtifactId = claim.artifact_id;
     state.selectedArtifactDetail = detail;
@@ -11015,7 +11129,10 @@ function renderEnvironmentOperationDialog() {
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
   if (request.reason) {
-    error.textContent = userFacingError(request.reason, "This environment change could not be completed. Refresh the preview and try again.");
+    const reason = request.status === "stale"
+      ? `This request is no longer current. ${request.reason} Refresh the preview before approving again.`
+      : userFacingError(request.reason, "This environment change could not be completed. Refresh the preview and try again.");
+    error.textContent = reason;
     error.classList.remove("hidden");
   } else {
     error.textContent = "";
@@ -11042,13 +11159,15 @@ function openEnvironmentOperationDialog(requestId, trigger = null) {
   renderEnvironmentOperationDialog();
 }
 
-async function loadEnvironmentOperationData() {
+async function loadEnvironmentOperationData({ quiet = false } = {}) {
   try {
     state.environmentOperations = await invoke("list_environment_operation_requests", { limit: 20 });
     renderEnvironmentOperationCard();
     renderEnvironmentOperationDialog();
+    return true;
   } catch (error) {
-    toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
+    if (!quiet) toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
+    return false;
   }
 }
 
@@ -11086,21 +11205,37 @@ async function respondEnvironmentOperation(decision) {
   state.environmentOperationDialog.busy = true;
   renderEnvironmentOperationCard();
   renderEnvironmentOperationDialog();
+  let result = null;
+  let commandError = null;
   try {
-    const result = await invoke("respond_environment_operation", {
+    result = await invoke("respond_environment_operation", {
       request: { request_id: requestId, decision, reason: null },
     });
     if (result?.workspace) updateIdentity(result.workspace);
-    await Promise.all([loadRunData(), loadEnvironmentOperationData(), refreshEnvironment()]);
-    renderEnvironmentOperationDialog();
-    if (decision !== "approve") closeEnvironmentOperationDialog();
   } catch (error) {
-    toast(reportUiFailure("respond to environment operation", error, "The environment decision could not be completed. Refresh Environment before trying again."), true);
-  } finally {
-    state.environmentOperationDialog.busy = false;
-    renderEnvironmentOperationCard();
-    renderEnvironmentOperationDialog();
+    commandError = error;
   }
+
+  const reloaded = await loadEnvironmentOperationData({ quiet: true });
+  const current = state.environmentOperations.find((item) => item.request_id === requestId) || null;
+  if (commandError) {
+    if (reloaded && current && current.status !== "requested") {
+      renderEnvironmentOperationDialog();
+      toast(`Environment request is now ${prettyEnvironmentOperationStatus(current.status).toLowerCase()}. Review its status in the dialog.`, true);
+    } else {
+      toast(reportUiFailure("respond to environment operation", commandError, "The environment decision could not be completed. Refresh Environment before trying again."), true);
+    }
+  } else {
+    const refreshFailures = [];
+    try { await loadRunData({ quiet: true }); } catch { refreshFailures.push("run history"); }
+    try { if (await refreshEnvironment({ quiet: true }) === false) refreshFailures.push("R environment"); } catch { refreshFailures.push("R environment"); }
+    renderEnvironmentOperationDialog();
+    if (refreshFailures.length) toast(`Environment request ${result?.status === "stale" ? "became stale" : "was processed"}, but ${refreshFailures.join(" and ")} could not be refreshed.`, true);
+    if (decision !== "approve" && current?.status !== "requested") closeEnvironmentOperationDialog();
+  }
+  state.environmentOperationDialog.busy = false;
+  renderEnvironmentOperationCard();
+  renderEnvironmentOperationDialog();
 }
 
 function previewSummary(detail) {
@@ -11817,7 +11952,7 @@ function startRenderPoll(jobId, path) {
         let artifactDetail = null;
         if (job.artifact_id) {
           try {
-            artifactDetail = await invoke("get_artifact_record", { artifact_id: job.artifact_id });
+            artifactDetail = await invoke("get_artifact_record", { artifactId: job.artifact_id });
           } catch (error) {
           addLog("SYSTEM", `Saved render-output details are unavailable: ${error}`);
           }
@@ -11921,7 +12056,7 @@ async function findCompletedRenderArtifact(job) {
   if (!job?.job_id || !isDesktop) return null;
   try {
     const detail = await invoke("get_artifact_record", {
-      artifact_id: `artifact_${job.job_id}_render`,
+      artifactId: `artifact_${job.job_id}_render`,
     });
     if (!detail?.artifact || detail.artifact.run_id !== job.job_id) return null;
     if (detail.run && detail.run.status !== "completed") return null;
@@ -12973,7 +13108,13 @@ function auditCountLabel(value, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function auditCoverageText(coverage = {}) {
+function auditCoverageText(coverage = {}, currentProjectOnly = false) {
+  if (currentProjectOnly) {
+    const reviewed = `Reviewed ${auditCountLabel(coverage.files_scanned, "current project file")}.`;
+    return coverage.files_skipped
+      ? `${reviewed} ${auditCountLabel(coverage.files_skipped, "file")} could not be reviewed.`
+      : reviewed;
+  }
   const reviewed = `Reviewed ${auditCountLabel(coverage.files_scanned, "file")}, ${auditCountLabel(coverage.runs_considered, "run")}, and ${auditCountLabel(coverage.artifacts_considered, "saved output")}.`;
   if (!coverage.files_skipped) return reviewed;
   return `${reviewed} ${auditCountLabel(coverage.files_skipped, "file")} could not be reviewed.`;
@@ -13002,9 +13143,11 @@ function renderAgentAuditWorkspace(content) {
   summary.className = "agent-review-summary";
   const coverage = result.coverage || {};
   const status = auditStatusPresentation(result.status);
+  const currentProjectOnly = result.scope === "project_current";
   appendAgentReviewSection(summary, "Result", status.label);
   appendAgentReviewSection(summary, "What this means", status.description);
-  appendAgentReviewSection(summary, "Reviewed", auditCoverageText(coverage));
+  appendAgentReviewSection(summary, "Reviewed", auditCoverageText(coverage, currentProjectOnly));
+  if (currentProjectOnly) appendAgentReviewSection(summary, "Scope", "Current project directory only; historical runs and saved outputs are excluded.");
   if (result.truncated) appendAgentReviewSection(summary, "Coverage limitation", "Some project information could not be reviewed, so this result is incomplete.");
   content.append(summary);
 
@@ -13111,12 +13254,21 @@ function renderAgentReviewWorkspace() {
       content.innerHTML = '<div class="agent-review-empty">Select a saved output to review.</div>';
       return;
     }
-    appendAgentReviewSection(summary, "Saved output", `${artifactKindLabel(artifact.artifact_kind)} · ${displayPath(artifact.output_path)}`);
-    appendAgentReviewSection(summary, "Created from", displayPath(artifact.source_path) || "Workspace R");
-    appendAgentReviewSection(summary, "Source details", artifact.provenance_complete ? "Available" : "Incomplete");
-    appendAgentReviewSection(summary, "Needs attention", artifact.incomplete_reason);
-    appendAgentReviewSection(summary, "File", detail?.file_available === false ? "Missing from its recorded location" : "Available at its recorded location");
-    appendAgentReviewSection(summary, "Details", detail?.detail_error);
+    appendAgentReviewSection(summary, "Output", artifactKindLabel(artifact.artifact_kind) + " / " + displayPath(artifact.output_path));
+    appendAgentReviewSection(summary, "Created", formatTimestamp(artifact.created_at));
+    const producingRun = artifact.run_id ? state.runs.find((run) => run.run_id === artifact.run_id) : null;
+    appendAgentReviewSection(summary, "Produced by", producingRun ? humanRunTitle(producingRun) : "Workspace R");
+    if (detail?.file_status === "missing" || detail?.file_available === false) {
+      appendAgentReviewSection(summary, "Availability", "Recorded in history; the file is not in the current project.");
+    } else if (detail?.file_status === "unsupported") {
+      appendAgentReviewSection(summary, "Availability", "File exists in the project, but this format is not supported for preview.");
+    } else if (detail?.file_status === "available") {
+      appendAgentReviewSection(summary, "Availability", "Available in the current project.");
+    }
+    if (artifact.incomplete_reason && !["source_path_unavailable", "document_version_unavailable"].includes(artifact.incomplete_reason)) {
+      appendAgentReviewSection(summary, "Review note", artifact.incomplete_reason);
+    }
+    if (detail?.detail_error) appendAgentReviewSection(summary, "Preview note", detail.detail_error);
     const actions = document.createElement("div");
     actions.className = "agent-review-actions";
     if (artifact.run_id && state.runs.some((run) => run.run_id === artifact.run_id)) {
@@ -13136,13 +13288,6 @@ function renderAgentReviewWorkspace() {
       open.addEventListener("click", () => openDocument(artifact.source_path));
       actions.append(open);
     }
-    if (artifact.output_path && detail?.file_available !== false) {
-      const preview = document.createElement("button");
-      preview.type = "button";
-      preview.textContent = "Open in Viewer";
-      preview.addEventListener("click", () => openAgentArtifactPreview(content, artifact));
-      actions.append(preview);
-    }
     if (actions.childElementCount) summary.append(actions);
   } else {
     const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
@@ -13155,6 +13300,14 @@ function renderAgentReviewWorkspace() {
     return;
   }
   content.append(summary);
+  if (kind === "artifact" && normalizedArtifactDetail()?.output_path && state.selectedArtifactDetail?.file_status === "available") {
+    openAgentArtifactPreview(content, normalizedArtifactDetail());
+  } else if (kind === "artifact" && state.selectedArtifactDetail?.file_status === "unsupported") {
+    const limitation = document.createElement("p");
+    limitation.className = "agent-review-limitation";
+    limitation.textContent = "The file is available, but this format does not have a Viewer yet.";
+    content.append(limitation);
+  }
 }
 
 async function openAgentArtifactPreview(container, artifact) {
@@ -13171,7 +13324,13 @@ async function openAgentArtifactPreview(container, artifact) {
     const result = await invoke("viewer_read_file", { path: artifact.output_path });
     if (result.project_root !== state.project.root) throw new Error("The project changed while loading this output.");
     wrapper.replaceChildren();
-    if (result.media_type === "text/html") {
+    if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(result.media_type)) {
+      const image = document.createElement("img");
+      image.className = "agent-inline-output-image";
+      image.alt = pathFileName(artifact.output_path);
+      image.src = "data:" + result.media_type + ";base64," + result.content;
+      wrapper.append(image);
+    } else if (result.media_type === "text/html") {
       const frame = document.createElement("iframe");
       frame.className = "agent-inline-viewer-frame";
       frame.setAttribute("sandbox", "allow-scripts");
@@ -13183,6 +13342,11 @@ async function openAgentArtifactPreview(container, artifact) {
       article.className = "viewer-markdown";
       article.innerHTML = viewerSafeMarkdown(result.content);
       wrapper.append(article);
+    } else if (["text/x-r", "text/x-r-markdown", "text/plain", "application/json"].includes(result.media_type)) {
+      const code = document.createElement("pre");
+      code.className = "agent-inline-output-code";
+      code.textContent = result.content;
+      wrapper.append(code);
     } else {
       const parsed = viewerRenderTable(result.content, result.media_type === "text/tab-separated-values" ? "tsv" : "csv");
       const table = document.createElement("div");
@@ -13318,7 +13482,8 @@ async function openAgentOutput(kind, id) {
   state.selectedArtifactId = id;
   state.agentSelectedOutput = { kind: "artifact", id };
   try {
-    state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: id });
+    const detail = await invoke("get_artifact_record", { artifactId: id });
+    state.selectedArtifactDetail = detail || { artifact, file_available: null };
   } catch (error) {
     state.selectedArtifactDetail = { artifact, file_available: false, detail_error: String(error) };
   }
@@ -13334,6 +13499,8 @@ function renderAgentOutputs() {
     ...state.artifacts.map((artifact) => ({ kind: "artifact", id: artifact.artifact_id, record: artifact, title: pathFileName(artifact.output_path), createdAt: artifact.created_at })),
   ].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
   $("#agentOutputCount").textContent = String(entries.length);
+  const summary = $("#agentOutputsSummary");
+  if (summary) summary.textContent = `${entries.length} ${entries.length === 1 ? "output" : "outputs"} available for review`;
 
   if (!entries.length) {
     const empty = document.createElement("div");
@@ -13371,17 +13538,15 @@ function renderAgentOutputs() {
     body.className = "agent-output-body";
     const kind = document.createElement("span");
     kind.className = "agent-output-kind";
-    kind.textContent = entry.kind === "plot" ? "Plot" : artifactKindLabel(entry.record.artifact_kind);
+    kind.textContent = entry.kind === "plot" ? "Plot" : artifactFileTypeLabel(entry.record);
     const title = document.createElement("strong");
     title.textContent = entry.title;
     const source = document.createElement("p");
-    source.textContent = entry.kind === "plot"
-      ? plotSourceLabel(entry.record)
-      : (entry.record.source_path ? `Created from ${displayPath(entry.record.source_path)}` : "Created from Workspace R");
+    source.textContent = entry.kind === "plot" ? plotSourceLabel(entry.record) : artifactListSourceLabel(entry.record);
     const status = document.createElement("p");
     status.textContent = entry.kind === "plot"
       ? `${plotReviewState(entry.record)} · ${formatTimestamp(entry.createdAt)}`
-      : `${entry.record.provenance_complete ? "Source details captured" : "Source details incomplete"} · ${formatTimestamp(entry.createdAt)}`;
+      : formatTimestamp(entry.createdAt);
     body.append(kind, title, source, status);
     card.append(preview, body);
     card.addEventListener("click", () => openAgentOutput(entry.kind, entry.id));
@@ -13504,7 +13669,7 @@ function invokeAuditWithTimeout() {
     );
   });
   return Promise.race([
-    invoke("audit_reproducibility", { scope: "project" }),
+    invoke("audit_reproducibility", { scope: "project_current" }),
     timeout,
   ]).finally(() => clearTimeout(timeoutId));
 }
@@ -13625,7 +13790,7 @@ function renderAuditPanel() {
   if (state.auditLoading) {
     $("#auditStatus").textContent = auditStatusPresentation("running").label;
     $("#auditStatus").className = "audit-status-badge status-findings";
-    $("#auditCoverage").textContent = "Reviewing files, runs, and saved outputs...";
+    $("#auditCoverage").textContent = "Reviewing the current project directory...";
     $("#auditFindings").innerHTML = '<div class="audit-empty" role="status">Checking project...</div>';
     $("#auditTruncated").classList.add("hidden");
     return;
@@ -15251,7 +15416,7 @@ $("#renderReviewArtifactButton").addEventListener("click", async () => {
   const artifactId = state.lastRender?.artifactId;
   if (!state.lastRender?.artifactAvailable || !artifactId) return;
   try {
-    const detail = await invoke("get_artifact_record", { artifact_id: artifactId });
+    const detail = await invoke("get_artifact_record", { artifactId });
     if (!detail?.artifact) throw new Error("Saved render output is unavailable");
     state.selectedArtifactId = detail.artifact.artifact_id;
     state.selectedArtifactDetail = detail;

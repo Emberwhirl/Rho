@@ -322,6 +322,10 @@ test_that("aisdk session is marked as a Rho desktop session", {
   expect_true(session$get_metadata("rho_desktop"))
 })
 
+test_that("desktop aisdk sessions allow long multi-step analyses", {
+  expect_identical(eval(formals(rho_create_aisdk_session)$max_steps), 512L)
+})
+
 test_that("public aisdk typed events are forwarded as broker frames", {
   skip_if_not_installed("aisdk")
   skip_if_not_installed("R6")

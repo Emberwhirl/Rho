@@ -64,5 +64,10 @@ assert.match(js, /previewParams\.get\("state"\) === "invalid-plot"/);
 assert.doesNotMatch(js, /approval_requests\s*=\s*environment_operation_requests|environment_operation_requests\s*=\s*approval_requests/);
 assert.match(js, /invoke\("respond_approval"/);
 assert.match(js, /invoke\("respond_environment_operation"/);
+assert.match(js, /let commandError = null/);
+assert.match(js, /loadEnvironmentOperationData\(\{ quiet: true \}\)/);
+assert.match(js, /current\.status !== "requested"/);
+assert.match(js, /refreshEnvironment\(\{ quiet: true \}\)/);
+assert.match(js, /This request is no longer current/);
 
 console.log("Scientific and Agent surface contract checks passed.");

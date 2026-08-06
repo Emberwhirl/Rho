@@ -619,7 +619,7 @@ rho_create_aisdk_hooks <- function(connection = .rho_agent_state$connection) {
 rho_create_aisdk_session <- function(model,
                                      system_prompt = NULL,
                                      tools = rho_create_workspace_tools(),
-                                     max_steps = 10L,
+                                     max_steps = 512L,
                                      connection = .rho_agent_state$connection) {
   aisdk::create_chat_session(
     model = model,

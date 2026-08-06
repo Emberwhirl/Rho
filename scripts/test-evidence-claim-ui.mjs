@@ -28,7 +28,7 @@ assert.match(js, /end_column: null/);
 assert.match(js, /claim\.end_column \?\? model\?\.getLineMaxColumn\(endLine\)/);
 assert.match(js, /state\.evidenceClaimArtifacts = await invoke\("list_artifact_records", \{ limit: 100, session_only: false \}\)/);
 assert.match(js, /for \(const artifact of state\.evidenceClaimArtifacts \|\| \[\]\)/);
-assert.match(js, /invoke\("get_artifact_record", \{ artifact_id: claim\.artifact_id \}\)/);
+assert.match(js, /invoke\("get_artifact_record", \{ artifactId: claim\.artifact_id \}\)/);
 assert.match(js, /artifact_claim_missing/);
 assert.match(js, /entry\.project_root === mockLastProject/);
 assert.match(js, /artifact\.project_root === mockLastProject && artifact\.artifact_id === request\.artifact_id/);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rho</title>
-    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.2&rev=m3-scientific-review-v3&agent=output-review-v3" />
+  <link rel="stylesheet" href="styles.css?v=0.4.0-dev.14&rev=m3-scientific-review-v3&agent=output-review-v3" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -13,6 +13,7 @@
       <symbol id="icon-play" viewBox="0 0 24 24"><path d="m6 3 14 9-14 9Z" /></symbol>
       <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="M12 5v14" /></symbol>
       <symbol id="icon-file-text" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5Z" /><path d="M14 2v6h6" /><path d="M8 13h8" /><path d="M8 17h5" /></symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24"><rect width="13" height="13" x="8" y="8" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></symbol>
       <symbol id="icon-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3Z" /><path d="m9 12 2 2 4-4" /></symbol>
       <symbol id="icon-wand-sparkles" viewBox="0 0 24 24"><path d="m15 4 5 5L7 22H2v-5Z" /><path d="m14 5 5 5" /><path d="M6 4V2" /><path d="M5 3H3" /><path d="M19 19v-2" /><path d="M18 18h-2" /></symbol>
       <symbol id="icon-replace" viewBox="0 0 24 24"><path d="M14 4h6v6" /><path d="m20 4-7 7" /><path d="M10 20H4v-6" /><path d="m4 20 7-7" /></symbol>
@@ -475,7 +476,7 @@ plot(
         </div>
         <div id="agentOutputsPanel" class="context-content agent-outputs-panel hidden" aria-label="Agent outputs">
           <header class="agent-outputs-header">
-            <div><strong>Outputs</strong><p>Plots and saved results from this project.</p></div>
+            <div><strong>Outputs</strong><p id="agentOutputsSummary">Plots and saved results from this project.</p></div>
           </header>
           <div id="agentOutputsList" class="agent-outputs-list"></div>
         </div>
@@ -1101,7 +1102,10 @@ plot(
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
     <script src="vendor/viewer/marked.umd.js"></script>
     <script src="vendor/viewer/purify.min.js"></script>
+    <link rel="stylesheet" href="vendor/viewer/katex.min.css" />
+    <script src="vendor/viewer/katex.min.js"></script>
+    <script src="vendor/viewer/katex-auto-render.min.js"></script>
     <script src="vendor/viewer/papaparse.min.js"></script>
-    <script src="app.js?v=0.4.0-dev.2&rev=m3-scientific-review-v3&projection=wp4&help=console-v3&afo=act-output-v1"></script>
+    <script src="app.js?v=0.4.0-dev.14&rev=m3-scientific-review-v3&projection=wp4&help=console-v3&afo=act-output-v1"></script>
   </body>
 </html>
