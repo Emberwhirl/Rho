@@ -318,3 +318,32 @@ Monaco 0.55.1 transitive DOMPurify 3.2.7 advisories; Viewer uses the direct
 DOMPurify 3.4.13 asset and does not invoke Monaco's bundled dependency. This is
 recorded residual dependency risk for a future Monaco upgrade, not a Viewer
 security-boundary acceptance.
+
+### HTML fragment-navigation defect repair (2026-08-06)
+
+The user reported that clicking a table-of-contents link in an installed HTML
+preview replaced the report with a nested Rho startup screen. The report uses
+ordinary percent-encoded `href="#..."` fragment links. In an iframe `srcdoc`,
+those fragments inherit the embedding Rho page URL, so default navigation can
+load the application shell inside the opaque-origin sandbox; that nested shell
+cannot access Tauri and reports a runtime-check failure.
+
+Authorization: the user requested this Viewer defect be repaired. Change class:
+D1. Risk class: R2 because the behavior is local frontend navigation inside
+the HTML sandbox security boundary. The `HTML-FRAGMENT-NAV-1` slice requires
+fragment-only links to scroll to matching `id` or named targets, including
+percent-encoded Unicode fragments, while all non-fragment link activations
+remain blocked. Central Viewer and Agent inline HTML Review use the same
+sandbox transformation without changing Artifact, project, read, or execution
+authority.
+
+Implementation and focused verification completed on 2026-08-06. The shared
+`viewerSandboxHtml()` transformation injects a capture-phase link guard after
+the restrictive CSP. It prevents default link navigation, decodes fragments,
+and scrolls only inside the same opaque-origin document. `node --check`, the
+Outputs Viewer, Agent output-review, and Agent-first frontend contracts passed,
+as did `git diff --check`.
+
+Browser/mock interaction with a percent-encoded Unicode fragment moved the
+iframe from `scrollY = 0` to `937`; the inline script button still updated its
+content, and an external-link click retained the report and one iframe without

@@ -3472,6 +3472,30 @@ function viewerSandboxHtml(content) {
   csp.httpEquiv = "Content-Security-Policy";
   csp.content = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src 'none'; frame-src 'none'; child-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
   document.head.prepend(csp);
+  const navigationGuard = document.createElement("script");
+  navigationGuard.textContent = `(() => {
+    document.addEventListener("click", (event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!link) return;
+      const href = link.getAttribute("href") || "";
+      event.preventDefault();
+      if (!href.startsWith("#")) {
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (href === "#") {
+        window.scrollTo({ top: 0, left: 0 });
+        return;
+      }
+      let fragment = href.slice(1);
+      try {
+        fragment = decodeURIComponent(fragment);
+      } catch {}
+      const target = document.getElementById(fragment) || document.getElementsByName(fragment)[0];
+      target?.scrollIntoView({ block: "start" });
+    }, true);
+  })();`;
+  csp.after(navigationGuard);
   const doctype = "<!doctype html>";
   return `${doctype}${document.documentElement.outerHTML}`;
 }

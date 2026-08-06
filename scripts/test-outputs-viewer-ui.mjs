@@ -32,6 +32,13 @@ assert.match(js, /FORBID_TAGS: \["script", "style", "iframe", "object", "embed",
 assert.match(js, /frame\.setAttribute\("sandbox", "allow-scripts"\)/);
 assert.doesNotMatch(js, /sandbox", "allow-scripts allow-same-origin/);
 assert.match(js, /connect-src 'none'/);
+assert.match(js, /const navigationGuard = document\.createElement\("script"\)/);
+assert.match(js, /event\.target instanceof Element \? event\.target\.closest\("a\[href\]"\) : null/);
+assert.match(js, /event\.preventDefault\(\);[\s\S]*if \(!href\.startsWith\("#"\)\) \{[\s\S]*event\.stopImmediatePropagation\(\)/);
+assert.match(js, /fragment = decodeURIComponent\(fragment\)/);
+assert.match(js, /document\.getElementById\(fragment\) \|\| document\.getElementsByName\(fragment\)\[0\]/);
+assert.match(js, /target\?\.scrollIntoView\(\{ block: "start" \}\)/);
+assert.match(js, /csp\.after\(navigationGuard\)/);
 assert.match(js, /function viewerRenderTable\(content, extension\)/);
 assert.match(js, /window\.Papa\.parse/);
 assert.match(js, /VIEWER_TABLE_ROW_LIMIT = 500/);
