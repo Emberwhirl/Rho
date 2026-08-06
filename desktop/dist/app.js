@@ -4750,16 +4750,28 @@ async function loadRunData({ quiet = false } = {}) {
     }
     if (!state.artifacts.some((artifact) => artifact.artifact_id === state.selectedArtifactId)) {
       state.selectedArtifactId = state.artifacts[0]?.artifact_id || null;
-      state.selectedArtifactDetail = null;
     }
-    if (state.selectedArtifactId) {
-      state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: state.selectedArtifactId });
-    }
+    state.selectedArtifactDetail = null;
     state.activeRunId = activeRunRecord()?.run_id || null;
-    await syncAgentRunsToConsole(state.runs);
     renderRuns();
     renderProblems();
     renderPlots();
+    if (state.selectedArtifactId) {
+      const listedArtifact = state.artifacts.find((item) => item.artifact_id === state.selectedArtifactId);
+      try {
+        const detail = await invoke("get_artifact_record", { artifact_id: state.selectedArtifactId });
+        state.selectedArtifactDetail = detail || (listedArtifact ? { artifact: listedArtifact, file_available: null } : null);
+      } catch (error) {
+        state.selectedArtifactDetail = listedArtifact ? { artifact: listedArtifact, file_available: null } : null;
+        if (!quiet) toast(reportUiFailure("load saved output detail", error, "Saved output detail could not be loaded. Refresh and try again."), true);
+      }
+      renderPlots();
+    }
+    try {
+      await syncAgentRunsToConsole(state.runs);
+    } catch (error) {
+      if (!quiet) toast(reportUiFailure("sync Agent Console", error, "Agent Console history could not be synchronized. Refresh and try again."), true);
+    }
   } catch (error) {
     if (!quiet) toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
   }
@@ -13205,10 +13217,13 @@ function applyPostureLayout() {
   requestAnimationFrame(() => layoutEditor());
 }
 
-$$('[data-posture]').forEach((button) => button.addEventListener("click", () => {
+$$('[data-posture]').forEach((button) => button.addEventListener("click", async () => {
   if (button.dataset.posture === state.posture) return;
   state.posture = button.dataset.posture;
   applyPostureLayout();
+  if (state.posture === "human") {
+    await loadRunData();
+  }
   scheduleSessionSave();
 }));
 

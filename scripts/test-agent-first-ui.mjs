@@ -61,6 +61,15 @@ assert.match(js, /Show"\}\s*activity/);
 assert.match(js, /state\.agentActivityExpanded\.has\(turn\.turn_id\)/);
 assert.match(js, /\$\$\('\[data-posture\]'\)/);
 assert.doesNotMatch(js, /function togglePosture\(/);
+const postureHandlerStart = js.indexOf("$$('[data-posture]').forEach((button) => button.addEventListener");
+assert.notEqual(postureHandlerStart, -1, "Posture click handler must exist");
+const postureHandler = js.slice(postureHandlerStart, postureHandlerStart + 520);
+assert.match(postureHandler, /addEventListener\("click", async \(\) =>/);
+assert.match(
+  postureHandler,
+  /if \(state\.posture === "human"\) \{\s*await loadRunData\(\);\s*\}/,
+  "Returning from Agent to Human must refresh current Outputs",
+);
 assert.match(js, /function startNewAgentTask\(\)/);
 assert.match(js, /async function loadAgentData\(\{ quiet = false \} = \{\}\)/);
 assert.match(js, /loadAgentData\(\{ quiet: true \}\)/);

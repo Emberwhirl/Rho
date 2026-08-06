@@ -46,6 +46,22 @@ assert.match(js, /artifact_\$\{job\.job_id\}_render/);
 assert.match(js, /if \(activeDocumentCanRender\(\)\)/);
 assert.match(js, /Preview Active Document/);
 
+const loadRunDataStart = js.indexOf("async function loadRunData(");
+const loadRunDataEnd = js.indexOf("async function loadGitStatus(", loadRunDataStart);
+assert.notEqual(loadRunDataStart, -1, "Run data loader must exist");
+assert.notEqual(loadRunDataEnd, -1, "Run data loader boundary must exist");
+const loadRunData = js.slice(loadRunDataStart, loadRunDataEnd);
+const firstPlotRender = loadRunData.indexOf("renderPlots();");
+const artifactDetailLoad = loadRunData.indexOf('invoke("get_artifact_record"');
+const agentConsoleSync = loadRunData.indexOf("syncAgentRunsToConsole(state.runs)");
+assert.ok(firstPlotRender >= 0 && firstPlotRender < artifactDetailLoad, "Plot history must render before saved-output detail loads");
+assert.ok(firstPlotRender < agentConsoleSync, "Plot history must render before Agent Console synchronization");
+assert.match(
+  loadRunData,
+  /try \{\s*const detail = await invoke\("get_artifact_record"[\s\S]*?\} catch \(error\) \{[\s\S]*?state\.selectedArtifactDetail = listedArtifact/,
+  "Saved-output detail failure must be isolated from core Outputs rendering",
+);
+
 assert.match(css, /\.workspace\.viewer-open \.editor-region \{ display: none; \}/);
 assert.match(css, /\.viewer-body \{ display: grid; grid-template-columns:/);
 assert.match(css, /\.workspace\.viewer-open \.viewer-region\.viewer-mode-preview/);
