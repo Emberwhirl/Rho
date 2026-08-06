@@ -399,6 +399,16 @@ assertion unchanged. Any repair must be regression-covered and accepted by a
 new exact-commit two-platform rehearsal; cross-run artifact composition is
 forbidden.
 
+The exact-candidate checklist also owns the final-DMG notarization boundary.
+Tauri may sign the app and DMG, but MAC4-R removes notarization API variables
+from that bundle command so it can explicitly submit the final DMG once,
+validate that submission's own bounded Accepted receipt, and only then staple,
+assess, smoke, and emit platform evidence. This repair neither transfers
+release ownership to Tauri nor permits an app-only receipt, a repository-wide
+history inference, or evidence composed from another run. The macOS
+specification owns the bounded arm64 diagnostic; shared runtime and R
+architecture policy remain unchanged.
+
 ### macOS arm64 platform ownership
 
 The M3 roadmap retains full cross-platform milestone authority. The active

@@ -75,11 +75,34 @@ assert.match(build, /rm -f "\$RUNNER_TEMP\/AuthKey_\$\{APPLE_API_KEY\}\.p8"/);
 assert.match(build, /test ! -e "\$keychain_path"/);
 for (const command of [
   "codesign --verify --deep --strict --verbose=4",
-  "xcrun notarytool history",
+  "xcrun notarytool submit",
   "xcrun stapler validate",
   "spctl --assess --type execute",
   "spctl --assess --type open",
 ]) assert.ok(build.includes(command), `Missing macOS release gate: ${command}`);
+assert.doesNotMatch(build, /xcrun notarytool history/);
+assert.match(build, /env -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH npx/);
+assert.match(build, /require_exact_arm64 "Rho app executable"/);
+assert.match(build, /require_exact_arm64 "Bundled Ark executable"/);
+assert.match(
+  build,
+  /xcrun notarytool submit "\$dmg_path" --key "\$APPLE_API_KEY_PATH" --key-id "\$APPLE_API_KEY" --issuer "\$APPLE_API_ISSUER" --wait --output-format json > target\/notary-dmg-submit\.json/,
+);
+assert.match(build, /node scripts\/validate-notary-receipt\.mjs target\/notary-dmg-submit\.json/);
+const dmgSubmitIndex = build.indexOf('xcrun notarytool submit "$dmg_path"');
+const receiptValidationIndex = build.indexOf("node scripts/validate-notary-receipt.mjs");
+const dmgStapleIndex = build.indexOf('xcrun stapler staple "$dmg_path"');
+const gatekeeperIndex = build.indexOf("spctl --assess --type execute");
+assert.ok(
+  dmgSubmitIndex < receiptValidationIndex
+    && receiptValidationIndex < dmgStapleIndex
+    && dmgStapleIndex < gatekeeperIndex,
+  "Final DMG submission, receipt validation, staple, and Gatekeeper gates must stay ordered",
+);
+const notaryValidator = read("scripts/validate-notary-receipt.mjs");
+assert.match(notaryValidator, /MAX_NOTARY_RECEIPT_BYTES = 64 \* 1024/);
+assert.match(notaryValidator, /receipt\.status !== "Accepted"/);
+assert.match(notaryValidator, /submissionIdPattern\.test\(receipt\.id\)/);
 assert.match(build, /draft: true/);
 assert.match(build, /prerelease: true/);
 assert.match(build, /getReleaseByTag/);

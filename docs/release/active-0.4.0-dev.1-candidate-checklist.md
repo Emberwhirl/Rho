@@ -97,6 +97,17 @@ release-contract test must be normalized consistently before the unchanged
 semantic assertions run; a one-off CRLF exception for only `Cargo.lock` does
 not satisfy this gate.
 
+The signed macOS build must prove the final DMG submission. Tauri's automatic
+app-archive submission does not cover a DMG created afterward, so the Tauri
+command retains signing variables but runs without notarization API variables;
+the workflow then submits the exact final DMG once with `notarytool --wait`.
+The project validator must bound the single-submission JSON receipt to 64 KiB,
+require an Accepted status and UUID submission ID, and reject malformed,
+missing-ID, and non-Accepted receipts before staple, Gatekeeper, smoke, or
+platform evidence. History-only inference and cross-run receipts are forbidden.
+Architecture checks must report the observed app and bundled-Ark architectures
+on failure while continuing to require exact arm64 binaries.
+
 ## MAC4 Local Implementation Evidence — 2026-08-05
 
 Passed locally on Apple Silicon macOS 26.5.2 with Xcode 26.6, Node 22.22.3,
@@ -167,7 +178,9 @@ The hosted macOS job must record all of these as separate passed checks:
 - arm64 app and bundled Ark architecture verified;
 - hardened runtime and project entitlements used by Tauri;
 - `codesign --verify --deep --strict --verbose=4` passes for the app;
-- App Store Connect API notarization succeeds;
+- Tauri signs the app and DMG without performing a separate app submission;
+- the exact final DMG is submitted once with App Store Connect API credentials
+  and returns an Accepted JSON receipt with a UUID submission ID;
 - the DMG is stapled and `xcrun stapler validate` passes;
 - Gatekeeper assessment passes for the app and DMG;
 - temporary certificate, `.p8`, and keychain are removed in an unconditional

@@ -504,10 +504,38 @@ Hosted defect-repair checkpoint:
   continues to require all local Rho packages and synchronized versions, and
   every workflow assertion retains its exact semantic pattern; only
   line-ending portability may change;
+- the hosted macOS run must distinguish Tauri's automatic app notarization
+  from notarization of the final DMG. Tauri 2 submits a temporary app archive
+  before it creates the DMG; an Accepted `Rho.zip` submission does not prove
+  that the later `Rho_<version>_aarch64.dmg` was submitted. To avoid two
+  independent queues exceeding the hosted-job window, the Tauri bundle command
+  must retain signing identity/team variables but remove notarization API
+  variables only from that command. After the signed DMG exists, the workflow
+  must explicitly run one `notarytool submit` against that exact path with the
+  temporary Team API key and wait for completion. A project validator must
+  reject a receipt over 64 KiB, malformed/non-object JSON, a missing/non-UUID
+  submission ID, or any status other than `Accepted` before stapling,
+  Gatekeeper, smoke, or platform evidence. A global history lookup or an
+  app-only Accepted record cannot satisfy this gate;
+- app and bundled-Ark architecture assertions remain exact arm64 gates, but
+  must print a bounded label, path, and observed `lipo -archs` value before
+  failing so a hosted regression identifies which binary violated the
+  contract. This diagnostic output contains no credential or private path
+  outside the checked-out candidate tree;
 - each observed defect retains or gains a deterministic regression. The full
   hosted replacement run, not a rerun of only the failed job, is required for
   MAC4-R exit because admission binds the exact current fork `main` commit and
   the final evidence requires both platform artifacts.
+
+Hosted evidence that activated the final-DMG repair: fork rehearsal run
+`31065316772` built and signed both bundles at commit
+`6f55fac14ccbc291c87dced48dab96b84b35dba1`; Tauri reported Accepted app
+submission `cda1ed1c-71d0-461f-9e19-3ac0b5c8c030`, stapled the app, then
+created and signed the DMG. The subsequent history assertion looked for the
+DMG filename even though no final-DMG submission had occurred, exited without
+platform evidence, and correctly caused the aggregate rehearsal job to skip.
+The unconditional Apple credential cleanup passed. This is failure evidence,
+not MAC4-R acceptance, and no cross-run artifact composition is permitted.
 
 ### MAC5: Exact-candidate acceptance and publication — proposed
 

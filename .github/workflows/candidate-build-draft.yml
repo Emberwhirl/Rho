@@ -314,18 +314,32 @@ jobs:
           test -n "$APPLE_API_ISSUER"
           test -n "$APPLE_API_KEY"
           test -f "$APPLE_API_KEY_PATH"
-          (cd desktop/src-tauri && npx -y "@tauri-apps/cli@2.11.4" build --target aarch64-apple-darwin --bundles app,dmg)
+          (cd desktop/src-tauri && env -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH npx -y "@tauri-apps/cli@2.11.4" build --target aarch64-apple-darwin --bundles app,dmg)
           app_path="target/aarch64-apple-darwin/release/bundle/macos/Rho.app"
           dmg_path="target/aarch64-apple-darwin/release/bundle/dmg/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
           test -d "$app_path"
           test -f "$dmg_path"
           codesign --verify --deep --strict --verbose=4 "$app_path"
-          test "$(lipo -archs "$app_path/Contents/MacOS/rho-desktop")" = "arm64"
+          require_exact_arm64() {
+            local label="$1"
+            local binary_path="$2"
+            local archs
+            if ! archs="$(lipo -archs "$binary_path" 2>&1)"; then
+              printf '%s architecture probe failed for %s: %s\n' "$label" "$binary_path" "$archs" >&2
+              return 1
+            fi
+            printf '%s architecture: %s (%s)\n' "$label" "$archs" "$binary_path"
+            if [[ "$archs" != "arm64" ]]; then
+              printf '%s must be exactly arm64, observed: %s\n' "$label" "$archs" >&2
+              return 1
+            fi
+          }
+          require_exact_arm64 "Rho app executable" "$app_path/Contents/MacOS/rho-desktop"
           ark_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -name 'ark*' -print -quit)"
           test -n "$ark_path"
-          test "$(lipo -archs "$ark_path")" = "arm64"
-          xcrun notarytool history --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --output-format json > target/notary-history.json
-          node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("target/notary-history.json", "utf8")); const name=process.argv[1]; if(!value.history?.some((entry)=>entry.name===name && entry.status==="Accepted")) process.exit(1)' "$(basename "$dmg_path")"
+          require_exact_arm64 "Bundled Ark executable" "$ark_path"
+          xcrun notarytool submit "$dmg_path" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait --output-format json > target/notary-dmg-submit.json
+          node scripts/validate-notary-receipt.mjs target/notary-dmg-submit.json
           xcrun stapler staple "$dmg_path"
           xcrun stapler validate "$dmg_path"
           spctl --assess --type execute --verbose=4 "$app_path"
