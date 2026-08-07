@@ -12,9 +12,10 @@ attempt 1 failed closed at the log-host allowlist; its exact-host repair passed
 attempt 2's waiter, whose finalizer then failed closed on fresh-R `jsonlite`;
 the bounded dependency repair and replacement exact-commit rehearsal passed;
 upstream subsequently advanced through `b5800ae`; ordinary merge `9d3086e` and
-the complete affected local matrix passed, so MAC4-R3 requires one new exact-
-commit review-only rehearsal; authoritative candidate/draft, MAC5 acceptance,
-and release GO remain NOT RUN
+the complete affected local matrix passed; replacement run `31165265090` at
+exact post-merge commit `c4661bbe25dcc326737c51b385c65865a795edb9`
+passed and reached the refreshed review-only stop; authoritative
+candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -368,10 +369,33 @@ tests, all 39 JavaScript contracts, both complete R package suites, and format,
 syntax, UI-contract, release-contract, and diff checks.
 
 Run `31163017077` cannot validate code added after its exact commit. Because
-there is still no authoritative candidate/draft/tag/Release, `0.4.0-dev.16`
-remains available for a new full exact-commit fork rehearsal. Until that run
-and its independent artifact audit pass, MAC4-R3 is reopened at its review-only
-hosted gate; no Required Draft Asset or MAC5 row changes state.
+there was still no authoritative candidate/draft/tag/Release, `0.4.0-dev.16`
+remained available for a new full exact-commit fork rehearsal. Identity-only
+dispatch `31165206877` rejected a nonexistent input ref before every platform
+job and created zero artifacts.
+
+Corrected run `31165265090` passed at exact post-merge commit
+`c4661bbe25dcc326737c51b385c65865a795edb9`: macOS submit took 10 minutes
+44 seconds, Ubuntu Accepted/log wait 12 seconds, macOS finalization 1 minute
+26 seconds, Windows 17 minutes 27 seconds, and aggregation 9 seconds. Total
+macOS-runner use was 12 minutes 10 seconds. Artifact ID `8989186831`, named
+`rho-0.4.0-dev.16-rehearsal-c4661bbe25dcc326737c51b385c65865a795edb9-31165265090-1`,
+is 38,699,930 compressed bytes with GitHub digest
+`sha256:ac346d98b9a93af78ddce3fb7b14a143114babe2a619e6dcd0afdbd088cf6e13`.
+Independent download validated the exact seven-file set and every schema,
+sidecar, size, hash, platform check, and aggregate binding. Key records are:
+
+| Record | Bytes | SHA-256 |
+| --- | ---: | --- |
+| macOS arm64 DMG | 20,786,925 | `1e8b2623852af68bb7bf5ffffa66d8f58a0f097be00d3c09bc02d3b67ee0a66c` |
+| macOS platform evidence | 1,358 | `e03a2205a3203f156b04a1464cf9d8830fe91ae9e144531636770387e65d19d5` |
+| Windows x64 installer | 18,000,150 | `8336f2c513a35708ec5dede230b9d67c27a2ddc9e4b212baee514a13f0316cd3` |
+| Windows platform evidence | 904 | `db2235adff7077318251d7d037b78b367e6d83582296d8fe5f5e05cbce3111d3` |
+| Rehearsal evidence | 1,582 | `4902575f84d3ef4c3c5bb9ed666ccbbe4d9618d9a71d73ce40daa10789a2a88c` |
+
+The draft job skipped, repository audit found zero tags and Releases/drafts,
+and Pages remains absent. This closes the refreshed MAC4-R3 review-only gate
+without changing any Required Draft Asset or MAC5 row.
 
 ## macOS Signing And Notarization Gate
 
@@ -475,6 +499,7 @@ fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
 implemented, locally verified, and passed exact-commit fork rehearsal
 `31163017077` for its pre-refresh source. Latest upstream `b5800ae` is now
-integrated and locally verified, but its new exact-commit fork rehearsal is
-pending. No authoritative main-repository candidate, immutable draft, MAC5
-installed acceptance, or explicit GO exists.
+integrated, locally verified, and passed exact-commit fork rehearsal
+`31165265090`; the refreshed review-only mandatory stop is reached. No
+authoritative main-repository candidate, immutable draft, MAC5 installed
+acceptance, or explicit GO exists.

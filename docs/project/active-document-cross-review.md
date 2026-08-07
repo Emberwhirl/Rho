@@ -41,8 +41,8 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; `0.4.0-dev.1` installed artifact rejected; bounded `0.4.0-dev.2` entitlement repair and replacement rehearsal passed; integrated `0.4.0-dev.16` async rehearsal `31163017077` passed; latest upstream `b5800ae` then merged and locally verified; replacement exact-commit rehearsal pending | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | close refreshed MAC4-R3 at new review-only exact-commit fork evidence; MAC5 remains unauthorized; full M3 remains open for authoritative candidate gates, macOS x64, and Linux x64 |
-| `release/active-0.4.0-dev.16-candidate-checklist.md` | active; `0.4.0-dev.1` rejected; `0.4.0-dev.2` repair rehearsal passed as historical fork evidence; integrated `0.4.0-dev.16` selected; MAC4-R3 pre-refresh exact-commit rehearsal passed; latest upstream refresh locally verified and replacement rehearsal pending; authoritative candidate assets/draft, MAC5 acceptance, and GO remain pending | sole integrated `0.4.0-dev.16` cross-platform candidate identity, rehearsal/candidate separation, notarization request/acceptance binding, installed-acceptance ledger, and GO/NO-GO decision | refreshed async rehearsal is review-only; authoritative candidate may run only in the main repository; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; `0.4.0-dev.1` installed artifact rejected; bounded `0.4.0-dev.2` entitlement repair and replacement rehearsal passed; latest upstream `b5800ae` integrated at `0.4.0-dev.16`; MAC4-R3 local matrix and post-merge exact-commit rehearsal `31165265090` passed; review-only stop reached | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | MAC4-R3 is closed at refreshed review-only exact-commit fork evidence; MAC5 remains unauthorized; full M3 remains open for authoritative candidate gates, macOS x64, and Linux x64 |
+| `release/active-0.4.0-dev.16-candidate-checklist.md` | active; `0.4.0-dev.1` rejected; `0.4.0-dev.2` repair rehearsal passed as historical fork evidence; latest upstream integrated under `0.4.0-dev.16`; MAC4-R3 local implementation and post-merge exact-commit rehearsal passed; authoritative candidate assets/draft, MAC5 acceptance, and GO remain pending | sole integrated `0.4.0-dev.16` cross-platform candidate identity, rehearsal/candidate separation, notarization request/acceptance binding, installed-acceptance ledger, and GO/NO-GO decision | async rehearsal is review-only; authoritative candidate may run only in the main repository; MAC5 acceptance/upload/publication requires separate authorization and an exact immutable draft |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -454,9 +454,11 @@ does not satisfy authoritative candidate or MAC5 gates.
 Upstream subsequently advanced through `b5800ae`. Ordinary merge `9d3086e`
 retains the new independently owned Check Project source-filter contract and
 passed the complete affected local matrix, but it changes exact source after
-run `31163017077`. MAC4-R3 is therefore reopened only for one new full
-post-merge fork rehearsal and immutable evidence audit; its authority does not
-expand.
+run `31163017077`. Post-merge exact-commit run `31165265090` and its
+independently verified seven-file artifact passed with 12 minutes 10 seconds
+of macOS-runner use. The draft job skipped and no tag, Release, draft, or Pages
+site exists. This closes the refreshed review-only stop without expanding
+authority.
 
 ### macOS arm64 platform ownership
 

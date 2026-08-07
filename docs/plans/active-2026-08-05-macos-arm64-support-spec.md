@@ -32,9 +32,11 @@ rehearsal, reduced total macOS-runner use to 13 minutes 51 seconds, and
 produced an independently verified seven-file artifact; the MAC4-R3 mandatory
 stop was reached for that source; upstream then advanced through `b5800ae`;
 the new commits were integrated by ordinary merge `9d3086e`, their complete
-affected local validation passed, and the exact-commit hosted rehearsal is
-therefore reopened and pending; authoritative candidate/draft creation and
-MAC5 remain NOT RUN and unauthorized
+affected local validation passed, and replacement run `31165265090` at exact
+post-merge commit `c4661bbe25dcc326737c51b385c65865a795edb9` passed the
+full independently verified review-only rehearsal with 12 minutes 10 seconds
+of macOS-runner use; the refreshed MAC4-R3 mandatory stop is reached;
+authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1522,7 +1524,7 @@ complete at its mandatory review-only stop for that source. Release decision
 remained NO-GO; an authoritative main-repository candidate/draft and MAC5
 required separate authorization.
 
-## MAC4-R3 Latest Upstream Refresh — LOCALLY VERIFIED / REHEARSAL PENDING 2026-08-07
+## MAC4-R3 Latest Upstream Refresh — PASSED / REVIEW-ONLY STOP REACHED 2026-08-07
 
 A final pre-handoff fetch found that upstream `main` had advanced from
 `28ba1345efe70d28dc34214e5cc3ef03542c8122` to
@@ -1546,8 +1548,50 @@ contract, and `git diff --check`.
 
 The passing artifact from run `31163017077` remains immutable historical
 evidence for exact commit `8de3dcc1dafc9e8562d239a6051a9113b778f1c3`, but
-it cannot validate source added afterward. A new full Windows/macOS fork
-rehearsal must check out one exact post-merge commit, produce new seven-file
-evidence, and repeat the zero-publication audit before this mandatory stop can
-close again. MAC5 and every authoritative candidate/publication mutation
+it cannot validate source added afterward. Initial refresh dispatch
+`31165206877` supplied a nonexistent manually expanded input ref. The identity
+job rejected it in 7 seconds, every platform/aggregate/draft job skipped, and
+the run created zero artifacts. The corrected dispatch used Git's exact full
+SHA and did not reuse that failed run.
+
+Replacement run `31165265090` attempt 1 checked out exact post-merge commit
+`c4661bbe25dcc326737c51b385c65865a795edb9` and passed. Identity took
+6 seconds; macOS submit/validation/build/sign/smoke/one-submit/cleanup took
+10 minutes 44 seconds; the Ubuntu Accepted/log waiter took 12 seconds; the
+secret-free macOS staple/Gatekeeper/Workspace finalizer took 1 minute
+26 seconds; Windows took 17 minutes 27 seconds; and review-only aggregation
+took 9 seconds. Total macOS-runner use was 12 minutes 10 seconds and the whole
+workflow completed in about 18 minutes 6 seconds.
+
+GitHub artifact ID `8989186831`, named
+`rho-0.4.0-dev.16-rehearsal-c4661bbe25dcc326737c51b385c65865a795edb9-31165265090-1`,
+has compressed size 38,699,930 bytes, GitHub digest
+`sha256:ac346d98b9a93af78ddce3fb7b14a143114babe2a619e6dcd0afdbd088cf6e13`,
+and expires at `2026-08-21T09:35:31Z`. Independent post-run download again
+required exactly seven non-empty regular files, rejected non-files and
+symlinks, recomputed all sizes and hashes, validated both platform and
+rehearsal schemas against the exact repository/version/tag/commit/run, checked
+all aggregate records, and compared both checksum sidecars byte for byte:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `Rho_0.4.0-dev.16_aarch64.dmg` | 20,786,925 | `1e8b2623852af68bb7bf5ffffa66d8f58a0f097be00d3c09bc02d3b67ee0a66c` |
+| `Rho_0.4.0-dev.16_aarch64.dmg.sha256` | 95 | `fb971878188aef33af3d38412bc635544df57666f667a888b8935289f027db3f` |
+| `rho-0.4.0-dev.16-macos-aarch64-evidence.json` | 1,358 | `e03a2205a3203f156b04a1464cf9d8830fe91ae9e144531636770387e65d19d5` |
+| `Rho_0.4.0-dev.16_x64-setup.exe` | 18,000,150 | `8336f2c513a35708ec5dede230b9d67c27a2ddc9e4b212baee514a13f0316cd3` |
+| `Rho_0.4.0-dev.16_x64-setup.exe.sha256` | 97 | `9b72e14b1ee8b6ab4fa0ea27cd738f31a36a434ac8c805f0b97104736326fb05` |
+| `rho-0.4.0-dev.16-windows-x86_64-evidence.json` | 904 | `db2235adff7077318251d7d037b78b367e6d83582296d8fe5f5e05cbce3111d3` |
+| `rho-0.4.0-dev.16-rehearsal-evidence.json` | 1,582 | `4902575f84d3ef4c3c5bb9ed666ccbbe4d9618d9a71d73ce40daa10789a2a88c` |
+
+Every required macOS record, including `notary_binding`, notarization, staple,
+Gatekeeper, exact arm64/entitlements, and DMG-internal Workspace smoke, passed.
+The draft job skipped. Read-only audit again found zero tags, zero Releases or
+drafts, and no Pages site (`GET /pages` returned 404); the artifact contains no
+candidate aggregate or MAC5 record. A final fetch confirmed upstream remained
+exactly `b5800ae` and was an ancestor of the rehearsal commit.
+
+The same non-blocking Node.js 20 action-runtime warnings remain a bounded
+follow-up; GitHub forced those revisions onto Node.js 24 and the immutable run
+passed. The refreshed MAC4-R3 review-only stop is closed. Release decision
+remains NO-GO; MAC5 and every authoritative candidate/publication mutation
 remain unauthorized.
