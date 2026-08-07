@@ -318,6 +318,8 @@ rho_tool_result_preview <- function(tool, value) {
 rho_validate_runtime_model_profile <- function(profile) {
   stopifnot(is.list(profile))
   required <- c(
+    "settings_revision",
+    "route_capability",
     "profile_id",
     "provider_kind",
     "runtime_provider_id",
@@ -344,7 +346,38 @@ rho_validate_runtime_model_profile <- function(profile) {
   if (!(profile$tool_calling %in% c("yes", "no", "unknown"))) {
     stop(sprintf("Unsupported tool calling capability: %s", profile$tool_calling))
   }
+  if (length(profile$capability_routes %||% list()) != 1L) {
+    stop("Runtime model profiles must contain exactly one effective capability route.")
+  }
   invisible(profile)
+}
+
+rho_runtime_profile_capability_models <- function(profile, resolved_model = NULL) {
+  rho_validate_runtime_model_profile(profile)
+  routes <- profile$capability_routes %||% list()
+  route <- routes[[1L]]
+  capability <- route$capability %||% ""
+  if (!identical(capability, profile$route_capability %||% "")) {
+    stop("Runtime capability route does not match the effective route.")
+  }
+  model <- resolved_model %||% route$model %||% ""
+  if (!nzchar(model) || !identical(route$model %||% "", model)) {
+    stop("Runtime capability route does not match the effective model.")
+  }
+  type <- route$model_type %||% "auto"
+  if (!(type %in% c("language", "embedding", "image", "auto"))) {
+    stop("Runtime capability route has an unsupported model type.")
+  }
+  output <- list()
+  output[[capability]] <- list(
+    model = model,
+    type = type,
+    required_model_capabilities = unlist(
+      route$required_model_capabilities %||% list(),
+      use.names = FALSE
+    )
+  )
+  aisdk::normalize_capability_model_routes(output)
 }
 
 rho_redact_known_values <- function(text, values = character()) {
@@ -389,10 +422,13 @@ rho_runtime_profile_credential_status <- function(profile) {
 }
 
 rho_runtime_profile_api_key <- function(profile) {
+  if (!isTRUE(profile$api_key_required)) {
+    return("")
+  }
   env_name <- profile$api_key_env %||% ""
   value <- if (nzchar(env_name)) Sys.getenv(env_name, unset = "") else ""
-  if (isTRUE(profile$api_key_required) && !nzchar(value)) {
-    stop("Credential was not detected in the effective user environment file.")
+  if (!nzchar(value)) {
+    stop("Credential was not received from the system credential store.")
   }
   value
 }
@@ -429,35 +465,164 @@ rho_classify_model_error <- function(message) {
   "provider"
 }
 
+rho_registered_provider_ids <- function() {
+  c(
+    "deepseek", "moonshot", "kimi", "stepfun", "volcengine",
+    "aihubmix", "xai", "openrouter", "bailian", "nvidia"
+  )
+}
+
+rho_registered_provider_default_base_url <- function(provider_id) {
+  switch(
+    tolower(provider_id %||% ""),
+    deepseek = "https://api.deepseek.com",
+    moonshot = "https://api.moonshot.cn/v1",
+    kimi = "https://api.kimi.com/coding/v1",
+    stepfun = "https://api.stepfun.com/v1",
+    volcengine = "https://ark.cn-beijing.volces.com/api/v3",
+    aihubmix = "https://aihubmix.com/v1",
+    xai = "https://api.x.ai/v1",
+    openrouter = "https://openrouter.ai/api/v1",
+    bailian = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    nvidia = "https://integrate.api.nvidia.com/v1",
+    NULL
+  )
+}
+
+rho_runtime_provider_default_base_url <- function(profile) {
+  switch(
+    profile$provider_kind %||% "",
+    registered = rho_registered_provider_default_base_url(profile$registered_provider_id),
+    openai = "https://api.openai.com/v1",
+    anthropic = "https://api.anthropic.com/v1",
+    gemini = "https://generativelanguage.googleapis.com/v1beta/models",
+    NULL
+  )
+}
+
+rho_without_ambient_provider_environment <- function(names, code) {
+  previous <- vapply(
+    names,
+    function(name) Sys.getenv(name, unset = NA_character_),
+    character(1)
+  )
+  on.exit({
+    for (index in seq_along(names)) {
+      name <- names[[index]]
+      value <- previous[[index]]
+      if (is.na(value)) {
+        Sys.unsetenv(name)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(value), name))
+      }
+    }
+  }, add = TRUE)
+  Sys.unsetenv(names)
+  force(code)
+}
+
+rho_make_registered_runtime_provider <- function(profile, api_key, base_url) {
+  provider_id <- tolower(profile$registered_provider_id %||% "")
+  if (!(provider_id %in% rho_registered_provider_ids())) {
+    if (nzchar(base_url %||% "")) {
+      stop(sprintf(
+        "Registered provider %s does not support a Rho Base URL override.",
+        provider_id
+      ))
+    }
+    return(NULL)
+  }
+  if (!requireNamespace("aisdk.providers", quietly = TRUE)) {
+    stop(paste(
+      "The selected provider requires aisdk.providers 0.1.0 or later.",
+      "Install or update aisdk.providers, then retry the Agent runtime check."
+    ))
+  }
+
+  key <- api_key %||% ""
+  endpoint <- if (nzchar(base_url %||% "")) {
+    base_url
+  } else {
+    rho_registered_provider_default_base_url(provider_id)
+  }
+  moonshot_environment <- c(
+    "MOONSHOT_API_KEY", "MOONSHOT_BASE_URL", "MOONSHOT_BASE_URLS",
+    "KIMI_API_KEY", "KIMI_CODE_API_KEY", "KIMI_BASE_URL",
+    "KIMI_CODE_BASE_URL", "KIMI_ANTHROPIC_BASE_URL", "KIMI_BASE_URLS",
+    "KIMI_CODE_BASE_URLS", "KIMI_PROMPT_CACHE_KEY",
+    "KIMI_CODE_PROMPT_CACHE_KEY"
+  )
+  switch(
+    provider_id,
+    deepseek = aisdk.providers::create_deepseek(api_key = key, base_url = endpoint),
+    moonshot = rho_without_ambient_provider_environment(
+      moonshot_environment,
+      aisdk.providers::create_moonshot(
+        api_key = key,
+        base_url = endpoint,
+        platform = "platform"
+      )
+    ),
+    kimi = rho_without_ambient_provider_environment(
+      moonshot_environment,
+      aisdk.providers::create_kimi_code(
+        api_key = key,
+        base_url = endpoint,
+        api_format = if (identical(profile$wire_api, "chat_completions")) "openai" else "anthropic"
+      )
+    ),
+    stepfun = aisdk.providers::create_stepfun(api_key = key, base_url = endpoint),
+    volcengine = aisdk.providers::create_volcengine(api_key = key, base_url = endpoint),
+    aihubmix = aisdk.providers::create_aihubmix(api_key = key, base_url = endpoint),
+    xai = aisdk.providers::create_xai(api_key = key, base_url = endpoint),
+    openrouter = aisdk.providers::create_openrouter(api_key = key, base_url = endpoint),
+    bailian = aisdk.providers::create_bailian(api_key = key, base_url = endpoint),
+    nvidia = aisdk.providers::create_nvidia(api_key = key, base_url = endpoint),
+    NULL
+  )
+}
+
 rho_make_runtime_provider <- function(profile) {
   api_key <- rho_runtime_profile_api_key(profile)
+  base_url <- rho_runtime_profile_base_url(profile) %||%
+    rho_runtime_provider_default_base_url(profile)
   provider <- switch(
     profile$provider_kind,
-    registered = NULL,
+    registered = rho_make_registered_runtime_provider(profile, api_key, base_url),
     openai = aisdk::create_openai(
-      api_key = if (nzchar(api_key)) api_key else NULL,
-      name = profile$runtime_provider_id
+      api_key = api_key,
+      base_url = base_url,
+      name = profile$runtime_provider_id,
+      disable_stream_options = isTRUE(profile$disable_stream_options),
+      api_format = switch(
+        profile$wire_api %||% "",
+        responses = "responses",
+        chat_completions = "chat",
+        "auto"
+      )
     ),
     anthropic = aisdk::create_anthropic(
-      api_key = if (nzchar(api_key)) api_key else NULL,
+      api_key = api_key,
+      base_url = base_url,
       name = profile$runtime_provider_id
     ),
     gemini = aisdk::create_gemini(
-      api_key = if (nzchar(api_key)) api_key else NULL,
+      api_key = api_key,
+      base_url = base_url,
       name = profile$runtime_provider_id
     ),
     openai_compatible = aisdk::create_custom_provider(
       provider_name = profile$runtime_provider_id,
-      base_url = rho_runtime_profile_base_url(profile),
-      api_key = if (nzchar(api_key)) api_key else NULL,
+      base_url = base_url,
+      api_key = api_key,
       api_format = profile$wire_api %||% "chat_completions",
       disable_stream_options = isTRUE(profile$disable_stream_options),
       supports_native_tools = identical(profile$tool_calling, "yes")
     ),
     local_openai_compatible = aisdk::create_custom_provider(
       provider_name = profile$runtime_provider_id,
-      base_url = rho_runtime_profile_base_url(profile),
-      api_key = if (nzchar(api_key)) api_key else NULL,
+      base_url = base_url,
+      api_key = api_key,
       api_format = profile$wire_api %||% "chat_completions",
       disable_stream_options = isTRUE(profile$disable_stream_options),
       supports_native_tools = identical(profile$tool_calling, "yes")
@@ -473,14 +638,14 @@ rho_make_runtime_provider <- function(profile) {
 
 rho_resolve_model_profile <- function(profile) {
   rho_validate_runtime_model_profile(profile)
-  if (identical(profile$provider_kind, "registered")) {
+  provider <- rho_make_runtime_provider(profile)
+  if (identical(profile$provider_kind, "registered") && is.null(provider)) {
     provider_id <- profile$registered_provider_id %||% ""
     if (!nzchar(provider_id)) {
       stop("Registered runtime profiles require registered_provider_id.")
     }
     return(sprintf("%s:%s", provider_id, profile$model_id))
   }
-  rho_make_runtime_provider(profile)
   sprintf("%s:%s", profile$runtime_provider_id, profile$model_id)
 }
 
@@ -620,6 +785,7 @@ rho_create_aisdk_session <- function(model,
                                      system_prompt = NULL,
                                      tools = rho_create_workspace_tools(),
                                      max_steps = 512L,
+                                     capability_models = list(),
                                      connection = .rho_agent_state$connection) {
   aisdk::create_chat_session(
     model = model,
@@ -627,7 +793,10 @@ rho_create_aisdk_session <- function(model,
     tools = tools,
     hooks = rho_create_aisdk_hooks(connection),
     max_steps = as.integer(max_steps),
-    metadata = list(rho_desktop = TRUE)
+    metadata = list(
+      rho_desktop = TRUE,
+      capability_models = aisdk::normalize_capability_model_routes(capability_models)
+    )
   )
 }
 

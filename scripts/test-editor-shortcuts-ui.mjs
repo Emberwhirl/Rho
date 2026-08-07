@@ -37,6 +37,9 @@ for (const binding of [
 }
 assert.match(js, /KeyMod\.CtrlCmd \| KeyMod\.Shift \| KeyCode\.KeyZ/);
 assert.match(js, /KeyMod\.CtrlCmd \| KeyMod\.Alt \| KeyCode\.KeyF/);
+assert.match(js, /\(e\.event\.ctrlKey \|\| e\.event\.metaKey\).*CONTENT_WORD/);
+assert.match(js, /\(event\.ctrlKey \|\| event\.metaKey\).*event\.shiftKey.*event\.key === "Enter"/);
+assert.match(js, /\(event\.ctrlKey \|\| event\.metaKey\).*event\.key === "Enter"/);
 
 for (const command of ["save-file", "close-file", "undo", "redo", "find", "replace", "toggle-line-comment", "new-file", "open-project"]) {
   assert.match(js, new RegExp(`"?${command}"?: \\(\\) =>`), `Missing routed command ${command}`);

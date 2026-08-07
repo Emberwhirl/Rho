@@ -4,6 +4,107 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.19 - 2026-08-07
+
+### Fixed
+
+- Model settings remains reachable when its first settings read fails or no
+  models exist. The composer model button stays available, opening settings
+  performs one safe read-only retry, an explicit Retry action remains visible,
+  and bounded startup diagnostics retain the underlying failure without
+  exposing credentials.
+
+### Improved
+
+- Connections is now the first Model settings task. Provider presets use a
+  visual card chooser, common connections expose an optional Base URL, and the
+  reviewed `aisdk.providers` adapters add DeepSeek, Moonshot/Kimi, Stepfun,
+  Volcengine, AiHubMix, xAI, OpenRouter, Bailian, and NVIDIA support.
+- Blank Provider endpoints now resolve to Rho's reviewed defaults; undeclared
+  ambient API keys and endpoint variables cannot override the selected
+  system-credential connection.
+- Provider model lists and model cards now show default `aisdk` type and
+  capability evidence. Model options use visible capability switches instead
+  of nine dropdowns, while manual changes remain explicit user declarations.
+- Connections and Model routing now link in both directions. A model card can
+  open its compatible route choices, and every assigned or candidate route can
+  return to the exact connection and model without silently assigning or
+  switching providers.
+
+## 0.4.0-dev.18 - 2026-08-07
+
+### Improved
+
+- Model settings now separates Connections, the Model library, and typed Model
+  routing. Chat and Act can use different language models, while image,
+  editing, vision, and embedding routes preserve their capability contracts
+  until their isolated consumers are installed.
+- Provider discovery imports model type and capability evidence only from an
+  exact pinned `aisdk` catalog match; Provider responses and manual declarations
+  remain distinguishable, and unknown capabilities are never guessed.
+- Existing V1 model settings migrate deterministically to the V2 `agent.chat`
+  route. The first explicit change preserves a byte-identical V1 backup, route
+  writes use revision checks, and Ask/Plan/Act resolve one route and one
+  credential without silent Provider fallback.
+- Add provider and Add model now fetch the configured provider's available
+  models first for OpenAI, DeepSeek, Anthropic, Gemini, compatible, custom,
+  and local endpoints. Choosing a discovered model still requires an explicit
+  Save before settings change.
+- Manual Model ID entry remains available in a secondary disclosure and opens
+  automatically when discovery is unsupported, empty, or fails. Model-list
+  requests are bounded, do not send prompts, do not follow redirects, and use
+  the provider credential only in the required authentication header.
+
+## 0.4.0-dev.17 - 2026-08-07
+
+### Improved
+
+- Model settings now opens on provider cards with a separate current-model
+  summary, provider-specific model lists, readiness states, and per-provider
+  Advanced controls instead of mixing routine selection with management.
+- Add provider is now a guided Connection-then-Model workflow with built-in,
+  compatible, custom, and local presets, conditional connection fields, and
+  explicit handling for services that legitimately do not require an API key.
+- API key, provider, and model operations now have separate surfaces and
+  truthful working, success, warning, and failure feedback. Destructive
+  provider/model actions are isolated in their own danger zones, while secret
+  inputs clear at workflow boundaries and never become stored UI state.
+- Model settings dialogs now contain keyboard focus, close the active layer
+  with Escape, remove hidden menus from the accessibility tree, and adapt the
+  provider rail for narrow windows.
+
+## 0.4.0-dev.16 - 2026-08-07
+
+### Added
+
+- Integrated native Apple Silicon support for macOS 14 and later with the
+  pinned arm64 Ark runtime, arm64 R 4.4+ discovery, Apple Keychain-backed model
+  credentials, macOS-native open/reveal behavior, and Command-key editor
+  gestures while retaining the latest upstream Windows behavior.
+- Integrated the immutable cross-platform candidate pipeline for Windows x64
+  and macOS arm64 with Developer ID signing, Apple notarization, stapling,
+  Gatekeeper checks, checksums, and bounded evidence. Candidate creation remains
+  unpublished until a separate installed-candidate GO.
+
+### Improved
+
+- Update manifests and the Rho download page accept a validated Apple
+  Silicon DMG alongside the required Windows installer while preserving legacy
+  Windows-only feeds and the existing user-initiated update policy.
+
+### Fixed
+
+- Signed macOS builds can start Workspace R when bundled Ark loads an official
+  arm64 R installation signed by a different Apple Developer team. The final
+  app and Ark signatures are checked for the exact reviewed hardened-runtime
+  library-validation entitlement before notarization.
+- macOS project fixtures now compare canonical `/private/var` aliases, local
+  lockfile source details stay inside the active project, and Bioconductor
+  fixture provenance no longer depends on packages installed on the test Mac.
+- Check Project now limits source scanning to R, Rmd, Qmd, Rnw, and
+  extensionless source files, so generated HTML and other non-R assets do not
+  produce source reproducibility findings.
+
 ## 0.4.0-dev.15 - 2026-08-07
 
 ### Fixed
@@ -30,9 +131,6 @@ this file records behavior that is already available in a released build.
 - Rename Symbol now opens Review only after a valid proposal is built. Lookup
   or source-state failures return to a retryable name prompt with the entered
   replacement preserved instead of showing an empty Review panel.
-- Check Project now limits source scanning to R, Rmd, Qmd, Rnw, and
-  extensionless source files, so generated HTML and other non-R assets do not
-  produce source reproducibility findings.
 
 ## 0.4.0-dev.13 - 2026-08-06
 
@@ -139,7 +237,6 @@ this file records behavior that is already available in a released build.
   disconnect when Plot/display events exceed the framed response limit. Agent
   requests now receive bounded result projections and synchronize the current
   Workspace revision after both successful and rejected broker responses.
-
 ## 0.4.0-dev.0 - 2026-08-01
 
 ### Improved

@@ -456,6 +456,60 @@ impl ArkSession {
             .context("timed out shutting down Ark")?
             .context("shutting down Ark")
     }
+
+    #[cfg(unix)]
+    pub async fn terminate_process_group(&self) -> Result<()> {
+        let Some(pid) = self.child_pid() else {
+            return Ok(());
+        };
+        terminate_process_group_by_pid(pid, std::time::Duration::from_secs(1)).await
+    }
+}
+
+#[cfg(unix)]
+fn process_group_exists(pid: u32) -> Result<bool> {
+    let pgid = libc::pid_t::try_from(pid).context("Ark process id exceeds pid_t")?;
+    let result = unsafe { libc::kill(-pgid, 0) };
+    if result == 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    match error.raw_os_error() {
+        Some(libc::ESRCH) => Ok(false),
+        Some(libc::EPERM) => Ok(true),
+        _ => Err(error).context("checking Ark process group"),
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group(pid: u32, signal: libc::c_int) -> Result<bool> {
+    let pgid = libc::pid_t::try_from(pid).context("Ark process id exceeds pid_t")?;
+    let result = unsafe { libc::kill(-pgid, signal) };
+    if result == 0 {
+        return Ok(true);
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(false)
+    } else {
+        Err(error).with_context(|| format!("signalling Ark process group {pgid}"))
+    }
+}
+
+#[cfg(unix)]
+async fn terminate_process_group_by_pid(pid: u32, grace: std::time::Duration) -> Result<()> {
+    if !signal_process_group(pid, libc::SIGTERM)? {
+        return Ok(());
+    }
+    let deadline = tokio::time::Instant::now() + grace;
+    while tokio::time::Instant::now() < deadline {
+        if !process_group_exists(pid)? {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let _ = signal_process_group(pid, libc::SIGKILL)?;
+    Ok(())
 }
 
 pub fn load_kernelspec(path: impl AsRef<Path>) -> Result<KernelSpec> {
@@ -482,6 +536,9 @@ fn is_sensitive_environment_name(name: &str) -> bool {
 mod tests {
     use super::is_sensitive_environment_name;
 
+    #[cfg(unix)]
+    use super::{process_group_exists, signal_process_group, terminate_process_group_by_pid};
+
     #[test]
     fn identifies_model_credentials_for_workspace_redaction() {
         assert!(is_sensitive_environment_name("GEMINI_API_KEY"));
@@ -489,5 +546,35 @@ mod tests {
         assert!(is_sensitive_environment_name("custom_access_token"));
         assert!(!is_sensitive_environment_name("R_LIBS"));
         assert!(!is_sensitive_environment_name("PATH"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bounded_fallback_terminates_an_entire_unix_process_group() {
+        use std::os::unix::process::CommandExt;
+
+        let mut child = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("trap '' TERM; while :; do sleep 1; done")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let termination =
+            terminate_process_group_by_pid(pid, std::time::Duration::from_millis(100)).await;
+        if termination.is_err() {
+            let _ = signal_process_group(pid, libc::SIGKILL);
+        }
+        termination.unwrap();
+        let status = child.wait().unwrap();
+        let reap_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while process_group_exists(pid).unwrap() && tokio::time::Instant::now() < reap_deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+
+        assert!(!status.success());
+        assert!(!process_group_exists(pid).unwrap());
     }
 }

@@ -26,7 +26,10 @@ test_that("lintr response is normalized, version-bound, and non-mutating", {
   expect_identical(readLines(relative, warn = FALSE), before_content)
   expect_identical(search(), before_search)
   expect_identical(sort(ls(.GlobalEnv, all.names = TRUE)), sort(before_objects))
-  expect_identical(getwd(), dirname(path))
+  expect_identical(
+    normalizePath(getwd(), winslash = "/", mustWork = TRUE),
+    normalizePath(dirname(path), winslash = "/", mustWork = TRUE)
+  )
   expect_true(is.character(jsonlite::toJSON(result, auto_unbox = TRUE, null = "null")))
 })
 

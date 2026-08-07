@@ -23,9 +23,10 @@ arguments, or the non-secret runtime profile. Rust reads it immediately before
 a connection test or Agent turn and injects it only into that short-lived Agent
 R child environment. Workspace R does not receive this override.
 
-An existing effective user `.Renviron` remains a read-only compatibility
-fallback when no system credential is stored. Rho does not migrate, edit, or
-delete it. A system credential takes precedence for Agent R.
+The 2026-08-06 simplification follow-up removed the temporary read-only
+`.Renviron` compatibility fallback. A native system credential is the only
+Agent LLM API-key source; Rho does not detect, migrate, edit, or delete legacy
+environment-file values.
 
 The Model settings dialog now defaults to Provider type, Model, conditional
 Base URL and API key fields, with Save, Test connection, and Use this model as
@@ -37,6 +38,101 @@ project change; a stored value is never redisplayed.
 
 All remaining V1 decisions below continue to govern provider/model metadata,
 selection, no fallback, capability gating, attribution, and authority.
+
+### 2026-08-07 original Issue #4 presentation amendment
+
+The implemented CRED-UX2 section in
+`plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md`
+supersedes only the one-global-Advanced Model settings layout described above.
+The default surface now uses provider cards plus the selected provider's
+credential and model list; each selected provider owns its own Advanced
+disclosure; Add provider uses a dedicated Connection -> Model workflow; model
+editing and both destructive actions are separated from normal selection; and
+Save/Test/Use operations project deterministic inline state.
+
+This presentation amendment does not change V1 stable IDs, global persistence,
+model enablement, selected-model behavior, provider validation, capability
+gating, connection-test bounds, attribution, or no-fallback authority. It does
+not add a persistent provider-enable flag. Provider readiness is derived from
+the existing credential projection and enabled models.
+
+Model settings, Add provider, and Model editor are sibling modal roots. While a
+child is open, the main root is not rendered or exposed to accessibility APIs;
+the child is the sole active dialog and focus is contained and restored on
+close. This avoids Safari/WKWebView's empty nested-container accessibility state
+while preserving the same product and command authority.
+
+### 2026-08-07 provider model-discovery amendment
+
+The implemented CRED-UX3 section in
+`plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md`
+supersedes manual-first model creation for Add provider and Add model. Those
+flows now make one bounded, read-only request to the configured Provider and
+present the returned models before the secondary manual-ID disclosure.
+
+The discovery command reads a required key from the system credential store
+immediately before the request and returns only bounded model metadata and a
+redacted status. OpenAI, DeepSeek, Anthropic, Gemini, OpenAI-compatible,
+custom-literal, and key-optional local endpoints have explicit request and
+response strategies. Redirects, automatic retries, environment-derived Base
+URLs, pagination beyond the first response, background polling, and automatic
+model persistence are excluded. An empty, unsupported, malformed, oversized,
+timed-out, or rejected response opens the existing manual path without
+changing Provider metadata, models, credentials, or global selection.
+
+This amendment does not change stable provider/model IDs, settings schema,
+capability authority, model enablement, selection semantics, attribution,
+Agent execution, or the no-fallback rule. A discovered choice remains a draft
+until the user invokes the existing Save action.
+
+### 2026-08-07 capability-routed model amendment
+
+The implemented CRED-UX4A section in
+`plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md`
+supersedes the one-selected-model persistence and runtime projection below.
+Provider connections, model records, and typed capability routes are now three
+independent layers. Stable Provider/model IDs and their system-credential
+accounts are preserved.
+
+Non-secret settings use schema V2 with a monotonically increasing revision,
+Provider records, typed model evidence, and named routes. Model evidence stores
+one type (`language`, `image`, `embedding`, or `unknown`) plus the fixed
+capability vocabulary and the provenance of every value. Exact matches from the
+pinned `aisdk` catalog are authoritative catalog evidence; Provider-list
+responses remain Provider evidence; explicit edits become user-declared
+evidence; all other values remain unknown. Existing model evidence cannot be
+silently changed through the general model-save command.
+
+The V1 selected model migrates in memory to the required `agent.chat` route.
+Read-only opens do not rewrite the source. The first explicit V2 mutation writes
+a byte-identical `llm-profiles.v1.backup.json` before atomically replacing the
+settings file; a mismatched existing backup, corrupt source, unsupported schema,
+oversized file, failed backup, or failed V2 write stops without guessing or
+overwriting recoverable state.
+
+Route mutations require the revision observed by the editor, are serialized in
+the desktop process, and reject stale writers. Each route binds one model type
+and a bounded set of required capabilities. Explicit `no`, a type mismatch,
+disabled/deleted dependencies, and unknown required evidence all block a new
+assignment; unknown evidence must be reviewed and explicitly declared first.
+The standard route contracts are fixed for `agent.chat`, `agent.act`,
+`vision.inspect`, `image.generate`, `image.edit`, and `embedding.default`.
+
+Ask and Plan resolve `agent.chat`. Act resolves an explicit `agent.act`, or the
+visible `agent.chat` fallback only when that model declares
+`function_call=yes`. Resolution and credential lookup use one settings snapshot
+and return exactly one effective Provider credential to the short-lived Agent R
+child. The R adapter validates one matching non-secret route and records the
+normalized route in ChatSession metadata. There is no implicit Provider/model
+failover.
+
+Model settings now opens on Model routing, with Connections and Model library
+as peer tabs. Compatibility, needs-review, incompatible, inherited, missing-key,
+and consumer-not-installed states are visible before mutation. The composer no
+longer submits a global model ID; Rust resolves the route for the turn mode.
+Media, embedding, and vision routes are configuration-only in CRED-UX4A:
+CRED-UX4B workers and CRED-UX4C media interaction remain separately gated and
+are not implied by a saved route.
 
 ## 1. Goal
 

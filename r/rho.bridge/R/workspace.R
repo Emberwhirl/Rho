@@ -496,11 +496,44 @@ rho_lockfile_safe_remote_label <- function(value) {
 rho_lockfile_local_source_label <- function(value, project_dir) {
   value <- rho_lockfile_inventory_text(value, 1000L)
   if (is.null(value) || !nzchar(value)) return(NULL)
+  path_components <- strsplit(value, "[/\\\\]+")[[1L]]
+  if (any(path_components == "..")) return(NULL)
   candidate <- if (grepl("^([A-Za-z]:[/\\\\]|/)", value)) value else file.path(project_dir, value)
-  normalized <- normalizePath(candidate, winslash = "/", mustWork = FALSE)
-  root_prefix <- paste0(tolower(project_dir), "/")
-  if (!startsWith(tolower(normalized), root_prefix)) return(NULL)
-  substring(normalized, nchar(project_dir) + 2L)
+  unresolved <- character()
+  probe <- candidate
+  repeat {
+    link_target <- suppressWarnings(Sys.readlink(probe))
+    if (length(link_target) == 1L && !is.na(link_target) && nzchar(link_target) &&
+        !file.exists(probe) && !dir.exists(probe)) return(NULL)
+    if (file.exists(probe) || dir.exists(probe)) break
+    parent <- dirname(probe)
+    if (identical(parent, probe)) return(NULL)
+    unresolved <- c(basename(probe), unresolved)
+    probe <- parent
+  }
+  if (any(unresolved == "..")) return(NULL)
+  normalized <- tryCatch(
+    normalizePath(probe, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (is.null(normalized)) return(NULL)
+  if (length(unresolved)) {
+    normalized <- file.path(normalized, do.call(file.path, as.list(unresolved)))
+    normalized <- gsub("\\\\", "/", normalized)
+  }
+  project_dir <- tryCatch(
+    normalizePath(project_dir, winslash = "/", mustWork = TRUE),
+    error = function(error) NULL
+  )
+  if (is.null(project_dir)) return(NULL)
+  compare_path <- function(path) {
+    if (.Platform$OS.type == "windows") tolower(path) else path
+  }
+  normalized_key <- compare_path(normalized)
+  project_key <- compare_path(project_dir)
+  if (identical(normalized_key, project_key)) return(".")
+  if (!startsWith(normalized_key, paste0(project_key, "/"))) return(NULL)
+  rho_lockfile_inventory_text(substring(normalized, nchar(project_dir) + 2L), 256L)
 }
 
 rho_lockfile_package_source <- function(metadata, project_dir) {

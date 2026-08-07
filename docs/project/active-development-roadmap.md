@@ -2,8 +2,8 @@
 
 Status: active
 
-Date: 2026-08-01
-Current baseline: `0.3.0-dev.11`
+Date: 2026-08-07
+Current baseline: `0.4.0-dev.19`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -146,6 +146,64 @@ Acceptance gate:
 ### M3: Cross-platform beta (`0.4.x`)
 
 Priority: after the Windows contract is stable.
+
+Active implementation contract:
+[`plans/active-2026-08-05-macos-arm64-support-spec.md`](../plans/active-2026-08-05-macos-arm64-support-spec.md).
+The project owner authorized the complete Apple Silicon direction on
+2026-08-05. MAC1 and MAC2 implementation, macOS automated verification, and
+the unsigned arm64 debug-app Ark/R runtime smoke are present. MAC3's Apple
+Keychain adapter, native/UI parity, bounded bridge repairs, complete affected
+automation, and isolated unsigned development-app workflow acceptance also
+completed on 2026-08-05. Its two portability gates and WS1-L2 containment
+conformance gate are closed. Windows CI, signed exact-candidate acceptance, and
+release work remain open. MAC4's bounded candidate/update/signing/draft
+workflow package was authorized, implemented, locally verified, versioned at
+`0.4.0-dev.1`, and contract-reviewed on 2026-08-05. Its credentialed fork
+rehearsal passed automation on 2026-08-06, but installed-app evidence rejected
+the DMG because hardened-runtime library validation blocked official CRAN R.
+The bounded `0.4.0-dev.2` entitlement repair and replacement fork rehearsal
+passed. Upstream `main`, independently versioned through `0.4.0-dev.15`, is now
+integrated without rewriting the macOS branch history; the combined source is
+`0.4.0-dev.16`. MAC4-R3 asynchronous notarization orchestration is authorized
+and locally implemented/verified. Its first two exact-commit fork rehearsals
+failed closed on Apple's newly observed exact S3 log-delivery host and then a
+missing fresh-finalizer `jsonlite` dependency; both bounded repairs are covered.
+Replacement run `31163017077` at exact `0.4.0-dev.16` fork commit
+`8de3dcc1dafc9e8562d239a6051a9113b778f1c3` passed the full Windows/macOS
+review-only rehearsal, independent seven-file evidence validation, and zero-
+publication audit while using 13 minutes 51 seconds of macOS runner time.
+Upstream then advanced through `b5800ae`; ordinary merge `9d3086e` and its
+complete affected local matrix passed. Post-merge exact-commit run
+`31165265090` then passed the full review-only rehearsal and independent
+seven-file audit while using 12 minutes 10 seconds of macOS runner time.
+Issue #4's CRED-UX2 completion subsequently advanced the application baseline
+to `0.4.0-dev.17`; its provider-card Model settings workflow was implemented
+and passed the complete affected local matrix, deterministic browser review,
+and unsigned arm64 app/DMG smoke on 2026-08-07. CRED-UX3 and CRED-UX4A then
+advanced the live baseline to `0.4.0-dev.18` with bounded Provider discovery,
+schema V2 capability routing, and the existing one-route/one-credential
+Ask/Plan/Act boundary. The owner installed and rejected that exact DMG because
+a failed settings read disabled the only Model settings entry. CRED-UX4A-R1 is
+the authorized Provider-first recovery package: it advances the replacement
+baseline to `0.4.0-dev.19`, keeps settings reachable and retryable, pins
+explicit `aisdk.providers` adapters, exposes optional Base URL and default
+capability cards/switches, and links Connections with Model routing. Its
+complete affected automation, independent security/contract review,
+deterministic browser review, and local unsigned arm64 replacement-DMG
+verification pass. Owner-installed recovery plus live Provider/Keychain
+acceptance is the next acceptance checkpoint.
+`rho.agent` advances independently to `0.1.4` for its explicit provider-adapter
+contract. CRED-UX4B/C workers and media consumers remain unauthorized. The
+`dev.18` artifact is rejected and cannot serve as acceptance evidence. All
+earlier runs and artifacts remain historical exact-source evidence and cannot
+validate the replacement behavior. Owner acceptance, exact
+installed-candidate native accessibility, Keychain, live-provider discovery,
+and MAC5 acceptance remain open. MAC4-R3 is closed at its refreshed mandatory
+stop. All
+authoritative candidate/draft creation remains NOT RUN. MAC5 remains
+unauthorized. This stream
+delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
+full M3 acceptance gate can close.
 
 Deliverables:
 

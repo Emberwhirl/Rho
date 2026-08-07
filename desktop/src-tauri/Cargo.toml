@@ -30,3 +30,6 @@ uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "4.1.6", default-features = false, features = ["v1", "windows-native-keyring-store"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "4.1.6", default-features = false, features = ["v1"] }

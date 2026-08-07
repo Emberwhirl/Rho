@@ -25,7 +25,8 @@ rho_create_aisdk_session(
   model,
   system_prompt = NULL,
   tools = rho_create_workspace_tools(),
-  max_steps = 10L,
+  max_steps = 512L,
+  capability_models = list(),
   connection = .rho_agent_state$connection
 )
 

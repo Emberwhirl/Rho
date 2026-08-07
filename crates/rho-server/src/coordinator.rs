@@ -33,7 +33,17 @@ pub struct CoordinatorRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AgentRuntimeCapabilityRoute {
+    pub capability: String,
+    pub model: String,
+    pub model_type: String,
+    pub required_model_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AgentRuntimeModelProfile {
+    pub settings_revision: u64,
+    pub route_capability: String,
     pub profile_id: String,
     pub provider_kind: String,
     pub runtime_provider_id: String,
@@ -48,6 +58,7 @@ pub struct AgentRuntimeModelProfile {
     pub tool_calling: String,
     pub provider_display_name: String,
     pub model_display_name: String,
+    pub capability_routes: Vec<AgentRuntimeCapabilityRoute>,
 }
 
 const MAX_CANONICAL_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
@@ -264,9 +275,9 @@ pub struct ProjectSkillSummary {
     pub references: Vec<String>,
 }
 
-fn hide_console_window(command: &mut tokio::process::Command) {
+fn hide_console_window(_command: &mut tokio::process::Command) {
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    _command.creation_flags(0x0800_0000);
 }
 
 #[derive(Debug, Clone)]
@@ -1627,6 +1638,7 @@ mode_policy <- switch(
   )
 )
 resolved_model <- rho_resolve_model_profile(profile)
+capability_models <- rho_runtime_profile_capability_models(profile, resolved_model)
 tools <- if (identical(profile$tool_calling %||% "unknown", "yes")) rho_create_workspace_tools() else list()
 tool_notice <- if (identical(profile$tool_calling %||% "unknown", "yes")) {
   "Workspace and file proposal tools are enabled."
@@ -1651,7 +1663,8 @@ session <- rho_create_aisdk_session(
     mode_policy
   ),
   tools = tools,
-   max_steps = if (identical(mode, "act")) 512L else 128L,
+  max_steps = if (identical(mode, "act")) 512L else 128L,
+  capability_models = capability_models,
   connection = connection
 )
 turn_error <- tryCatch(
@@ -1667,13 +1680,24 @@ turn_error <- tryCatch(
 if (is.null(turn_error)) {
   rho_agent_emit(
     "desktop.agent_completed",
-    list(model = resolved_model, mode = mode),
+    list(
+      model = resolved_model,
+      mode = mode,
+      capability = profile$route_capability,
+      settings_revision = profile$settings_revision
+    ),
     connection
   )
 } else {
   rho_agent_emit(
     "desktop.agent_failed",
-    list(model = resolved_model, mode = mode, error = turn_error),
+    list(
+      model = resolved_model,
+      mode = mode,
+      capability = profile$route_capability,
+      settings_revision = profile$settings_revision,
+      error = turn_error
+    ),
     connection
   )
 }
@@ -1707,9 +1731,13 @@ const DESKTOP_AGENT_TURN_TIMEOUT: std::time::Duration = std::time::Duration::fro
 
 fn configure_agent_process_environment(
     command: &mut tokio::process::Command,
+    process_path: Option<&std::ffi::OsStr>,
     _user_environ: Option<&str>,
     credential_override: Option<(&str, &str)>,
 ) {
+    if let Some(process_path) = process_path {
+        command.env("PATH", process_path);
+    }
     if let Some((name, value)) = credential_override {
         command.env(name, value);
     }
@@ -1720,6 +1748,7 @@ pub async fn run_agent_turn(
     session: &ArkSession,
     context: Arc<Mutex<CoordinatorRuntime>>,
     rscript: PathBuf,
+    process_path: Option<OsString>,
     agent_package: PathBuf,
     model: String,
     runtime_profile: Option<AgentRuntimeModelProfile>,
@@ -1772,6 +1801,7 @@ pub async fn run_agent_turn(
         hide_console_window(&mut command);
         configure_agent_process_environment(
             &mut command,
+            process_path.as_deref(),
             user_environ.as_deref(),
             credential_override
                 .as_ref()
@@ -5074,6 +5104,8 @@ mod tests {
     fn desktop_agent_prompt_transport_uses_stdin_instead_of_command_args() {
         let prompt = "x".repeat(40_000);
         let profile = AgentRuntimeModelProfile {
+            settings_revision: 7,
+            route_capability: "agent.chat".to_string(),
             profile_id: "model-deepseek-v4-flash".to_string(),
             provider_kind: "registered".to_string(),
             runtime_provider_id: "rho_profile_provider_deepseek".to_string(),
@@ -5088,6 +5120,12 @@ mod tests {
             tool_calling: "yes".to_string(),
             provider_display_name: "DeepSeek".to_string(),
             model_display_name: "DeepSeek V4 Flash".to_string(),
+            capability_routes: vec![AgentRuntimeCapabilityRoute {
+                capability: "agent.chat".to_string(),
+                model: "deepseek:deepseek-v4-flash".to_string(),
+                model_type: "language".to_string(),
+                required_model_capabilities: Vec::new(),
+            }],
         };
         let args = desktop_agent_turn_args(4321, Path::new("r/rho.agent"), "ask");
         let stdin_payload = desktop_agent_turn_stdin("secret-token", &profile, &prompt).unwrap();
@@ -5194,6 +5232,7 @@ mod tests {
         let mut command = tokio::process::Command::new("Rscript");
         configure_agent_process_environment(
             &mut command,
+            Some(std::ffi::OsStr::new("/opt/homebrew/bin:/usr/bin")),
             Some("C:/Users/test/.Renviron"),
             Some(("DEEPSEEK_API_KEY", secret)),
         );
@@ -5218,6 +5257,10 @@ mod tests {
                 .get("DEEPSEEK_API_KEY")
                 .and_then(|value| value.as_deref()),
             Some(secret)
+        );
+        assert_eq!(
+            environment.get("PATH").and_then(|value| value.as_deref()),
+            Some("/opt/homebrew/bin:/usr/bin")
         );
         assert!(!environment.contains_key("R_ENVIRON_USER"));
     }

@@ -409,6 +409,35 @@ test_that("lockfile inventory normalizes and redacts package sources", {
   expect_false(grepl("token|secret|key=|frag", encoded, ignore.case = TRUE))
 })
 
+test_that("local lockfile source labels require provable project containment", {
+  root <- file.path(tempdir(), paste0("rho-local-source-containment-", Sys.getpid()))
+  project <- file.path(root, "project")
+  sibling <- file.path(root, "project-sibling")
+  outside <- file.path(root, "outside")
+  dir.create(file.path(project, "vendor", "inside"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(project, "vendor", "\u79d1\u5b66"), recursive = TRUE, showWarnings = FALSE)
+  dir.create(sibling, recursive = TRUE, showWarnings = FALSE)
+  dir.create(outside, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  label <- function(path) rho.bridge:::rho_lockfile_local_source_label(path, project)
+  expect_identical(label("vendor/inside"), "vendor/inside")
+  expect_identical(label("vendor/missing/package"), "vendor/missing/package")
+  expect_identical(label("vendor/\u79d1\u5b66"), "vendor/\u79d1\u5b66")
+  expect_identical(label("."), ".")
+  expect_null(label("../outside"))
+  expect_null(label("vendor/missing/../../outside-missing"))
+  expect_null(label("vendor\\missing\\..\\..\\outside-missing"))
+  expect_null(label(sibling))
+  expect_null(label(outside))
+
+  linked <- suppressWarnings(file.symlink(outside, file.path(project, "vendor", "linked-outside")))
+  if (isTRUE(linked)) {
+    expect_null(label("vendor/linked-outside"))
+    expect_null(label("vendor/linked-outside/missing"))
+  }
+})
+
 test_that("lockfile inventory reports DESCRIPTION absence invalidity and size limits", {
   projects <- file.path(tempdir(), paste0("rho-description-state-", Sys.getpid(), "-", c("missing", "invalid", "large")))
   lapply(projects, dir.create, recursive = TRUE, showWarnings = FALSE)
@@ -1229,9 +1258,7 @@ test_that("data viewer reports optional package unavailability explicitly", {
   expect_identical(result$error_code, "optional_package_unavailable")
 })
 
-test_that("bioconductor fixture metadata records exact package versions", {
-  skip_if_not_installed("SummarizedExperiment")
-  skip_if_not_installed("SingleCellExperiment")
+test_that("bioconductor fixture metadata records portable build provenance", {
   metadata <- jsonlite::fromJSON(
     testthat::test_path("../fixtures/wp2-bioconductor-fixtures.json"),
     simplifyVector = FALSE
@@ -1239,13 +1266,20 @@ test_that("bioconductor fixture metadata records exact package versions", {
 
   expect_equal(length(metadata), 2L)
   expect_identical(
-    metadata[[1L]]$packages$SummarizedExperiment,
-    as.character(packageVersion("SummarizedExperiment"))
+    vapply(metadata, `[[`, character(1), "fixture_name"),
+    c("summarized-experiment-minimal", "single-cell-experiment-minimal")
   )
   expect_identical(
-    metadata[[1L]]$packages$SingleCellExperiment,
-    as.character(packageVersion("SingleCellExperiment"))
+    vapply(metadata, `[[`, character(1), "class"),
+    c("SummarizedExperiment", "SingleCellExperiment")
   )
+  for (entry in metadata) {
+    expect_match(entry$bioconductor_version, "^[0-9]+\\.[0-9]+$")
+    expect_setequal(names(entry$packages), c("SummarizedExperiment", "SingleCellExperiment"))
+    expect_true(all(vapply(entry$packages, function(version) {
+      is.character(version) && length(version) == 1L && grepl("^[0-9]+(\\.[0-9]+)+$", version)
+    }, logical(1))))
+  }
 })
 
 test_that("summarized experiment fixture exposes assays and annotations through the viewer", {

@@ -214,72 +214,96 @@ model credentials and `aisdk` are prerequisites;
 record an explicit skip if they are unavailable.
 
 Open Model settings from the Agent model selector during this scenario. Confirm
-that only Provider type, Model, the conditional Base URL/API key fields, Save,
-Test connection, and Use this model appear before Advanced. Exercise the
-system-credential workflow in Section 3A and verify the updated availability
-without restarting Rho.
+that the default surface is a provider-card rail plus the selected provider's
+API connection and provider-filtered model list. The current model must be
+separate from management actions, and Provider Advanced plus both Danger zones
+must be closed or absent from the default surface. Exercise the guided Add
+provider and system-credential workflow in Section 3A and verify the updated
+availability without restarting Rho.
 
-## 3A. Windows System Credential And Model Settings
+## 3A. Windows System Credential And Issue #4 Model Settings
 
 Run this section with an installed candidate on Windows. Use a disposable
 provider API key that can be revoked after acceptance; never paste the key into
 this document, a screenshot, Console, Logs, Problems, diagnostics, or a project
 file. Record the candidate version and installer SHA-256.
 
-1. Open Agent > model selector > Model settings. Expected: Advanced is closed;
-   the normal form contains Provider type, Model, API key when required, and
-   Base URL only for compatible/local providers. The key field is a masked,
-   empty input even if a credential already exists.
-2. Select the provider used by the acceptance model. For a concrete compatible
-   example, choose OpenAI-compatible, set the provider's documented `/v1` Base
-   URL, enter its model ID, paste the disposable key, and choose Save. Expected:
-   the key field clears and status becomes `Stored securely`; closing and
-   reopening the dialog never redisplays the key or any fragment/length hint.
-3. Open Windows Credential Manager > Windows Credentials. Confirm one entry is
-   associated with `Rho Agent LLM`. Do not reveal or capture the credential
-   value. Rename the provider display name under Advanced, save, restart Rho,
-   and confirm the same model remains usable and status remains
-   `Stored securely`.
-4. Choose Test connection. Expected: success identifies the configured model
-   without response content or key material. Then use Ask for a harmless
-   request such as `Return the result of 2 + 2 without running R code.` Confirm
-   the turn is attributed to the selected model. Use Act for
-   `Run R code to calculate sum(1:10) and report the result.` Approve only the
-   expected R action and confirm Console/Run Review shows `55`, with no key in
-   the prompt, events, Run details, Logs, Problems, or copied diagnostics.
-5. Paste a different disposable key and Save. Restart Rho and retest. Expected:
-   replacement succeeds, the input clears, and only the replacement credential
-   works. Repeat with an empty key field and Save; expected: the existing key is
-   not deleted or overwritten.
-6. Choose Remove stored key and cancel once. Expected: status and connection
-   remain unchanged. Repeat and confirm removal. If no matching key exists in
-   the effective user environment, status becomes `Not set` and the connection
-   test fails with an actionable message. Repeating removal is harmless.
-7. To test compatibility fallback, put the disposable key under the provider's
-   documented environment-variable name in the effective user `.Renviron`,
-   restart Rho, and leave the system key absent. Expected: status is
-   `Available from user environment` and Agent turns work. Save a system key and
-   verify status changes to `Stored securely`. Remove it and verify the
-   environment fallback works again. Rho must not modify the `.Renviron` file.
-8. Switch between two test projects while the dialog is open after typing only
-   a disposable dummy value such as `not-a-real-key`. Expected: the key field
-   clears, provider/model settings remain global, and no project file or
-   session state contains the dummy value.
-9. Disconnect or deny credential-store access if the test machine permits it,
-   then retry Save and Remove. Expected: the UI reports that secure storage is
-   unavailable or that the operation failed, retains truthful metadata, does
-   not claim success, and permits a retry after access is restored.
-10. Uninstall the candidate without manually deleting the credential first,
+1. Open Agent > model selector > Model settings. Expected: the default surface
+   has a provider-card rail, a separately labelled current model, the selected
+   provider's API connection, and only that provider's models. `Provider
+   Advanced` is closed. Provider/model metadata are not interleaved in one
+   global form, and no Delete action is beside Save, Test, or Use. The API-key
+   field is masked and empty even if a credential already exists.
+2. Select every existing provider card. Expected: each card shows a truthful
+   readiness state and model count, the detail list never contains another
+   provider's models, stale operation/test feedback clears, Advanced closes,
+   and any typed dummy key is cleared. Confirm current selection remains
+   visibly separate from the selected row and from `Use this model`.
+3. Choose Add provider. On Connection, select OpenAI-compatible, enter a unique
+   provider name and its documented `/v1` Base URL, keep API key required, and
+   first choose Continue with the key blank. Expected: an inline warning blocks
+   the transition and creates no provider. Enter the disposable key and
+   continue. Expected: the key clears and Model opens with Model ID, Model
+   name, enabled on, and capabilities closed. Enter a valid model and choose
+   `Save model and use it`. Expected: the workflow closes on the new provider
+   card and both current-model locations identify the new model.
+4. Repeat Add provider for a local-compatible test service if one is available.
+   Explicitly turn off API key required and confirm the key field disappears;
+   do not use this path to bypass a provider that actually requires a key.
+   Choose Finish later after Connection and confirm the saved provider remains
+   truthfully listed with `No models` until completed.
+5. Open Provider Advanced for only the selected provider. Confirm low-frequency
+   Base URL, provider ID, environment-variable names, Wire API, key requirement,
+   and stream behavior are scoped there. Its separate Danger zone is closed.
+   Open Edit model and confirm model metadata plus enabled state are separate,
+   capabilities are under their own closed disclosure, and Model Danger zone is
+   separate. Rename the provider, save, restart Rho, and confirm stable model
+   selection and `Stored securely` survive the display-name change.
+6. Open Windows Credential Manager > Windows Credentials. Confirm one entry is
+   associated with `Rho Agent LLM`; never reveal or capture its value. Choose
+   Test connection. Expected: working state prevents duplicate submission and
+   success identifies the model without response content or key material.
+   Repeat with an invalid model ID or unreachable disposable endpoint and
+   confirm an actionable error permits correction and retry without changing
+   the selected model.
+7. Use Ask for `Return the result of 2 + 2 without running R code.` Confirm the
+   turn is attributed to the selected model. Use Act for `Run R code to
+   calculate sum(1:10) and report the result.` Approve only the expected action
+   and confirm Console/Run Review shows `55`, with no key in the prompt, events,
+   Run details, Logs, Problems, copied diagnostics, or project data.
+8. Paste a different disposable key and Save API key. Restart and retest.
+   Expected: replacement succeeds, the input clears, and only the replacement
+   key works. Choose Save API key with an empty field; expected: no deletion or
+   overwrite occurs and the stored-key status remains truthful.
+9. Choose Remove stored key and cancel once. Expected: status and connection
+   remain unchanged. Repeat and confirm removal. Status becomes `Not set`, the
+   test action reports the missing key, and repeated removal is harmless. Rho
+   must not detect, modify, or fall back to a legacy `.Renviron` API key.
+10. Switch between two projects while the dialog or Add provider workflow is
+    open after typing only `not-a-real-key`. Expected: the key clears;
+    provider/model settings remain global; no project file, session record,
+    diagnostic, DOM attribute, or log contains the dummy value.
+11. Deny credential-store access if the test machine permits it, then retry Save
+    and Remove. Expected: `Credential storage unavailable` or an actionable
+    operation failure retains truthful metadata and permits retry after access
+    is restored. If provider metadata saved before a storage failure, the UI
+    must say `Provider saved; API key not stored` rather than claim rollback.
+12. Use keyboard-only navigation through the main dialog, Add provider, and
+    Model editor. Tab must remain in the active surface; Escape closes only the
+    active child and restores focus, then closes Model settings on the next
+    Escape. Closed menus, Advanced disclosures, and Danger zones must not mask
+    or trap the accessible dialog.
+13. Uninstall the candidate without manually deleting the credential first,
     inspect Windows Credential Manager, and record whether the entry remains.
     The current contract does not promise automatic credential removal. Remove
     the disposable credential and revoke the test key after recording the
     result.
 
-Repeat steps 1-6 at the minimum supported window and Windows 125% display
-scale. Record pass/fail, screenshots with the key field empty, the fallback and
-failure states exercised, and any deviation. Until this exact installed-app
-record exists, this section is `NOT RUN` and does not establish release
-readiness.
+Repeat steps 1-3, 5-6, 8-9, and 12 at the minimum supported window and Windows
+125% display scale. Record pass/fail, screenshots only when every key field is
+empty, all exercised readiness/partial-failure states, and any deviation. Until
+this exact installed-app record exists, this section is `NOT RUN` and does not
+establish release readiness.
 
 ## 4. Experience Editor Intelligence
 
@@ -588,16 +612,19 @@ references but do not count as installed acceptance.
    comparison fields appear and status/origin/action values are friendly. The
    R error remains visible; traceback is hidden under `Technical error details`
    until explicitly expanded.
-6. Open `Model settings`. Confirm the primary flow shows Provider type, Model,
-   conditional Base URL/API key fields, and the three primary actions. Status
-   must use `Stored securely`, `Available from user environment`, `Not set`,
-   `Not required`, or `Credential storage unavailable`; no credential-file
-   path, raw selector enum, validation error, key fragment, or key length may
-   appear. Confirm Provider ID, environment-variable fields, Wire API, stream
-   options, capability metadata, catalog management, and destructive actions
-   are initially hidden under one collapsed `Advanced` disclosure. Expand it,
-   edit and save a disposable provider/model, reopen the dialog, and confirm
-   non-secret values persist while the API key input remains empty.
+6. Open `Model settings`. Confirm provider cards, a separate current-model
+   banner, the selected provider's credential panel, provider-filtered model
+   rows, and Save API key/Test connection/Use this model are the only default
+   management surface. Status must use plain states such as `Stored securely`,
+   `Not set`, `Not required`, `Credential storage unavailable`, `No models`,
+   `Models disabled`, `Ready to test`, `Ready`, or `Connection error`; no
+   credential-file path, raw selector enum, validation error, key fragment, or
+   key length may appear. Confirm low-frequency provider fields live only under
+   that provider's closed Advanced disclosure; model fields and capability
+   metadata live in the separate Model editor; and Provider/Model deletion each
+   live in a separate closed Danger zone. Complete Add provider Connection ->
+   Model once, reopen the dialog, and confirm non-secret values persist while
+   every API-key input remains empty.
 7. Simulate one missing/stale item and one connection failure. Confirm each
    message states what happened and what to do next. Use Copy diagnostics or
    Open log folder and confirm support details remain obtainable without being
