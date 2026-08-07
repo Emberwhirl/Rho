@@ -147,6 +147,7 @@ const state = {
   agentFileMention: { items: [], index: 0, start: -1, end: -1, mode: "mention", contextSource: null },
   agentContextSource: "editor",
   agentContextPath: null,
+  agentDiagnostic: null,
   agentPollTimer: null,
   activeRunId: null,
   agentReviewRunId: null,
@@ -5576,6 +5577,7 @@ function setAgentContext(source, path = null) {
 
 function resetAgentContext() {
   setAgentContext("editor", null);
+  state.agentDiagnostic = null;
 }
 
 function validateProjectRelativePath(path) {
@@ -7285,7 +7287,8 @@ function renderLintStatus() {
     : `${response?.diagnostics?.length || 0} code ${response?.diagnostics?.length === 1 ? "issue" : "issues"} found`;
 }
 
-async function openProblemSource(problem) {
+async function openProblemSource(problem, options = {}) {
+  const { selectRange = false } = options;
   const sourceKind = problemSourceKind(problem);
   if (sourceKind === "console") {
     switchDockTab("console");
@@ -7294,10 +7297,82 @@ async function openProblemSource(problem) {
   if (sourceKind !== "file") return;
   await openDocument(problem.source_path);
   if (state.activeDocument !== problem.source_path || !problem.line_number) return;
+  const lineNumber = Math.max(1, Number(problem.line_number));
+  const columnNumber = Math.max(1, Number(problem.column_number) || 1);
   if (state.editor.mode === "monaco" && state.editor.editor) {
-    state.editor.editor.revealLineInCenter(problem.line_number);
-    state.editor.editor.setPosition({ lineNumber: problem.line_number, column: problem.column_number || 1 });
+    const model = state.editor.editor.getModel();
+    const safeLineNumber = Math.min(model.getLineCount(), lineNumber);
+    const endLineNumber = selectRange
+      ? Math.min(model.getLineCount(), Math.max(safeLineNumber, Number(problem.end_line_number) || safeLineNumber))
+      : safeLineNumber;
+    const endColumnNumber = selectRange
+      ? Math.min(model.getLineMaxColumn(endLineNumber), Number(problem.end_column_number) || model.getLineMaxColumn(endLineNumber))
+      : columnNumber;
+    state.editor.editor.revealLineInCenter(safeLineNumber);
+    if (selectRange) {
+      state.editor.editor.setSelection({
+        startLineNumber: safeLineNumber,
+        startColumn: selectRange && !problem.end_column_number ? 1 : Math.min(model.getLineMaxColumn(safeLineNumber), columnNumber),
+        endLineNumber,
+        endColumn: Math.max(1, endColumnNumber),
+      });
+    } else {
+      state.editor.editor.setPosition({ lineNumber, column: columnNumber });
+    }
     state.editor.editor.focus();
+  } else if (selectRange) {
+    const content = currentEditorValue();
+    const lines = content.split("\n");
+    const startLineIndex = Math.min(lines.length - 1, lineNumber - 1);
+    const endLineIndex = Math.min(lines.length - 1, Math.max(startLineIndex, (Number(problem.end_line_number) || lineNumber) - 1));
+    const lineStart = lines.slice(0, startLineIndex).reduce((offset, line) => offset + line.length + 1, 0);
+    const endLineStart = lines.slice(0, endLineIndex).reduce((offset, line) => offset + line.length + 1, 0);
+    const startOffset = lineStart + (problem.end_column_number ? Math.min(lines[startLineIndex].length, columnNumber - 1) : 0);
+    const endOffset = endLineStart + (Number(problem.end_column_number) || lines[endLineIndex].length);
+    const editor = fallbackEditor();
+    editor.focus();
+    editor.setSelectionRange(Math.min(startOffset, endOffset), Math.max(startOffset, endOffset));
+  }
+}
+
+function problemAgentDiagnostic(problem) {
+  return {
+    source_path: problem.source_path ? truncateText(problem.source_path, 1000) : null,
+    line_number: Number.isInteger(Number(problem.line_number)) ? Number(problem.line_number) : null,
+    column_number: Number.isInteger(Number(problem.column_number)) ? Number(problem.column_number) : null,
+    end_line_number: Number.isInteger(Number(problem.end_line_number)) ? Number(problem.end_line_number) : null,
+    end_column_number: Number.isInteger(Number(problem.end_column_number)) ? Number(problem.end_column_number) : null,
+    message: truncateText(String(problem.message || ""), 4000),
+    call: problem.call ? truncateText(problem.call, 1000) : null,
+    origin: problem.origin ? truncateText(problem.origin, 128) : null,
+    severity: problem.severity ? truncateText(problem.severity, 64) : (problem.status === "failed" ? "error" : "info"),
+    run_id: problem.run_id ? truncateText(problem.run_id, 128) : null,
+    execution_mode: problem.execution_mode ? truncateText(problem.execution_mode, 64) : null,
+  };
+}
+
+async function fixProblemWithAgent(problem) {
+  const sourceKind = problemSourceKind(problem);
+  if (sourceKind === "missing" || sourceKind === "virtual" || sourceKind === "none") {
+    toast("This problem has no available project file to repair. Open the source or attach the relevant file first.", true);
+    return;
+  }
+  try {
+    if (sourceKind === "file") {
+      await openProblemSource(problem, { selectRange: true });
+      if (state.activeDocument !== problem.source_path) throw new Error("The problem source could not be opened.");
+      setAgentContext("problem", problem.source_path);
+    }
+    state.agentDiagnostic = problemAgentDiagnostic(problem);
+    applyWorkbenchLayout("agent");
+    const location = problem.source_path
+      ? `${displayPath(problem.source_path)}${problem.line_number ? `:${problem.line_number}${problem.column_number ? `:${problem.column_number}` : ""}` : ""}`
+      : "the R Console";
+    const reference = sourceKind === "file" ? ` @${problem.source_path}` : "";
+    $("#agentInput").value = `Fix this R problem at ${location}${reference}. Diagnose the cause, inspect the relevant context, and generate one reviewable file edit proposal if a code change is appropriate. Do not claim the file is changed until I accept the proposal.\n\nError: ${problem.message || "(no error message)"}`;
+    await sendAgentPrompt();
+  } catch (error) {
+    toast(reportUiFailure("start Agent repair", error, "The Agent repair context could not be prepared. Open the source and try again."), true);
   }
 }
 
@@ -7398,6 +7473,13 @@ function renderProblems() {
       $("#agentInput").focus();
     });
     actions.append(explain);
+    if (sourceKind === "file" || sourceKind === "console") {
+      const fix = document.createElement("button");
+      fix.type = "button";
+      fix.textContent = "Fix with Agent";
+      fix.addEventListener("click", () => fixProblemWithAgent(problem));
+      actions.append(fix);
+    }
     if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
       const retry = document.createElement("button");
       retry.type = "button";
@@ -12126,7 +12208,8 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function buildAgentEditorContext() {
+function buildAgentEditorContext(options = {}) {
+  const { diagnostic = state.agentDiagnostic } = options;
   syncDocumentFromEditor({ render: false, persist: false });
   const documentState = activeDocument();
   const files = state.project.files.map((file) => file.path).slice(0, 500);
@@ -12138,6 +12221,7 @@ function buildAgentEditorContext() {
       context_source: state.agentContextSource,
       context_path: state.agentContextPath,
       local_help: state.agentLocalHelpContext,
+      diagnostic,
     };
   }
   const offsets = currentEditorOffsets();
@@ -12163,6 +12247,7 @@ function buildAgentEditorContext() {
     context_source: state.agentContextSource,
     context_path: state.agentContextPath,
     local_help: state.agentLocalHelpContext,
+    diagnostic,
   };
 }
 

@@ -300,7 +300,13 @@ current_file
 selection
 project_file
 new_file
+problem
 ```
+
+Problem repair entries may additionally include a bounded `diagnostic` object
+inside `editor_context`. It carries the project-relative source path, optional
+line/column range, message, call, origin, severity, and run linkage. This is
+diagnostic context only and does not authorize a file mutation.
 
 The frontend must call `syncDocumentFromEditor()` before capturing this
 context, so unsaved editor content is authoritative.

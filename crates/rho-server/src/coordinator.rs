@@ -1645,6 +1645,7 @@ session <- rho_create_aisdk_session(
     "propose_file_edit creates a reviewable diff and never writes a file, so do not claim the edit was applied.",
     "Use replace_selection only for a non-empty selection in the same path, insert_at_cursor only for the active path, append only when requested, and create only for a new path.",
     "Treat @file references as project-relative paths. If destination or placement is ambiguous, ask instead of guessing.",
+    "When editor context includes a diagnostic, use its source path, range, message, and nearby anchors as authoritative repair context; do not require the user to restate or manually select a known error range.",
     "Respond in the language used by the user and keep the answer concise.",
     tool_notice,
     mode_policy
@@ -4877,6 +4878,25 @@ mod tests {
         assert!(prompt.contains("rho.local_help_context.v1"));
         assert!(prompt.contains("help_topic"));
         assert!(prompt.contains("Current user request:\n替换当前选区"));
+    }
+
+    #[test]
+    fn contextual_prompt_includes_problem_diagnostic_context() {
+        let context = json!({
+            "active_path": "analysis.R",
+            "context_source": "problem",
+            "diagnostic": {
+                "source_path": "analysis.R",
+                "line_number": 12,
+                "message": "object 'counts' not found",
+                "run_id": "run_failed"
+            }
+        });
+
+        let prompt = contextual_agent_prompt("Fix this problem", &[], Some(&context), None);
+        assert!(prompt.contains("\"context_source\": \"problem\""));
+        assert!(prompt.contains("object 'counts' not found"));
+        assert!(prompt.contains("\"line_number\": 12"));
     }
 
     #[test]

@@ -22,6 +22,9 @@ this file records behavior that is already available in a released build.
 - Agent Timeline, Task Rail, Monitor, and Outputs refreshes now preserve the
   user's active surface, scroll position, and focused item when new results
   arrive.
+- Problems now offers a direct `Fix with Agent` entry that opens the source,
+  carries structured diagnostic context, and starts the existing reviewable
+  file-proposal flow.
 
 ## 0.4.0-dev.13 - 2026-08-06
 
