@@ -90,6 +90,11 @@ assert.match(loadRunData, /const projectRoot = state\.project\.root/);
 assert.match(loadRunData, /refreshSequence !== state\.projectRefreshSequence \|\| projectRoot !== state\.project\.root/);
 assert.match(js, /await hydrateProject\(response\);\s*void loadRunData\(\{ quiet: true \}\);/);
 assert.match(js, /state\.runs = \[\];[\s\S]*state\.artifacts = \[\];[\s\S]*renderAgentOutputs\(\);/);
+assert.match(js, /function capturePanelViewport\(panel, keySelector = null\)/);
+assert.match(js, /function restorePanelViewport\(panel, viewport, keySelector = null\)/);
+assert.match(js, /function renderAgentOutputs\(\)[\s\S]*capturePanelViewport\(list, "data-output-key"\)[\s\S]*restorePanelViewport\(list, viewport, "data-output-key"\)/);
+assert.match(js, /function renderAgentTimeline\(\)[\s\S]*capturePanelViewport\(panel, "data-turn-id"\)[\s\S]*restorePanelViewport\(panel, viewport, "data-turn-id"\)/);
+assert.match(js, /card\.dataset\.outputKey = agentOutputKey\(entry\.kind, entry\.id\)/);
 assert.match(
   loadRunData,
   /try \{\s*const detail = await invoke\("get_artifact_record"[\s\S]*?\} catch \(error\) \{[\s\S]*?state\.selectedArtifactDetail = listedArtifact/,

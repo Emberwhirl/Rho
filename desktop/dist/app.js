@@ -5651,6 +5651,25 @@ function parseApprovalArguments(argumentsJson) {
   }
 }
 
+function capturePanelViewport(panel, keySelector = null) {
+  if (!panel) return null;
+  const focused = document.activeElement;
+  return {
+    top: panel.scrollTop,
+    left: panel.scrollLeft,
+    focusKey: keySelector && panel.contains(focused) ? focused.getAttribute(keySelector) : null,
+  };
+}
+
+function restorePanelViewport(panel, viewport, keySelector = null) {
+  if (!panel || !viewport) return;
+  panel.scrollTop = viewport.top;
+  panel.scrollLeft = viewport.left;
+  if (keySelector && viewport.focusKey) {
+    panel.querySelector(`[${keySelector}="${CSS.escape(viewport.focusKey)}"]`)?.focus({ preventScroll: true });
+  }
+}
+
 async function loadAgentData({ quiet = false } = {}) {
   try {
     const [turns, approvals] = await Promise.all([
@@ -6578,6 +6597,7 @@ function syncAgentPolling() {
 
 function renderAgentTimeline() {
   const panel = $("#agentTimeline");
+  const viewport = capturePanelViewport(panel, "data-turn-id");
   panel.replaceChildren();
   if (!state.agentTurns.length) {
     if (state.agentRuntime && !state.agentRuntime.available) {
@@ -6585,6 +6605,7 @@ function renderAgentTimeline() {
     } else {
       addTimeline("R session ready", "Ask Rho about the current project or attach a file for review.", "completed");
     }
+    restorePanelViewport(panel, viewport, "data-turn-id");
     return;
   }
   for (const turn of state.agentTurns.slice(0, 8)) {
@@ -6713,10 +6734,12 @@ function renderAgentTimeline() {
       }
     }
   }
+  restorePanelViewport(panel, viewport, "data-turn-id");
 }
 
 function renderTaskRail() {
   const list = $("#taskRailList");
+  const viewport = capturePanelViewport(list, "data-turn-id");
   list.replaceChildren();
 
   const turns = state.agentTurns.slice(0, 12);
@@ -6733,6 +6756,7 @@ function renderTaskRail() {
     start.addEventListener("click", startNewAgentTask);
     empty.append(heading, description, start);
     list.append(empty);
+    restorePanelViewport(list, viewport, "data-turn-id");
     syncAgentWorkSurfaceLayout();
     return;
   }
@@ -6764,6 +6788,7 @@ function renderTaskRail() {
 
   const header = document.querySelector(".task-rail-header span");
   if (header) header.textContent = `Tasks (${state.agentTurns.length})`;
+  restorePanelViewport(list, viewport, "data-turn-id");
   syncAgentWorkSurfaceLayout();
 }
 
@@ -13513,6 +13538,7 @@ async function openAgentOutput(kind, id) {
 function renderAgentOutputs() {
   const list = $("#agentOutputsList");
   if (!list) return;
+  const viewport = capturePanelViewport(list, "data-output-key");
   list.replaceChildren();
   const entries = [
     ...state.plots.map((plot, index) => ({ kind: "plot", id: plot.plot_id, record: plot, title: `Plot ${index + 1}`, createdAt: plot.created_at })),
@@ -13527,12 +13553,14 @@ function renderAgentOutputs() {
     empty.className = "agent-output-empty";
     empty.textContent = "No outputs yet. Plots and saved results produced in this project will appear here.";
     list.append(empty);
+    restorePanelViewport(list, viewport, "data-output-key");
     return;
   }
 
   for (const entry of entries) {
     const card = document.createElement("button");
     card.type = "button";
+    card.dataset.outputKey = agentOutputKey(entry.kind, entry.id);
     const selected = agentOutputKey(entry.kind, entry.id) === agentOutputKey(state.agentSelectedOutput?.kind, state.agentSelectedOutput?.id);
     card.className = `agent-output-card${selected ? " active" : ""}`;
     card.setAttribute("aria-label", `Review ${entry.title}`);
@@ -13572,10 +13600,12 @@ function renderAgentOutputs() {
     card.addEventListener("click", () => openAgentOutput(entry.kind, entry.id));
     list.append(card);
   }
+  restorePanelViewport(list, viewport, "data-output-key");
 }
 
 function renderMonitorPanel() {
   const list = $("#monitorRunList");
+  const viewport = capturePanelViewport(list, "data-run-id");
   list.replaceChildren();
 
   const visibleRuns = state.runs.slice(0, 12);
@@ -13592,6 +13622,7 @@ function renderMonitorPanel() {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `monitor-run-item${quiet ? " background" : ""}`;
+      item.dataset.runId = run.run_id;
       const marker = createStateMarker(run.status, prettyStatus(run.status));
       const body = document.createElement("span");
       body.className = "monitor-run-body";
@@ -13616,6 +13647,7 @@ function renderMonitorPanel() {
   if (!visibleRuns.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No runs yet.</div>';
   }
+  restorePanelViewport(list, viewport, "data-run-id");
 }
 
 function renderReviewPanel() {

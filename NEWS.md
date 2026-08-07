@@ -19,6 +19,9 @@ this file records behavior that is already available in a released build.
 - Switching projects now clears stale Runs, Plots, and Outputs immediately and
   refreshes the new project's output data without waiting for every session
   document to reopen.
+- Agent Timeline, Task Rail, Monitor, and Outputs refreshes now preserve the
+  user's active surface, scroll position, and focused item when new results
+  arrive.
 
 ## 0.4.0-dev.13 - 2026-08-06
 
