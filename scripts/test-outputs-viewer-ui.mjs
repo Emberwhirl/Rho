@@ -84,6 +84,12 @@ const artifactDetailLoad = loadRunData.indexOf('invoke("get_artifact_record"');
 const agentConsoleSync = loadRunData.indexOf("syncAgentRunsToConsole(state.runs)");
 assert.ok(firstPlotRender >= 0 && firstPlotRender < artifactDetailLoad, "Plot history must render before saved-output detail loads");
 assert.ok(firstPlotRender < agentConsoleSync, "Plot history must render before Agent Console synchronization");
+assert.match(js, /projectRefreshSequence: 0/);
+assert.match(loadRunData, /const refreshSequence = state\.projectRefreshSequence/);
+assert.match(loadRunData, /const projectRoot = state\.project\.root/);
+assert.match(loadRunData, /refreshSequence !== state\.projectRefreshSequence \|\| projectRoot !== state\.project\.root/);
+assert.match(js, /await hydrateProject\(response\);\s*void loadRunData\(\{ quiet: true \}\);/);
+assert.match(js, /state\.runs = \[\];[\s\S]*state\.artifacts = \[\];[\s\S]*renderAgentOutputs\(\);/);
 assert.match(
   loadRunData,
   /try \{\s*const detail = await invoke\("get_artifact_record"[\s\S]*?\} catch \(error\) \{[\s\S]*?state\.selectedArtifactDetail = listedArtifact/,

@@ -33,6 +33,7 @@ const state = {
   activeAgentTurnId: null,
   agentRuntime: null,
   projectSkills: { project_root: "", trust_status: "untrusted_project_content", skills: [], discovery_error: null },
+  projectRefreshSequence: 0,
   agentLlm: {
     settings: null,
     selectedModelId: null,
@@ -4400,7 +4401,8 @@ async function restoreDraftChoice(path, savedContent, draftContent) {
 }
 
 async function openDocument(path, options = {}) {
-  const { sessionEntry = null, forceReload = false, revealWorkSurface = true } = options;
+  const { sessionEntry = null, forceReload = false, revealWorkSurface = true, preserveActive = false } = options;
+  const previousActive = state.activeDocument;
   if (state.activeDocument && state.activeDocument !== path) {
     syncDocumentFromEditor({ render: false, persist: false });
     clearAgentEditHighlight();
@@ -4408,6 +4410,10 @@ async function openDocument(path, options = {}) {
   if (state.documents[path]?.transient) {
     state.activeDocument = path;
     renderActiveDocument();
+    if (preserveActive && state.activeDocument === path) {
+      state.activeDocument = previousActive;
+      renderActiveDocument();
+    }
     if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
     requestAnimationFrame(() => layoutEditor());
     return;
@@ -4445,6 +4451,10 @@ async function openDocument(path, options = {}) {
   }
   state.activeDocument = path;
   renderActiveDocument();
+  if (preserveActive && state.activeDocument === path) {
+    state.activeDocument = previousActive;
+    renderActiveDocument();
+  }
   if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
   requestAnimationFrame(() => layoutEditor());
   scheduleSessionSave();
@@ -4803,6 +4813,8 @@ function activeRunRecord() {
 }
 
 async function loadRunData({ quiet = false } = {}) {
+  const refreshSequence = state.projectRefreshSequence;
+  const projectRoot = state.project.root;
   try {
     const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
@@ -4810,6 +4822,7 @@ async function loadRunData({ quiet = false } = {}) {
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
     ]);
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
     loadGitStatus();
     state.runs = runs || [];
     state.problems = problems || [];
@@ -5531,14 +5544,19 @@ function renderProjectSkills() {
 
 async function loadProjectSkills(options = {}) {
   const { quiet = true } = options;
+  const refreshSequence = state.projectRefreshSequence;
+  const projectRoot = state.project.root;
   if (state.projectStatus !== "ready" || !state.project.root) {
     state.projectSkills = emptyProjectSkillsView(state.project.root || "");
     renderProjectSkills();
     return;
   }
   try {
-    state.projectSkills = await invoke("list_project_skills");
+    const skills = await invoke("list_project_skills");
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
+    state.projectSkills = skills;
   } catch (error) {
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
     state.projectSkills = {
       ...emptyProjectSkillsView(state.project.root),
       discovery_error: String(error),
@@ -14682,6 +14700,7 @@ async function handleExternalDocumentChange(path) {
 }
 
 async function hydrateProject(response) {
+  state.projectRefreshSequence += 1;
   clearAgentLlmCredentialInput();
   closeAgentContextMenu();
   hideAgentFileMentions();
@@ -14717,6 +14736,16 @@ async function hydrateProject(response) {
   state.expandedDirectories.clear();
   state.collapsedDirectories.clear();
   state.activeDocument = null;
+  state.runs = [];
+  state.problems = [];
+  state.plots = [];
+  state.artifacts = [];
+  state.selectedPlotId = null;
+  state.selectedArtifactId = null;
+  renderRuns();
+  renderProblems();
+  renderPlots();
+  renderAgentOutputs();
   state.editor.models.forEach((model) => model.dispose());
   state.editor.models.clear();
   state.project = response.project || { root: "", files: [], truncated: false };
@@ -14739,12 +14768,9 @@ async function hydrateProject(response) {
     state.agentSurface = state.posture === "agent" ? "direct" : (session.agent_surface || "direct");
   }
   setProjectStatus("ready");
-  await loadProjectSkills();
+  void loadProjectSkills();
   const sessionDocuments = session.open_documents || [];
   const activeDocumentPath = session.active_document;
-  for (const entry of sessionDocuments) {
-    await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false });
-  }
   const target = activeDocumentPath && state.project.files.some((file) => file.path === activeDocumentPath)
     ? activeDocumentPath
     : sessionDocuments[0]?.path || state.project.files[0]?.path || null;
@@ -14757,6 +14783,19 @@ async function hydrateProject(response) {
     renderActiveDocument();
   }
   applyPostureLayout();
+  const deferredDocuments = sessionDocuments.filter((entry) => entry.path !== target);
+  if (deferredDocuments.length) {
+    const restoreSequence = state.projectRefreshSequence;
+    void (async () => {
+      for (const entry of deferredDocuments) {
+        if (restoreSequence !== state.projectRefreshSequence) return;
+        await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false, preserveActive: true });
+      }
+      if (restoreSequence === state.projectRefreshSequence && target && state.documents[target]) {
+        await openDocument(target, { revealWorkSurface: false });
+      }
+    })();
+  }
 }
 
 function setStartupBusy(busy) {
@@ -14953,6 +14992,7 @@ $("#projectSwitcher").addEventListener("click", async () => {
       return;
     }
     await hydrateProject(response);
+    void loadRunData({ quiet: true });
   } catch (error) {
     toast(reportUiFailure("switch project", error, "The project could not be switched. The current project remains active."), true);
   }

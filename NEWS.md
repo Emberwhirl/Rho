@@ -16,6 +16,9 @@ this file records behavior that is already available in a released build.
   management, deletion, catalogs, and low-frequency connection fields are
   progressively disclosed under one Advanced settings section; Agent LLM API
   keys now use the Windows system credential store only.
+- Switching projects now clears stale Runs, Plots, and Outputs immediately and
+  refreshes the new project's output data without waiting for every session
+  document to reopen.
 
 ## 0.4.0-dev.13 - 2026-08-06
 
