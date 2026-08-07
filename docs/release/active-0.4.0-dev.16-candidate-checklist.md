@@ -10,9 +10,9 @@ through `0.4.0-dev.15`, so the combined source advances to the single-use
 authorized, locally implemented, verified, and contract-reviewed; hosted
 attempt 1 failed closed at the log-host allowlist; its exact-host repair passed
 attempt 2's waiter, whose finalizer then failed closed on fresh-R `jsonlite`;
-the bounded dependency repair is locally verified and its replacement
-rehearsal remains open; authoritative candidate/draft, MAC5 acceptance, and
-release GO remain NOT RUN
+the bounded dependency repair and replacement exact-commit rehearsal passed;
+MAC4-R3 is complete at its review-only mandatory stop; authoritative
+candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -51,9 +51,9 @@ here; it does not authorize MAC5, a tag, Release, draft, Pages, or publication.
 | Release name | `Rho 0.4.0-dev.16` | workflow identity fixed; draft NOT RUN |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | fixed |
-| Source commit | one full 40-character SHA | pending hosted checkout |
-| Windows platform | `windows_x86_64` | pending hosted build |
-| macOS platform | `macos_aarch64` | pending hosted build |
+| Source commit | one full 40-character SHA | fork rehearsal passed at `8de3dcc1dafc9e8562d239a6051a9113b778f1c3`; authoritative candidate pending |
+| Windows platform | `windows_x86_64` | review-only rehearsal passed; authoritative candidate pending |
+| macOS platform | `macos_aarch64` | signed/notarized review-only rehearsal passed; authoritative candidate pending |
 | Minimum macOS | 14.0 | configured; exact candidate pending |
 | Ark | 0.1.252 arm64 on macOS | pinned; exact candidate pending |
 | Release decision | `NO-GO` | MAC5 not authorized or run |
@@ -227,12 +227,13 @@ Release, or Pages publication. This closes MAC4-R2 only. Because upstream used
 the same prerelease numbers independently, this fork artifact is historical
 review evidence and cannot satisfy the integrated `0.4.0-dev.16` candidate.
 
-## MAC4-R3 Asynchronous Notarization Gate — LOCALLY VERIFIED / REHEARSAL NOT RUN
+## MAC4-R3 Asynchronous Notarization Gate — PASSED / REVIEW-ONLY STOP REACHED
 
-The two passing macOS rehearsals spent more than 95% of their job time waiting
-for Apple's service after local build/signing had completed. MAC4-R3 changes
-only CI orchestration; it does not change the app, entitlement set, signing
-identity, notarization authority, candidate admission, or publication policy.
+The two earlier passing macOS rehearsals spent more than 95% of their job time
+waiting for Apple's service after local build/signing had completed. MAC4-R3
+changes only CI orchestration; it does not change the app, entitlement set,
+signing identity, notarization authority, candidate admission, or publication
+policy.
 
 The accepted workflow must satisfy all of these checks:
 
@@ -278,9 +279,10 @@ The accepted workflow must satisfy all of these checks:
 MAC4-R3 local implementation satisfies deterministic success, rejection,
 stale/binding, malformed/oversized, 401/403/404, bounded transport/429/5xx
 recovery, terminal rejection, timeout, log, and rerun-reuse coverage plus the
-complete affected validation matrix. Final acceptance still requires one new
-exact-commit fork rehearsal. Its mandatory stop remains review-only Actions
-evidence with zero tag, Release, draft, Pages, or MAC5 mutation.
+complete affected validation matrix. At that local checkpoint, final
+acceptance still required one new exact-commit fork rehearsal. Its mandatory
+stop remains review-only Actions evidence with zero tag, Release, draft,
+Pages, or MAC5 mutation.
 
 Local verification on 2026-08-07 passed all 39 deterministic JavaScript
 contract suites, candidate/update self-tests, JavaScript syntax, workflow YAML,
@@ -319,7 +321,40 @@ and clean-installed-app acceptance remain out of scope.
 The repair passed all 39 deterministic suites, candidate/update self-tests, the
 exact R dependency command, YAML/actionlint, and diff checks. Contract review
 found no app, package, entitlement, public-protocol, version, or NEWS change;
-replacement hosted evidence remains required.
+at that checkpoint, replacement hosted evidence was still required.
+
+Replacement run `31163017077` attempt 1 passed at exact fork commit
+`8de3dcc1dafc9e8562d239a6051a9113b778f1c3`. `macos-submit` completed the
+full validation/build/sign/smoke/submit/cleanup lane in 12 minutes 23 seconds;
+the Ubuntu Accepted/log waiter completed in 8 seconds; and the secret-free
+staple/Gatekeeper/Workspace finalizer completed in 1 minute 28 seconds. Total
+macOS-runner use was 13 minutes 51 seconds, while Windows completed in
+18 minutes 43 seconds and the entire workflow in about 19 minutes.
+
+Final review-only artifact ID `8988354217` is named
+`rho-0.4.0-dev.16-rehearsal-8de3dcc1dafc9e8562d239a6051a9113b778f1c3-31163017077-1`,
+is 38,699,030 compressed bytes, has GitHub digest
+`sha256:36f27de38736b09051ddf41302073c55783c66f3450012f98976ee234b0985c6`,
+and expires at `2026-08-21T09:04:33Z`. Independent download and validation
+proved the exact seven-file set, exact platform/rehearsal schemas, exact
+repository/version/tag/commit/run binding, byte-for-byte checksum sidecars,
+and all aggregate sizes and hashes. Key records are:
+
+| Record | Bytes | SHA-256 |
+| --- | ---: | --- |
+| macOS arm64 DMG | 20,786,895 | `d897e62566ff0ad1469c24c343bc2e955065f236d7d5ed4582321c35c04377ce` |
+| macOS platform evidence | 1,358 | `55d06e517c83d151b5e15a532cbd4434a01cc804bfe786f196e72a256e0f5709` |
+| Windows x64 installer | 17,999,268 | `038b6aa0ce61f2d255d977b302616ae063621601e51f124a376fb3c52089018a` |
+| Windows platform evidence | 904 | `387cb518195d7b3bae23ca1a88011616ba46108683a3aa67a0caa528dc226738` |
+| Rehearsal evidence | 1,582 | `be937442fa855e3fc718052797ede62c89c9a2dae4fd9977f6b15c3e53cf1d19` |
+
+The macOS evidence includes log-bound notarization, `notary_binding`, staple,
+both Gatekeeper checks, exact arm64/entitlements, and DMG-internal Workspace
+smoke. Repository audit found zero tags, zero Releases/drafts, no Pages site,
+and a skipped draft-assembly job. GitHub's Node.js 20 action-runtime warnings
+are a bounded follow-up; they did not affect this passing immutable evidence.
+MAC4-R3 is closed at the mandated review-only stop and cannot satisfy any
+Required Draft Asset or MAC5 row.
 
 ## macOS Signing And Notarization Gate
 
@@ -421,9 +456,8 @@ publication do not by themselves prove live Pages acceptance.
 evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
 fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
-locally implemented and verified; hosted attempt 1 failed closed and its
-bounded log-host repair reached attempt 2's finalizer, which failed closed on
-the fresh-runner `jsonlite` prerequisite. The dependency repair is locally
-verified and its replacement rehearsal remains open. No authoritative main-
-repository candidate, immutable draft, MAC5 installed acceptance, or explicit
-GO exists.
+implemented, locally verified, and passed exact-commit fork rehearsal
+`31163017077`; its review-only mandatory stop is reached. That rehearsal is not
+an authoritative candidate and does not fill any draft or MAC5 acceptance row.
+No authoritative main-repository candidate, immutable draft, MAC5 installed
+acceptance, or explicit GO exists.

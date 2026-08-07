@@ -23,13 +23,15 @@ day; upstream `main` was integrated without history rewriting on 2026-08-07
 and its independent development line through `0.4.0-dev.15` requires the
 combined candidate to advance to `0.4.0-dev.16`; MAC4-R3 asynchronous
 notarization orchestration is explicitly authorized, locally implemented,
-verified, and contract-reviewed on 2026-08-07; its first exact-commit hosted
-rehearsal failed closed at the developer-log host allowlist and the bounded
-exact-host repair below is locally verified; its replacement rehearsal remains
-open after reaching the finalizer and failing closed on an undeclared fresh-
-runner smoke prerequisite; the bounded dependency repair below is locally
-verified and its replacement rehearsal remains open; MAC5 remains proposed
-and unauthorized
+verified, and contract-reviewed on 2026-08-07; its first two exact-commit
+hosted rehearsals failed closed at the developer-log host allowlist and then
+the fresh-finalizer R dependency gate; both bounded repairs were regression-
+covered; replacement run `31163017077` at exact commit
+`8de3dcc1dafc9e8562d239a6051a9113b778f1c3` passed the full review-only
+rehearsal, reduced total macOS-runner use to 13 minutes 51 seconds, and
+produced an independently verified seven-file artifact; the MAC4-R3 mandatory
+stop is reached; authoritative candidate/draft creation and MAC5 remain NOT
+RUN and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1457,5 +1459,61 @@ workflow YAML, `actionlint` 1.7.7 with the known `macos-26` catalog suppression,
 and diff checks. Static review proves the dependency step precedes immutable
 finalizer verification, admits only `jsonlite`, and contains no bridge Suggests,
 Agent dependency installation, Apple secret, or smoke bypass. This CI-only
-repair has no application/version/NEWS impact. Replacement hosted evidence is
-still required.
+repair has no application/version/NEWS impact. At that checkpoint, replacement
+hosted evidence was still required.
+
+## MAC4-R3 Replacement Hosted Rehearsal — PASSED / REVIEW-ONLY STOP REACHED 2026-08-07
+
+Fork Actions run `31163017077` attempt 1 checked out exact repair commit
+`8de3dcc1dafc9e8562d239a6051a9113b778f1c3` and completed successfully. The
+macOS submission job ran for 12 minutes 23 seconds, including the complete
+affected validation matrix, signing, Workspace smoke, final-DMG creation, one
+no-wait submission, credential cleanup, and immutable handoff. Apple had
+already accepted the request when the Ubuntu waiter made its first poll, so
+the accepted/log-bound wait job completed in 8 seconds. The secret-free macOS
+finalizer installed and verified only `jsonlite`, then passed original-DMG
+binding, staple and validation, read-only mount, app/Ark codesign, exact arm64,
+exact entitlements, both Gatekeeper assessments, and DMG-internal Workspace
+smoke in 1 minute 28 seconds. Total macOS-runner use was therefore 13 minutes
+51 seconds. Windows completed in 18 minutes 43 seconds, the review-only
+aggregate completed in 7 seconds, and the whole workflow completed in about
+19 minutes.
+
+GitHub artifact ID `8988354217`, named
+`rho-0.4.0-dev.16-rehearsal-8de3dcc1dafc9e8562d239a6051a9113b778f1c3-31163017077-1`,
+has compressed size 38,699,030 bytes, GitHub digest
+`sha256:36f27de38736b09051ddf41302073c55783c66f3450012f98976ee234b0985c6`,
+and expires at `2026-08-21T09:04:33Z`. An independent post-run download
+required exactly these seven non-empty regular files, rejected any directory
+or symlink, recomputed every size and SHA-256, validated both platform schemas
+and the rehearsal schema against the exact repository/version/tag/commit/run,
+compared every aggregate record, and checked both checksum sidecars byte for
+byte:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `Rho_0.4.0-dev.16_aarch64.dmg` | 20,786,895 | `d897e62566ff0ad1469c24c343bc2e955065f236d7d5ed4582321c35c04377ce` |
+| `Rho_0.4.0-dev.16_aarch64.dmg.sha256` | 95 | `b9937b6cea86b91740a7e7cca2414dc0050dfd2b8cb1bf5bad3442296992dcf4` |
+| `rho-0.4.0-dev.16-macos-aarch64-evidence.json` | 1,358 | `55d06e517c83d151b5e15a532cbd4434a01cc804bfe786f196e72a256e0f5709` |
+| `Rho_0.4.0-dev.16_x64-setup.exe` | 17,999,268 | `038b6aa0ce61f2d255d977b302616ae063621601e51f124a376fb3c52089018a` |
+| `Rho_0.4.0-dev.16_x64-setup.exe.sha256` | 97 | `a849ce540e0861fe56de22db72dded15ae492355c6488a3a022da271f5e47775` |
+| `rho-0.4.0-dev.16-windows-x86_64-evidence.json` | 904 | `387cb518195d7b3bae23ca1a88011616ba46108683a3aa67a0caa528dc226738` |
+| `rho-0.4.0-dev.16-rehearsal-evidence.json` | 1,582 | `be937442fa855e3fc718052797ede62c89c9a2dae4fd9977f6b15c3e53cf1d19` |
+
+The macOS platform record contains all required checks, including independent
+`notary_binding`, `notarization`, `staple`, `gatekeeper`, `arm64`, exact
+`entitlements`, and `workspace_smoke`. The draft-release job was skipped.
+Read-only repository audit found zero tags, zero Releases/drafts, and no Pages
+site (`GET /pages` returned 404); the seven-file artifact contains no candidate
+aggregate or MAC5 acceptance record. Thus no publication or acceptance state
+was mutated.
+
+GitHub emitted non-blocking warnings that the current checkout, Node setup,
+upload-artifact, and download-artifact action revisions still declare the
+retiring Node.js 20 runtime and were forced onto Node.js 24. The exact evidence
+run passed; updating those action majors is a bounded follow-up and must not
+rewrite this immutable rehearsal result. This CI-only slice does not change
+application behavior or package contracts, so the version remains
+`0.4.0-dev.16` and `NEWS.md` remains unchanged. MAC4-R3 is complete at its
+mandatory review-only stop. Release decision remains NO-GO; an authoritative
+main-repository candidate/draft and MAC5 require separate authorization.

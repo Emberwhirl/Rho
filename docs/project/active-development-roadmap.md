@@ -165,15 +165,15 @@ The bounded `0.4.0-dev.2` entitlement repair and replacement fork rehearsal
 passed. Upstream `main`, independently versioned through `0.4.0-dev.15`, is now
 integrated without rewriting the macOS branch history; the combined source is
 `0.4.0-dev.16`. MAC4-R3 asynchronous notarization orchestration is authorized
-and locally implemented/verified; its first exact-commit fork rehearsal proved
-the 7m57s macOS submission split but failed closed on Apple's newly observed
-exact S3 log-delivery host. The bounded allowlist repair and replacement
-rehearsal were activated; the exact-host repair is locally verified and the
-replacement rehearsal passed its waiter but failed closed in the secret-free
-finalizer because fresh R lacked the declared `rho.bridge` import `jsonlite`.
-The bounded finalizer dependency repair is locally verified and its replacement
-rehearsal remains open. All authoritative candidate/draft creation remains NOT
-RUN. MAC5 remains unauthorized. This stream
+and locally implemented/verified. Its first two exact-commit fork rehearsals
+failed closed on Apple's newly observed exact S3 log-delivery host and then a
+missing fresh-finalizer `jsonlite` dependency; both bounded repairs are covered.
+Replacement run `31163017077` at exact `0.4.0-dev.16` fork commit
+`8de3dcc1dafc9e8562d239a6051a9113b778f1c3` passed the full Windows/macOS
+review-only rehearsal, independent seven-file evidence validation, and zero-
+publication audit while using 13 minutes 51 seconds of macOS runner time.
+MAC4-R3 is closed at its mandatory review-only stop. All authoritative
+candidate/draft creation remains NOT RUN. MAC5 remains unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
 
