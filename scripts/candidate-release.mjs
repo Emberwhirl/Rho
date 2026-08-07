@@ -34,6 +34,7 @@ const REQUIRED_CHECKS = {
     "codesign",
     "entitlements",
     "notarization",
+    "notary_binding",
     "staple",
     "gatekeeper",
   ],

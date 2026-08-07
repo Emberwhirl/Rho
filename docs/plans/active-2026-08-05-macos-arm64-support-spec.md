@@ -22,8 +22,9 @@ repair was explicitly authorized, implemented, and locally verified on
 day; upstream `main` was integrated without history rewriting on 2026-08-07
 and its independent development line through `0.4.0-dev.15` requires the
 combined candidate to advance to `0.4.0-dev.16`; MAC4-R3 asynchronous
-notarization orchestration is explicitly authorized and not yet implemented;
-MAC5 remains proposed and unauthorized
+notarization orchestration is explicitly authorized, locally implemented,
+verified, and contract-reviewed on 2026-08-07; its exact-commit hosted
+rehearsal remains NOT RUN; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -604,9 +605,10 @@ Contract:
   are step-scoped; tokens and the private key never enter command lines,
   output, files uploaded as artifacts, or evidence;
 - exact Apple statuses are `In Progress`, `Accepted`, `Invalid`, and
-  `Rejected`. Only `In Progress`, HTTP 429, and 5xx are retryable under bounded
-  delay/attempt/deadline rules. Unknown statuses, wrong identity/name,
-  malformed or oversized responses, 401/403/404, and other 4xx fail closed;
+  `Rejected`. Only `In Progress`, bounded transport failures, HTTP 429, and 5xx
+  are retryable under bounded delay/attempt/deadline rules. Unknown statuses,
+  wrong identity/name, malformed or oversized responses, 401/403/404, and
+  other 4xx fail closed;
 - after `Accepted`, retrieve the exact submission's log URL, require HTTPS and
   an Apple-controlled host, download bounded JSON, and bind its submission ID
   and status into the accepted record. A missing, rejected, mismatched, or
@@ -642,8 +644,9 @@ Verification and exit gate:
 
 - deterministic tests cover pending/accepted/log schemas and identity binding,
   ES256 token claims and lifetime, success, terminal rejection, unknown state,
-  malformed/oversized input, 401/403/404, bounded 429/5xx recovery, timeout,
-  untrusted log URL, hash mismatch, cross-run/stale evidence, and rerun reuse;
+  malformed/oversized input, 401/403/404, bounded transport/429/5xx recovery,
+  timeout, untrusted log URL, hash mismatch, cross-run/stale evidence, and
+  rerun reuse;
 - workflow contract tests prove one submit call, no `--wait` in the submission
   job, exact job dependencies, least-privilege secret placement, immutable
   intermediates, finalizer gates, and aggregate consumption of only final
@@ -1330,8 +1333,48 @@ deterministic `scripts/test-*.mjs` suites; candidate-release and update-site
 self-tests; JavaScript syntax; workflow YAML parsing; and `git diff --check`.
 Two stale upstream frontend assertions were corrected to the already-required
 camelCase Tauri argument contract and `dev.16` asset identity. `actionlint` was
-not available locally and remains a hosted/rehearsal validation gate.
+not installed as a standalone binary at this checkpoint; the later MAC4-R3
+validation invoked version 1.7.7 through Go and is recorded below.
 
-This entry closes only the upstream integration prerequisite. MAC4-R3 product
-implementation and exact-commit hosted rehearsal remain open; MAC5 and all
-publication mutations remain unauthorized.
+This entry closed only the upstream integration prerequisite. At that
+checkpoint MAC4-R3 implementation and the exact-commit hosted rehearsal were
+open; the subsequent local implementation evidence is recorded below. MAC5
+and all publication mutations remain unauthorized.
+
+## MAC4-R3 Local Implementation Evidence — PASSED 2026-08-07
+
+The candidate workflow now has three bounded macOS jobs. `macos-submit` builds,
+signs, validates, smokes, and submits the copied final DMG exactly once with
+`notarytool --no-wait`; it removes the temporary certificate, API-key file,
+Keychain, receipt, and inherited credential-path variables before uploading
+the immutable DMG/pending pair. `macos-notary-wait` runs on Ubuntu, receives
+only the three team API-key secrets in its polling step, creates 120-second
+ES256 JWTs in memory, and polls only the fixed submission/status and log
+endpoints. `macos-finalize` receives no Apple secret, verifies the exact
+repository/mode/version/tag/commit/Run/UUID/name/size/hash/log binding, staples
+and mounts the same DMG, and repeats arm64, codesign, exact-entitlement,
+Gatekeeper, and Workspace smoke gates before final platform evidence exists.
+
+The built-in-Node implementation bounds receipts, API responses, evidence,
+developer logs, artifact size, retry count, polling delay, and total wait. It
+fails closed on unknown or terminal status, identity/name/log mismatch,
+malformed or oversized input, untrusted log URL, authentication/not-found
+responses, timeout, and cross-run or tampered finalizer input. Intermediate
+artifact names are outside the final platform pattern, aggregate consumers now
+depend on `macos-finalize`, and final macOS evidence requires the independent
+`notary_binding` check.
+
+Local evidence passed: all 39 deterministic `scripts/test-*.mjs` suites;
+candidate-release and update-site self-tests; JavaScript syntax; workflow YAML
+parsing; `actionlint` 1.7.7 with only its stale runner-label catalog warning for
+the already exercised `macos-26` label suppressed; `cargo fmt`; the complete
+Rust workspace with 284 passed and one opt-in native-Keychain smoke ignored;
+complete `rho.bridge` and `rho.agent` testthat suites; and `git diff --check`.
+Contract review found no change to application behavior, package contract,
+entitlements, credential authority, or public protocol, so the integrated
+application identity remains `0.4.0-dev.16` and `NEWS.md` does not change for
+this CI-only orchestration slice.
+
+The required exact-commit credentialed fork rehearsal is still NOT RUN. This
+local checkpoint creates no tag, Release, draft, Pages state, acceptance
+record, or MAC5 authority; the release decision remains NO-GO.

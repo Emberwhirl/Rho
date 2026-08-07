@@ -237,7 +237,7 @@ function fakeCandidateRecord(version) {
   };
   const checks = {
     windows_x86_64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke"],
-    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "staple", "gatekeeper"],
+    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "notary_binding", "staple", "gatekeeper"],
   };
   record.platform_evidence = Object.fromEntries(CANDIDATE_PLATFORMS.map((platform) => [platform, {
     size_bytes: platforms[platform].evidence.size_bytes,
@@ -294,6 +294,10 @@ function selfTest() {
     const wrongHash = fakeCandidateRecord("0.4.0-dev.1");
     wrongHash.evidence.platforms.macos_aarch64.artifact.sha256 = "ABC";
     expectFailure(() => generate([wrongHash], temp), /invalid/);
+    const missingNotaryBinding = fakeCandidateRecord("0.4.0-dev.1");
+    missingNotaryBinding.platform_evidence.macos_aarch64.content.checks =
+      missingNotaryBinding.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "notary_binding");
+    expectFailure(() => generate([missingNotaryBinding], temp), /missing required check notary_binding/);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

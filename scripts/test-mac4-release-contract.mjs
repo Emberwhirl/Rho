@@ -50,7 +50,7 @@ assert.match(build, /release_name:\n[\s\S]*?default: Rho 0\.4\.0-dev\.16/);
 assert.match(build, /candidate-release\.mjs --mode admission --build_mode "\$BUILD_MODE" --repository "\$GITHUB_REPOSITORY" --workflow_ref "\$GITHUB_REF" --default_branch "\$DEFAULT_BRANCH"/);
 assert.match(build, /commit="\$\(git rev-parse "\$\{INPUT_REF\}\^\{commit\}"\)"/);
 assert.match(build, /Requested commit \$commit is not the current default-branch commit \$default_commit/);
-assert.equal(count(build, /persist-credentials: false/g), 5, "Every candidate checkout must avoid persisted Git credentials");
+assert.equal(count(build, /persist-credentials: false/g), 7, "Every candidate checkout must avoid persisted Git credentials");
 assert.match(build, /runs-on: macos-26\b/);
 assert.doesNotMatch(build, /macos-26-arm64/);
 assert.match(build, /DEVELOPER_DIR: \/Applications\/Xcode_26\.6\.app\/Contents\/Developer/);
@@ -73,7 +73,8 @@ assert.match(build, /security import[^\n]+ -T \/usr\/bin\/codesign/);
 assert.match(build, /if: always\(\)/);
 assert.match(build, /security delete-keychain "\$keychain_path"/);
 assert.doesNotMatch(build, /security delete-keychain[^\n]+\|\| true/);
-assert.match(build, /rm -f "\$RUNNER_TEMP\/AuthKey_\$\{APPLE_API_KEY\}\.p8"/);
+assert.match(build, /api_key_path="\$RUNNER_TEMP\/rho-notary-api-key\.p8"/);
+assert.match(build, /rm -f [^\n]+ "\$api_key_path"/);
 assert.match(build, /test ! -e "\$keychain_path"/);
 for (const command of [
   "codesign --verify --deep --strict --verbose=4",
@@ -88,42 +89,88 @@ assert.match(build, /require_exact_arm64 "Rho app executable"/);
 assert.match(build, /require_exact_arm64 "Bundled Ark executable"/);
 assert.equal(
   count(build, /require_exact_library_validation_entitlement "(?:Rho app executable|Bundled Ark executable)"/g),
-  2,
-  "The final app and Ark signatures must both prove the exact entitlement set",
+  4,
+  "Submission and mounted-finalizer app/Ark signatures must prove the exact entitlement set",
 );
 assert.match(build, /codesign -d --entitlements - --xml "\$binary_path"/);
 assert.match(build, /plutil -convert json -o "\$json_path" "\$plist_path"/);
 assert.match(build, /node scripts\/validate-macos-entitlements\.mjs "\$json_path"/);
 assert.match(
   build,
-  /--checks [^\n]*arm64,codesign,entitlements,notarization,staple,gatekeeper/,
-  "The candidate evidence must record the exact-entitlement gate independently from codesign",
+  /--checks [^\n]*arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper/,
+  "The candidate evidence must record entitlement and immutable notarization binding independently",
 );
-assert.match(
-  build,
-  /xcrun notarytool submit "\$dmg_path" --key "\$APPLE_API_KEY_PATH" --key-id "\$APPLE_API_KEY" --issuer "\$APPLE_API_ISSUER" --wait --output-format json > target\/notary-dmg-submit\.json/,
-);
-assert.match(build, /node scripts\/validate-notary-receipt\.mjs target\/notary-dmg-submit\.json/);
-const dmgSubmitIndex = build.indexOf('xcrun notarytool submit "$dmg_path"');
-const entitlementValidationIndex = build.indexOf('require_exact_library_validation_entitlement "Rho app executable"');
-const receiptValidationIndex = build.indexOf("node scripts/validate-notary-receipt.mjs");
-const dmgStapleIndex = build.indexOf('xcrun stapler staple "$dmg_path"');
-const gatekeeperIndex = build.indexOf("spctl --assess --type execute");
+
+const macSubmitJob = build.match(/\n  macos-submit:[\s\S]*?(?=\n  macos-notary-wait:)/)?.[0];
+const macWaitJob = build.match(/\n  macos-notary-wait:[\s\S]*?(?=\n  macos-finalize:)/)?.[0];
+const macFinalizeJob = build.match(/\n  macos-finalize:[\s\S]*?(?=\n  rehearsal-evidence:)/)?.[0];
+assert.ok(macSubmitJob && macWaitJob && macFinalizeJob, "Missing asynchronous macOS notarization jobs");
+assert.match(macSubmitJob, /runs-on: macos-26\n\s+timeout-minutes: 60/);
+assert.match(macSubmitJob, /xcrun notarytool submit "\$submitted_dmg"[^\n]+ --no-wait --output-format json/);
+assert.doesNotMatch(macSubmitJob, /notarytool submit[^\n]+ --wait(?: |$)/);
+assert.equal(count(build, /xcrun notarytool submit/g), 1, "The exact final DMG must be submitted once");
+assert.match(macSubmitJob, /macos-notary\.mjs submission/);
+assert.match(macSubmitJob, /rho-notary-submission-\$\{\{ needs\.identity\.outputs\.version \}\}-\$\{\{ github\.run_id \}\}/);
+const entitlementValidationIndex = macSubmitJob.indexOf('require_exact_library_validation_entitlement "Rho app executable"');
+const dmgSubmitIndex = macSubmitJob.indexOf('xcrun notarytool submit "$submitted_dmg"');
+const cleanupIndex = macSubmitJob.indexOf("Remove temporary Apple credentials before artifact handoff");
+const submissionUploadIndex = macSubmitJob.indexOf("Upload immutable unstapled DMG and pending request");
 assert.ok(
-  entitlementValidationIndex < dmgSubmitIndex
-    && dmgSubmitIndex < receiptValidationIndex
-    && receiptValidationIndex < dmgStapleIndex
-    && dmgStapleIndex < gatekeeperIndex,
-  "Entitlement validation, final DMG submission, receipt validation, staple, and Gatekeeper gates must stay ordered",
+  entitlementValidationIndex >= 0
+    && entitlementValidationIndex < dmgSubmitIndex
+    && dmgSubmitIndex < cleanupIndex
+    && cleanupIndex < submissionUploadIndex,
+  "Entitlement validation, one submission, credential cleanup, and immutable handoff must stay ordered",
 );
+assert.match(macSubmitJob, /echo "RHO_SIGNING_KEYCHAIN="/);
+assert.match(macSubmitJob, /echo "APPLE_API_KEY_PATH="/);
+assert.match(macSubmitJob, /api_key_path="\$\{APPLE_API_KEY_PATH:-\$RUNNER_TEMP\/rho-notary-api-key\.p8\}"/);
+assert.equal(count(macSubmitJob, /secrets\.APPLE_API_KEY\b/g), 2, "Cleanup must not receive the API key ID secret");
+
+assert.match(macWaitJob, /runs-on: ubuntu-latest/);
+assert.match(macWaitJob, /timeout-minutes: 350/);
+assert.match(macWaitJob, /macos-notary\.mjs wait/);
+assert.match(macWaitJob, /--poll-interval-ms 120000 --max-wait-ms 19800000/);
+assert.match(macWaitJob, /rho-notary-acceptance-\$\{\{ needs\.identity\.outputs\.version \}\}-\$\{\{ github\.run_id \}\}/);
+for (const secret of ["APPLE_API_ISSUER", "APPLE_API_KEY", "APPLE_API_PRIVATE_KEY"]) {
+  assert.match(macWaitJob, new RegExp(`secrets\\.${secret}\\b`), `Waiter is missing ${secret}`);
+}
+for (const secret of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "KEYCHAIN_PASSWORD", "APPLE_SIGNING_IDENTITY", "APPLE_TEAM_ID"]) {
+  assert.doesNotMatch(macWaitJob, new RegExp(`secrets\\.${secret}\\b`), `Waiter must not receive ${secret}`);
+}
+assert.doesNotMatch(macWaitJob, /notarytool|APPLE_API_KEY_PATH|contents: write/);
+
+assert.match(macFinalizeJob, /runs-on: macos-26\n\s+timeout-minutes: 60/);
+assert.doesNotMatch(macFinalizeJob, /secrets\.|notarytool submit/);
+assert.match(macFinalizeJob, /macos-notary\.mjs verify/);
+assert.match(macFinalizeJob, /xcrun stapler staple "\$dmg_path"/);
+assert.match(macFinalizeJob, /hdiutil attach "\$dmg_path" -nobrowse -readonly -mountpoint "\$mount_point"/);
+assert.match(macFinalizeJob, /app_path="\$mount_point\/Rho\.app"/);
+const finalVerifyIndex = macFinalizeJob.indexOf("macos-notary.mjs verify");
+const dmgStapleIndex = macFinalizeJob.indexOf('xcrun stapler staple "$dmg_path"');
+const finalGatekeeperIndex = macFinalizeJob.indexOf("spctl --assess --type execute");
+const finalSmokeIndex = macFinalizeJob.indexOf('"$app_path/Contents/MacOS/rho-desktop" --smoke-test');
+assert.ok(
+  finalVerifyIndex >= 0
+    && finalVerifyIndex < dmgStapleIndex
+    && dmgStapleIndex < finalGatekeeperIndex
+    && finalGatekeeperIndex < finalSmokeIndex,
+  "Immutable binding, staple, mounted Gatekeeper, and Workspace smoke must stay ordered",
+);
+assert.match(build, /needs: \[identity, windows-candidate, macos-finalize\]/g);
+assert.doesNotMatch(build, /macos-candidate/);
+
 const entitlementValidator = read("scripts/validate-macos-entitlements.mjs");
 assert.match(entitlementValidator, /MAX_MACOS_ENTITLEMENTS_BYTES = 4 \* 1024/);
 assert.match(entitlementValidator, /com\.apple\.security\.cs\.disable-library-validation/);
 assert.match(entitlementValidator, /keys\.length !== 1/);
-const notaryValidator = read("scripts/validate-notary-receipt.mjs");
-assert.match(notaryValidator, /MAX_NOTARY_RECEIPT_BYTES = 64 \* 1024/);
-assert.match(notaryValidator, /receipt\.status !== "Accepted"/);
-assert.match(notaryValidator, /submissionIdPattern\.test\(receipt\.id\)/);
+const notaryContract = read("scripts/macos-notary.mjs");
+assert.match(notaryContract, /NOTARY_API_ORIGIN = "https:\/\/appstoreconnect\.apple\.com"/);
+assert.match(notaryContract, /"Accepted", "In Progress", "Invalid", "Rejected"/);
+assert.match(notaryContract, /alg: "ES256"/);
+assert.match(notaryContract, /aud: "appstoreconnect-v1"/);
+assert.match(notaryContract, /MAX_NOTARY_LOG_BYTES = 1024 \* 1024/);
+assert.match(notaryContract, /dsaEncoding: "ieee-p1363"/);
 assert.match(read(".github/workflows/candidate-publish.yml"), /default: v0\.4\.0-dev\.16/);
 assert.match(build, /draft: true/);
 assert.match(build, /prerelease: true/);
@@ -132,10 +179,13 @@ assert.match(build, /git\.getRef/);
 assert.doesNotMatch(build, /deleteReleaseAsset/);
 assert.equal(count(build, /uploadReleaseAsset/g), 1, "Only the draft assembly loop may upload release assets");
 assert.equal(count(build, /contents: write/g), 1, "Only candidate draft assembly may request contents write");
-assert.equal(count(build, /overwrite: true/g), 2, "Only the two intermediate platform artifacts may be replaced on a rerun");
+assert.equal(count(build, /overwrite: true/g), 2, "Only the two final platform artifacts may be replaced on a rerun");
 assert.equal(count(build, /pattern: rho-\$\{\{ needs\.identity\.outputs\.version \}\}-\*-\$\{\{ github\.run_id \}\}/g), 2);
 assert.match(build, /name: rho-\$\{\{ needs\.identity\.outputs\.version \}\}-windows-x86-64-\$\{\{ github\.run_id \}\}/);
 assert.match(build, /name: rho-\$\{\{ needs\.identity\.outputs\.version \}\}-macos-arm64-\$\{\{ github\.run_id \}\}/);
+assert.equal(count(build, /name: rho-notary-(?:submission|acceptance)-\$\{\{ needs\.identity\.outputs\.version \}\}-\$\{\{ github\.run_id \}\}/g), 5);
+assert.doesNotMatch(build, /name: rho-notary-(?:submission|acceptance)[\s\S]{0,300}overwrite: true/);
+assert.equal(count(build, /needs: \[identity, windows-candidate, macos-finalize\]/g), 2);
 
 const rehearsalJob = build.match(/\n  rehearsal-evidence:[\s\S]*?(?=\n  draft-candidate:)/)?.[0];
 assert.ok(rehearsalJob, "Missing rehearsal evidence job");
@@ -166,6 +216,7 @@ assert.match(candidateTool, /REHEARSAL_REPOSITORY = "YuLab-SMU\/Rho_for_mac"/);
 assert.match(candidateTool, /CANDIDATE_REPOSITORY = "YuLab-SMU\/Rho"/);
 assert.match(candidateTool, /validateBuildAdmission/);
 assert.match(candidateTool, /Rehearsal evidence exceeds its byte budget/);
+assert.match(candidateTool, /"notary_binding"/);
 
 const publish = read(".github/workflows/candidate-publish.yml");
 assert.match(publish, /environment: rho-release/);

@@ -7,8 +7,9 @@ repair and exact-commit fork rehearsal passed on 2026-08-06; upstream `main`
 was integrated on 2026-08-07 and already had an independent development line
 through `0.4.0-dev.15`, so the combined source advances to the single-use
 `0.4.0-dev.16` identity; MAC4-R3 asynchronous notarization orchestration is
-authorized but not yet implemented; authoritative candidate/draft, MAC5
-acceptance, and release GO remain NOT RUN
+authorized, locally implemented, verified, and contract-reviewed; its hosted
+rehearsal, authoritative candidate/draft, MAC5 acceptance, and release GO
+remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -111,12 +112,13 @@ not satisfy this gate.
 
 The signed macOS build must prove the final DMG submission. Tauri's automatic
 app-archive submission does not cover a DMG created afterward, so the Tauri
-command retains signing variables but runs without notarization API variables;
-the workflow then submits the exact final DMG once with `notarytool --wait`.
-The project validator must bound the single-submission JSON receipt to 64 KiB,
-require an Accepted status and UUID submission ID, and reject malformed,
-missing-ID, and non-Accepted receipts before staple, Gatekeeper, smoke, or
-platform evidence. History-only inference and cross-run receipts are forbidden.
+command retains signing variables but runs without notarization API variables.
+The workflow submits the exact final DMG once with `notarytool --no-wait`, binds
+the UUID and pre-submission artifact hash into a bounded pending record, waits
+through the fixed Apple API from Ubuntu, and requires a bounded, identity-bound
+Accepted log before a secret-free macOS finalizer may staple, Gatekeeper-assess,
+smoke, or emit platform evidence. History-only inference and cross-run records
+are forbidden.
 Architecture checks must report the observed app and bundled-Ark architectures
 on failure while continuing to require exact arm64 binaries.
 
@@ -222,7 +224,7 @@ Release, or Pages publication. This closes MAC4-R2 only. Because upstream used
 the same prerelease numbers independently, this fork artifact is historical
 review evidence and cannot satisfy the integrated `0.4.0-dev.16` candidate.
 
-## MAC4-R3 Asynchronous Notarization Gate — AUTHORIZED / NOT IMPLEMENTED
+## MAC4-R3 Asynchronous Notarization Gate — LOCALLY VERIFIED / REHEARSAL NOT RUN
 
 The two passing macOS rehearsals spent more than 95% of their job time waiting
 for Apple's service after local build/signing had completed. MAC4-R3 changes
@@ -247,8 +249,9 @@ The accepted workflow must satisfy all of these checks:
   printed or uploaded;
 - `In Progress` is the only retryable 200 status. `Accepted` continues to log
   retrieval; `Invalid` and `Rejected` fail. Authentication/identity errors
-  fail closed, while 429 and 5xx responses use bounded retries and the overall
-  wait remains below the GitHub-hosted job limit;
+  fail closed, while bounded transport failures, 429, and 5xx responses use
+  bounded retries and the overall wait remains below the GitHub-hosted job
+  limit;
 - the waiter downloads and bounds Apple's terminal log JSON even on success,
   validates that it identifies the same submission, and emits an immutable
   accepted record. Unknown status, malformed/oversized JSON, wrong ID/name,
@@ -266,11 +269,22 @@ The accepted workflow must satisfy all of these checks:
   ID and DMG instead of submitting a second copy. A new workflow run creates a
   new notarization request and may not reuse evidence from another run.
 
-MAC4-R3 acceptance requires deterministic success, rejection, stale/binding,
-malformed/oversized, 401/403/404, 429/5xx recovery, terminal rejection, timeout,
-log, and rerun-reuse coverage; complete affected workflow validation; and one
-new exact-commit fork rehearsal. Its mandatory stop remains review-only Actions
+MAC4-R3 local implementation satisfies deterministic success, rejection,
+stale/binding, malformed/oversized, 401/403/404, bounded transport/429/5xx
+recovery, terminal rejection, timeout, log, and rerun-reuse coverage plus the
+complete affected validation matrix. Final acceptance still requires one new
+exact-commit fork rehearsal. Its mandatory stop remains review-only Actions
 evidence with zero tag, Release, draft, Pages, or MAC5 mutation.
+
+Local verification on 2026-08-07 passed all 39 deterministic JavaScript
+contract suites, candidate/update self-tests, JavaScript syntax, workflow YAML,
+`actionlint` 1.7.7 apart from its stale `macos-26` runner-label catalog warning,
+Rust format and the complete 284-test workspace matrix with one opt-in native
+Keychain smoke ignored, both complete R package suites, and diff checks. Review
+confirmed that this is CI-only orchestration: application behavior, entitlement
+set, package contracts, and public protocols are unchanged, so version remains
+`0.4.0-dev.16` and no new `NEWS.md` entry is required. Hosted evidence is NOT
+RUN and the decision remains NO-GO.
 
 ## macOS Signing And Notarization Gate
 
@@ -370,6 +384,6 @@ publication do not by themselves prove live Pages acceptance.
 evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
 fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
-authorized but not yet implemented or rehearsed. No authoritative
+locally implemented and verified but not yet rehearsed. No authoritative
 main-repository candidate, immutable draft, MAC5 installed acceptance, or
 explicit GO exists.

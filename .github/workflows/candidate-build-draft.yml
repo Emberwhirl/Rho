@@ -72,6 +72,7 @@ jobs:
           node scripts/candidate-release.mjs --mode identity --version "$version" --tag "$INPUT_RELEASE_TAG" --commit "$commit"
           node scripts/candidate-release.mjs --test true
           node scripts/generate-update-site.mjs --test true
+          node scripts/test-macos-notary.mjs
           node scripts/test-mac4-release-contract.mjs
           {
             echo "build_mode=$BUILD_MODE"
@@ -193,10 +194,11 @@ jobs:
           overwrite: true
           retention-days: 14
 
-  macos-candidate:
-    name: Build signed and notarized macOS arm64 candidate
+  macos-submit:
+    name: Build, sign and submit macOS arm64 DMG
     needs: identity
     runs-on: macos-26
+    timeout-minutes: 60
     permissions:
       contents: read
     env:
@@ -285,7 +287,7 @@ jobs:
           test -n "$APPLE_API_PRIVATE_KEY"
           certificate_path="$RUNNER_TEMP/rho-developer-id.p12"
           keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
-          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          api_key_path="$RUNNER_TEMP/rho-notary-api-key.p8"
           printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate_path"
           printf '%s' "$APPLE_API_PRIVATE_KEY" | base64 -D > "$api_key_path"
           chmod 600 "$certificate_path" "$api_key_path"
@@ -299,14 +301,17 @@ jobs:
           echo "RHO_SIGNING_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
           echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
 
-      - name: Build, sign, notarize and verify macOS DMG
+      - name: Build, sign and submit final DMG without waiting
         shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
           CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
           test -n "$APPLE_SIGNING_IDENTITY"
@@ -316,9 +321,9 @@ jobs:
           test -f "$APPLE_API_KEY_PATH"
           (cd desktop/src-tauri && env -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH npx -y "@tauri-apps/cli@2.11.4" build --target aarch64-apple-darwin --bundles app,dmg)
           app_path="target/aarch64-apple-darwin/release/bundle/macos/Rho.app"
-          dmg_path="target/aarch64-apple-darwin/release/bundle/dmg/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          built_dmg="target/aarch64-apple-darwin/release/bundle/dmg/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
           test -d "$app_path"
-          test -f "$dmg_path"
+          test -f "$built_dmg"
           codesign --verify --deep --strict --verbose=4 "$app_path"
           require_exact_arm64() {
             local label="$1"
@@ -352,17 +357,216 @@ jobs:
           }
           require_exact_library_validation_entitlement "Rho app executable" "$app_path/Contents/MacOS/rho-desktop" "rho-app-entitlements"
           require_exact_library_validation_entitlement "Bundled Ark executable" "$ark_path" "rho-ark-entitlements"
-          xcrun notarytool submit "$dmg_path" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait --output-format json > target/notary-dmg-submit.json
-          node scripts/validate-notary-receipt.mjs target/notary-dmg-submit.json
+          "$app_path/Contents/MacOS/rho-desktop" --smoke-test
+          mkdir -p target/notary
+          submitted_dmg="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json"
+          cp "$built_dmg" "$submitted_dmg"
+          xcrun notarytool submit "$submitted_dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --no-wait --output-format json > "$RUNNER_TEMP/notary-submit.json"
+          node scripts/macos-notary.mjs submission --receipt "$RUNNER_TEMP/notary-submit.json" --dmg "$submitted_dmg" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output "$pending_record"
+          rm -f "$RUNNER_TEMP/notary-submit.json"
+
+      - name: Remove temporary Apple credentials before artifact handoff
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
+          api_key_path="${APPLE_API_KEY_PATH:-$RUNNER_TEMP/rho-notary-api-key.p8}"
+          if [[ -e "$keychain_path" ]]; then security delete-keychain "$keychain_path"; fi
+          rm -f "$RUNNER_TEMP/rho-developer-id.p12" "$RUNNER_TEMP/notary-submit.json" "$api_key_path"
+          {
+            echo "RHO_SIGNING_KEYCHAIN="
+            echo "APPLE_API_KEY_PATH="
+          } >> "$GITHUB_ENV"
+          test ! -e "$keychain_path"
+          test ! -e "$RUNNER_TEMP/rho-developer-id.p12"
+          test ! -e "$api_key_path"
+
+      - name: Upload immutable unstapled DMG and pending request
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-notary-submission-${{ needs.identity.outputs.version }}-${{ github.run_id }}
+          path: |
+            target/notary/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg
+            target/notary/rho-${{ needs.identity.outputs.version }}-macos-notary-pending.json
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-notary-wait:
+    name: Wait for exact Apple notarization
+    needs: [identity, macos-submit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    steps:
+      - name: Check out immutable notary contract tools
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download immutable DMG submission record
+        uses: actions/download-artifact@v5
+        with:
+          name: rho-notary-submission-${{ needs.identity.outputs.version }}-${{ github.run_id }}
+          path: target/notary
+
+      - name: Poll exact submission and retrieve bounded Apple log
+        shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_API_ISSUER"
+          test -n "$APPLE_API_KEY"
+          test -n "$APPLE_API_PRIVATE_KEY"
+          mkdir -p target/notary-accepted
+          node scripts/macos-notary.mjs wait --pending "target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json" --output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-notary-accepted.json" --log-output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-notary-log.json" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --poll-interval-ms 120000 --max-wait-ms 19800000
+
+      - name: Upload immutable acceptance and Apple log
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-notary-acceptance-${{ needs.identity.outputs.version }}-${{ github.run_id }}
+          path: |
+            target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-notary-accepted.json
+            target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-notary-log.json
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-finalize:
+    name: Staple and verify accepted macOS arm64 DMG
+    needs: [identity, macos-submit, macos-notary-wait]
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Check out immutable candidate commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          persist-credentials: false
+
+      - name: Prove runner, Xcode and source identity
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          test "$(xcodebuild -version | sed -n '1p')" = "Xcode 26.6"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up current stable R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Download immutable DMG submission inputs
+        uses: actions/download-artifact@v5
+        with:
+          name: rho-notary-submission-${{ needs.identity.outputs.version }}-${{ github.run_id }}
+          path: target/notary
+
+      - name: Download immutable Apple acceptance inputs
+        uses: actions/download-artifact@v5
+        with:
+          name: rho-notary-acceptance-${{ needs.identity.outputs.version }}-${{ github.run_id }}
+          path: target/notary
+
+      - name: Verify, staple, mount and smoke exact accepted DMG
+        shell: bash
+        env:
+          CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          set -euo pipefail
+          dmg_path="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json"
+          accepted_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-accepted.json"
+          log_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-log.json"
+          node scripts/macos-notary.mjs verify --pending "$pending_record" --accepted "$accepted_record" --log "$log_record" --dmg "$dmg_path" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID"
           xcrun stapler staple "$dmg_path"
           xcrun stapler validate "$dmg_path"
-          spctl --assess --type execute --verbose=4 "$app_path"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+          mount_point="$RUNNER_TEMP/rho-candidate-dmg"
+          mkdir -p "$mount_point"
+          mounted=false
+          cleanup_mount() {
+            if [[ "$mounted" == true ]]; then hdiutil detach "$mount_point" >/dev/null || true; fi
+            rmdir "$mount_point" 2>/dev/null || true
+          }
+          trap cleanup_mount EXIT
+          hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_point"
+          mounted=true
+          app_path="$mount_point/Rho.app"
+          test -d "$app_path"
+          codesign --verify --deep --strict --verbose=4 "$app_path"
+          require_exact_arm64() {
+            local label="$1"
+            local binary_path="$2"
+            local archs
+            if ! archs="$(lipo -archs "$binary_path" 2>&1)"; then
+              printf '%s architecture probe failed for %s: %s\n' "$label" "$binary_path" "$archs" >&2
+              return 1
+            fi
+            printf '%s architecture: %s (%s)\n' "$label" "$archs" "$binary_path"
+            if [[ "$archs" != "arm64" ]]; then
+              printf '%s must be exactly arm64, observed: %s\n' "$label" "$archs" >&2
+              return 1
+            fi
+          }
+          require_exact_arm64 "Rho app executable" "$app_path/Contents/MacOS/rho-desktop"
+          ark_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -name 'ark*' -print -quit)"
+          test -n "$ark_path"
+          require_exact_arm64 "Bundled Ark executable" "$ark_path"
+          require_exact_library_validation_entitlement() {
+            local label="$1"
+            local binary_path="$2"
+            local output_stem="$3"
+            local plist_path="$RUNNER_TEMP/${output_stem}.plist"
+            local json_path="$RUNNER_TEMP/${output_stem}.json"
+            codesign -d --entitlements - --xml "$binary_path" > "$plist_path"
+            plutil -convert json -o "$json_path" "$plist_path"
+            node scripts/validate-macos-entitlements.mjs "$json_path"
+            rm -f "$plist_path" "$json_path"
+            printf '%s has the exact reviewed macOS entitlement set (%s)\n' "$label" "$binary_path"
+          }
+          require_exact_library_validation_entitlement "Rho app executable" "$app_path/Contents/MacOS/rho-desktop" "rho-final-app-entitlements"
+          require_exact_library_validation_entitlement "Bundled Ark executable" "$ark_path" "rho-final-ark-entitlements"
+          spctl --assess --type execute --verbose=4 "$app_path"
           "$app_path/Contents/MacOS/rho-desktop" --smoke-test
+          hdiutil detach "$mount_point"
+          mounted=false
+          rmdir "$mount_point"
+          trap - EXIT
           mkdir -p target/candidate
           cp "$dmg_path" "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
 
-      - name: Create macOS platform evidence
+      - name: Create final macOS platform evidence
         shell: bash
         env:
           CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
@@ -370,9 +574,9 @@ jobs:
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
-          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,staple,gatekeeper
+          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper
 
-      - name: Upload immutable macOS candidate inputs
+      - name: Upload immutable final macOS candidate inputs
         uses: actions/upload-artifact@v4
         with:
           name: rho-${{ needs.identity.outputs.version }}-macos-arm64-${{ github.run_id }}
@@ -384,25 +588,10 @@ jobs:
           overwrite: true
           retention-days: 14
 
-      - name: Remove temporary Apple credentials
-        if: always()
-        shell: bash
-        env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          set -euo pipefail
-          keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
-          if [[ -e "$keychain_path" ]]; then security delete-keychain "$keychain_path"; fi
-          rm -f "$RUNNER_TEMP/rho-developer-id.p12"
-          if [[ -n "$APPLE_API_KEY" ]]; then rm -f "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"; fi
-          test ! -e "$keychain_path"
-          test ! -e "$RUNNER_TEMP/rho-developer-id.p12"
-          if [[ -n "$APPLE_API_KEY" ]]; then test ! -e "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"; fi
-
   rehearsal-evidence:
     name: Assemble review-only rehearsal artifact
     if: ${{ needs.identity.outputs.build_mode == 'rehearsal' && github.repository == 'YuLab-SMU/Rho_for_mac' }}
-    needs: [identity, windows-candidate, macos-candidate]
+    needs: [identity, windows-candidate, macos-finalize]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -452,7 +641,7 @@ jobs:
   draft-candidate:
     name: Assemble immutable draft prerelease
     if: ${{ needs.identity.outputs.build_mode == 'candidate' && github.repository == 'YuLab-SMU/Rho' }}
-    needs: [identity, windows-candidate, macos-candidate]
+    needs: [identity, windows-candidate, macos-finalize]
     runs-on: ubuntu-latest
     permissions:
       contents: write
