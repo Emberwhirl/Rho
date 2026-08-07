@@ -19,30 +19,35 @@ for (const label of ["Provider type", "Model", "API key", "Save", "Test connecti
 for (const id of ["agentLlmCurrentSelection", "agentLlmCurrentStatus", "agentLlmProviderList", "agentLlmModelList"]) {
   assert.ok(html.includes(`id="${id}"`), `${id} must be visible in the primary model chooser`);
 }
-assert.ok(html.includes("<summary>Advanced settings</summary>"), "Provider/model management must be progressively disclosed");
+assert.ok(html.includes("<summary>Provider Advanced</summary>"), "Provider connection details must be progressively disclosed per provider");
 for (const obsolete of ["Reload credentials", "Copy API key template"]) {
   assert.ok(!html.includes(obsolete), `Obsolete primary action remains: ${obsolete}`);
 }
 
-const advancedStart = html.indexOf('<details id="agentLlmAdvanced"');
-const dialogEnd = html.indexOf("<!-- Generic product dialogs -->", advancedStart);
-const advanced = html.slice(advancedStart, dialogEnd);
-assert.ok(advancedStart >= 0 && !/<details id="agentLlmAdvanced"[^>]*\sopen(?:\s|>)/.test(advanced));
+const advancedStart = html.indexOf('<details id="agentLlmProviderAdvanced"');
+const advancedEnd = html.indexOf('<details id="agentLlmProviderDanger"', advancedStart);
+const advanced = html.slice(advancedStart, advancedEnd);
+const modelDialogStart = html.indexOf('<div id="agentLlmModelDialog"');
+const modelDialogEnd = html.indexOf("<!-- Generic product dialogs -->", modelDialogStart);
+const modelDialog = html.slice(modelDialogStart, modelDialogEnd);
+assert.ok(advancedStart >= 0 && !/<details id="agentLlmProviderAdvanced"[^>]*\sopen(?:\s|>)/.test(advanced));
 for (const id of [
   "agentLlmProviderDisplayName",
-  "agentLlmModelDisplayName",
   "agentLlmRegisteredProviderId",
   "agentLlmProviderApiKeyEnv",
   "agentLlmProviderBaseUrlEnv",
   "agentLlmProviderWireApi",
   "agentLlmProviderDisableStreamOptions",
+]) assert.ok(advanced.includes(`id="${id}"`), `${id} must be hidden under Provider Advanced`);
+for (const id of [
+  "agentLlmModelDisplayName",
   "agentLlmModelToolCalling",
   "agentLlmModelReasoning",
   "agentLlmModelVisionInput",
   "agentLlmModelCapabilitySource",
-  "agentLlmDeleteProvider",
   "agentLlmDeleteModel",
-]) assert.ok(advanced.includes(`id="${id}"`), `${id} must be hidden under Advanced`);
+]) assert.ok(modelDialog.includes(`id="${id}"`), `${id} must be isolated in the model editor`);
+assert.ok(html.indexOf('id="agentLlmDeleteProvider"') > advancedStart, "Provider deletion must follow Provider Advanced");
 for (const id of ["agentLlmProviderList", "agentLlmModelList"]) {
   assert.ok(!advanced.includes(`id="${id}"`), `${id} must remain in the primary chooser`);
 }
@@ -65,7 +70,7 @@ const setMock = js.slice(
 assert.doesNotMatch(setMock, /provider\.(?:credential|api_key)\s*=|localStorage|sessionStorage/);
 assert.match(setMock, /return structuredClone\(rebuildMockAgentLlmSettings\(\)\)/);
 
-const save = js.slice(js.indexOf("async function saveAgentLlmConfiguration"), js.indexOf("\nasync function deleteAgentLlmCredential"));
+const save = js.slice(js.indexOf("async function saveAgentLlmCredential"), js.indexOf("\nasync function deleteAgentLlmCredential"));
 assert.match(save, /finally\s*{\s*clearAgentLlmCredentialInput\(\)/);
 assert.match(save, /invoke\("agent_llm_set_credential", \{ providerId: provider\.id, credential \}\)/);
 const close = js.slice(js.indexOf("function closeAgentLlmDialog"), js.indexOf("\nfunction applyAgentLlmView"));
@@ -81,8 +86,9 @@ assert.match(js, /agentLlmCredentialField"\)\.classList\.toggle\("hidden", !keyR
 const currentSelectionRender = js.slice(js.indexOf("function renderAgentLlmCurrentSelection"), js.indexOf("\nfunction renderAgentLlmDialog"));
 assert.match(currentSelectionRender, /settings\.selected_model_id/);
 assert.match(currentSelectionRender, /agentLlmCurrentSelection/);
-assert.match(js, /clearAgentProviderForm\(\);\s*\$\("#agentLlmAdvanced"\)\.open = true/);
-assert.match(js, /clearAgentModelForm\(\);\s*\$\("#agentLlmAdvanced"\)\.open = true/);
+assert.match(js, /\$\("#agentLlmAddProvider"\)\.addEventListener\("click", openAgentLlmProviderWizard\)/);
+assert.match(js, /\$\("#agentLlmAddModel"\)\.addEventListener\("click", \(\) => openAgentLlmModelDialog\(null\)\)/);
+assert.doesNotMatch(js, /saveAgentLlmConfiguration/);
 
 for (const command of ["agent_llm_set_credential", "agent_llm_delete_credential"]) {
   assert.match(rust, new RegExp(`async fn ${command}\\b`));

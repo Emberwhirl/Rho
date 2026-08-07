@@ -34,7 +34,7 @@ for (const context of [
   "delete model",
   "select model",
   "load model catalog",
-  "save model settings",
+  "save API key",
   "remove stored API key",
 ]) assert.ok(js.includes(`reportUiFailure("${context}"`), `Missing projection boundary for ${context}`);
 
@@ -102,25 +102,27 @@ const agentRunReview = js.slice(js.indexOf("function renderAgentRunReview("), js
 assert.match(agentRunReview, /document\.createElement\("details"\)/);
 assert.doesNotMatch(agentRunReview, /appendAgentReviewSection\(outcome, "Traceback"/);
 
-const advancedStart = html.indexOf('<details id="agentLlmAdvanced"');
-const advancedEnd = html.indexOf("<!-- Generic product dialogs -->", advancedStart);
+const advancedStart = html.indexOf('<details id="agentLlmProviderAdvanced"');
+const advancedEnd = html.indexOf('<details id="agentLlmProviderDanger"', advancedStart);
 const advancedSettings = html.slice(advancedStart, advancedEnd);
-assert.ok(advancedStart >= 0, "Model settings need one Advanced disclosure");
+const modelDialogStart = html.indexOf('<div id="agentLlmModelDialog"');
+const modelDialogEnd = html.indexOf("<!-- Generic product dialogs -->", modelDialogStart);
+const modelDialog = html.slice(modelDialogStart, modelDialogEnd);
+assert.ok(advancedStart >= 0, "Each provider needs its own Advanced disclosure");
 for (const id of ["agentLlmRegisteredProviderId", "agentLlmProviderApiKeyEnv", "agentLlmProviderBaseUrlEnv", "agentLlmProviderWireApi", "agentLlmProviderDisableStreamOptions"]) {
-  assert.ok(advancedSettings.includes(`id="${id}"`), `${id} must be inside Advanced settings`);
+  assert.ok(advancedSettings.includes(`id="${id}"`), `${id} must be inside Provider Advanced`);
 }
 for (const id of ["agentLlmModelToolCalling", "agentLlmModelReasoning", "agentLlmModelVisionInput", "agentLlmModelCapabilitySource"]) {
-  assert.ok(advancedSettings.includes(`id="${id}"`), `${id} must be inside Advanced settings`);
+  assert.ok(modelDialog.includes(`id="${id}"`), `${id} must be inside the dedicated model editor`);
 }
-assert.match(advancedSettings, /<summary>Advanced settings<\/summary>/);
-assert.match(advancedSettings, /<summary>More connection and capability settings<\/summary>/);
-assert.equal((advancedSettings.match(/<summary>/g) || []).length, 2, "Model settings should use one outer Advanced section and one grouped details section");
+assert.match(advancedSettings, /<summary>Provider Advanced<\/summary>/);
+assert.match(modelDialog, /<summary>Model capabilities<\/summary>/);
 assert.ok(html.indexOf('id="agentLlmModelList"') < advancedStart, "The model chooser must stay in the primary flow");
 
 const modelSettings = js.slice(js.indexOf("function renderAgentLlmDialog()"), js.indexOf("\nfunction openAgentLlmDialog"));
 assert.doesNotMatch(modelSettings, /settings\.user_environ\.path|provider\.kind\}.*credential/);
 assert.doesNotMatch(modelSettings, /settings\.validation_error \|\||result\.message \|\|/);
-assert.match(modelSettings, /providerConnectionLabel\(provider\)/);
+assert.match(modelSettings, /providerReadiness\(provider, settings\)/);
 assert.match(modelSettings, /modelConnectionLabel\(model\)/);
 const modelSettingActions = js.slice(js.indexOf("async function saveAgentProvider()"), js.indexOf("\nfunction syncAgentPolling"));
 assert.doesNotMatch(modelSettingActions, /toast\(String\(error\)|toast\(`[^`]*\$\{error\}/);

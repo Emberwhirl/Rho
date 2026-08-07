@@ -35,7 +35,10 @@ the new commits were integrated by ordinary merge `9d3086e`, their complete
 affected local validation passed, and replacement run `31165265090` at exact
 post-merge commit `c4661bbe25dcc326737c51b385c65865a795edb9` passed the
 full independently verified review-only rehearsal with 12 minutes 10 seconds
-of macOS-runner use; the refreshed MAC4-R3 mandatory stop is reached;
+of macOS-runner use; the refreshed MAC4-R3 mandatory stop is reached; Issue #4
+CRED-UX2 subsequently advances the live development identity to
+`0.4.0-dev.17`, while every `dev.16` run remains exact-source historical
+evidence and cannot validate the new frontend behavior;
 authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
@@ -122,8 +125,9 @@ Workspace/Agent ownership boundaries.
 The first rehearsal identity was `0.4.0-dev.1`; installed-app evidence rejected
 it before any authoritative candidate or draft existed. The repaired fork-only
 `0.4.0-dev.2` rehearsal passed. Because synchronized upstream source already
-advanced independently through `0.4.0-dev.15`, the integrated candidate is
-`0.4.0-dev.16`. It supports macOS 14 or later, arm64 R 4.4 or later, and an
+advanced independently through `0.4.0-dev.15`, the integrated source first
+became `0.4.0-dev.16`; the Issue #4 completion advances the current development
+candidate to `0.4.0-dev.17`. It supports macOS 14 or later, arm64 R 4.4 or later, and an
 arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
@@ -388,7 +392,8 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.16-candidate-checklist.md`; the old `0.2.0`
+  `docs/release/active-0.4.0-dev.17-candidate-checklist.md`; the historical
+  `0.4.0-dev.16` and old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
 - The accepted About/update design retains schema version 1, endpoints,
@@ -1595,3 +1600,33 @@ follow-up; GitHub forced those revisions onto Node.js 24 and the immutable run
 passed. The refreshed MAC4-R3 review-only stop is closed. Release decision
 remains NO-GO; MAC5 and every authoritative candidate/publication mutation
 remain unauthorized.
+
+## CRED-UX2 Application Identity Amendment — 2026-08-07
+
+Issue #4 completes a user-visible Model settings workflow under the active
+system-credential/LLM specification. It does not change the macOS runtime,
+Keychain adapter, entitlements, notarization protocol, artifact schema, update
+protocol, or MAC4/MAC5 authority. It does require the shared application
+identity to advance from `0.4.0-dev.16` to `0.4.0-dev.17` across Cargo, Tauri,
+frontend package/lockfile, browser mock, cache-busting, workflow defaults,
+roadmap, checklist, and `NEWS.md`; R package versions remain independent and
+unchanged.
+
+The `0.4.0-dev.16` rehearsal checklist is historical. Its exact-commit runs,
+notarization receipts, artifacts, hashes, and zero-publication audits remain
+valid only for their recorded source and cannot satisfy any `dev.17` gate. The
+active `0.4.0-dev.17` checklist owns all future candidate, installed-acceptance,
+and GO/NO-GO facts. No authoritative workflow, tag, Release, draft, MAC5, Pages,
+or publication action is authorized by this amendment.
+
+Local implementation evidence completed on 2026-08-07. The complete affected
+JavaScript, release-contract, Rust workspace, R package, Ark fixture, workflow,
+format, syntax, and diff matrix passed. Tauri CLI 2.11.4 produced an unsigned
+arm64 `Rho.app` and `Rho_0.4.0-dev.17_aarch64.dmg`; both the main executable and
+bundled Ark are arm64, the app reports macOS 14.0 minimum and version
+`0.4.0-dev.17`, `hdiutil verify` passed, and Workspace smoke passed from both
+the app and a read-only mounted DMG. The local DMG is 21,079,685 bytes with
+SHA-256 `0f919f8366bade4d12554be87bf07f9117cbeac04397de9e7447935555516f76`.
+These are development facts only: signing, notarization, Gatekeeper,
+authoritative candidate evidence, exact installed acceptance, MAC5, and
+publication remain `NOT RUN` for `dev.17`.

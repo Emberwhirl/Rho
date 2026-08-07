@@ -1,6 +1,8 @@
 # Rho 0.4.0-dev.16 Cross-Platform Candidate Checklist
 
-Status: active; `0.4.0-dev.1` MAC4-R hosted automation passed on 2026-08-06 but
+Status: historical; retained as the immutable `0.4.0-dev.16` rehearsal and
+NO-GO snapshot after the application baseline advanced to `0.4.0-dev.17` for
+the Issue #4 Model settings completion; `0.4.0-dev.1` MAC4-R hosted automation passed on 2026-08-06 but
 its installed DMG was rejected when hardened-runtime library validation
 prevented Ark from loading official CRAN R; bounded `0.4.0-dev.2` replacement
 repair and exact-commit fork rehearsal passed on 2026-08-06; upstream `main`
@@ -15,18 +17,20 @@ upstream subsequently advanced through `b5800ae`; ordinary merge `9d3086e` and
 the complete affected local matrix passed; replacement run `31165265090` at
 exact post-merge commit `c4661bbe25dcc326737c51b385c65865a795edb9`
 passed and reached the refreshed review-only stop; authoritative
-candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
+candidate/draft, MAC5 acceptance, and release GO were NOT RUN; this document
+is no longer an execution or candidate authority
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
 
 Risk: R4
 
-Owning documents: the active macOS arm64 specification owns the MAC4/MAC5
+Historical ownership: the active macOS arm64 specification owns the MAC4/MAC5
 sequence and macOS artifact. The accepted About/update design owns schema,
-channel, endpoint, allowlist, and redirect semantics. This checklist alone owns
-the exact integrated `0.4.0-dev.16` cross-platform candidate identity,
-evidence binding, manual acceptance ledger, and GO/NO-GO decision. The
+channel, endpoint, allowlist, and redirect semantics. This checklist owned the
+exact integrated `0.4.0-dev.16` cross-platform rehearsal identity, evidence
+binding, manual acceptance ledger, and NO-GO decision until the baseline
+advanced. The
 `0.2.0-dev.12` checklist does not apply to this candidate.
 
 Authorization: the project owner requested "开始完成MAC4" on 2026-08-05.

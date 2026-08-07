@@ -4,6 +4,24 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.17 - 2026-08-07
+
+### Improved
+
+- Model settings now opens on provider cards with a separate current-model
+  summary, provider-specific model lists, readiness states, and per-provider
+  Advanced controls instead of mixing routine selection with management.
+- Add provider is now a guided Connection-then-Model workflow with built-in,
+  compatible, custom, and local presets, conditional connection fields, and
+  explicit handling for services that legitimately do not require an API key.
+- API key, provider, and model operations now have separate surfaces and
+  truthful working, success, warning, and failure feedback. Destructive
+  provider/model actions are isolated in their own danger zones, while secret
+  inputs clear at workflow boundaries and never become stored UI state.
+- Model settings dialogs now contain keyboard focus, close the active layer
+  with Escape, remove hidden menus from the accessibility tree, and adapt the
+  provider rail for narrow windows.
+
 ## 0.4.0-dev.16 - 2026-08-07
 
 ### Added

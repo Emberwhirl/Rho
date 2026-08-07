@@ -38,6 +38,29 @@ project change; a stored value is never redisplayed.
 All remaining V1 decisions below continue to govern provider/model metadata,
 selection, no fallback, capability gating, attribution, and authority.
 
+### 2026-08-07 original Issue #4 presentation amendment
+
+The implemented CRED-UX2 section in
+`plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md`
+supersedes only the one-global-Advanced Model settings layout described above.
+The default surface now uses provider cards plus the selected provider's
+credential and model list; each selected provider owns its own Advanced
+disclosure; Add provider uses a dedicated Connection -> Model workflow; model
+editing and both destructive actions are separated from normal selection; and
+Save/Test/Use operations project deterministic inline state.
+
+This presentation amendment does not change V1 stable IDs, global persistence,
+model enablement, selected-model behavior, provider validation, capability
+gating, connection-test bounds, attribution, or no-fallback authority. It does
+not add a persistent provider-enable flag. Provider readiness is derived from
+the existing credential projection and enabled models.
+
+Model settings, Add provider, and Model editor are sibling modal roots. While a
+child is open, the main root is not rendered or exposed to accessibility APIs;
+the child is the sole active dialog and focus is contained and restored on
+close. This avoids Safari/WKWebView's empty nested-container accessibility state
+while preserving the same product and command authority.
+
 ## 1. Goal
 
 Allow the user to configure model providers and select the LLM used by the

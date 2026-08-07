@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-07
-Current baseline: `0.4.0-dev.16`
+Current baseline: `0.4.0-dev.17`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -176,8 +176,17 @@ Upstream then advanced through `b5800ae`; ordinary merge `9d3086e` and its
 complete affected local matrix passed. Post-merge exact-commit run
 `31165265090` then passed the full review-only rehearsal and independent
 seven-file audit while using 12 minutes 10 seconds of macOS runner time.
-MAC4-R3 is closed at its refreshed mandatory stop. All authoritative
-candidate/draft creation remains NOT RUN. MAC5 remains unauthorized. This stream
+Issue #4's CRED-UX2 completion subsequently advances the application baseline
+to `0.4.0-dev.17`; its provider-card Model settings workflow was implemented
+and passed the complete affected local matrix, deterministic browser review,
+and unsigned arm64 app/DMG smoke on 2026-08-07. That behavior is owned by the
+active system-credential/LLM specification, while the new exact candidate
+identity is owned by the `0.4.0-dev.17` checklist. The `dev.16` runs remain
+historical review-only evidence and cannot validate the new behavior. Exact
+installed-candidate native accessibility, Keychain, live-provider, and MAC5
+acceptance remain open. MAC4-R3 is closed at its refreshed mandatory stop. All
+authoritative candidate/draft creation remains NOT RUN. MAC5 remains
+unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
 

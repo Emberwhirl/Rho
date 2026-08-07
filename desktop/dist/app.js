@@ -62,6 +62,15 @@ const state = {
     testInFlight: false,
     catalog: [],
     catalogLoaded: false,
+    operation: { state: "idle", message: "" },
+    wizardOperation: { state: "idle", message: "" },
+    modelOperation: { state: "idle", message: "" },
+    wizardOpen: false,
+    wizardStep: "connection",
+    wizardProviderId: null,
+    wizardModelId: null,
+    modelDialogOpen: false,
+    returnFocusElement: null,
   },
   objects: [],
   plots: [],
@@ -410,7 +419,13 @@ let mockGitRevisionSequence = 1;
 const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
 let mockEvidenceClaimCreateFailure = null;
+let mockAgentLlmFailure = previewParams.get("failure") || null;
 let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+const mockAgentLlmSystemCredentials = new Set(
+  mockAgentLlmSettings.providers
+    .filter((provider) => provider.credential_source === "system")
+    .map((provider) => provider.id),
+);
 
 function seedMockEvidenceClaims() {
   const currentProject = mockLastProject;
@@ -659,7 +674,7 @@ function mockEffectiveModelRef(provider, model) {
 
 function mockSelectorStatus(model, provider) {
   if (!model.enabled) return "Disabled";
-  if (provider?.credential_status === "not_detected" && provider.api_key_required) return "Key missing";
+  if (["not_detected", "unavailable"].includes(provider?.credential_status) && provider.api_key_required) return "Key missing";
   if (model.last_test?.status === "ready") return "Ready";
   if (model.last_test?.status === "error") return "Error";
   return "Untested";
@@ -695,6 +710,19 @@ function rebuildMockAgentLlmSettings(settings = mockAgentLlmSettings) {
     }
     : null;
   return settings;
+}
+
+function maybeFailMockAgentLlm(failure) {
+  if (mockAgentLlmFailure !== failure) return;
+  mockAgentLlmFailure = null;
+  const messages = {
+    "save-provider": "Mock provider save failed.",
+    "set-credential": "Mock credential storage failed.",
+    "save-model": "Mock model save failed.",
+    "test-model": "Mock connection test failed.",
+    "select-model": "Mock model selection failed.",
+  };
+  throw new Error(messages[failure] || "Mock model settings operation failed.");
 }
 
 function defaultMockAgentLlmSettingsView() {
@@ -1636,7 +1664,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.16",
+      version: "0.4.0-dev.17",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1654,8 +1682,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.16",
-      available_version: "0.4.0-dev.16",
+      installed_version: "0.4.0-dev.17",
+      available_version: "0.4.0-dev.17",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2382,11 +2410,13 @@ async function mockInvoke(command, args) {
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_set_credential") {
+    maybeFailMockAgentLlm("set-credential");
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
     if (!provider.api_key_required) throw new Error("This provider does not require an API key.");
     if (!String(args.credential || "")) throw new Error("Enter an API key before saving.");
+    mockAgentLlmSystemCredentials.add(providerId);
     provider.credential_status = "detected";
     provider.credential_source = "system";
     return structuredClone(rebuildMockAgentLlmSettings());
@@ -2395,6 +2425,7 @@ async function mockInvoke(command, args) {
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
+    mockAgentLlmSystemCredentials.delete(providerId);
     provider.credential_status = "not_detected";
     provider.credential_source = "none";
     return structuredClone(rebuildMockAgentLlmSettings());
@@ -2418,14 +2449,14 @@ async function mockInvoke(command, args) {
     ];
   }
   if (command === "agent_llm_save_provider") {
+    maybeFailMockAgentLlm("save-provider");
     const provider = structuredClone(args.provider || {});
     const index = mockAgentLlmSettings.providers.findIndex((item) => item.id === provider.id);
-    const existing = index >= 0 ? mockAgentLlmSettings.providers[index] : null;
     provider.credential_status = provider.api_key_required
-      ? (existing?.credential_status || "not_detected")
+      ? (mockAgentLlmSystemCredentials.has(provider.id) ? "detected" : "not_detected")
       : "not_required";
     provider.credential_source = provider.api_key_required
-      ? (existing?.credential_source || "none")
+      ? (mockAgentLlmSystemCredentials.has(provider.id) ? "system" : "none")
       : "not_required";
     if (index >= 0) mockAgentLlmSettings.providers[index] = provider;
     else mockAgentLlmSettings.providers.push(provider);
@@ -2436,10 +2467,12 @@ async function mockInvoke(command, args) {
     if (mockAgentLlmSettings.models.some((model) => model.provider_id === providerId)) {
       throw new Error("Delete the provider's models before removing the provider.");
     }
+    mockAgentLlmSystemCredentials.delete(providerId);
     mockAgentLlmSettings.providers = mockAgentLlmSettings.providers.filter((provider) => provider.id !== providerId);
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_save_model") {
+    maybeFailMockAgentLlm("save-model");
     const model = structuredClone(args.model || {});
     const index = mockAgentLlmSettings.models.findIndex((item) => item.id === model.id);
     if (index >= 0) mockAgentLlmSettings.models[index] = model;
@@ -2458,15 +2491,30 @@ async function mockInvoke(command, args) {
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_select_model") {
+    maybeFailMockAgentLlm("select-model");
     const request = args.request || {};
     const modelId = request.modelId ?? request.model_id;
     mockAgentLlmSettings.selected_model_id = modelId;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_test_model") {
+    maybeFailMockAgentLlm("test-model");
     const modelId = args.modelId ?? args.model_id;
     const model = mockAgentLlmSettings.models.find((item) => item.id === modelId);
     if (!model) throw new Error(`Unknown model: ${modelId}`);
+    if (!model.enabled) throw new Error("Selected Agent model is disabled.");
+    const provider = mockAgentLlmSettings.providers.find((item) => item.id === model.provider_id);
+    if (!provider) throw new Error(`Missing provider for Agent model ${model.display_name}`);
+    if (provider.api_key_required && provider.credential_status !== "detected") {
+      model.last_test = {
+        status: "error",
+        checked_at: new Date().toISOString(),
+        latency_ms: null,
+        error_class: "credential",
+        message: "No API key is available for this provider.",
+      };
+      return structuredClone(rebuildMockAgentLlmSettings());
+    }
     model.last_test = {
       status: "ready",
       checked_at: new Date().toISOString(),
@@ -2475,6 +2523,9 @@ async function mockInvoke(command, args) {
       message: "Connection succeeded.",
     };
     return structuredClone(rebuildMockAgentLlmSettings());
+  }
+  if (command === "agent_llm_cancel_test") {
+    return { status: "cancel_requested" };
   }
   if (command === "list_project_skills") {
     return structuredClone(mockProjectSkillsView(mockLastProject));
@@ -5763,13 +5814,17 @@ function ensureAgentLlmSelectionState() {
   const settings = state.agentLlm.settings;
   if (!settings) return;
   if (!settings.providers.some((provider) => provider.id === state.agentLlm.selectedProviderId)) {
-    state.agentLlm.selectedProviderId = settings.providers[0]?.id || null;
-    state.agentLlm.editingProviderId = settings.providers[0]?.id || null;
+    const selectedModel = settings.models.find((model) => model.id === settings.selected_model_id) || null;
+    state.agentLlm.selectedProviderId = selectedModel?.provider_id || settings.providers[0]?.id || null;
   }
-  if (!settings.models.some((model) => model.id === state.agentLlm.selectedModelEditorId)) {
-    state.agentLlm.selectedModelEditorId = settings.selected_model_id || settings.models[0]?.id || null;
-    state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+  state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
+  const providerModels = settings.models.filter((model) => model.provider_id === state.agentLlm.selectedProviderId);
+  if (!providerModels.some((model) => model.id === state.agentLlm.selectedModelEditorId)) {
+    state.agentLlm.selectedModelEditorId = providerModels.find((model) => model.id === settings.selected_model_id)?.id
+      || providerModels[0]?.id
+      || null;
   }
+  if (!state.agentLlm.modelDialogOpen) state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
 }
 
 function prettyToolCalling(value) {
@@ -6058,20 +6113,22 @@ function renderAgentModelSelector() {
 }
 
 function currentProviderRecord() {
-  return state.agentLlm.settings?.providers?.find((provider) => provider.id === state.agentLlm.editingProviderId) || null;
+  return state.agentLlm.settings?.providers?.find((provider) => provider.id === state.agentLlm.selectedProviderId) || null;
 }
 
 function currentModelRecord() {
-  return state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.editingModelId) || null;
+  return state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
 }
 
-function createAgentLlmListRow(titleText, metaText, active) {
+function createAgentLlmListRow(titleText, metaText, active, className = "agent-llm-row") {
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `agent-llm-row${active ? " active" : ""}`;
+  row.className = `${className}${active ? " active" : ""}`;
+  row.setAttribute("role", "option");
+  row.setAttribute("aria-selected", String(Boolean(active)));
   const title = document.createElement("strong");
   title.textContent = titleText;
-  const meta = document.createElement("p");
+  const meta = document.createElement("span");
   meta.textContent = metaText;
   row.append(title, meta);
   return row;
@@ -6089,8 +6146,10 @@ function providerConnectionLabel(provider) {
 }
 
 function clearAgentLlmCredentialInput() {
-  const input = $("#agentLlmCredential");
-  if (input) input.value = "";
+  for (const selector of ["#agentLlmCredential", "#agentLlmWizardCredential"]) {
+    const input = $(selector);
+    if (input) input.value = "";
+  }
 }
 
 function agentProviderKindLabel(kind) {
@@ -6111,6 +6170,86 @@ function credentialStatusLabel(provider) {
   return "Not set";
 }
 
+function providerReadiness(provider, settings = state.agentLlm.settings) {
+  if (!provider) return { state: "error", label: "Unavailable", detail: "Provider unavailable" };
+  if (provider.credential_status === "unavailable") {
+    return { state: "error", label: "Storage unavailable", detail: "Credential storage unavailable" };
+  }
+  if (provider.api_key_required && provider.credential_status !== "detected") {
+    return { state: "warning", label: "Needs API key", detail: "API key not set" };
+  }
+  const models = (settings?.models || []).filter((model) => model.provider_id === provider.id);
+  if (!models.length) return { state: "warning", label: "No models", detail: "Add a model" };
+  const enabledModels = models.filter((model) => model.enabled);
+  if (!enabledModels.length) {
+    return { state: "warning", label: "Models disabled", detail: "Enable a model" };
+  }
+  if (enabledModels.some((model) => model.last_test?.status === "ready")) {
+    return { state: "ready", label: "Ready", detail: `${enabledModels.length} enabled` };
+  }
+  if (enabledModels.some((model) => model.last_test?.status === "error")) {
+    return { state: "error", label: "Connection error", detail: "Review the latest test" };
+  }
+  return { state: "warning", label: "Ready to test", detail: `${enabledModels.length} enabled` };
+}
+
+function agentLlmOperationRecord(scope) {
+  if (scope === "wizard") return state.agentLlm.wizardOperation;
+  if (scope === "model") return state.agentLlm.modelOperation;
+  return state.agentLlm.operation;
+}
+
+function syncAgentLlmOperationSubmissionState(scope, working) {
+  if (scope === "main") {
+    const provider = currentProviderRecord();
+    const model = currentModelRecord();
+    const missingCredential = provider?.api_key_required && provider.credential_status !== "detected";
+    const baseDisabled = new Map([
+      ["#agentLlmAddProvider", false],
+      ["#agentLlmAddModel", !provider],
+      ["#agentLlmEditModel", !model],
+      ["#agentLlmSaveCredential", !provider?.api_key_required || provider?.credential_status === "unavailable"],
+      ["#agentLlmTestModel", !model || !model.enabled || state.agentLlm.testInFlight || missingCredential],
+      ["#agentLlmSelectDefault", !model || !model.enabled],
+      ["#agentLlmSaveProvider", !provider],
+      ["#agentLlmDeleteProvider", !provider],
+      ["#agentLlmDeleteCredential", provider?.credential_source !== "system"],
+    ]);
+    for (const [selector, disabled] of baseDisabled) {
+      const button = $(selector);
+      if (button) button.disabled = working || disabled;
+    }
+    return;
+  }
+  const selectors = scope === "wizard"
+    ? ["#agentLlmWizardCancel", "#agentLlmWizardContinue", "#agentLlmWizardBack", "#agentLlmWizardFinishLater", "#agentLlmWizardFinish"]
+    : ["#agentLlmLoadCatalog", "#agentLlmModelCancel", "#agentLlmSaveModel", "#agentLlmDeleteModel"];
+  for (const selector of selectors) {
+    const button = $(selector);
+    if (button) button.disabled = working;
+  }
+}
+
+function renderAgentLlmOperationStatus(scope = "main") {
+  const target = scope === "wizard"
+    ? $("#agentLlmWizardStatus")
+    : scope === "model"
+      ? $("#agentLlmModelStatus")
+      : $("#agentLlmOperationStatus");
+  if (!target) return;
+  const operation = agentLlmOperationRecord(scope);
+  target.className = `agent-llm-operation-status${operation.state === "idle" ? " hidden" : ` ${operation.state}`}`;
+  target.textContent = operation.message || "";
+  syncAgentLlmOperationSubmissionState(scope, operation.state === "working");
+}
+
+function setAgentLlmOperationState(operationState, message = "", scope = "main") {
+  const operation = agentLlmOperationRecord(scope);
+  operation.state = operationState;
+  operation.message = message;
+  renderAgentLlmOperationStatus(scope);
+}
+
 function renderAgentCredentialFields() {
   const provider = currentProviderRecord();
   const kind = $("#agentLlmProviderKind").value;
@@ -6125,11 +6264,23 @@ function renderAgentCredentialFields() {
   );
 }
 
+function modelSelectorStatusLabel(model) {
+  return ({
+    selected: "Selected",
+    available: "Available",
+    ready: "Ready",
+    disabled: "Disabled",
+    unavailable: "Unavailable",
+    invalid: "Needs attention",
+    untested: "Ready to test",
+    "key missing": "Needs API key",
+    error: "Connection error",
+  })[String(model?.selector_status || "").toLowerCase()] || (model?.enabled ? "Available" : "Disabled");
+}
+
 function modelConnectionLabel(model) {
-  return `${model?.provider_display_name || "Provider"} · ${({
-    selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled",
-    unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested",
-  })[String(model?.selector_status || "").toLowerCase()] || (model?.enabled ? "Available" : "Disabled")}`;
+  const status = modelSelectorStatusLabel(model);
+  return `${model?.provider_display_name || "Provider"} · ${model?.selected ? `Current · ${status}` : status}`;
 }
 
 function catalogProviderLabel(provider) {
@@ -6172,7 +6323,7 @@ function renderAgentProviderForm() {
 }
 
 function renderAgentModelForm() {
-  const model = currentModelRecord();
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === state.agentLlm.editingModelId) || null;
   const providerSelect = $("#agentLlmModelProvider");
   providerSelect.replaceChildren();
   for (const provider of state.agentLlm.settings?.providers || []) {
@@ -6182,7 +6333,7 @@ function renderAgentModelForm() {
     providerSelect.append(option);
   }
   $("#agentLlmModelDisplayName").value = model?.display_name || "";
-  $("#agentLlmModelProvider").value = model?.provider_id || state.agentLlm.settings?.providers?.[0]?.id || "";
+  $("#agentLlmModelProvider").value = model?.provider_id || state.agentLlm.selectedProviderId || state.agentLlm.settings?.providers?.[0]?.id || "";
   renderAgentLlmCatalogOptions();
   $("#agentLlmModelId").value = model?.model_id || "";
   $("#agentLlmModelToolCalling").value = model?.capabilities?.tool_calling || "unknown";
@@ -6199,18 +6350,24 @@ function renderAgentLlmCurrentSelection(settings) {
   const provider = model
     ? (settings.providers || []).find((item) => item.id === model.provider_id)
     : null;
-  const status = model
-    ? ({ selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled", unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested" }[String(model.selector_status || "").toLowerCase()] || (model.enabled ? "Available" : "Disabled"))
-    : "No model selected";
+  const status = model ? modelSelectorStatusLabel(model) : "No model selected";
   $("#agentLlmCurrentStatus").textContent = status;
+  const selectorStatus = String(model?.selector_status || "").toLowerCase();
+  const tone = ["error", "key missing", "unavailable", "invalid"].includes(selectorStatus)
+    ? " error"
+    : ["selected", "available", "ready"].includes(selectorStatus) ? " ready" : "";
+  $("#agentLlmCurrentStatus").className = `agent-llm-current-status${tone}`;
   $("#agentLlmCurrentSelection").textContent = model
-    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"} · ${status}`
+    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"}`
     : "No model selected. Choose or add a model below.";
 }
 
 function renderAgentLlmDialog() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   ensureAgentLlmSelectionState();
+  const selectedProvider = settings.providers.find((provider) => provider.id === state.agentLlm.selectedProviderId) || null;
+  const providerModels = settings.models.filter((model) => model.provider_id === selectedProvider?.id);
+  const selectedModel = providerModels.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
   renderAgentLlmCurrentSelection(settings);
   $("#agentLlmUserEnviron").textContent = "Choose the model Rho should use. API keys are kept in the system credential store.";
   $("#agentLlmValidation").textContent = settings.validation_error
@@ -6226,33 +6383,54 @@ function renderAgentLlmDialog() {
     providerList.append(empty);
   } else {
     for (const provider of settings.providers) {
+      const readiness = providerReadiness(provider, settings);
+      const providerModelCount = settings.models.filter((model) => model.provider_id === provider.id).length;
       const row = createAgentLlmListRow(
         provider.display_name,
-        providerConnectionLabel(provider),
-        provider.id === state.agentLlm.selectedProviderId
+        `${readiness.label} · ${providerModelCount} ${providerModelCount === 1 ? "model" : "models"} · ${agentProviderKindLabel(provider.kind)}`,
+        provider.id === state.agentLlm.selectedProviderId,
+        "agent-llm-provider-card",
       );
       row.addEventListener("click", () => {
         clearAgentLlmCredentialInput();
         state.agentLlm.selectedProviderId = provider.id;
         state.agentLlm.editingProviderId = provider.id;
+        state.agentLlm.selectedModelEditorId = settings.models.find((model) => model.provider_id === provider.id && model.id === settings.selected_model_id)?.id
+          || settings.models.find((model) => model.provider_id === provider.id)?.id
+          || null;
+        state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+        state.agentLlm.lastTestResult = null;
+        setAgentLlmOperationState("idle");
+        $("#agentLlmProviderAdvanced").open = false;
         renderAgentLlmDialog();
       });
       providerList.append(row);
     }
   }
+  $("#agentLlmProviderEmpty").classList.toggle("hidden", Boolean(selectedProvider));
+  $("#agentLlmProviderContent").classList.toggle("hidden", !selectedProvider);
+  if (selectedProvider) {
+    const readiness = providerReadiness(selectedProvider, settings);
+    $("#agentLlmSelectedProviderName").textContent = selectedProvider.display_name;
+    $("#agentLlmSelectedProviderKind").textContent = agentProviderKindLabel(selectedProvider.kind);
+    $("#agentLlmSelectedProviderStatus").textContent = readiness.label;
+    $("#agentLlmSelectedProviderStatus").className = `agent-llm-status-badge ${readiness.state}`;
+    renderAgentProviderForm();
+  }
   const modelList = $("#agentLlmModelList");
   modelList.replaceChildren();
-  if (!settings.models.length) {
+  if (!providerModels.length) {
     const empty = document.createElement("div");
     empty.className = "agent-llm-empty";
-    empty.textContent = "No models yet.";
+    empty.textContent = selectedProvider ? "No models for this provider yet." : "Choose a provider first.";
     modelList.append(empty);
   } else {
-    for (const model of settings.models) {
+    for (const model of providerModels) {
       const row = createAgentLlmListRow(
         model.display_name,
         modelConnectionLabel(model),
-        model.id === state.agentLlm.selectedModelEditorId
+        model.id === state.agentLlm.selectedModelEditorId,
+        "agent-llm-model-card",
       );
       row.addEventListener("click", () => {
         clearAgentLlmCredentialInput();
@@ -6264,8 +6442,6 @@ function renderAgentLlmDialog() {
       modelList.append(row);
     }
   }
-  renderAgentProviderForm();
-  renderAgentModelForm();
   const result = state.agentLlm.lastTestResult;
   $("#agentLlmTestResult").className = `agent-llm-test-result${result ? ` ${result.status}` : " hidden"}`;
   $("#agentLlmTestResult").textContent = result
@@ -6273,22 +6449,47 @@ function renderAgentLlmDialog() {
       ? `Connection ready${result.latency_ms ? ` · ${result.latency_ms} ms` : ""}`
       : userFacingError(result.message, "The connection could not be verified. Review the provider settings and try again."))
     : "";
-  $("#agentLlmTestModel").disabled = state.agentLlm.testInFlight;
+  $("#agentLlmAddModel").disabled = !selectedProvider;
+  $("#agentLlmEditModel").disabled = !selectedModel;
+  $("#agentLlmSelectDefault").disabled = !selectedModel || !selectedModel.enabled;
+  $("#agentLlmSaveCredential").disabled = !selectedProvider?.api_key_required
+    || selectedProvider?.credential_status === "unavailable";
+  $("#agentLlmTestModel").disabled = !selectedModel || state.agentLlm.testInFlight;
   $("#agentLlmCancelTest").disabled = !state.agentLlm.testInFlight;
   $("#agentLlmCancelTest").classList.toggle("hidden", !state.agentLlm.testInFlight);
+  renderAgentLlmOperationStatus();
 }
 
 function openAgentLlmDialog() {
+  if (!state.agentLlm.settingsOpen) {
+    state.agentLlm.returnFocusElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  }
   state.agentLlm.settingsOpen = true;
-  $("#agentLlmAdvanced").open = false;
+  clearAgentLlmCredentialInput();
+  setAgentLlmMainDialogInert(false);
+  labelAgentLlmModal();
+  $("#agentLlmProviderAdvanced").open = false;
+  setAgentLlmOperationState("idle");
   renderAgentLlmDialog();
   $("#agentLlmDialog").classList.remove("hidden");
+  requestAnimationFrame(() => $("#agentLlmClose").focus());
 }
 
 function closeAgentLlmDialog() {
+  if (!state.agentLlm.settingsOpen && $("#agentLlmDialog").classList.contains("hidden")) return;
+  const returnFocus = state.agentLlm.returnFocusElement;
   state.agentLlm.settingsOpen = false;
+  state.agentLlm.returnFocusElement = null;
   clearAgentLlmCredentialInput();
+  closeAgentLlmProviderWizard();
+  closeAgentLlmModelDialog();
   $("#agentLlmDialog").classList.add("hidden");
+  requestAnimationFrame(() => {
+    if (returnFocus?.isConnected && !returnFocus.closest("[inert]")) returnFocus.focus();
+    else $("#agentModelSelector").focus();
+  });
 }
 
 function applyAgentLlmView(view) {
@@ -6364,8 +6565,331 @@ function readAgentModelForm() {
       vision_input: $("#agentLlmModelVisionInput").value,
       source: $("#agentLlmModelCapabilitySource").value,
     },
-    last_test: currentModelRecord()?.last_test || null,
+    last_test: state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.editingModelId)?.last_test || null,
   };
+}
+
+function wizardProviderPreset(kind) {
+  const presets = {
+    deepseek: { displayName: "DeepSeek", kind: "registered", registeredProviderId: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY", modelId: "deepseek-chat", modelName: "DeepSeek Chat" },
+    openai: { displayName: "OpenAI", kind: "openai", registeredProviderId: null, apiKeyEnv: "OPENAI_API_KEY", modelId: "gpt-4.1-mini", modelName: "GPT-4.1 Mini" },
+    anthropic: { displayName: "Anthropic", kind: "anthropic", registeredProviderId: null, apiKeyEnv: "ANTHROPIC_API_KEY", modelId: "claude-sonnet-4", modelName: "Claude Sonnet 4" },
+    gemini: { displayName: "Gemini", kind: "gemini", registeredProviderId: null, apiKeyEnv: "GEMINI_API_KEY", modelId: "gemini-2.5-flash", modelName: "Gemini 2.5 Flash" },
+    openai_compatible: { displayName: "Compatible provider", kind: "openai_compatible", registeredProviderId: null, apiKeyEnv: null, modelId: "", modelName: "" },
+    local_openai_compatible: { displayName: "Local provider", kind: "local_openai_compatible", registeredProviderId: null, apiKeyEnv: null, modelId: "", modelName: "" },
+  };
+  return presets[kind] || presets.openai_compatible;
+}
+
+function wizardApiKeyEnvironment(displayName, preset) {
+  if (preset.apiKeyEnv) return preset.apiKeyEnv;
+  const stem = String(displayName || "CUSTOM")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "CUSTOM";
+  return `RHO_${stem}_API_KEY`;
+}
+
+function syncAgentLlmWizardProviderFields({ resetName = false } = {}) {
+  const kind = $("#agentLlmWizardProviderKind").value;
+  const preset = wizardProviderPreset(kind);
+  const compatible = ["openai_compatible", "local_openai_compatible"].includes(kind);
+  if (resetName || !$("#agentLlmWizardProviderName").value.trim()) {
+    $("#agentLlmWizardProviderName").value = preset.displayName;
+  }
+  if (kind === "local_openai_compatible") $("#agentLlmWizardApiKeyRequired").checked = false;
+  else if (resetName) $("#agentLlmWizardApiKeyRequired").checked = true;
+  $("#agentLlmWizardBaseUrlField").classList.toggle("hidden", !compatible);
+  $("#agentLlmWizardCredentialField").classList.toggle("hidden", !$("#agentLlmWizardApiKeyRequired").checked);
+  if (compatible && !$("#agentLlmWizardApiFormat").value) $("#agentLlmWizardApiFormat").value = "chat_completions";
+  if (!compatible) $("#agentLlmWizardApiFormat").value = "";
+}
+
+function refreshAgentLlmWizardAccessibility(step) {
+  if (!step || $("#agentLlmProviderWizard").classList.contains("hidden")) return;
+  const surface = $("#agentLlmProviderWizard").querySelector(":scope > .agent-llm-subdialog-surface");
+  const fieldState = new Map(Array.from(surface.querySelectorAll("input[id], select[id]")).map((field) => [
+    field.id,
+    { value: field.value, checked: field instanceof HTMLInputElement ? field.checked : null },
+  ]));
+  const replacement = surface.cloneNode(true);
+  surface.replaceWith(replacement);
+  for (const [id, value] of fieldState) {
+    const field = replacement.querySelector(`#${CSS.escape(id)}`);
+    if (!field) continue;
+    field.value = value.value;
+    if (field instanceof HTMLInputElement && value.checked !== null) field.checked = value.checked;
+  }
+}
+
+function renderAgentLlmWizardStep() {
+  const connection = state.agentLlm.wizardStep === "connection";
+  const connectionStep = $("#agentLlmWizardStepConnection");
+  const modelStep = $("#agentLlmWizardStepModel");
+  connectionStep.classList.toggle("hidden", !connection);
+  modelStep.classList.toggle("hidden", connection);
+  $("#agentLlmWizardConnectionIndicator").classList.toggle("active", connection);
+  $("#agentLlmWizardModelIndicator").classList.toggle("active", !connection);
+  $("#agentLlmWizardConnectionIndicator").setAttribute("aria-current", connection ? "step" : "false");
+  $("#agentLlmWizardModelIndicator").setAttribute("aria-current", connection ? "false" : "step");
+  renderAgentLlmOperationStatus("wizard");
+  refreshAgentLlmWizardAccessibility(connection ? connectionStep : modelStep);
+}
+
+function setAgentLlmMainDialogInert(inert) {
+  const root = $("#agentLlmDialog");
+  root.classList.toggle("agent-llm-parent-suspended", inert);
+  root.removeAttribute("aria-hidden");
+}
+
+function labelAgentLlmModal(titleId = "agentLlmDialogTitle") {
+  const root = $("#agentLlmDialog");
+  const children = [
+    [$("#agentLlmProviderWizard"), "agentLlmWizardTitle"],
+    [$("#agentLlmModelDialog"), "agentLlmModelDialogTitle"],
+  ];
+  for (const [child] of children) {
+    child.removeAttribute("role");
+    child.removeAttribute("aria-modal");
+    child.removeAttribute("aria-labelledby");
+  }
+  if (titleId === "agentLlmDialogTitle") {
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", titleId);
+    return;
+  }
+  const active = children.find(([, childTitleId]) => childTitleId === titleId)?.[0];
+  active?.setAttribute("role", "dialog");
+  active?.setAttribute("aria-modal", "true");
+  active?.setAttribute("aria-labelledby", titleId);
+}
+
+function trapAgentLlmDialogFocus(event, dialog, closeDialog) {
+  if (dialog.classList.contains("hidden")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeDialog();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(dialog.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), details > summary, [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => {
+    const style = window.getComputedStyle(element);
+    return element.getClientRects().length > 0
+      && style.display !== "none"
+      && style.visibility !== "hidden"
+      && !element.closest("[inert]");
+  });
+  if (!focusable.length) return;
+  const activeIndex = focusable.indexOf(document.activeElement);
+  const nextIndex = activeIndex < 0
+    ? (event.shiftKey ? focusable.length - 1 : 0)
+    : (activeIndex + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+  event.preventDefault();
+  focusable[nextIndex].focus();
+}
+
+function readAgentLlmWizardProvider() {
+  const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
+  const choice = $("#agentLlmWizardProviderKind").value;
+  const preset = wizardProviderPreset(choice);
+  const displayName = $("#agentLlmWizardProviderName").value.trim();
+  const compatible = ["openai_compatible", "local_openai_compatible"].includes(choice);
+  const ids = settings.providers.map((provider) => provider.id);
+  return {
+    id: state.agentLlm.wizardProviderId || uniqueAgentId("provider", displayName || choice, ids),
+    display_name: displayName,
+    kind: preset.kind,
+    registered_provider_id: preset.registeredProviderId,
+    api_key_env: $("#agentLlmWizardApiKeyRequired").checked ? wizardApiKeyEnvironment(displayName, preset) : null,
+    api_key_required: $("#agentLlmWizardApiKeyRequired").checked,
+    base_url: compatible ? ($("#agentLlmWizardBaseUrl").value.trim() || null) : null,
+    base_url_env: null,
+    wire_api: compatible ? ($("#agentLlmWizardApiFormat").value || null) : null,
+    disable_stream_options: null,
+  };
+}
+
+function openAgentLlmProviderWizard() {
+  state.agentLlm.wizardOpen = true;
+  state.agentLlm.wizardStep = "connection";
+  state.agentLlm.wizardProviderId = null;
+  state.agentLlm.wizardModelId = null;
+  state.agentLlm.wizardOperation = { state: "idle", message: "" };
+  $("#agentLlmWizardProviderKind").value = "deepseek";
+  $("#agentLlmWizardProviderName").value = "";
+  $("#agentLlmWizardBaseUrl").value = "";
+  $("#agentLlmWizardApiFormat").value = "";
+  $("#agentLlmWizardApiKeyRequired").checked = true;
+  $("#agentLlmWizardModelId").value = "";
+  $("#agentLlmWizardModelName").value = "";
+  $("#agentLlmWizardModelEnabled").checked = true;
+  $("#agentLlmWizardModelToolCalling").value = "unknown";
+  $("#agentLlmWizardModelReasoning").value = "unknown";
+  $("#agentLlmWizardModelVisionInput").value = "unknown";
+  clearAgentLlmCredentialInput();
+  syncAgentLlmWizardProviderFields({ resetName: true });
+  setAgentLlmMainDialogInert(true);
+  $("#agentLlmProviderWizard").classList.remove("hidden");
+  renderAgentLlmWizardStep();
+  labelAgentLlmModal("agentLlmWizardTitle");
+  $("#agentLlmWizardProviderName").focus();
+}
+
+function closeAgentLlmProviderWizard() {
+  state.agentLlm.wizardOpen = false;
+  clearAgentLlmCredentialInput();
+  $("#agentLlmProviderWizard").classList.add("hidden");
+  if (!state.agentLlm.modelDialogOpen) {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  if (state.agentLlm.settingsOpen) $("#agentLlmAddProvider").focus();
+}
+
+async function advanceAgentLlmProviderWizard() {
+  const provider = readAgentLlmWizardProvider();
+  const credential = $("#agentLlmWizardCredential").value;
+  const savedProvider = state.agentLlm.settings?.providers?.find((item) => item.id === state.agentLlm.wizardProviderId) || null;
+  const hasStoredCredential = savedProvider?.credential_status === "detected" && savedProvider?.credential_source === "system";
+  if (!provider.display_name) {
+    clearAgentLlmCredentialInput();
+    setAgentLlmOperationState("warning", "Enter a provider name before continuing.", "wizard");
+    $("#agentLlmWizardProviderName").focus();
+    return;
+  }
+  if (["openai_compatible", "local_openai_compatible"].includes(provider.kind) && !provider.base_url) {
+    clearAgentLlmCredentialInput();
+    setAgentLlmOperationState("warning", "Enter the provider Base URL before continuing.", "wizard");
+    $("#agentLlmWizardBaseUrl").focus();
+    return;
+  }
+  if (provider.api_key_required && !credential && !hasStoredCredential) {
+    setAgentLlmOperationState("warning", "Enter an API key, or turn off API key required, before continuing.", "wizard");
+    $("#agentLlmWizardCredential").focus();
+    return;
+  }
+  setAgentLlmOperationState("working", "Saving provider connection…", "wizard");
+  try {
+    let view = await invoke("agent_llm_save_provider", { provider });
+    state.agentLlm.wizardProviderId = provider.id;
+    state.agentLlm.selectedProviderId = provider.id;
+    state.agentLlm.editingProviderId = provider.id;
+    applyAgentLlmView(view);
+    if (provider.api_key_required && credential) {
+      try {
+        view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
+        applyAgentLlmView(view);
+      } catch (error) {
+        clearAgentLlmCredentialInput();
+        setAgentLlmOperationState("warning", `Provider saved; API key not stored. ${userFacingError(error, "Try storing the key again.")}`, "wizard");
+        return;
+      }
+    }
+    const preset = wizardProviderPreset($("#agentLlmWizardProviderKind").value);
+    if (!$("#agentLlmWizardModelId").value) $("#agentLlmWizardModelId").value = preset.modelId;
+    if (!$("#agentLlmWizardModelName").value) $("#agentLlmWizardModelName").value = preset.modelName;
+    state.agentLlm.wizardStep = "model";
+    setAgentLlmOperationState("success", "Connection saved. Add the first model for this provider.", "wizard");
+    renderAgentLlmWizardStep();
+    $("#agentLlmWizardModelId").focus();
+  } catch (error) {
+    setAgentLlmOperationState("error", reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection fields and try again."), "wizard");
+  } finally {
+    clearAgentLlmCredentialInput();
+  }
+}
+
+async function finishAgentLlmProviderWizard() {
+  const providerId = state.agentLlm.wizardProviderId;
+  const modelId = $("#agentLlmWizardModelId").value.trim();
+  const displayName = $("#agentLlmWizardModelName").value.trim() || modelId;
+  if (!providerId) {
+    setAgentLlmOperationState("error", "Save the provider connection before adding a model.", "wizard");
+    return;
+  }
+  if (!modelId) {
+    setAgentLlmOperationState("warning", "Enter a model ID before finishing.", "wizard");
+    $("#agentLlmWizardModelId").focus();
+    return;
+  }
+  if (!state.agentLlm.wizardModelId) {
+    state.agentLlm.wizardModelId = uniqueAgentId(
+      "model",
+      displayName || modelId,
+      (state.agentLlm.settings?.models || []).map((model) => model.id),
+    );
+  }
+  const model = {
+    id: state.agentLlm.wizardModelId,
+    provider_id: providerId,
+    display_name: displayName,
+    model_id: modelId,
+    enabled: $("#agentLlmWizardModelEnabled").checked,
+    capabilities: {
+      tool_calling: $("#agentLlmWizardModelToolCalling").value,
+      reasoning: $("#agentLlmWizardModelReasoning").value,
+      vision_input: $("#agentLlmWizardModelVisionInput").value,
+      source: "declared",
+    },
+    last_test: null,
+  };
+  setAgentLlmOperationState("working", "Saving model…", "wizard");
+  let savedView;
+  try {
+    savedView = await invoke("agent_llm_save_model", { model });
+    state.agentLlm.selectedModelEditorId = model.id;
+    applyAgentLlmView(savedView);
+  } catch (error) {
+    setAgentLlmOperationState("warning", `Provider saved; model not saved. ${userFacingError(error, "Review the model fields and try again.")}`, "wizard");
+    return;
+  }
+  try {
+    const selectedView = await invoke("agent_llm_select_model", { request: { model_id: model.id } });
+    applyAgentLlmView(selectedView);
+  } catch (error) {
+    setAgentLlmOperationState("warning", `Provider and model saved; model not selected. ${userFacingError(error, "Select it from Model settings and try again.")}`, "wizard");
+    return;
+  }
+  closeAgentLlmProviderWizard();
+  setAgentLlmOperationState("success", `${displayName} is saved and selected for the next Agent turn.`);
+  renderAgentLlmDialog();
+}
+
+function finishAgentLlmProviderWizardLater() {
+  const provider = currentProviderRecord();
+  closeAgentLlmProviderWizard();
+  setAgentLlmOperationState("warning", `${provider?.display_name || "Provider"} was saved without a model. Add a model when you are ready.`);
+  renderAgentLlmDialog();
+}
+
+function openAgentLlmModelDialog(modelId = null) {
+  clearAgentLlmCredentialInput();
+  state.agentLlm.modelDialogOpen = true;
+  state.agentLlm.editingModelId = modelId;
+  state.agentLlm.modelOperation = { state: "idle", message: "" };
+  renderAgentModelForm();
+  $("#agentLlmModelDialogTitle").textContent = modelId ? "Edit model" : "Add model";
+  $("#agentLlmModelDanger").classList.toggle("hidden", !modelId);
+  renderAgentLlmOperationStatus("model");
+  setAgentLlmMainDialogInert(true);
+  $("#agentLlmModelDialog").classList.remove("hidden");
+  labelAgentLlmModal("agentLlmModelDialogTitle");
+  $("#agentLlmModelId").focus();
+}
+
+function closeAgentLlmModelDialog() {
+  state.agentLlm.modelDialogOpen = false;
+  state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+  $("#agentLlmModelDialog").classList.add("hidden");
+  if (!state.agentLlm.wizardOpen) {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  if (state.agentLlm.settingsOpen) $(state.agentLlm.selectedModelEditorId ? "#agentLlmEditModel" : "#agentLlmAddModel").focus();
 }
 
 async function copyText(text) {
@@ -6382,19 +6906,24 @@ async function copyText(text) {
 }
 
 async function saveAgentProvider() {
+  const provider = readAgentProviderForm();
+  provider.display_name = provider.display_name || agentProviderKindLabel(provider.kind);
+  setAgentLlmOperationState("working", "Saving provider details…");
   try {
-    const provider = readAgentProviderForm();
     const view = await invoke("agent_llm_save_provider", { provider });
     state.agentLlm.selectedProviderId = provider.id;
     state.agentLlm.editingProviderId = provider.id;
     applyAgentLlmView(view);
-    toast(`Saved provider ${provider.display_name || provider.id}.`);
+    setAgentLlmOperationState("success", `Saved provider ${provider.display_name || provider.id}.`);
   } catch (error) {
-    toast(reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection settings and try again."));
+  } finally {
+    clearAgentLlmCredentialInput();
   }
 }
 
 async function deleteAgentProvider() {
+  clearAgentLlmCredentialInput();
   const provider = currentProviderRecord();
   if (!provider) {
     toast("Select a provider to delete.", true);
@@ -6402,68 +6931,71 @@ async function deleteAgentProvider() {
   }
   if (!await confirmAction({
     title: "Delete provider",
-    message: `Delete provider ${provider.display_name}? This will also remove all its models.`,
+    message: `Delete provider ${provider.display_name}? Its models must be removed first.`,
     confirmLabel: "Delete provider",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Deleting ${provider.display_name}…`);
   try {
     const view = await invoke("agent_llm_delete_provider", { providerId: provider.id });
     state.agentLlm.selectedProviderId = view.providers[0]?.id || null;
     state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
     applyAgentLlmView(view);
-    renderAgentProviderForm();
-    toast(`Deleted provider ${provider.display_name}.`);
+    setAgentLlmOperationState("success", `Deleted provider ${provider.display_name}.`);
   } catch (error) {
-    toast(reportUiFailure("delete model provider", error, "The provider could not be deleted. Refresh model settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("delete model provider", error, "The provider could not be deleted. Remove its models first, then try again."));
   }
 }
 
 async function saveAgentModel() {
+  const model = readAgentModelForm();
+  model.display_name = model.display_name || model.model_id;
+  if (!model.provider_id || !model.model_id) {
+    setAgentLlmOperationState("warning", "Choose a provider and enter a model ID before saving.", "model");
+    return;
+  }
+  setAgentLlmOperationState("working", "Saving model…", "model");
   try {
-    const model = readAgentModelForm();
     const view = await invoke("agent_llm_save_model", { model });
+    state.agentLlm.selectedProviderId = model.provider_id;
     state.agentLlm.selectedModelEditorId = model.id;
     state.agentLlm.editingModelId = model.id;
     applyAgentLlmView(view);
-    toast(`Saved model ${model.display_name || model.id}.`);
+    closeAgentLlmModelDialog();
+    setAgentLlmOperationState("success", `Saved model ${model.display_name || model.id}.`);
+    renderAgentLlmDialog();
   } catch (error) {
-    toast(reportUiFailure("save model", error, "The model could not be saved. Review its provider and settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save model", error, "The model could not be saved. Review its provider and settings and try again."), "model");
   }
 }
 
-async function saveAgentLlmConfiguration() {
+async function saveAgentLlmCredential() {
+  const provider = currentProviderRecord();
   const credential = $("#agentLlmCredential").value;
+  if (!provider?.api_key_required) {
+    setAgentLlmOperationState("warning", "The selected provider does not require an API key.");
+    clearAgentLlmCredentialInput();
+    return;
+  }
+  if (!credential) {
+    setAgentLlmOperationState("warning", "Enter a new API key before saving. The existing stored key was not changed.");
+    return;
+  }
+  setAgentLlmOperationState("working", `Saving the API key for ${provider.display_name}…`);
   try {
-    const provider = readAgentProviderForm();
-    const model = readAgentModelForm();
-    provider.display_name = provider.display_name || agentProviderKindLabel(provider.kind);
-    model.provider_id = provider.id;
-    model.display_name = model.display_name || model.model_id;
-    if (!model.model_id) throw new Error("Enter a model before saving.");
-
-    let view = await invoke("agent_llm_save_provider", { provider });
-    state.agentLlm.selectedProviderId = provider.id;
-    state.agentLlm.editingProviderId = provider.id;
-    view = await invoke("agent_llm_save_model", { model });
-    if (credential) {
-      view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
-    }
-    state.agentLlm.selectedModelEditorId = model.id;
-    state.agentLlm.editingModelId = model.id;
+    const view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
     applyAgentLlmView(view);
-    const savedProvider = view.providers.find((item) => item.id === provider.id);
-    toast(savedProvider?.api_key_required && savedProvider.credential_status !== "detected"
-      ? "Settings saved. Add an API key before using this model."
-      : "Model settings saved.");
+    setAgentLlmOperationState("success", `API key stored securely for ${provider.display_name}.`);
   } catch (error) {
-    toast(reportUiFailure("save model settings", error,
-      "The settings could not be fully saved. Review the required fields and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save API key", error,
+      "The API key could not be stored. The provider and model settings were not changed."));
   } finally {
     clearAgentLlmCredentialInput();
   }
 }
 
 async function deleteAgentLlmCredential() {
+  clearAgentLlmCredentialInput();
   const provider = currentProviderRecord();
   if (!provider || provider.credential_source !== "system") return;
   if (!await confirmAction({
@@ -6472,12 +7004,13 @@ async function deleteAgentLlmCredential() {
     confirmLabel: "Remove key",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Removing the stored API key for ${provider.display_name}…`);
   try {
     applyAgentLlmView(await invoke("agent_llm_delete_credential", { providerId: provider.id }));
-    toast("Stored API key removed.");
+    setAgentLlmOperationState("success", "Stored API key removed.");
   } catch (error) {
-    toast(reportUiFailure("remove stored API key", error,
-      "The stored API key could not be removed. Try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("remove stored API key", error,
+      "The stored API key could not be removed. Try again."));
   } finally {
     clearAgentLlmCredentialInput();
   }
@@ -6495,12 +7028,13 @@ async function deleteAgentModel() {
     confirmLabel: "Delete model",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Deleting ${model.display_name}…`, "model");
   try {
     let replacementModelId = null;
     if (state.agentLlm.settings?.selected_model_id === model.id) {
       replacementModelId = (state.agentLlm.settings.models || []).find((item) => item.enabled && item.id !== model.id)?.id || null;
       if (!replacementModelId) {
-        toast("Select another enabled model before deleting the current default.", true);
+        setAgentLlmOperationState("warning", "Select another enabled model before deleting the current model.", "model");
         return;
       }
     }
@@ -6514,41 +7048,49 @@ async function deleteAgentModel() {
     state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
     state.agentLlm.lastTestResult = null;
     applyAgentLlmView(view);
-    toast(`Deleted model ${model.display_name}.`);
+    closeAgentLlmModelDialog();
+    setAgentLlmOperationState("success", `Deleted model ${model.display_name}.`);
+    renderAgentLlmDialog();
   } catch (error) {
-    toast(reportUiFailure("delete model", error, "The model could not be deleted. Refresh model settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("delete model", error, "The model could not be deleted. Refresh model settings and try again."), "model");
   }
 }
 
 async function selectAgentDefaultModel() {
+  clearAgentLlmCredentialInput();
   const model = currentModelRecord();
   if (!model) {
-    toast("Select a model to use as default.", true);
+    setAgentLlmOperationState("warning", "Select a model to use for the next Agent turn.");
     return;
   }
+  setAgentLlmOperationState("working", `Selecting ${model.display_name}…`);
   try {
     const view = await invoke("agent_llm_select_model", { request: { model_id: model.id } });
     applyAgentLlmView(view);
-    toast(`Selected ${model.display_name} for the next Agent turns.`);
+    setAgentLlmOperationState("success", `Selected ${model.display_name} for the next Agent turn.`);
   } catch (error) {
-    toast(reportUiFailure("select model", error, "The model could not be selected. Refresh model settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("select model", error, "The model could not be selected. Refresh model settings and try again."));
   }
 }
 
 async function testAgentModelConnection() {
+  clearAgentLlmCredentialInput();
   const model = currentModelRecord();
   if (!model) {
-    toast("Select a model to test.", true);
+    setAgentLlmOperationState("warning", "Select a model to test.");
     return;
   }
   try {
     state.agentLlm.testInFlight = true;
+    setAgentLlmOperationState("working", `Testing ${model.display_name}. This sends a small real provider request…`);
     renderAgentLlmDialog();
     $("#agentLlmTestResult").className = "agent-llm-test-result";
     $("#agentLlmTestResult").textContent = "Testing connection...";
     const view = await invoke("agent_llm_test_model", { modelId: model.id });
     state.agentLlm.lastTestResult = view.models.find((item) => item.id === model.id)?.last_test || null;
     applyAgentLlmView(view);
+    const latency = state.agentLlm.lastTestResult?.latency_ms;
+    setAgentLlmOperationState("success", `Connection ready${latency ? ` · ${latency} ms` : ""}.`);
   } catch (error) {
     const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
     state.agentLlm.lastTestResult = {
@@ -6556,8 +7098,8 @@ async function testAgentModelConnection() {
       latency_ms: null,
       message: message.includes("cancelled") ? "Connection test cancelled." : message,
     };
+    setAgentLlmOperationState(message.includes("cancelled") ? "warning" : "error", state.agentLlm.lastTestResult.message);
     renderAgentLlmDialog();
-    if (!message.includes("cancelled")) toast(message, true);
   } finally {
     state.agentLlm.testInFlight = false;
     renderAgentLlmDialog();
@@ -6595,12 +7137,13 @@ function applySelectedCatalogModel() {
 
 async function cancelAgentModelTest() {
   if (!state.agentLlm.testInFlight) return;
+  setAgentLlmOperationState("working", "Cancelling connection test…");
   try {
     await invoke("agent_llm_cancel_test");
     $("#agentLlmTestResult").className = "agent-llm-test-result";
     $("#agentLlmTestResult").textContent = "Cancelling connection test...";
   } catch (error) {
-    toast(reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."));
   }
 }
 
@@ -10169,8 +10712,63 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save", "model-settings"].includes(scenario)) return;
   state.previewScenarioApplied = true;
+  if (scenario === "model-settings") {
+    const modelSettingsPreviewState = previewParams.get("state") || "default";
+    if (modelSettingsPreviewState === "empty") {
+      mockAgentLlmSystemCredentials.clear();
+      mockAgentLlmSettings = rebuildMockAgentLlmSettings({
+        schema_version: 1,
+        selected_model_id: null,
+        providers: [],
+        models: [],
+        selected_model: null,
+        user_environ: { path: "", source: "system" },
+        validation_error: null,
+      });
+    } else if (modelSettingsPreviewState === "key-missing") {
+      mockAgentLlmSystemCredentials.delete(mockAgentLlmSettings.providers[0].id);
+      mockAgentLlmSettings.providers[0].credential_status = "not_detected";
+      mockAgentLlmSettings.providers[0].credential_source = "none";
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "storage-unavailable") {
+      mockAgentLlmSettings.providers[0].credential_status = "unavailable";
+      mockAgentLlmSettings.providers[0].credential_source = "unavailable";
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "disabled-models") {
+      mockAgentLlmSettings.selected_model_id = null;
+      mockAgentLlmSettings.models = mockAgentLlmSettings.models.map((model) => ({ ...model, enabled: false }));
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "no-models") {
+      mockAgentLlmSettings.selected_model_id = null;
+      mockAgentLlmSettings.models = [];
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "ready-to-test") {
+      mockAgentLlmSettings.models = mockAgentLlmSettings.models.map((model) => ({ ...model, last_test: null }));
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "connection-error") {
+      mockAgentLlmSettings.models[0].last_test = {
+        status: "error",
+        checked_at: new Date().toISOString(),
+        latency_ms: null,
+        error_class: "network",
+        message: "Preview connection failure.",
+      };
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "long-name") {
+      mockAgentLlmSettings.providers[0].display_name = "DeepSeek Research Gateway With A Deliberately Long Provider Name";
+      mockAgentLlmSettings.models[0].display_name = "DeepSeek V4 Flash With Extended Reasoning And A Deliberately Long Model Name";
+      rebuildMockAgentLlmSettings();
+    }
+    await loadAgentLlmSettings();
+    openAgentLlmDialog();
+    if (previewParams.get("state") === "wizard") openAgentLlmProviderWizard();
+    if (previewParams.get("state") === "model") openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId);
+    if (previewParams.get("state") === "advanced") $("#agentLlmProviderAdvanced").open = true;
+    requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    return;
+  }
   if (scenario === "interface-shell") {
     state.posture = "human";
     applyPostureLayout();
@@ -10762,7 +11360,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "model-settings"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -10798,6 +11396,35 @@ function recordPreviewLayoutEvidence() {
       rects: { transcript, prompt, tabs },
     };
     target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "model-settings") {
+    const dialog = rectEvidence($("#agentLlmDialog .agent-llm-surface"));
+    const shell = rectEvidence($("#agentLlmShell"));
+    const rail = rectEvidence($(".agent-llm-provider-rail"));
+    const detail = rectEvidence($("#agentLlmProviderDetail"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      state: previewParams.get("state") || "default",
+      counts: {
+        providers: $$(".agent-llm-provider-card").length,
+        visible_models: $$(".agent-llm-model-card").length,
+      },
+      disclosures: {
+        provider_advanced_open: $("#agentLlmProviderAdvanced").open,
+        provider_danger_open: $("#agentLlmProviderDanger").open,
+        wizard_open: !$("#agentLlmProviderWizard").classList.contains("hidden"),
+        model_editor_open: !$("#agentLlmModelDialog").classList.contains("hidden"),
+      },
+      credential_inputs_empty: [$("#agentLlmCredential"), $("#agentLlmWizardCredential")]
+        .every((input) => !input.value),
+      overflow: {
+        document_x: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        dialog_x: Boolean(dialog && dialog.width > window.innerWidth),
+      },
+      overlap: { rail_with_detail: rectsOverlap(rail, detail) },
+      rects: { dialog, shell, rail, detail },
+    });
     return;
   }
   if (scenario === "interface-shell") {
@@ -14889,6 +15516,9 @@ async function handleExternalDocumentChange(path) {
 async function hydrateProject(response) {
   state.projectRefreshSequence += 1;
   clearAgentLlmCredentialInput();
+  state.agentLlm.operation = { state: "idle", message: "" };
+  state.agentLlm.wizardOperation = { state: "idle", message: "" };
+  state.agentLlm.modelOperation = { state: "idle", message: "" };
   closeAgentContextMenu();
   hideAgentFileMentions();
   clearAgentEditHighlight();
@@ -15334,6 +15964,10 @@ $("#agentLlmClose").addEventListener("click", closeAgentLlmDialog);
 $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
+$("#agentLlmDialog").addEventListener("keydown", (event) => {
+  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen) return;
+  trapAgentLlmDialogFocus(event, $("#agentLlmDialog"), closeAgentLlmDialog);
+});
 $("#environmentOperationClose").addEventListener("click", closeEnvironmentOperationDialog);
 $("#environmentOperationDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.environmentOperationClose === "true") closeEnvironmentOperationDialog();
@@ -15359,18 +15993,11 @@ $("#updateView").addEventListener("click", async () => {
   localStorage.setItem("rho.update.dismissed", result.available_version);
   await invoke("open_rho_website", { url: result.release_page_url });
 });
-$("#agentLlmAddProvider").addEventListener("click", () => {
-  clearAgentProviderForm();
-  $("#agentLlmAdvanced").open = true;
-  $("#agentLlmProviderDisplayName").focus();
-});
+$("#agentLlmAddProvider").addEventListener("click", openAgentLlmProviderWizard);
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
 $("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
-$("#agentLlmAddModel").addEventListener("click", () => {
-  clearAgentModelForm();
-  $("#agentLlmAdvanced").open = true;
-  $("#agentLlmModelId").focus();
-});
+$("#agentLlmAddModel").addEventListener("click", () => openAgentLlmModelDialog(null));
+$("#agentLlmEditModel").addEventListener("click", () => openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId));
 $("#agentLlmLoadCatalog").addEventListener("click", loadAgentLlmCatalog);
 $("#agentLlmCatalogModel").addEventListener("change", applySelectedCatalogModel);
 $("#agentLlmModelProvider").addEventListener("change", () => {
@@ -15379,15 +16006,56 @@ $("#agentLlmModelProvider").addEventListener("change", () => {
 });
 $("#agentLlmSaveModel").addEventListener("click", saveAgentModel);
 $("#agentLlmDeleteModel").addEventListener("click", deleteAgentModel);
+$("#agentLlmModelClose").addEventListener("click", closeAgentLlmModelDialog);
+$("#agentLlmModelCancel").addEventListener("click", closeAgentLlmModelDialog);
+$("#agentLlmModelDialog").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmModelClose === "true") closeAgentLlmModelDialog();
+});
+$("#agentLlmModelDialog").addEventListener("keydown", (event) => {
+  trapAgentLlmDialogFocus(event, $("#agentLlmModelDialog"), closeAgentLlmModelDialog);
+});
 $("#agentLlmTestModel").addEventListener("click", testAgentModelConnection);
 $("#agentLlmCancelTest").addEventListener("click", cancelAgentModelTest);
 $("#agentLlmSelectDefault").addEventListener("click", selectAgentDefaultModel);
-$("#agentLlmSaveConfiguration").addEventListener("click", saveAgentLlmConfiguration);
+$("#agentLlmSaveCredential").addEventListener("click", saveAgentLlmCredential);
 $("#agentLlmDeleteCredential").addEventListener("click", deleteAgentLlmCredential);
+$("#agentLlmProviderWizard").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmWizardClose === "true") {
+    closeAgentLlmProviderWizard();
+    return;
+  }
+  const button = event.target.closest?.("button");
+  if (!button || !$("#agentLlmProviderWizard").contains(button)) return;
+  if (["agentLlmWizardClose", "agentLlmWizardCancel"].includes(button.id)) closeAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardContinue") void advanceAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardBack") {
+    state.agentLlm.wizardStep = "connection";
+    setAgentLlmOperationState("idle", "", "wizard");
+    renderAgentLlmWizardStep();
+    $("#agentLlmWizardProviderName").focus();
+  } else if (button.id === "agentLlmWizardFinish") void finishAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardFinishLater") finishAgentLlmProviderWizardLater();
+});
+$("#agentLlmProviderWizard").addEventListener("change", (event) => {
+  if (event.target.id === "agentLlmWizardProviderKind") {
+    clearAgentLlmCredentialInput();
+    syncAgentLlmWizardProviderFields({ resetName: true });
+  } else if (event.target.id === "agentLlmWizardApiKeyRequired") {
+    clearAgentLlmCredentialInput();
+    syncAgentLlmWizardProviderFields();
+  }
+});
+$("#agentLlmProviderWizard").addEventListener("keydown", (event) => {
+  trapAgentLlmDialogFocus(event, $("#agentLlmProviderWizard"), closeAgentLlmProviderWizard);
+});
 $("#agentLlmProviderKind").addEventListener("change", () => {
   clearAgentLlmCredentialInput();
   const local = $("#agentLlmProviderKind").value === "local_openai_compatible";
   $("#agentLlmProviderApiKeyRequired").checked = !local;
+  renderAgentCredentialFields();
+});
+$("#agentLlmProviderApiKeyRequired").addEventListener("change", () => {
+  clearAgentLlmCredentialInput();
   renderAgentCredentialFields();
 });
 $$("[data-layout]").forEach((button) => button.addEventListener("click", () => {
