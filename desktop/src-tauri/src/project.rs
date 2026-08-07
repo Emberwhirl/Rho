@@ -551,7 +551,7 @@ pub fn ensure_editable_file(path: &Path) -> Result<()> {
 fn ignored_project_directory(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        ".git" | ".rho" | ".rproj.user" | ".worktrees" | "target" | "renv" | "node_modules"
+        ".git" | ".rproj.user" | ".worktrees" | "target" | "renv" | "node_modules"
     )
 }
 
@@ -1046,6 +1046,39 @@ mod tests {
                 "tests/testthat/test-example.R",
             ]
         );
+    }
+
+    #[test]
+    fn project_files_include_rho_skills_without_exposing_vendor_directories() {
+        let directory = TempDir::new().unwrap();
+        std::fs::create_dir_all(directory.path().join(".rho/skills/iris-analyzer")).unwrap();
+        std::fs::create_dir_all(directory.path().join(".git/objects")).unwrap();
+        std::fs::create_dir_all(directory.path().join("node_modules/pkg")).unwrap();
+        std::fs::write(
+            directory.path().join(".rho/skills/manifest.json"),
+            "{\"schema_version\":1,\"skills\":[]}",
+        )
+        .unwrap();
+        std::fs::write(
+            directory.path().join(".rho/skills/iris-analyzer/skill.md"),
+            "# Guidance",
+        )
+        .unwrap();
+        std::fs::write(directory.path().join(".git/objects/hidden.txt"), "hidden").unwrap();
+        std::fs::write(directory.path().join("node_modules/pkg/index.js"), "hidden").unwrap();
+
+        let root = directory.path().canonicalize().unwrap();
+        let paths = list_project_files(&root)
+            .unwrap()
+            .files
+            .into_iter()
+            .map(|file| file.path)
+            .collect::<Vec<_>>();
+
+        assert!(paths.contains(&".rho/skills/manifest.json".to_string()));
+        assert!(paths.contains(&".rho/skills/iris-analyzer/skill.md".to_string()));
+        assert!(!paths.iter().any(|path| path.starts_with(".git/")));
+        assert!(!paths.iter().any(|path| path.starts_with("node_modules/")));
     }
 
     #[test]
