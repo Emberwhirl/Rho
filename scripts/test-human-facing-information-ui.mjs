@@ -112,11 +112,13 @@ for (const id of ["agentLlmRegisteredProviderId", "agentLlmProviderApiKeyEnv", "
 for (const id of ["agentLlmModelToolCalling", "agentLlmModelReasoning", "agentLlmModelVisionInput", "agentLlmModelCapabilitySource"]) {
   assert.ok(advancedSettings.includes(`id="${id}"`), `${id} must be inside Advanced settings`);
 }
-assert.match(advancedSettings, /<summary>Advanced<\/summary>/);
-assert.ok(html.indexOf('id="agentLlmModelId"') < advancedStart, "The required model field must stay in the primary flow");
+assert.match(advancedSettings, /<summary>Advanced settings<\/summary>/);
+assert.match(advancedSettings, /<summary>More connection and capability settings<\/summary>/);
+assert.equal((advancedSettings.match(/<summary>/g) || []).length, 2, "Model settings should use one outer Advanced section and one grouped details section");
+assert.ok(html.indexOf('id="agentLlmModelList"') < advancedStart, "The model chooser must stay in the primary flow");
 
 const modelSettings = js.slice(js.indexOf("function renderAgentLlmDialog()"), js.indexOf("\nfunction openAgentLlmDialog"));
-assert.doesNotMatch(modelSettings, /settings\.user_environ\.path|provider\.kind\}.*credential|model\.selector_status/);
+assert.doesNotMatch(modelSettings, /settings\.user_environ\.path|provider\.kind\}.*credential/);
 assert.doesNotMatch(modelSettings, /settings\.validation_error \|\||result\.message \|\|/);
 assert.match(modelSettings, /providerConnectionLabel\(provider\)/);
 assert.match(modelSettings, /modelConnectionLabel\(model\)/);

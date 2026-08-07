@@ -15,6 +15,7 @@ use crate::Store;
 #[serde(rename_all = "snake_case")]
 pub enum AuditScope {
     Project,
+    CurrentProject,
     Run(String),
     Artifact(String),
 }
@@ -475,6 +476,7 @@ impl Store {
         // Filter by scope
         let runs: Vec<_> = match &scope {
             AuditScope::Project => runs,
+            AuditScope::CurrentProject => Vec::new(),
             AuditScope::Run(target) => runs.into_iter().filter(|r| &r.run_id == target).collect(),
             AuditScope::Artifact(target) => {
                 // For artifact scope, only check that artifact's run
@@ -492,6 +494,7 @@ impl Store {
         // Filter artifacts by scope
         let artifacts: Vec<_> = match &scope {
             AuditScope::Project => artifacts,
+            AuditScope::CurrentProject => Vec::new(),
             AuditScope::Run(target) => artifacts
                 .into_iter()
                 .filter(|a| a.run_id.as_deref() == Some(target))
@@ -627,6 +630,7 @@ impl Store {
 
         let scope_str = match &scope {
             AuditScope::Project => "project".to_string(),
+            AuditScope::CurrentProject => "project_current".to_string(),
             AuditScope::Run(id) => format!("run:{id}"),
             AuditScope::Artifact(id) => format!("artifact:{id}"),
         };
@@ -2474,6 +2478,37 @@ mod tests {
         assert_eq!(response.coverage.runs_considered, 2);
         assert_eq!(response.coverage.files_scanned, 2);
         assert_eq!(response.summary.runs_checked, 2);
+    }
+
+    #[test]
+    fn current_project_scope_excludes_historical_runs_and_artifacts() {
+        let dir = TempDir::new().unwrap();
+        let project_root = dir.path().to_str().unwrap();
+        let db_path = dir.path().join("test.sqlite");
+        let mut store = Store::open(&db_path).unwrap();
+        make_run(
+            &mut store,
+            project_root,
+            "historical_run",
+            "completed",
+            Some("analysis.R"),
+            Some(1),
+            None,
+            None,
+        );
+        std::fs::write(dir.path().join("analysis.R"), "x <- 1\n").unwrap();
+
+        let response = store.audit_reproducibility(
+            AuditScope::CurrentProject,
+            project_root,
+            None,
+            &AuditLimits::default(),
+        );
+
+        assert_eq!(response.scope, "project_current");
+        assert_eq!(response.coverage.runs_considered, 0);
+        assert_eq!(response.coverage.artifacts_considered, 0);
+        assert_eq!(response.coverage.files_scanned, 1);
     }
 
     #[test]

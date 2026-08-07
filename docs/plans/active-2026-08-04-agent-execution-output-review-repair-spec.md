@@ -234,6 +234,12 @@ acceptance is explicitly left open.
 
 ## Implementation And Evidence
 
+Generated-file extension (2026-08-06):
+[`active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md`](active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md)
+adds bounded `workspace.execute` generated-file records to the existing WP3
+Artifact authority. This document continues to own the Agent-first Outputs
+projection; no new Outputs state or query is introduced.
+
 Implementation and automated/browser verification completed on 2026-08-04.
 
 - Agent-first navigation now projects `Task | Runs | Outputs | Review` over the
@@ -289,3 +295,68 @@ Rust workspace, Agent output-review and scientific-surface frontend contracts,
 acceptance must still confirm that one Act request producing one image adds
 exactly one item to Outputs, one Plot to the producing Run Review, and one
 Plot-history record.
+
+### Long-running Act analysis amendment (2026-08-06)
+
+Installed-app review found that a long authorized Act analysis could complete
+multiple Workspace R stages and persist plots, then end with exit code 0 before
+the final report step. The Agent R turn contract therefore uses a 512-step Act
+exploration budget (128 for Ask/Plan), a 15-minute idle lease for an individual
+Agent request, and no short wall-clock cutoff while the Agent continues to
+produce requests. These are liveness budgets, not execution authority; the
+broker still requires an explicit `desktop.agent_completed` or
+`desktop.agent_failed` terminal event and preserves truthful failure otherwise.
+
+The regression contract asserts the mode-specific aisdk step budgets in the
+desktop Agent script and R package, and retains the existing terminal-event and
+error-path tests. User cancellation remains the explicit stop action; idle
+requests still fail recoverably after the lease expires.
+
+### Agent-to-Human Outputs refresh defect amendment (2026-08-06)
+
+Authorization: the user reported that a Plot created while using Agent posture
+does not appear after returning to Human posture and explicitly requested the
+defect be fixed. Change class: D1. Risk class: R1 because the repair changes
+only frontend refresh and rendering order over existing read-only queries.
+
+Installed `0.4.0-dev.14` evidence showed that the Human Console execution
+succeeded, the Plot payload was persisted, and the current project/session
+query returned it. The defect is that the Agent-to-Human posture transition
+does not reload Runs, Problems, Plots, and saved outputs. In addition,
+`loadRunData()` waits for selected saved-output detail and Agent Console
+synchronization before rendering any of those core lists, so a slow or failed
+secondary request can leave the Human Outputs count and history stale.
+
+The authorized `HUMAN-OUTPUT-REFRESH-1` slice requires:
+
+- changing from Agent to Human posture reloads the current Runs, Problems,
+  Plots, and saved outputs through the existing `loadRunData()` path;
+- the four core query results are assigned and rendered before selected
+  saved-output detail retrieval or Agent Console synchronization;
+- selected saved-output detail failure remains visible and recoverable but
+  cannot suppress the Plot count, Plot history, Run history, or Problems;
+- project/session filtering, durable state, Workspace R identity, execution,
+  approval, and all other authority boundaries remain unchanged;
+- focused frontend contracts protect posture refresh, core rendering order,
+  and saved-output detail failure isolation.
+
+The work-package stop is after focused frontend verification, syntax and diff
+checks, contract review, and version/NEWS impact assessment. Installed-app
+acceptance remains separate and must confirm that an Agent-created Plot appears
+in Human Outputs immediately after switching posture without restarting the
+project or Workspace R.
+
+Implementation and focused verification completed on 2026-08-06. Returning to
+Human now awaits `loadRunData()`. That loader renders the four core lists before
+saved-output detail retrieval and Agent Console synchronization, and isolates
+both secondary failure paths. `node --check desktop/dist/app.js`, the
+Agent-first, Outputs Viewer, and Agent output-review frontend contracts passed.
+A browser/mock interaction showed one Agent Plot before the transition and the
+same Plot count and history entry in Human Outputs afterward.
+
+Post-implementation review found no project/session filtering, persistence,
+Workspace R identity, execution, approval, schema, or authority change. No
+version or `NEWS.md` update is made because this work has not produced a new
+distributable candidate and must not be attributed to the existing
+`0.4.0-dev.14` installer. The next rebuilt candidate must advance to
+`0.4.0-dev.15`, record the fix in `NEWS.md`, and complete installed acceptance.

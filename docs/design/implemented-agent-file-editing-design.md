@@ -8,6 +8,15 @@ Implementation note: the requirements and remaining-work language below are
 retained as the original delivery contract; the V1 workflow and its required
 review fixes are implemented in the current baseline.
 
+Extension note (2026-08-06):
+[`active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md`](../plans/active-2026-08-06-act-file-apply-and-generated-output-capture-spec.md)
+authorizes one narrow alternative to the manual Accept invariant below. A file
+proposal from an exact Act turn started with the visible session grant may be
+applied automatically through the same validation and mutation path. Ask,
+Plan, unchecked, historical/restarted, foreign-project, stale, and already
+decided proposals still require review or remain rejected; no other approval
+lane inherits this grant.
+
 ## 1. Goal
 
 Add a human-controlled file editing workflow to the Agent panel. The Agent may
@@ -291,7 +300,13 @@ current_file
 selection
 project_file
 new_file
+problem
 ```
+
+Problem repair entries may additionally include a bounded `diagnostic` object
+inside `editor_context`. It carries the project-relative source path, optional
+line/column range, message, call, origin, severity, and run linkage. This is
+diagnostic context only and does not authorize a file mutation.
 
 The frontend must call `syncDocumentFromEditor()` before capturing this
 context, so unsaved editor content is authoritative.

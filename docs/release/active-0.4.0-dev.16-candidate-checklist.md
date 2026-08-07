@@ -1,11 +1,14 @@
-# Rho 0.4.0-dev.2 Cross-Platform Candidate Checklist
+# Rho 0.4.0-dev.16 Cross-Platform Candidate Checklist
 
 Status: active; `0.4.0-dev.1` MAC4-R hosted automation passed on 2026-08-06 but
-its installed DMG was rejected the same day when hardened-runtime library
-validation prevented Ark from loading official CRAN R; bounded replacement
-`0.4.0-dev.2` repair explicitly authorized, implemented, and locally verified;
-replacement hosted rehearsal, authoritative candidate/draft, MAC5 acceptance,
-and release GO remain NOT RUN
+its installed DMG was rejected when hardened-runtime library validation
+prevented Ark from loading official CRAN R; bounded `0.4.0-dev.2` replacement
+repair and exact-commit fork rehearsal passed on 2026-08-06; upstream `main`
+was integrated on 2026-08-07 and already had an independent development line
+through `0.4.0-dev.15`, so the combined source advances to the single-use
+`0.4.0-dev.16` identity; MAC4-R3 asynchronous notarization orchestration is
+authorized but not yet implemented; authoritative candidate/draft, MAC5
+acceptance, and release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -15,7 +18,7 @@ Risk: R4
 Owning documents: the active macOS arm64 specification owns the MAC4/MAC5
 sequence and macOS artifact. The accepted About/update design owns schema,
 channel, endpoint, allowlist, and redirect semantics. This checklist alone owns
-the exact replacement `0.4.0-dev.2` cross-platform candidate identity,
+the exact integrated `0.4.0-dev.16` cross-platform candidate identity,
 evidence binding, manual acceptance ledger, and GO/NO-GO decision. The
 `0.2.0-dev.12` checklist does not apply to this candidate.
 
@@ -29,15 +32,19 @@ rehearsal has no candidate, Release, MAC5, or publication authority.
 After installed-app evidence rejected the rehearsal DMG, the project owner
 requested "修复这个问题，并push" on 2026-08-06. That authorization is limited
 to the one-key library-validation entitlement, synchronized `0.4.0-dev.2`
-identity, regression evidence, and a replacement fork rehearsal.
+identity, regression evidence, and a replacement fork rehearsal. On 2026-08-07
+the project owner approved reducing idle macOS runner time with "我同意这个优化"
+and requested "顺便同步一下上游仓库的最新更改". This authorizes the bounded
+MAC4-R3 orchestration and non-history-rewriting upstream integration recorded
+here; it does not authorize MAC5, a tag, Release, draft, Pages, or publication.
 
 ## Exact Identity
 
 | Field | Required value | Current evidence |
 | --- | --- | --- |
-| Application version | `0.4.0-dev.2` | synchronized and locally verified |
-| Release tag | `v0.4.0-dev.2` | workflow identity fixed; draft NOT RUN |
-| Release name | `Rho 0.4.0-dev.2` | workflow identity fixed; draft NOT RUN |
+| Application version | `0.4.0-dev.16` | synchronized on merged source; full affected local verification passed 2026-08-07 |
+| Release tag | `v0.4.0-dev.16` | workflow identity fixed; draft NOT RUN |
+| Release name | `Rho 0.4.0-dev.16` | workflow identity fixed; draft NOT RUN |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | fixed |
 | Source commit | one full 40-character SHA | pending hosted checkout |
@@ -55,13 +62,13 @@ replacing it. A withdrawn or rejected candidate advances to a new version.
 
 | Asset | Evidence owner | State |
 | --- | --- | --- |
-| `Rho_0.4.0-dev.2_x64-setup.exe` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.2_x64-setup.exe.sha256` | Windows candidate job | NOT RUN |
-| `rho-0.4.0-dev.2-windows-x86_64-evidence.json` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.2_aarch64.dmg` | macOS candidate job | NOT RUN |
-| `Rho_0.4.0-dev.2_aarch64.dmg.sha256` | macOS candidate job | NOT RUN |
-| `rho-0.4.0-dev.2-macos-aarch64-evidence.json` | macOS candidate job | NOT RUN |
-| `rho-0.4.0-dev.2-candidate-evidence.json` | draft assembly job | NOT RUN |
+| `Rho_0.4.0-dev.16_x64-setup.exe` | Windows candidate job | NOT RUN |
+| `Rho_0.4.0-dev.16_x64-setup.exe.sha256` | Windows candidate job | NOT RUN |
+| `rho-0.4.0-dev.16-windows-x86_64-evidence.json` | Windows candidate job | NOT RUN |
+| `Rho_0.4.0-dev.16_aarch64.dmg` | macOS finalizer job | NOT RUN |
+| `Rho_0.4.0-dev.16_aarch64.dmg.sha256` | macOS finalizer job | NOT RUN |
+| `rho-0.4.0-dev.16-macos-aarch64-evidence.json` | macOS finalizer job | NOT RUN |
+| `rho-0.4.0-dev.16-candidate-evidence.json` | draft assembly job | NOT RUN |
 
 Each platform evidence file binds schema/type/status, version, tag, source
 commit, platform, artifact name, byte size, lowercase SHA-256, and named checks.
@@ -174,7 +181,7 @@ only transiently for validation and is not uploaded. Rehearsal evidence is not
 accepted by candidate publication or update-site tooling. The main repository
 must rebuild the exact candidate after merge.
 
-## MAC4-R2 Replacement Rehearsal Gate — LOCAL PASSED / HOSTED NOT RUN
+## MAC4-R2 Replacement Rehearsal Gate — PASSED / HISTORICAL
 
 The exact `0.4.0-dev.2` replacement must prove that the tracked entitlement
 plist contains only `com.apple.security.cs.disable-library-validation = true`.
@@ -188,12 +195,87 @@ final-signature workflow ordering; full JavaScript/R/Rust affected matrices;
 an isolated repaired installed-app smoke; and an actual Tauri 2.11.4
 Developer-ID-signed `0.4.0-dev.2` app whose Rho and Ark signatures contain only
 the required entitlement and whose complete Workspace smoke passed against
-official arm64 R 4.5.2. Hosted rows remain open until a new exact-commit fork
-run completes; no `0.4.0-dev.1` evidence can satisfy them.
+official arm64 R 4.5.2.
+
+The exact-commit replacement rehearsal also passed on 2026-08-06 in run
+`31097468979` attempt 1 at
+`5b33a8f7e09a8e1466afd88cca117cf505cdd98f`. Actions artifact ID
+`8972987578`, named
+`rho-0.4.0-dev.2-rehearsal-5b33a8f7e09a8e1466afd88cca117cf505cdd98f-31097468979-1`,
+contained exactly seven files and is retained through 2026-08-20. Independent
+download verification recorded:
+
+- Windows installer: 17,686,318 bytes, SHA-256
+  `1615c8bd3383ef821e6289ee611c779707dbcec88469f0f4cdefe1b34ba0d343`;
+- macOS DMG: 20,393,780 bytes, SHA-256
+  `789919effd0fcddd61d7a12dcd2e0cf4cd5d51bf96ab8217566d0b255293f5de`;
+- Windows evidence SHA-256
+  `17165c8fec4eb7ecff6fc91518ef6becc864cd7271563a70a47a718e7bfa9890`;
+- macOS evidence SHA-256
+  `b8a32655e75642f455df36348e288f29fd50b3b74cbb0c9fe172920750b34d24`;
+- aggregate rehearsal evidence SHA-256
+  `213342874a00cc558f85636de69450aa2020f2f14790f3f87ffab2877f29e4c3`.
+
+Both platform jobs, final-DMG notarization, staple, Gatekeeper, Workspace smoke,
+evidence binding, and credential cleanup passed. Read-only audit found no tag,
+Release, or Pages publication. This closes MAC4-R2 only. Because upstream used
+the same prerelease numbers independently, this fork artifact is historical
+review evidence and cannot satisfy the integrated `0.4.0-dev.16` candidate.
+
+## MAC4-R3 Asynchronous Notarization Gate — AUTHORIZED / NOT IMPLEMENTED
+
+The two passing macOS rehearsals spent more than 95% of their job time waiting
+for Apple's service after local build/signing had completed. MAC4-R3 changes
+only CI orchestration; it does not change the app, entitlement set, signing
+identity, notarization authority, candidate admission, or publication policy.
+
+The accepted workflow must satisfy all of these checks:
+
+- a macOS submission job builds and signs the exact final DMG, validates both
+  final executable signatures and entitlements, submits that DMG once with
+  `notarytool --no-wait`, emits a bounded pending record, uploads the immutable
+  submitted DMG, and removes all Apple credential files and the temporary
+  Keychain before the job can succeed;
+- the pending record binds schema/type, repository, mode, version, tag, full
+  source commit, Run ID/Attempt, exact UUID submission ID, artifact name, byte
+  size, and pre-submission lowercase SHA-256;
+- an Ubuntu waiter downloads only that pending record, creates a fresh ES256
+  JWT with `kid`, team-key `iss`, `iat`, `exp`, and
+  `aud: appstoreconnect-v1`, and calls only
+  `https://appstoreconnect.apple.com/notary/v2/submissions/{id}` plus the exact
+  submission's `/logs` endpoint; the private key and bearer token are never
+  printed or uploaded;
+- `In Progress` is the only retryable 200 status. `Accepted` continues to log
+  retrieval; `Invalid` and `Rejected` fail. Authentication/identity errors
+  fail closed, while 429 and 5xx responses use bounded retries and the overall
+  wait remains below the GitHub-hosted job limit;
+- the waiter downloads and bounds Apple's terminal log JSON even on success,
+  validates that it identifies the same submission, and emits an immutable
+  accepted record. Unknown status, malformed/oversized JSON, wrong ID/name,
+  non-HTTPS or non-Apple log URL, exhausted retry, and timeout all fail without
+  fabricating acceptance;
+- a fresh macOS finalizer downloads the exact pending record, accepted record,
+  and submitted DMG; verifies their identity and original hash agreement;
+  staples the DMG; mounts it; repeats architecture, exact entitlement,
+  codesign, Gatekeeper, and Workspace smoke against the app inside the DMG;
+  then creates the final checksum and platform evidence;
+- aggregate rehearsal/candidate jobs depend only on the finalizer, never on an
+  unstapled intermediate. Intermediate artifact names cannot match final asset
+  patterns and cannot enter aggregate or publication inputs;
+- rerunning only failed waiter/finalizer jobs reuses the immutable submission
+  ID and DMG instead of submitting a second copy. A new workflow run creates a
+  new notarization request and may not reuse evidence from another run.
+
+MAC4-R3 acceptance requires deterministic success, rejection, stale/binding,
+malformed/oversized, 401/403/404, 429/5xx recovery, terminal rejection, timeout,
+log, and rerun-reuse coverage; complete affected workflow validation; and one
+new exact-commit fork rehearsal. Its mandatory stop remains review-only Actions
+evidence with zero tag, Release, draft, Pages, or MAC5 mutation.
 
 ## macOS Signing And Notarization Gate
 
-The hosted macOS job must record all of these as separate passed checks:
+The hosted macOS submission, waiter, and finalizer jobs together must record all
+of these as separate passed checks:
 
 - Developer ID certificate imported into a newly created temporary keychain;
 - key partition access limited to Apple/codesign tools;
@@ -206,8 +288,9 @@ The hosted macOS job must record all of these as separate passed checks:
   separate `entitlements` evidence check;
 - `codesign --verify --deep --strict --verbose=4` passes for the app;
 - Tauri signs the app and DMG without performing a separate app submission;
-- the exact final DMG is submitted once with App Store Connect API credentials
-  and returns an Accepted JSON receipt with a UUID submission ID;
+- the exact final DMG is submitted once with App Store Connect API credentials,
+  the Ubuntu waiter receives `Accepted` for that exact UUID, and its bounded
+  terminal log is retrieved and identity-checked;
 - the DMG is stapled and `xcrun stapler validate` passes;
 - Gatekeeper assessment passes for the app and DMG;
 - temporary certificate, `.p8`, and keychain are removed in an unconditional
@@ -216,9 +299,12 @@ The hosted macOS job must record all of these as separate passed checks:
 The required repository secrets are `APPLE_CERTIFICATE`,
 `APPLE_CERTIFICATE_PASSWORD`, `KEYCHAIN_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_ISSUER`,
-`APPLE_API_KEY`, and `APPLE_API_PRIVATE_KEY`. The workflow writes certificate
-and API-key files only under `RUNNER_TEMP`; it sets `APPLE_API_KEY_PATH` to the
-temporary `.p8` path. Secrets and their paths never enter release evidence.
+`APPLE_API_KEY`, and `APPLE_API_PRIVATE_KEY`. The submission job writes
+certificate and API-key files only under `RUNNER_TEMP`; it sets
+`APPLE_API_KEY_PATH` to the temporary `.p8` path. The waiter receives only the
+three API-key secrets as step-scoped environment and installs no third-party
+dependencies. Secrets, JWTs, and secret paths never enter artifacts or release
+evidence.
 
 ## Draft Assembly Gate
 
@@ -256,7 +342,7 @@ against downloaded assets from the exact draft.
 ## Publish Admission Contract
 
 The separate publish workflow is inert until MAC5 adds
-`rho-0.4.0-dev.2-acceptance.json` to the draft. That record must be bounded JSON
+`rho-0.4.0-dev.16-acceptance.json` to the draft. That record must be bounded JSON
 with schema/type, `status: "passed"`, `decision: "GO"`, exact version/tag/commit,
 the aggregate evidence SHA-256, and the complete candidate asset mapping. The
 publish workflow downloads and validates the draft plus this record, then may
@@ -280,8 +366,10 @@ publication do not by themselves prove live Pages acceptance.
 
 ## Current Decision
 
-`NO-GO`. The review-only `0.4.0-dev.1` hosted automation passed at exact commit
-`f951db593cd1d48c7a862431b691a852a37e840f`, but installed-app evidence rejected
-its DMG. The `0.4.0-dev.2` replacement repair is locally verified, but its
-hosted rehearsal is NOT RUN. No authoritative main-repository candidate,
-immutable draft, MAC5 installed acceptance, or explicit GO exists.
+`NO-GO`. The review-only `0.4.0-dev.1` artifact was rejected by installed-app
+evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
+fork-only historical evidence after the upstream version-line integration.
+The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
+authorized but not yet implemented or rehearsed. No authoritative
+main-repository candidate, immutable draft, MAC5 installed acceptance, or
+explicit GO exists.

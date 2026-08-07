@@ -18,7 +18,27 @@ assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.agent-review-output-meta/
 
 assert.match(js, /agentSelectedOutput:\s*null/);
 assert.match(js, /function renderAgentOutputs\(\)/);
+assert.match(js, /function artifactFileTypeLabel\(artifact\)/);
+assert.match(js, /function artifactListSourceLabel\(artifact\)/);
+assert.match(js, /agentOutputsSummary/);
+assert.doesNotMatch(js, /Source details incomplete.*formatTimestamp/);
 assert.match(js, /async function openAgentOutput\(kind, id\)/);
+assert.match(js, /state\.selectedArtifactDetail = detail \|\| \{ artifact, file_available: null \};/);
+assert.match(js, /const listedArtifact = state\.artifacts\.find/);
+assert.match(js, /invoke\("get_artifact_record", \{ artifactId: id \}\)/);
+assert.doesNotMatch(js, /invoke\("get_artifact_record", \{ artifact_id:/);
+assert.match(js, /appendAgentReviewSection\(summary, "Output"/);
+assert.match(js, /appendAgentReviewSection\(summary, "Created"/);
+assert.match(js, /appendAgentReviewSection\(summary, "Produced by"/);
+assert.match(js, /file_status === "missing"/);
+assert.match(js, /file_status === "unsupported"/);
+assert.match(js, /source_path_unavailable/);
+assert.match(js, /File exists in the project, but this format is not supported for preview/);
+assert.doesNotMatch(js, /preview\.textContent = "Open in Viewer"/);
+assert.match(js, /async function openAgentArtifactPreview\(container, artifact\)/);
+assert.match(js, /\["text\/x-r", "text\/x-r-markdown", "text\/plain", "application\/json"\]\.includes\(result\.media_type\)/);
+assert.match(js, /\["image\/png", "image\/jpeg", "image\/gif", "image\/webp"\]\.includes\(result\.media_type\)/);
+assert.match(js, /viewerRenderTable\(result\.content/);
 assert.match(js, /function renderAgentPlotWorkspace\(content, plot\)/);
 assert.match(js, /openAgentWorkSurface\("plot"\)/);
 assert.match(js, /\["direct", "monitor", "outputs"\]\.includes\(name\)/);
@@ -28,8 +48,16 @@ assert.match(js, /No outputs yet\. Plots and saved results produced in this proj
 assert.match(js, /Rho removed this preview to save space\. The Plot remains in history\./);
 assert.match(js, /previewState === "outputs-empty"/);
 assert.match(js, /previewState === "paths"/);
-assert.match(js, /\["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact"\]\.includes\(previewState\)/);
+assert.match(js, /\["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact", "outputs-generated"\]\.includes\(previewState\)/);
 assert.match(js, /state\.agentSelectedOutput = null;[\s\S]*state\.selectedPlotId = null;/);
+assert.match(js, /timeline-copy-output/);
+assert.match(js, /await copyText\(turn\.final_message\)/);
+assert.match(js, /renderedMessage\.innerHTML = viewerSafeMarkdown\(turn\.final_message\)/);
+assert.match(js, /renderedMessage\.className = "timeline-markdown viewer-markdown"/);
+assert.match(css, /\.timeline-markdown \{ margin: 0; color: inherit;/);
+assert.match(js, /copyButton\.lastChild\.textContent = "Copied"/);
+assert.match(js, /The output could not be copied\./);
+assert.match(css, /\.timeline-copy-output\s*\{/);
 
 const displayPathMatch = js.match(/function displayPath\(value\) \{([\s\S]*?)\n\}/);
 assert.ok(displayPathMatch, "displayPath must be centralized");
@@ -54,6 +82,8 @@ assert.match(rust, /Plan mode is read-only[\s\S]*Never call run_r\./);
 assert.match(rust, /Act mode completes explicitly requested executable work in this turn\./);
 assert.match(rust, /call run_r; do not merely provide code or ask whether to run it\./);
 assert.match(rust, /never claim execution without a successful tool result/);
+assert.match(rust, /fn materialized_project_output\(/);
+assert.match(rust, /if output_materialized \{/);
 assert.match(rust, /Explanation-only requests do not require execution\./);
 
 console.log("Agent execution and output review contract checks passed.");

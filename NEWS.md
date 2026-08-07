@@ -4,40 +4,167 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
-## 0.4.0-dev.2 - 2026-08-06
-
-### Fixed
-
-- Fixed signed macOS builds failing to start Workspace R when bundled Ark loads
-  an official arm64 R installation signed by a different Apple Developer team.
-  The final app and Ark signatures are now checked for the exact reviewed
-  hardened-runtime library-validation entitlement before notarization.
-
-## 0.4.0-dev.1 - 2026-08-05
+## 0.4.0-dev.16 - 2026-08-07
 
 ### Added
 
-- Added native Apple Silicon support for macOS 14 and later, including the
+- Integrated native Apple Silicon support for macOS 14 and later with the
   pinned arm64 Ark runtime, arm64 R 4.4+ discovery, Apple Keychain-backed model
   credentials, macOS-native open/reveal behavior, and Command-key editor
-  gestures while retaining Windows behavior.
-- Added an immutable cross-platform candidate pipeline that builds Windows x64
-  and macOS arm64 in parallel, requires Developer ID signing, Apple
-  notarization, stapling, Gatekeeper checks, checksums, and bounded evidence,
-  and creates only an unpublished draft until separate installed-candidate GO.
+  gestures while retaining the latest upstream Windows behavior.
+- Integrated the immutable cross-platform candidate pipeline for Windows x64
+  and macOS arm64 with Developer ID signing, Apple notarization, stapling,
+  Gatekeeper checks, checksums, and bounded evidence. Candidate creation remains
+  unpublished until a separate installed-candidate GO.
 
 ### Improved
 
-- Update manifests and the Rho download page now accept a validated Apple
+- Update manifests and the Rho download page accept a validated Apple
   Silicon DMG alongside the required Windows installer while preserving legacy
   Windows-only feeds and the existing user-initiated update policy.
 
 ### Fixed
 
+- Signed macOS builds can start Workspace R when bundled Ark loads an official
+  arm64 R installation signed by a different Apple Developer team. The final
+  app and Ark signatures are checked for the exact reviewed hardened-runtime
+  library-validation entitlement before notarization.
 - macOS project fixtures now compare canonical `/private/var` aliases, local
   lockfile source details stay inside the active project, and Bioconductor
   fixture provenance no longer depends on packages installed on the test Mac.
 
+## 0.4.0-dev.15 - 2026-08-07
+
+### Fixed
+
+- Self-contained HTML reports up to 32 MiB now open in the central Viewer and
+  Agent Output Review. Other preview types retain their 4 MiB limit, and files
+  that exceed their limit now report the size restriction instead of a generic
+  preview failure.
+- Model settings now use a compact model chooser by default. Provider and model
+  management, deletion, catalogs, and low-frequency connection fields are
+  progressively disclosed under one Advanced settings section; Agent LLM API
+  keys now use the Windows system credential store only.
+- Switching projects now clears stale Runs, Plots, and Outputs immediately and
+  refreshes the new project's output data without waiting for every session
+  document to reopen.
+- Agent Timeline, Task Rail, Monitor, and Outputs refreshes now preserve the
+  user's active surface, scroll position, and focused item when new results
+  arrive.
+- Applied file proposals now collapse to a compact completed summary, and
+  Undo is shown only after the edited file is verified unchanged.
+- Problems now offers a direct `Fix with Agent` entry that opens the source,
+  carries structured diagnostic context, and starts the existing reviewable
+  file-proposal flow.
+- Rename Symbol now opens Review only after a valid proposal is built. Lookup
+  or source-state failures return to a retryable name prompt with the entered
+  replacement preserved instead of showing an empty Review panel.
+
+## 0.4.0-dev.13 - 2026-08-06
+
+### Fixed
+
+- Project check results now use a bounded scrollable region when the window
+  cannot show all findings.
+- Environment approval now reconciles terminal request states separately from
+  post-approval view refreshes, so stale or completed requests no longer stay
+  visibly stuck at `Requested`.
+
+## 0.4.0-dev.12 - 2026-08-06
+
+### Fixed
+
+- Agent Outputs no longer register render paths that were not materialized as
+  files inside the active project. Review now distinguishes available files,
+  missing historical files, unsupported formats, and in-memory Plot previews.
+- Missing source-document provenance is no longer shown as a misleading file
+  review warning.
+
+## 0.4.0-dev.11 - 2026-08-06
+
+### Improved
+
+- Agent Markdown previews now render inline and block LaTeX formulas offline
+  with KaTeX while Copy continues to preserve the original Markdown source.
+
+## 0.4.0-dev.10 - 2026-08-06
+
+### Improved
+
+- Check Project now checks the current project directory without treating
+  deleted historical outputs as current failures. Project check results in
+  Agent Review also use a dedicated scrollable content region.
+
+## 0.4.0-dev.9 - 2026-08-06
+
+### Improved
+
+- Agent answers now render as a safe Markdown preview while the Copy action
+  preserves and copies the original Markdown source.
+
+## 0.4.0-dev.8 - 2026-08-06
+
+### Fixed
+
+- Agent Output Review now passes the desktop artifact detail command's
+  `artifactId` argument correctly, allowing Viewer previews to load instead of
+  falling back to misleading metadata-only and missing-file messages.
+
+## 0.4.0-dev.7 - 2026-08-06
+
+### Improved
+
+- Agent Outputs now has a dedicated scrolling list for large result sets. Cards
+  use concise file-type and source context labels, and Workspace R outputs no
+  longer appear as falsely incomplete source links.
+
+## 0.4.0-dev.6 - 2026-08-06
+
+### Improved
+
+- Generated files in Agent Outputs now open directly into Review with useful
+  output, creation, provenance, and availability information. PNG/JPEG/GIF/WebP
+  files preview as images, while CSV/TSV tables and R/Rmd/text/JSON files show
+  bounded browsable content.
+
+## 0.4.0-dev.5 - 2026-08-06
+
+### Improved
+
+- Selected Agent answers now provide a Copy action that preserves the complete
+  Markdown or code output and reports clipboard failures truthfully.
+
+## 0.4.0-dev.4 - 2026-08-06
+
+### Fixed
+
+- Long authorized Agent analyses can use more tool steps and more wall-clock
+  time before the Agent R session is considered interrupted. Act receives a
+  high exploratory budget, and each new request renews the idle lease. Rho
+  still reports a failure when the Agent process ends without a terminal event.
+
+## 0.4.0-dev.2 - 2026-08-06
+
+### Improved
+
+- First launch, or startup without a saved project, now opens the current
+  user's directory instead of a machine-specific development path.
+- File proposals in the Agent Task surface can now be collapsed like Project
+  context, keeping long Before/After previews out of the way while preserving
+  the existing review actions and proposal state.
+- Authorized Act turns can apply their file proposals automatically through
+  the existing project and stale-edit safeguards, without a second Accept.
+- Files created or updated by successful R analysis runs are registered beside
+  Plots in Outputs with their producing Run and project provenance.
+
+## 0.4.0-dev.1 - 2026-08-06
+
+### Fixed
+
+- Long Agent-run analyses no longer lose their completed result to a transport
+  disconnect when Plot/display events exceed the framed response limit. Agent
+  requests now receive bounded result projections and synchronize the current
+  Workspace revision after both successful and rejected broker responses.
 ## 0.4.0-dev.0 - 2026-08-01
 
 ### Improved

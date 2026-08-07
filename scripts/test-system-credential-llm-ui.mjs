@@ -16,6 +16,10 @@ assert.match(
 for (const label of ["Provider type", "Model", "API key", "Save", "Test connection", "Use this model"]) {
   assert.ok(html.includes(label), `Missing required primary setting: ${label}`);
 }
+for (const id of ["agentLlmCurrentSelection", "agentLlmCurrentStatus", "agentLlmProviderList", "agentLlmModelList"]) {
+  assert.ok(html.includes(`id="${id}"`), `${id} must be visible in the primary model chooser`);
+}
+assert.ok(html.includes("<summary>Advanced settings</summary>"), "Provider/model management must be progressively disclosed");
 for (const obsolete of ["Reload credentials", "Copy API key template"]) {
   assert.ok(!html.includes(obsolete), `Obsolete primary action remains: ${obsolete}`);
 }
@@ -25,8 +29,6 @@ const dialogEnd = html.indexOf("<!-- Generic product dialogs -->", advancedStart
 const advanced = html.slice(advancedStart, dialogEnd);
 assert.ok(advancedStart >= 0 && !/<details id="agentLlmAdvanced"[^>]*\sopen(?:\s|>)/.test(advanced));
 for (const id of [
-  "agentLlmProviderList",
-  "agentLlmModelList",
   "agentLlmProviderDisplayName",
   "agentLlmModelDisplayName",
   "agentLlmRegisteredProviderId",
@@ -41,14 +43,18 @@ for (const id of [
   "agentLlmDeleteProvider",
   "agentLlmDeleteModel",
 ]) assert.ok(advanced.includes(`id="${id}"`), `${id} must be hidden under Advanced`);
+for (const id of ["agentLlmProviderList", "agentLlmModelList"]) {
+  assert.ok(!advanced.includes(`id="${id}"`), `${id} must remain in the primary chooser`);
+}
 
 for (const status of [
   "Stored securely",
-  "Available from user environment",
   "Not set",
   "Not required",
   "Credential storage unavailable",
 ]) assert.ok(js.includes(status), `Missing friendly credential state: ${status}`);
+assert.doesNotMatch(html, /Open user environment file|Reload credentials|Copy API key template/);
+assert.doesNotMatch(js, /agent_llm_open_user_environ|credential_source = "environment"/);
 
 assert.match(js, /command === "agent_llm_set_credential"/);
 assert.match(js, /command === "agent_llm_delete_credential"/);
@@ -72,6 +78,11 @@ const providerKindChange = js.slice(js.indexOf('$("#agentLlmProviderKind").addEv
 assert.match(providerKindChange, /clearAgentLlmCredentialInput\(\)/);
 assert.match(js, /\["openai_compatible", "local_openai_compatible"\]\.includes\(kind\)/);
 assert.match(js, /agentLlmCredentialField"\)\.classList\.toggle\("hidden", !keyRequired\)/);
+const currentSelectionRender = js.slice(js.indexOf("function renderAgentLlmCurrentSelection"), js.indexOf("\nfunction renderAgentLlmDialog"));
+assert.match(currentSelectionRender, /settings\.selected_model_id/);
+assert.match(currentSelectionRender, /agentLlmCurrentSelection/);
+assert.match(js, /clearAgentProviderForm\(\);\s*\$\("#agentLlmAdvanced"\)\.open = true/);
+assert.match(js, /clearAgentModelForm\(\);\s*\$\("#agentLlmAdvanced"\)\.open = true/);
 
 for (const command of ["agent_llm_set_credential", "agent_llm_delete_credential"]) {
   assert.match(rust, new RegExp(`async fn ${command}\\b`));

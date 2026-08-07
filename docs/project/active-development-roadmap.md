@@ -2,8 +2,8 @@
 
 Status: active
 
-Date: 2026-08-05
-Current baseline: `0.4.0-dev.2`
+Date: 2026-08-07
+Current baseline: `0.4.0-dev.16`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -161,8 +161,12 @@ workflow package was authorized, implemented, locally verified, versioned at
 `0.4.0-dev.1`, and contract-reviewed on 2026-08-05. Its credentialed fork
 rehearsal passed automation on 2026-08-06, but installed-app evidence rejected
 the DMG because hardened-runtime library validation blocked official CRAN R.
-The bounded `0.4.0-dev.2` entitlement repair is active; authoritative candidate
-and draft creation remain NOT RUN. MAC5 remains unauthorized. This stream
+The bounded `0.4.0-dev.2` entitlement repair and replacement fork rehearsal
+passed. Upstream `main`, independently versioned through `0.4.0-dev.15`, is now
+integrated without rewriting the macOS branch history; the combined source is
+`0.4.0-dev.16`. MAC4-R3 asynchronous notarization orchestration is authorized
+and pending implementation/rehearsal; authoritative candidate and draft
+creation remain NOT RUN. MAC5 remains unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
 

@@ -109,12 +109,21 @@ rho_agent_request <- function(type,
 
   repeat {
     response <- rho_read_frame(connection)
+    if (identical(response$kind, "event") &&
+        identical(response$payload$type, "workspace.identity") &&
+        is.list(response$payload$identity)) {
+      .rho_agent_state$workspace_identity <- response$payload$identity
+      next
+    }
     if (identical(response$kind, "cancel") &&
         identical(response$payload$request_id, request$id)) {
       stop("Broker cancelled the Agent R request.", call. = FALSE)
     }
     if (identical(response$kind, "response") &&
         identical(response$payload$request_id, request$id)) {
+      if (is.list(response$payload$workspace)) {
+        .rho_agent_state$workspace_identity <- response$payload$workspace
+      }
       if (!isTRUE(response$payload$ok)) {
         stop(response$payload$error %||% "Broker request failed.", call. = FALSE)
       }

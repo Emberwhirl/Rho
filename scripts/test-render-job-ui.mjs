@@ -25,10 +25,10 @@ assert.match(js, /if \(command === "cancel_render_job"\)/);
 assert.match(js, /if \(command === "restart_workspace"\)[\s\S]*job\.status = "interrupted"/);
 assert.match(js, /runId: job\.job_id[\s\S]*artifactKind: "render_output"/);
 assert.match(js, /job\.artifact_id = artifact\.artifact_id/);
-assert.match(js, /invoke\("get_artifact_record", \{ artifact_id: job\.artifact_id \}\)/);
+assert.match(js, /invoke\("get_artifact_record", \{ artifactId: job\.artifact_id \}\)/);
 assert.match(js, /artifactAvailable: Boolean\(artifactDetail\?\.artifact\)/);
 assert.match(js, /renderReviewArtifactButton[\s\S]*switchDockTab\("plots"\)/);
-assert.match(js, /const artifactId = state\.lastRender\?\.artifactId[\s\S]*get_artifact_record[\s\S]*artifact_id: artifactId/);
+assert.match(js, /const artifactId = state\.lastRender\?\.artifactId[\s\S]*get_artifact_record[\s\S]*artifactId/);
 
 assert.match(rust, /async fn cancel_render_job/);
 assert.match(rust, /dispatch_workspace_request_with_execution_id/);

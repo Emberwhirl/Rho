@@ -18,8 +18,12 @@ contract review, and exact-commit credentialed hosted rehearsal completed on
 artifact because hardened-runtime library validation prevented bundled Ark
 from loading the official CRAN R shared library; the bounded `0.4.0-dev.2`
 repair was explicitly authorized, implemented, and locally verified on
-2026-08-06; replacement hosted rehearsal remains NOT RUN; MAC5 remains
-proposed and unauthorized
+2026-08-06; its exact-commit replacement hosted rehearsal also passed that
+day; upstream `main` was integrated without history rewriting on 2026-08-07
+and its independent development line through `0.4.0-dev.15` requires the
+combined candidate to advance to `0.4.0-dev.16`; MAC4-R3 asynchronous
+notarization orchestration is explicitly authorized and not yet implemented;
+MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -59,6 +63,12 @@ validation failure, the project owner requested "修复这个问题，并push" o
 2026-08-06. This activates only the bounded MAC4-R2 entitlement, version,
 diagnostic-gate, and replacement-rehearsal repair recorded below. It does not
 authorize an authoritative candidate, MAC5, a tag, a Release, or publication.
+After the passing replacement run showed that Apple queue time kept the macOS
+runner idle for more than three hours, the project owner approved the bounded
+orchestration optimization with "我同意这个优化" and requested
+"顺便同步一下上游仓库的最新更改" on 2026-08-07. This activates MAC4-R3 and a
+non-history-rewriting merge of `YuLab-SMU/Rho` `main`; it does not activate
+MAC5 or any publication mutation.
 
 Mandatory stop: implement MAC4's additive update schema, synchronized
 `0.4.0-dev.1` candidate identity, deterministic evidence tooling, parallel
@@ -83,6 +93,13 @@ the exact entitlement and no other exception; reproduce a successful Workspace
 smoke against official CRAN arm64 R; run one new exact-commit fork rehearsal;
 record its immutable evidence; then stop before MAC5 or publication.
 
+MAC4-R3 mandatory stop: integrate the latest upstream `main`, select a new
+single-use candidate identity above both development lines, replace synchronous
+macOS-runner waiting with one immutable submit/wait/finalize chain, prove its
+negative and recovery paths locally, run one exact-commit fork rehearsal, and
+record macOS-runner duration plus immutable evidence. Do not create or mutate a
+tag, Release, draft, Pages state, acceptance record, or MAC5 evidence.
+
 ## Goal And Success Criteria
 
 Deliver Rho as a public, Developer-ID-signed and Apple-notarized direct-download
@@ -90,9 +107,11 @@ DMG for Apple Silicon Macs while preserving Windows x64 behavior and the same
 Workspace/Agent ownership boundaries.
 
 The first rehearsal identity was `0.4.0-dev.1`; installed-app evidence rejected
-it before any authoritative candidate or draft existed. The replacement
-candidate is `0.4.0-dev.2`. It supports macOS 14 or later, arm64 R 4.4 or
-later, and an arm64 Ark 0.1.252 sidecar. It is developed in
+it before any authoritative candidate or draft existed. The repaired fork-only
+`0.4.0-dev.2` rehearsal passed. Because synchronized upstream source already
+advanced independently through `0.4.0-dev.15`, the integrated candidate is
+`0.4.0-dev.16`. It supports macOS 14 or later, arm64 R 4.4 or later, and an
+arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
 
@@ -356,7 +375,7 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.2-candidate-checklist.md`; the old `0.2.0`
+  `docs/release/active-0.4.0-dev.16-candidate-checklist.md`; the old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
 - The accepted About/update design retains schema version 1, endpoints,
@@ -556,6 +575,87 @@ platform evidence, and correctly caused the aggregate rehearsal job to skip.
 The unconditional Apple credential cleanup passed. This is failure evidence,
 not MAC4-R acceptance, and no cross-run artifact composition is permitted.
 
+### MAC4-R3: Asynchronous notarization orchestration — authorized 2026-08-07
+
+Problem and evidence: successful fork runs `31079170163` and `31097468979`
+showed that the Tauri build, signing, entitlement checks, and DMG creation
+finish in roughly six minutes, while Apple's final-DMG notarization queue holds
+the macOS runner for approximately three and a half hours. Apple service time
+cannot be shortened by Rho, but it need not consume an idle macOS runner.
+
+Contract:
+
+- preserve one final-DMG submission and the existing Developer ID, exact
+  entitlement, hardened-runtime, evidence, repository, and publication gates;
+- split the current macOS platform job into `macos-submit`, an Ubuntu
+  `macos-notary-wait`, and `macos-finalize`;
+- `macos-submit` builds/signs the DMG, verifies both final executable
+  signatures, records the exact pre-submission size and SHA-256, submits with
+  `notarytool --no-wait`, normalizes only that command's UUID into a bounded
+  pending record, uploads immutable intermediate artifacts, and completes
+  unconditional `.p12`, `.p8`, and Keychain cleanup before success;
+- the pending record binds repository, build mode, version, release tag, full
+  commit, Run ID/Attempt, UUID, final filename, byte size, and lowercase hash.
+  It contains no Apple response history, credential, token, private path, or
+  unbounded output;
+- `macos-notary-wait` uses Node's built-in crypto and HTTPS support only. It
+  creates short-lived ES256 team-key JWTs and may request only the fixed Apple
+  status URL for the pending UUID and that UUID's `/logs` URL. API-key secrets
+  are step-scoped; tokens and the private key never enter command lines,
+  output, files uploaded as artifacts, or evidence;
+- exact Apple statuses are `In Progress`, `Accepted`, `Invalid`, and
+  `Rejected`. Only `In Progress`, HTTP 429, and 5xx are retryable under bounded
+  delay/attempt/deadline rules. Unknown statuses, wrong identity/name,
+  malformed or oversized responses, 401/403/404, and other 4xx fail closed;
+- after `Accepted`, retrieve the exact submission's log URL, require HTTPS and
+  an Apple-controlled host, download bounded JSON, and bind its submission ID
+  and status into the accepted record. A missing, rejected, mismatched, or
+  oversized log cannot fabricate success;
+- `macos-finalize` downloads only the exact pending, accepted, and DMG
+  artifacts for its run, recomputes the original hash, staples and validates
+  the DMG, mounts it, and repeats arm64, codesign, exact entitlement,
+  Gatekeeper, and full Workspace smoke against `Rho.app` inside the DMG. It then
+  emits the final checksum and normal macOS platform evidence;
+- aggregate rehearsal/candidate consumers depend on `macos-finalize`. The
+  unstapled DMG, pending record, Apple log, and accepted record use intermediate
+  artifact names that cannot match or enter final candidate asset patterns;
+- GitHub rerun of failed waiter/finalizer jobs reuses successful immutable
+  submit artifacts, preventing duplicate submissions. A new workflow Run ID
+  is a new request and may not use another run's request, DMG, or acceptance.
+
+Failure and recovery:
+
+- if submission, credential cleanup, upload, polling, log retrieval, hash
+  binding, staple, mount, Gatekeeper, or smoke fails, no final macOS platform
+  evidence exists and aggregate/draft jobs skip;
+- a timeout reports failure while Apple may continue independently. Recovery
+  is a failed-job rerun over the same immutable UUID and DMG, not a history
+  lookup or automatic resubmission;
+- response bodies are byte-bounded before parsing; retry delay and total wait
+  stay below GitHub's six-hour job limit; cancellation never creates accepted
+  evidence;
+- the macOS submission job remains the only job that imports the Developer ID
+  certificate. The Ubuntu waiter receives only the notarization team-key
+  secrets, and the finalizer receives none of the eight Apple secrets.
+
+Verification and exit gate:
+
+- deterministic tests cover pending/accepted/log schemas and identity binding,
+  ES256 token claims and lifetime, success, terminal rejection, unknown state,
+  malformed/oversized input, 401/403/404, bounded 429/5xx recovery, timeout,
+  untrusted log URL, hash mismatch, cross-run/stale evidence, and rerun reuse;
+- workflow contract tests prove one submit call, no `--wait` in the submission
+  job, exact job dependencies, least-privilege secret placement, immutable
+  intermediates, finalizer gates, and aggregate consumption of only final
+  platform evidence;
+- complete affected JavaScript, YAML/actionlint, Rust, R, and release/update
+  validation runs before review; one exact `0.4.0-dev.16` fork rehearsal must
+  prove Windows retention, a materially shorter macOS submission job, accepted
+  log-bound notarization, finalization, cleanup, and zero publication;
+- stop after recording review-only rehearsal evidence. MAC5, authoritative
+  draft creation, tag/Release mutation, and Pages publication remain
+  unauthorized.
+
 ### MAC5: Exact-candidate acceptance and publication — proposed
 
 - bind automated and human evidence to the exact tag, commit, assets, sizes,
@@ -637,6 +737,14 @@ MAC1-MAC3 remain `0.4.0-dev.0` and are not distributable candidates. They do
 not change exported R package behavior, so no R package bump is expected.
 `NEWS.md` is unchanged until reviewed user-visible behavior enters MAC4's
 candidate.
+
+The fork's `0.4.0-dev.1` and `0.4.0-dev.2` identities are retained only as
+historical rehearsal evidence. Upstream independently used those prerelease
+numbers and reached `0.4.0-dev.15`; the merged application authorities,
+frontend cache-busting, mock identity, roadmap, workflow defaults, checklist,
+and `NEWS.md` therefore advance together to `0.4.0-dev.16`. R package versions
+remain independently governed and unchanged. MAC4-R3 changes release
+orchestration only and does not require a second application-version advance.
 
 This document stays active after code lands while later packages, installed
 acceptance, or release gates remain open. The roadmap may record implementation
@@ -1093,7 +1201,7 @@ updating action majors is a bounded follow-up, not a release-gate failure.
 Release decision remains NO-GO. The MAC4-R mandatory stop is reached. The main
 repository must rebuild any authoritative candidate; MAC5 remains unauthorized.
 
-## MAC4-R2 Installed-App Library Validation Repair — LOCAL PASSED 2026-08-06
+## MAC4-R2 Installed-App Library Validation Repair — PASSED 2026-08-06
 
 The installed `0.4.0-dev.1` rehearsal DMG passed signature, notarization,
 staple, Gatekeeper, and CI Workspace smoke, but failed on the project owner's
@@ -1165,7 +1273,65 @@ Local implementation evidence passed on 2026-08-06:
   unrelated Rust dead-code warnings remained; `actionlint` was unavailable
   locally and is not reported as run.
 
-The replacement hosted signing, final-DMG notarization, staple, Gatekeeper,
-two-platform rehearsal, immutable hashes, and zero-publication audit remain
-`NOT RUN` until the reviewed commit is pushed. Release decision remains NO-GO;
-MAC5 remains unauthorized.
+The replacement exact-commit rehearsal passed in run `31097468979` attempt 1
+at `5b33a8f7e09a8e1466afd88cca117cf505cdd98f`. Windows completed in about 17
+minutes; macOS completed in about 216 minutes, with Apple queue wait accounting
+for nearly all time after build/signing. Actions artifact ID `8972987578` is
+named
+`rho-0.4.0-dev.2-rehearsal-5b33a8f7e09a8e1466afd88cca117cf505cdd98f-31097468979-1`
+and is retained through 2026-08-20.
+
+Independent download verification found exactly seven files:
+
+- Windows installer: 17,686,318 bytes, SHA-256
+  `1615c8bd3383ef821e6289ee611c779707dbcec88469f0f4cdefe1b34ba0d343`;
+- macOS DMG: 20,393,780 bytes, SHA-256
+  `789919effd0fcddd61d7a12dcd2e0cf4cd5d51bf96ab8217566d0b255293f5de`;
+- Windows evidence SHA-256
+  `17165c8fec4eb7ecff6fc91518ef6becc864cd7271563a70a47a718e7bfa9890`;
+- macOS evidence SHA-256
+  `b8a32655e75642f455df36348e288f29fd50b3b74cbb0c9fe172920750b34d24`;
+- aggregate rehearsal evidence SHA-256
+  `213342874a00cc558f85636de69450aa2020f2f14790f3f87ffab2877f29e4c3`.
+
+Final-DMG notarization, staple, Gatekeeper, exact Rho/Ark entitlement checks,
+Workspace smoke, cross-platform evidence binding, and credential cleanup all
+passed. Read-only audit found no tag, Release, draft, or Pages publication.
+MAC4-R2 is closed as review-only fork evidence. Upstream integration makes
+`0.4.0-dev.16` the next candidate, and MAC4-R3 must rehearse that exact source.
+Release decision remains NO-GO; MAC5 remains unauthorized.
+
+## MAC4-R3 Upstream Integration Entry Evidence — PASSED 2026-08-07
+
+The clean fork branch at
+`5b33a8f7e09a8e1466afd88cca117cf505cdd98f` fetched upstream `main` at
+`28ba1345efe70d28dc34214e5cc3ef03542c8122`. The histories had 14 fork-only
+and 11 upstream-only commits, so synchronization used an ordinary merge rather
+than a rebase, hard reset, force push, or history rewrite.
+
+Conflict review preserved both contracts rather than choosing one branch
+wholesale:
+
+- upstream's current-user first-start root supersedes the old development-path
+  fallback;
+- Agent R keeps the macOS runtime-discovery `PATH`, while upstream's credential
+  simplification removes `R_ENVIRON_USER` and every process-environment secret
+  fallback;
+- upstream's UI, output-review, KaTeX, Agent, and repair work is retained with
+  the macOS platform/runtime/signing changes;
+- the two independently reused `dev.1/dev.2` histories remain documented as
+  historical evidence, while every live application authority advances to
+  `0.4.0-dev.16`.
+
+Post-resolution validation passed: `cargo fmt --all -- --check`; the complete
+Rust workspace with 284 passed tests and one opt-in native-Keychain test
+ignored; complete `rho.bridge` and `rho.agent` testthat suites; all 38
+deterministic `scripts/test-*.mjs` suites; candidate-release and update-site
+self-tests; JavaScript syntax; workflow YAML parsing; and `git diff --check`.
+Two stale upstream frontend assertions were corrected to the already-required
+camelCase Tauri argument contract and `dev.16` asset identity. `actionlint` was
+not available locally and remains a hosted/rehearsal validation gate.
+
+This entry closes only the upstream integration prerequisite. MAC4-R3 product
+implementation and exact-commit hosted rehearsal remain open; MAC5 and all
+publication mutations remain unauthorized.

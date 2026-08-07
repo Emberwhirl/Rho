@@ -48,6 +48,7 @@ const state = {
   activeAgentTurnId: null,
   agentRuntime: null,
   projectSkills: { project_root: "", trust_status: "untrusted_project_content", skills: [], discovery_error: null },
+  projectRefreshSequence: 0,
   agentLlm: {
     settings: null,
     selectedModelId: null,
@@ -154,10 +155,15 @@ const state = {
   selectedTurnDetail: null,
   fileEditProposal: null,
   fileEditUndo: null,
+  fileEditUndoVerifiedKey: null,
   fileEditDecisions: new Map(),
+  actAuthorizedTurnIds: new Set(),
+  fileEditAutoApplyAttempts: new Set(),
+  fileEditApplyBusy: false,
   agentFileMention: { items: [], index: 0, start: -1, end: -1, mode: "mention", contextSource: null },
   agentContextSource: "editor",
   agentContextPath: null,
+  agentDiagnostic: null,
   agentPollTimer: null,
   activeRunId: null,
   agentReviewRunId: null,
@@ -757,8 +763,8 @@ function defaultMockAgentLlmSettingsView() {
     ],
     selected_model: null,
     user_environ: {
-      path: "C:/Users/demo/.Renviron",
-      source: "default",
+      path: "",
+      source: "system",
     },
     validation_error: null,
   };
@@ -807,22 +813,23 @@ function mockTurnSummary(turn) {
   };
 }
 
-function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
+function createMockAgentTurn({ prompt, mode, model, editorContext = null, autoApprove = false }) {
   const startedAt = new Date().toISOString();
+  const waitingForApproval = mode === "act" && !autoApprove;
   const turn = {
     turn_id: nextMockTurnId(),
     mode,
-    status: mode === "act" ? "waiting" : "completed",
+    status: waitingForApproval ? "waiting" : "completed",
     started_at: startedAt,
-    finished_at: mode === "act" ? null : startedAt,
+    finished_at: waitingForApproval ? null : startedAt,
     prompt_preview: prompt.replace(/\s+/g, " ").trim().slice(0, 120) || "<empty>",
     model,
     workspace_id_before: "desktop_mock",
     state_revision_before: state.revision.state_revision,
     project_revision_before: state.revision.project_revision,
-    workspace_id_after: mode === "act" ? null : "desktop_mock",
-    state_revision_after: mode === "act" ? null : state.revision.state_revision,
-    project_revision_after: mode === "act" ? null : state.revision.project_revision,
+    workspace_id_after: waitingForApproval ? null : "desktop_mock",
+    state_revision_after: waitingForApproval ? null : state.revision.state_revision,
+    project_revision_after: waitingForApproval ? null : state.revision.project_revision,
     final_message: null,
     error_message: null,
     events: [
@@ -837,7 +844,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
         tool: null,
         request_id: null,
         code: null,
-        details_json: JSON.stringify({ prompt, mode, editor_context: editorContext }),
+        details_json: JSON.stringify({ prompt, mode, auto_approve: autoApprove, editor_context: editorContext }),
       },
       {
         id: 2,
@@ -855,7 +862,7 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null }) {
     ],
   };
   turn.events.forEach((event) => { event.turn_id = turn.turn_id; });
-  if (mode === "act") {
+  if (waitingForApproval) {
     const requestId = nextMockApprovalId();
     mockApprovalRequests.unshift({
       request_id: requestId,
@@ -1067,6 +1074,14 @@ function mockFileAvailable(projectRoot, outputPath) {
   return Object.prototype.hasOwnProperty.call(project.contents || {}, outputPath);
 }
 
+function mockFileStatus(record) {
+  if (!mockFileAvailable(record.project_root, record.output_path)) return "missing";
+  const extension = pathFileName(record.output_path).split(".").pop()?.toLowerCase();
+  return ["html", "htm", "md", "r", "rmd", "txt", "log", "json", "csv", "tsv", "png", "jpg", "jpeg", "gif", "webp"].includes(extension)
+    ? "available"
+    : "unsupported";
+}
+
 function mockUpsertProjectFile(projectRoot, path, content, options = {}) {
   const { trackInTree = true, kind = "source" } = options;
   const normalized = validateProjectRelativePath(path);
@@ -1133,6 +1148,7 @@ function mockArtifactView(record) {
   return {
     artifact: structuredClone(record),
     file_available: mockFileAvailable(record.project_root, record.output_path),
+    file_status: mockFileStatus(record),
     output_absolute_path: mockOutputAbsolutePath(record.project_root, record.output_path),
     run: record.run_id ? structuredClone(mockRuns.find((run) => run.run_id === record.run_id) || null) : null,
   };
@@ -1620,7 +1636,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.2",
+      version: "0.4.0-dev.16",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1638,8 +1654,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.2",
-      available_version: "0.4.0-dev.2",
+      installed_version: "0.4.0-dev.16",
+      available_version: "0.4.0-dev.16",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -1715,12 +1731,16 @@ async function mockInvoke(command, args) {
     const extension = viewerPathExtension(path);
     const samples = {
       md: "# Markdown preview\n\nThis preview is rendered from the current project buffer.\n\n```r\nsummary(qc)\n```\n",
+      r: "counts <- read.csv('counts.csv')\nsummary(counts)\n",
+      rmd: "---\ntitle: 'Analysis'\n---\n\n```{r}\nsummary(counts)\n```\n",
+      txt: "Generated text output\n",
+      json: "{\"status\":\"complete\"}\n",
       html: "<!doctype html><html><head><title>Interactive output</title><style>body{font:16px sans-serif;padding:24px}button{padding:8px 12px}</style></head><body><h1>Interactive HTML output</h1><button id='update'>Update</button><p id='value'>Ready</p><script>document.querySelector('#update').onclick=()=>document.querySelector('#value').textContent='Updated inside sandbox';</script></body></html>",
       csv: "sample,reads,detected\nA,1200,3100\nB,1400,3300\n",
       tsv: "sample\treads\tdetected\nA\t1200\t3100\nB\t1400\t3300\n",
     };
     if (!samples[extension]) throw new Error(`Preview is not available for this file: ${path}`);
-    return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content: samples[extension], size_bytes: samples[extension].length };
+    return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content_encoding: "utf-8", content: samples[extension], size_bytes: samples[extension].length };
   }
   if (command === "project_write_file" || command === "project_create_file") {
     const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
@@ -2375,12 +2395,9 @@ async function mockInvoke(command, args) {
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
-    provider.credential_status = "detected";
-    provider.credential_source = "environment";
+    provider.credential_status = "not_detected";
+    provider.credential_source = "none";
     return structuredClone(rebuildMockAgentLlmSettings());
-  }
-  if (command === "agent_llm_open_user_environ") {
-    return structuredClone(mockAgentLlmSettings.user_environ);
   }
   if (command === "agent_llm_catalog") {
     return [
@@ -2475,6 +2492,7 @@ async function mockInvoke(command, args) {
       mode: args.mode || "ask",
       model: modelProfile ? mockEffectiveModelRef(providerProfile, modelProfile) : "deepseek:deepseek-v4-flash",
       editorContext: args.editorContext || null,
+      autoApprove: Boolean(args.autoApprove ?? args.auto_approve),
     });
     return { status: "started", turn_id: turn.turn_id };
   }
@@ -3423,6 +3441,11 @@ function syncDocumentFromEditor(options = {}) {
     documentState.cursorStart = editor.selectionStart;
     documentState.cursorEnd = editor.selectionEnd;
   }
+  if (state.fileEditUndo?.path === documentState.path && state.fileEditUndo.afterContent !== documentState.content) {
+    state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
+    renderFileEditPanel();
+  }
   if (render) {
     renderProjectFiles();
     renderDocumentTabs();
@@ -3438,6 +3461,7 @@ function currentEditorValue() {
 }
 
 const VIEWER_FILE_LIMIT = 4 * 1024 * 1024;
+const VIEWER_HTML_LIMIT = 32 * 1024 * 1024;
 const VIEWER_TABLE_ROW_LIMIT = 500;
 const VIEWER_TABLE_COLUMN_LIMIT = 100;
 
@@ -3449,8 +3473,13 @@ function viewerTypeLabel(kind, mediaType) {
   if (kind === "plot") return "Plot";
   if (mediaType === "text/markdown") return "Markdown preview";
   if (mediaType === "text/html") return "Interactive HTML";
+  if (mediaType === "image/png") return "PNG image";
+  if (mediaType === "image/jpeg") return "JPEG image";
+  if (mediaType === "image/gif") return "GIF image";
+  if (mediaType === "image/webp") return "WebP image";
   if (mediaType === "text/csv") return "CSV table";
   if (mediaType === "text/tab-separated-values") return "TSV table";
+  if (mediaType === "text/x-r" || mediaType === "text/x-r-markdown") return "R source";
   return "Output";
 }
 
@@ -3466,12 +3495,27 @@ function viewerSafeMarkdown(content) {
     throw new Error("Markdown preview dependencies are unavailable.");
   }
   const html = window.marked.parse(content, { gfm: true, breaks: false });
-  return window.DOMPurify.sanitize(html, {
+  const sanitizeOptions = {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "base", "meta"],
     FORBID_ATTR: ["style", "srcset", "onerror", "onclick", "onload", "onmouseover"],
     ALLOW_UNKNOWN_PROTOCOLS: false,
+  };
+  const sanitized = window.DOMPurify.sanitize(html, sanitizeOptions);
+  if (typeof window.renderMathInElement !== "function") return sanitized;
+  const container = document.createElement("div");
+  container.innerHTML = sanitized;
+  window.renderMathInElement(container, {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "\\[", right: "\\]", display: true },
+      { left: "$", right: "$", display: false },
+      { left: "\\(", right: "\\)", display: false },
+    ],
+    throwOnError: false,
+    output: "html",
   });
+  return window.DOMPurify.sanitize(container.innerHTML, sanitizeOptions);
 }
 
 function viewerSandboxHtml(content) {
@@ -3482,6 +3526,30 @@ function viewerSandboxHtml(content) {
   csp.httpEquiv = "Content-Security-Policy";
   csp.content = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data:; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src 'none'; frame-src 'none'; child-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
   document.head.prepend(csp);
+  const navigationGuard = document.createElement("script");
+  navigationGuard.textContent = `(() => {
+    document.addEventListener("click", (event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!link) return;
+      const href = link.getAttribute("href") || "";
+      event.preventDefault();
+      if (!href.startsWith("#")) {
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (href === "#") {
+        window.scrollTo({ top: 0, left: 0 });
+        return;
+      }
+      let fragment = href.slice(1);
+      try {
+        fragment = decodeURIComponent(fragment);
+      } catch {}
+      const target = document.getElementById(fragment) || document.getElementsByName(fragment)[0];
+      target?.scrollIntoView({ block: "start" });
+    }, true);
+  })();`;
+  csp.after(navigationGuard);
   const doctype = "<!doctype html>";
   return `${doctype}${document.documentElement.outerHTML}`;
 }
@@ -3576,6 +3644,19 @@ function viewerRenderPreview() {
       target.append(frame);
       $("#viewerPreviewStatus").textContent = "sandboxed";
       viewerSetNotice(viewerHtmlResourceWarning(viewer.content));
+    } else if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(viewer.mediaType)) {
+      const image = document.createElement("img");
+      image.className = "viewer-image-output";
+      image.alt = viewer.title || "Image output";
+      image.src = "data:" + viewer.mediaType + ";base64," + viewer.content;
+      target.append(image);
+      $("#viewerPreviewStatus").textContent = "image preview";
+    } else if (["text/x-r", "text/x-r-markdown", "text/plain", "application/json"].includes(viewer.mediaType)) {
+      const code = document.createElement("pre");
+      code.className = "viewer-code-output";
+      code.textContent = viewer.content;
+      target.append(code);
+      $("#viewerPreviewStatus").textContent = "source preview";
     } else if (["text/csv", "text/tab-separated-values"].includes(viewer.mediaType)) {
       const parsed = viewerRenderTable(viewer.content, viewerTypeLabel(viewer.kind, viewer.mediaType).startsWith("TSV") ? "tsv" : "csv");
       const wrapper = document.createElement("div");
@@ -3650,9 +3731,10 @@ async function openViewer(input) {
       state.viewer.content = input.content || "";
       state.viewer.mediaType = "image/png";
     } else if (input.content !== undefined) {
-      if (String(input.content).length > VIEWER_FILE_LIMIT) throw new Error("Current editor buffer is too large for preview.");
+      const contentLimit = viewerPathExtension(input.path) === "html" ? VIEWER_HTML_LIMIT : VIEWER_FILE_LIMIT;
+      if (new Blob([String(input.content)]).size > contentLimit) throw new Error(`Current editor buffer is too large for preview (limit: ${contentLimit} bytes).`);
       state.viewer.content = String(input.content);
-      state.viewer.mediaType = input.mediaType || ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" }[viewerPathExtension(input.path)] || "text/plain");
+      state.viewer.mediaType = input.mediaType || ({ md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" }[viewerPathExtension(input.path)] || "text/plain");
     } else {
       const result = await invoke("viewer_read_file", { path: input.path });
       if (result.project_root !== state.project.root || result.project_root !== requestRoot) throw new Error("The project changed while loading this output.");
@@ -3674,12 +3756,12 @@ async function openViewerForActiveDocument() {
   const document = activeDocument();
   if (!document || !state.activeDocument) return;
   const extension = viewerPathExtension(state.activeDocument);
-  if (!["md", "html", "csv", "tsv"].includes(extension)) {
+  if (!["md", "html", "r", "rmd", "txt", "json", "csv", "tsv"].includes(extension)) {
     toast("Preview is not available for this file.", true);
     return;
   }
   syncDocumentFromEditor({ render: false, persist: false });
-  await openViewer({ path: state.activeDocument, title: state.activeDocument, sourcePath: state.activeDocument, content: document.content, mediaType: ({ md: "text/markdown", html: "text/html", csv: "text/csv", tsv: "text/tab-separated-values" })[extension] });
+  await openViewer({ path: state.activeDocument, title: state.activeDocument, sourcePath: state.activeDocument, content: document.content, mediaType: ({ md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" })[extension] });
 }
 
 async function openSelectedOutputInViewer() {
@@ -4341,7 +4423,8 @@ async function restoreDraftChoice(path, savedContent, draftContent) {
 }
 
 async function openDocument(path, options = {}) {
-  const { sessionEntry = null, forceReload = false, revealWorkSurface = true } = options;
+  const { sessionEntry = null, forceReload = false, revealWorkSurface = true, preserveActive = false } = options;
+  const previousActive = state.activeDocument;
   if (state.activeDocument && state.activeDocument !== path) {
     syncDocumentFromEditor({ render: false, persist: false });
     clearAgentEditHighlight();
@@ -4349,6 +4432,10 @@ async function openDocument(path, options = {}) {
   if (state.documents[path]?.transient) {
     state.activeDocument = path;
     renderActiveDocument();
+    if (preserveActive && state.activeDocument === path) {
+      state.activeDocument = previousActive;
+      renderActiveDocument();
+    }
     if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
     requestAnimationFrame(() => layoutEditor());
     return;
@@ -4386,6 +4473,10 @@ async function openDocument(path, options = {}) {
   }
   state.activeDocument = path;
   renderActiveDocument();
+  if (preserveActive && state.activeDocument === path) {
+    state.activeDocument = previousActive;
+    renderActiveDocument();
+  }
   if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
   requestAnimationFrame(() => layoutEditor());
   scheduleSessionSave();
@@ -4595,6 +4686,7 @@ function prettyStatus(status) {
 }
 
 const USER_ERROR_PRESENTATIONS = [
+  { matches: /too large|over.?limit/i, message: "This file is too large to preview. Open it as source instead." },
   { matches: /stale|revision|changed since|changed after|out of date/i, message: "The underlying information changed. Refresh it and try again." },
   { matches: /not found|missing|no longer available|unavailable/i, message: "The requested information is no longer available. Refresh this view and try again." },
   { matches: /permission|policy|denied|not allowed|outside (?:the )?project/i, message: "This action is not allowed in the current project state. Review the project and try a permitted action." },
@@ -4743,6 +4835,8 @@ function activeRunRecord() {
 }
 
 async function loadRunData({ quiet = false } = {}) {
+  const refreshSequence = state.projectRefreshSequence;
+  const projectRoot = state.project.root;
   try {
     const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
@@ -4750,6 +4844,7 @@ async function loadRunData({ quiet = false } = {}) {
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
     ]);
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
     loadGitStatus();
     state.runs = runs || [];
     state.problems = problems || [];
@@ -4760,16 +4855,28 @@ async function loadRunData({ quiet = false } = {}) {
     }
     if (!state.artifacts.some((artifact) => artifact.artifact_id === state.selectedArtifactId)) {
       state.selectedArtifactId = state.artifacts[0]?.artifact_id || null;
-      state.selectedArtifactDetail = null;
     }
-    if (state.selectedArtifactId) {
-      state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: state.selectedArtifactId });
-    }
+    state.selectedArtifactDetail = null;
     state.activeRunId = activeRunRecord()?.run_id || null;
-    await syncAgentRunsToConsole(state.runs);
     renderRuns();
     renderProblems();
     renderPlots();
+    if (state.selectedArtifactId) {
+      const listedArtifact = state.artifacts.find((item) => item.artifact_id === state.selectedArtifactId);
+      try {
+        const detail = await invoke("get_artifact_record", { artifactId: state.selectedArtifactId });
+        state.selectedArtifactDetail = detail || (listedArtifact ? { artifact: listedArtifact, file_available: null } : null);
+      } catch (error) {
+        state.selectedArtifactDetail = listedArtifact ? { artifact: listedArtifact, file_available: null } : null;
+        if (!quiet) toast(reportUiFailure("load saved output detail", error, "Saved output detail could not be loaded. Refresh and try again."), true);
+      }
+      renderPlots();
+    }
+    try {
+      await syncAgentRunsToConsole(state.runs);
+    } catch (error) {
+      if (!quiet) toast(reportUiFailure("sync Agent Console", error, "Agent Console history could not be synchronized. Refresh and try again."), true);
+    }
   } catch (error) {
     if (!quiet) toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
   }
@@ -5459,14 +5566,19 @@ function renderProjectSkills() {
 
 async function loadProjectSkills(options = {}) {
   const { quiet = true } = options;
+  const refreshSequence = state.projectRefreshSequence;
+  const projectRoot = state.project.root;
   if (state.projectStatus !== "ready" || !state.project.root) {
     state.projectSkills = emptyProjectSkillsView(state.project.root || "");
     renderProjectSkills();
     return;
   }
   try {
-    state.projectSkills = await invoke("list_project_skills");
+    const skills = await invoke("list_project_skills");
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
+    state.projectSkills = skills;
   } catch (error) {
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
     state.projectSkills = {
       ...emptyProjectSkillsView(state.project.root),
       discovery_error: String(error),
@@ -5486,6 +5598,7 @@ function setAgentContext(source, path = null) {
 
 function resetAgentContext() {
   setAgentContext("editor", null);
+  state.agentDiagnostic = null;
 }
 
 function validateProjectRelativePath(path) {
@@ -5561,6 +5674,25 @@ function parseApprovalArguments(argumentsJson) {
   }
 }
 
+function capturePanelViewport(panel, keySelector = null) {
+  if (!panel) return null;
+  const focused = document.activeElement;
+  return {
+    top: panel.scrollTop,
+    left: panel.scrollLeft,
+    focusKey: keySelector && panel.contains(focused) ? focused.getAttribute(keySelector) : null,
+  };
+}
+
+function restorePanelViewport(panel, viewport, keySelector = null) {
+  if (!panel || !viewport) return;
+  panel.scrollTop = viewport.top;
+  panel.scrollLeft = viewport.left;
+  if (keySelector && viewport.focusKey) {
+    panel.querySelector(`[${keySelector}="${CSS.escape(viewport.focusKey)}"]`)?.focus({ preventScroll: true });
+  }
+}
+
 async function loadAgentData({ quiet = false } = {}) {
   try {
     const [turns, approvals] = await Promise.all([
@@ -5597,6 +5729,7 @@ async function loadAgentData({ quiet = false } = {}) {
     renderAgentTimeline();
     renderApprovalPanel();
     renderFileEditPanel();
+    maybeAutoApplyFileEditProposal();
     renderTaskRail();
     updateAgentHeader();
     syncAgentPolling();
@@ -5617,7 +5750,7 @@ function emptyAgentLlmSettings(message) {
     providers: [],
     models: [],
     selected_model: null,
-    user_environ: { path: "", source: "default" },
+    user_environ: { path: "", source: "system" },
     validation_error: message,
   };
 }
@@ -5975,9 +6108,6 @@ function credentialStatusLabel(provider) {
   if (!provider?.api_key_required || provider?.credential_status === "not_required") return "Not required";
   if (provider.credential_status === "unavailable") return "Credential storage unavailable";
   if (provider.credential_status === "detected" && provider.credential_source === "system") return "Stored securely";
-  if (provider.credential_status === "detected" && provider.credential_source === "environment") {
-    return "Available from user environment";
-  }
   return "Not set";
 }
 
@@ -6062,9 +6192,26 @@ function renderAgentModelForm() {
   $("#agentLlmModelEnabled").checked = model ? Boolean(model.enabled) : true;
 }
 
+function renderAgentLlmCurrentSelection(settings) {
+  const model = (settings.models || []).find((item) => item.id === settings.selected_model_id)
+    || settings.selected_model
+    || null;
+  const provider = model
+    ? (settings.providers || []).find((item) => item.id === model.provider_id)
+    : null;
+  const status = model
+    ? ({ selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled", unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested" }[String(model.selector_status || "").toLowerCase()] || (model.enabled ? "Available" : "Disabled"))
+    : "No model selected";
+  $("#agentLlmCurrentStatus").textContent = status;
+  $("#agentLlmCurrentSelection").textContent = model
+    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"} · ${status}`
+    : "No model selected. Choose or add a model below.";
+}
+
 function renderAgentLlmDialog() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   ensureAgentLlmSelectionState();
+  renderAgentLlmCurrentSelection(settings);
   $("#agentLlmUserEnviron").textContent = "Choose the model Rho should use. API keys are kept in the system credential store.";
   $("#agentLlmValidation").textContent = settings.validation_error
     ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
@@ -6230,7 +6377,7 @@ async function copyText(text) {
   input.value = text;
   document.body.append(input);
   input.select();
-  document.execCommand("copy");
+  if (!document.execCommand("copy")) throw new Error("Clipboard access was unavailable.");
   input.remove();
 }
 
@@ -6457,15 +6604,6 @@ async function cancelAgentModelTest() {
   }
 }
 
-async function openAgentUserEnviron() {
-  try {
-    await invoke("agent_llm_open_user_environ");
-    toast("Opened the credential file.");
-  } catch (error) {
-    toast(reportUiFailure("open model credentials", error, "The credential file could not be opened."), true);
-  }
-}
-
 function syncAgentPolling() {
   const shouldPoll = state.agentTurns.some((turn) => ["running", "waiting"].includes(turn.status)) || state.pendingApprovals.length > 0;
   if (shouldPoll && !state.agentPollTimer) {
@@ -6482,6 +6620,7 @@ function syncAgentPolling() {
 
 function renderAgentTimeline() {
   const panel = $("#agentTimeline");
+  const viewport = capturePanelViewport(panel, "data-turn-id");
   panel.replaceChildren();
   if (!state.agentTurns.length) {
     if (state.agentRuntime && !state.agentRuntime.available) {
@@ -6489,6 +6628,7 @@ function renderAgentTimeline() {
     } else {
       addTimeline("R session ready", "Ask Rho about the current project or attach a file for review.", "completed");
     }
+    restorePanelViewport(panel, viewport, "data-turn-id");
     return;
   }
   for (const turn of state.agentTurns.slice(0, 8)) {
@@ -6522,7 +6662,41 @@ function renderAgentTimeline() {
     if (selected && turn.final_message) {
       const fullMessage = document.createElement("div");
       fullMessage.className = "timeline-final-message";
-      fullMessage.textContent = turn.final_message;
+      const answerHeader = document.createElement("div");
+      answerHeader.className = "timeline-final-message-header";
+      const answerLabel = document.createElement("span");
+      answerLabel.textContent = "Output";
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "timeline-copy-output";
+      copyButton.title = "Copy output";
+      copyButton.setAttribute("aria-label", "Copy output");
+      const copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      copyIcon.classList.add("ui-icon");
+      copyIcon.setAttribute("aria-hidden", "true");
+      const copyUse = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      copyUse.setAttribute("href", "#icon-copy");
+      copyIcon.append(copyUse);
+      copyButton.append(copyIcon, document.createTextNode("Copy"));
+      copyButton.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        try {
+          await copyText(turn.final_message);
+          copyButton.classList.add("is-copied");
+          copyButton.lastChild.textContent = "Copied";
+          window.setTimeout(() => {
+            copyButton.classList.remove("is-copied");
+            copyButton.lastChild.textContent = "Copy";
+          }, 1600);
+        } catch (error) {
+          toast(reportUiFailure("copy Agent output", error, "The output could not be copied."), true);
+        }
+      });
+      answerHeader.append(answerLabel, copyButton);
+      const renderedMessage = document.createElement("article");
+      renderedMessage.className = "timeline-markdown viewer-markdown";
+      renderedMessage.innerHTML = viewerSafeMarkdown(turn.final_message);
+      fullMessage.append(answerHeader, renderedMessage);
       content.append(fullMessage);
       appendAgentLocalHelpEvidence(content, state.selectedTurnDetail);
     }
@@ -6583,10 +6757,12 @@ function renderAgentTimeline() {
       }
     }
   }
+  restorePanelViewport(panel, viewport, "data-turn-id");
 }
 
 function renderTaskRail() {
   const list = $("#taskRailList");
+  const viewport = capturePanelViewport(list, "data-turn-id");
   list.replaceChildren();
 
   const turns = state.agentTurns.slice(0, 12);
@@ -6603,6 +6779,7 @@ function renderTaskRail() {
     start.addEventListener("click", startNewAgentTask);
     empty.append(heading, description, start);
     list.append(empty);
+    restorePanelViewport(list, viewport, "data-turn-id");
     syncAgentWorkSurfaceLayout();
     return;
   }
@@ -6634,6 +6811,7 @@ function renderTaskRail() {
 
   const header = document.querySelector(".task-rail-header span");
   if (header) header.textContent = `Tasks (${state.agentTurns.length})`;
+  restorePanelViewport(list, viewport, "data-turn-id");
   syncAgentWorkSurfaceLayout();
 }
 
@@ -6655,6 +6833,7 @@ async function selectTaskTurn(turnId) {
   renderAgentTimeline();
   renderApprovalPanel();
   renderFileEditPanel();
+  maybeAutoApplyFileEditProposal();
   updateAgentHeader();
 }
 
@@ -7129,7 +7308,8 @@ function renderLintStatus() {
     : `${response?.diagnostics?.length || 0} code ${response?.diagnostics?.length === 1 ? "issue" : "issues"} found`;
 }
 
-async function openProblemSource(problem) {
+async function openProblemSource(problem, options = {}) {
+  const { selectRange = false } = options;
   const sourceKind = problemSourceKind(problem);
   if (sourceKind === "console") {
     switchDockTab("console");
@@ -7138,10 +7318,82 @@ async function openProblemSource(problem) {
   if (sourceKind !== "file") return;
   await openDocument(problem.source_path);
   if (state.activeDocument !== problem.source_path || !problem.line_number) return;
+  const lineNumber = Math.max(1, Number(problem.line_number));
+  const columnNumber = Math.max(1, Number(problem.column_number) || 1);
   if (state.editor.mode === "monaco" && state.editor.editor) {
-    state.editor.editor.revealLineInCenter(problem.line_number);
-    state.editor.editor.setPosition({ lineNumber: problem.line_number, column: problem.column_number || 1 });
+    const model = state.editor.editor.getModel();
+    const safeLineNumber = Math.min(model.getLineCount(), lineNumber);
+    const endLineNumber = selectRange
+      ? Math.min(model.getLineCount(), Math.max(safeLineNumber, Number(problem.end_line_number) || safeLineNumber))
+      : safeLineNumber;
+    const endColumnNumber = selectRange
+      ? Math.min(model.getLineMaxColumn(endLineNumber), Number(problem.end_column_number) || model.getLineMaxColumn(endLineNumber))
+      : columnNumber;
+    state.editor.editor.revealLineInCenter(safeLineNumber);
+    if (selectRange) {
+      state.editor.editor.setSelection({
+        startLineNumber: safeLineNumber,
+        startColumn: selectRange && !problem.end_column_number ? 1 : Math.min(model.getLineMaxColumn(safeLineNumber), columnNumber),
+        endLineNumber,
+        endColumn: Math.max(1, endColumnNumber),
+      });
+    } else {
+      state.editor.editor.setPosition({ lineNumber, column: columnNumber });
+    }
     state.editor.editor.focus();
+  } else if (selectRange) {
+    const content = currentEditorValue();
+    const lines = content.split("\n");
+    const startLineIndex = Math.min(lines.length - 1, lineNumber - 1);
+    const endLineIndex = Math.min(lines.length - 1, Math.max(startLineIndex, (Number(problem.end_line_number) || lineNumber) - 1));
+    const lineStart = lines.slice(0, startLineIndex).reduce((offset, line) => offset + line.length + 1, 0);
+    const endLineStart = lines.slice(0, endLineIndex).reduce((offset, line) => offset + line.length + 1, 0);
+    const startOffset = lineStart + (problem.end_column_number ? Math.min(lines[startLineIndex].length, columnNumber - 1) : 0);
+    const endOffset = endLineStart + (Number(problem.end_column_number) || lines[endLineIndex].length);
+    const editor = fallbackEditor();
+    editor.focus();
+    editor.setSelectionRange(Math.min(startOffset, endOffset), Math.max(startOffset, endOffset));
+  }
+}
+
+function problemAgentDiagnostic(problem) {
+  return {
+    source_path: problem.source_path ? truncateText(problem.source_path, 1000) : null,
+    line_number: Number.isInteger(Number(problem.line_number)) ? Number(problem.line_number) : null,
+    column_number: Number.isInteger(Number(problem.column_number)) ? Number(problem.column_number) : null,
+    end_line_number: Number.isInteger(Number(problem.end_line_number)) ? Number(problem.end_line_number) : null,
+    end_column_number: Number.isInteger(Number(problem.end_column_number)) ? Number(problem.end_column_number) : null,
+    message: truncateText(String(problem.message || ""), 4000),
+    call: problem.call ? truncateText(problem.call, 1000) : null,
+    origin: problem.origin ? truncateText(problem.origin, 128) : null,
+    severity: problem.severity ? truncateText(problem.severity, 64) : (problem.status === "failed" ? "error" : "info"),
+    run_id: problem.run_id ? truncateText(problem.run_id, 128) : null,
+    execution_mode: problem.execution_mode ? truncateText(problem.execution_mode, 64) : null,
+  };
+}
+
+async function fixProblemWithAgent(problem) {
+  const sourceKind = problemSourceKind(problem);
+  if (sourceKind === "missing" || sourceKind === "virtual" || sourceKind === "none") {
+    toast("This problem has no available project file to repair. Open the source or attach the relevant file first.", true);
+    return;
+  }
+  try {
+    if (sourceKind === "file") {
+      await openProblemSource(problem, { selectRange: true });
+      if (state.activeDocument !== problem.source_path) throw new Error("The problem source could not be opened.");
+      setAgentContext("problem", problem.source_path);
+    }
+    state.agentDiagnostic = problemAgentDiagnostic(problem);
+    applyWorkbenchLayout("agent");
+    const location = problem.source_path
+      ? `${displayPath(problem.source_path)}${problem.line_number ? `:${problem.line_number}${problem.column_number ? `:${problem.column_number}` : ""}` : ""}`
+      : "the R Console";
+    const reference = sourceKind === "file" ? ` @${problem.source_path}` : "";
+    $("#agentInput").value = `Fix this R problem at ${location}${reference}. Diagnose the cause, inspect the relevant context, and generate one reviewable file edit proposal if a code change is appropriate. Do not claim the file is changed until I accept the proposal.\n\nError: ${problem.message || "(no error message)"}`;
+    await sendAgentPrompt();
+  } catch (error) {
+    toast(reportUiFailure("start Agent repair", error, "The Agent repair context could not be prepared. Open the source and try again."), true);
   }
 }
 
@@ -7242,6 +7494,13 @@ function renderProblems() {
       $("#agentInput").focus();
     });
     actions.append(explain);
+    if (sourceKind === "file" || sourceKind === "console") {
+      const fix = document.createElement("button");
+      fix.type = "button";
+      fix.textContent = "Fix with Agent";
+      fix.addEventListener("click", () => fixProblemWithAgent(problem));
+      actions.append(fix);
+    }
     if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
       const retry = document.createElement("button");
       retry.type = "button";
@@ -7753,23 +8012,42 @@ async function requestRenameSymbol(options = {}) {
     toast("Place the cursor on one ordinary R identifier to rename it.", true);
     return;
   }
-  const newName = options.newName || await promptRefactorName({
+  let newName = options.newName || await promptRefactorName({
     title: "Rename symbol",
     message: `Review every bounded project reference before changing ${oldName}.`,
     label: "New symbol name",
     defaultValue: oldName,
   });
   if (!newName) return;
-  openRefactorReview(null, "loading", options.returnFocus || document.activeElement);
-  try {
-    state.refactor.proposal = await buildRenameRefactorProposal(oldName, newName);
-    state.refactor.status = "review";
-    setRefactorReviewError();
-  } catch (error) {
-    state.refactor.status = "error";
-    setRefactorReviewError(error);
+  const returnFocus = options.returnFocus || document.activeElement;
+  for (;;) {
+    state.refactor.status = "loading";
+    state.refactor.error = null;
+    updateEditorChrome();
+    try {
+      const proposal = await buildRenameRefactorProposal(oldName, newName);
+      state.refactor.proposal = proposal;
+      state.refactor.status = "review";
+      openRefactorReview(proposal, "review", returnFocus);
+      return;
+    } catch (error) {
+      state.refactor.status = "idle";
+      state.refactor.proposal = null;
+      state.refactor.error = String(error);
+      updateEditorChrome();
+      newName = await promptRefactorName({
+        title: "Rename symbol - try again",
+        message: userFacingError(error, `Rename ${oldName} could not be prepared.`),
+        label: `New name for ${oldName}`,
+        defaultValue: newName,
+      });
+      if (!newName) {
+        state.refactor.error = null;
+        updateEditorChrome();
+        return;
+      }
+    }
   }
-  renderRefactorReview();
 }
 
 async function requestExtractFunction(options = {}) {
@@ -8110,7 +8388,37 @@ function artifactKindLabel(kind) {
     plot_export: "Plot export",
     table_export: "Table export",
     render_output: "Render output",
+    generated_file: "Generated file",
   }[kind] || kind || "Artifact";
+}
+
+function artifactFileTypeLabel(artifact) {
+  const mediaType = String(artifact?.media_type || "").toLowerCase();
+  const mediaLabels = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/gif": "GIF",
+    "image/webp": "WebP",
+    "text/csv": "CSV",
+    "text/tab-separated-values": "TSV",
+    "text/html": "HTML",
+    "text/markdown": "Markdown",
+    "text/x-r": "R source",
+    "text/x-r-markdown": "R Markdown",
+    "application/json": "JSON",
+    "text/plain": "Text",
+  };
+  if (mediaLabels[mediaType]) return mediaLabels[mediaType];
+  const filename = pathFileName(artifact?.output_path);
+  const extension = filename.split(".").at(-1);
+  return extension && extension !== filename ? extension.toUpperCase() : "File";
+}
+
+function artifactListSourceLabel(artifact) {
+  const sourcePath = String(artifact?.source_path || "");
+  if (!sourcePath) return "Workspace R output";
+  if (artifact?.provenance_complete) return `From ${displayPath(sourcePath)}`;
+  return `Source link incomplete · ${displayPath(sourcePath)}`;
 }
 
 function artifactStateLabel(detail) {
@@ -8242,7 +8550,7 @@ function renderArtifactRecords() {
     row.addEventListener("click", async () => {
       state.selectedArtifactId = artifact.artifact_id;
       try {
-        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifactId: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
         toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
@@ -8265,7 +8573,7 @@ function renderArtifactRecords() {
       switchDockTab("plots");
       state.selectedArtifactId = artifact.artifact_id;
       try {
-        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: artifact.artifact_id });
+        state.selectedArtifactDetail = await invoke("get_artifact_record", { artifactId: artifact.artifact_id });
       } catch (error) {
         state.selectedArtifactDetail = null;
         toast(reportUiFailure("open saved output", error, "Saved output details are unavailable. Refresh Outputs and try again."), true);
@@ -8889,7 +9197,7 @@ async function runActiveFile() {
   await executeCode(request);
 }
 
-async function refreshEnvironment() {
+async function refreshEnvironment({ quiet = false } = {}) {
   try {
     const response = await invoke("snapshot_workspace");
     updateIdentity(response.workspace);
@@ -8897,8 +9205,10 @@ async function refreshEnvironment() {
     state.environment = response.execution?.environment || null;
     renderEnvironment();
     loadPackageInventories();
+    return true;
   } catch (error) {
-    toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
+    if (!quiet) toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
+    return false;
   }
 }
 
@@ -9231,7 +9541,7 @@ async function openClaimSource(claim) {
 async function openClaimArtifact(claim) {
   if (!claim?.artifact_id) return;
   try {
-    const detail = await invoke("get_artifact_record", { artifact_id: claim.artifact_id });
+    const detail = await invoke("get_artifact_record", { artifactId: claim.artifact_id });
     if (!detail) { toast("The linked saved output is no longer available.", true); return; }
     state.selectedArtifactId = claim.artifact_id;
     state.selectedArtifactDetail = detail;
@@ -9932,7 +10242,7 @@ async function maybeApplyPreviewScenario() {
       switchAgentSurface("monitor");
     } else if (previewState === "outputs-empty") {
       switchAgentSurface("outputs");
-    } else if (["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact"].includes(previewState)) {
+    } else if (["outputs", "outputs-plot", "outputs-pruned", "outputs-artifact", "outputs-generated"].includes(previewState)) {
       const run = recordMockRun({
         runId: "run_agent_output_review",
         origin: "agent",
@@ -9958,6 +10268,30 @@ async function maybeApplyPreviewScenario() {
         created_at: run.started_at,
       };
       mockPlots.unshift(plot);
+      if (previewState === "outputs-generated") {
+        mockUpsertProjectFile(mockLastProject, "results/qc-summary.csv", "sample,score\nA,0.92\n", { trackInTree: false, kind: "artifact" });
+        mockUpsertProjectFile(mockLastProject, "results/qc-figure.png", "mock-png", { trackInTree: false, kind: "artifact" });
+        createMockArtifactRecord({
+          artifactKind: "generated_file",
+          runId: run.run_id,
+          outputPath: "results/qc-summary.csv",
+          sourcePath: run.source_path,
+          executionMode: run.execution_mode,
+          documentVersion: run.document_version,
+          mediaType: "text/csv",
+          metadata: { discovery: "project_file_delta", change_kind: "created", size_bytes: 20 },
+        });
+        createMockArtifactRecord({
+          artifactKind: "generated_file",
+          runId: run.run_id,
+          outputPath: "results/qc-figure.png",
+          sourcePath: run.source_path,
+          executionMode: run.execution_mode,
+          documentVersion: run.document_version,
+          mediaType: "image/png",
+          metadata: { discovery: "project_file_delta", change_kind: "created", size_bytes: 8 },
+        });
+      }
       await loadRunData();
       if (previewState === "outputs-artifact") {
         await invoke("export_plot_artifact", { request: { plot_id: plot.plot_id, path: "artifacts/qc-review.png" } });
@@ -10962,7 +11296,10 @@ function renderEnvironmentOperationDialog() {
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
   if (request.reason) {
-    error.textContent = userFacingError(request.reason, "This environment change could not be completed. Refresh the preview and try again.");
+    const reason = request.status === "stale"
+      ? `This request is no longer current. ${request.reason} Refresh the preview before approving again.`
+      : userFacingError(request.reason, "This environment change could not be completed. Refresh the preview and try again.");
+    error.textContent = reason;
     error.classList.remove("hidden");
   } else {
     error.textContent = "";
@@ -10989,13 +11326,15 @@ function openEnvironmentOperationDialog(requestId, trigger = null) {
   renderEnvironmentOperationDialog();
 }
 
-async function loadEnvironmentOperationData() {
+async function loadEnvironmentOperationData({ quiet = false } = {}) {
   try {
     state.environmentOperations = await invoke("list_environment_operation_requests", { limit: 20 });
     renderEnvironmentOperationCard();
     renderEnvironmentOperationDialog();
+    return true;
   } catch (error) {
-    toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
+    if (!quiet) toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
+    return false;
   }
 }
 
@@ -11033,21 +11372,37 @@ async function respondEnvironmentOperation(decision) {
   state.environmentOperationDialog.busy = true;
   renderEnvironmentOperationCard();
   renderEnvironmentOperationDialog();
+  let result = null;
+  let commandError = null;
   try {
-    const result = await invoke("respond_environment_operation", {
+    result = await invoke("respond_environment_operation", {
       request: { request_id: requestId, decision, reason: null },
     });
     if (result?.workspace) updateIdentity(result.workspace);
-    await Promise.all([loadRunData(), loadEnvironmentOperationData(), refreshEnvironment()]);
-    renderEnvironmentOperationDialog();
-    if (decision !== "approve") closeEnvironmentOperationDialog();
   } catch (error) {
-    toast(reportUiFailure("respond to environment operation", error, "The environment decision could not be completed. Refresh Environment before trying again."), true);
-  } finally {
-    state.environmentOperationDialog.busy = false;
-    renderEnvironmentOperationCard();
-    renderEnvironmentOperationDialog();
+    commandError = error;
   }
+
+  const reloaded = await loadEnvironmentOperationData({ quiet: true });
+  const current = state.environmentOperations.find((item) => item.request_id === requestId) || null;
+  if (commandError) {
+    if (reloaded && current && current.status !== "requested") {
+      renderEnvironmentOperationDialog();
+      toast(`Environment request is now ${prettyEnvironmentOperationStatus(current.status).toLowerCase()}. Review its status in the dialog.`, true);
+    } else {
+      toast(reportUiFailure("respond to environment operation", commandError, "The environment decision could not be completed. Refresh Environment before trying again."), true);
+    }
+  } else {
+    const refreshFailures = [];
+    try { await loadRunData({ quiet: true }); } catch { refreshFailures.push("run history"); }
+    try { if (await refreshEnvironment({ quiet: true }) === false) refreshFailures.push("R environment"); } catch { refreshFailures.push("R environment"); }
+    renderEnvironmentOperationDialog();
+    if (refreshFailures.length) toast(`Environment request ${result?.status === "stale" ? "became stale" : "was processed"}, but ${refreshFailures.join(" and ")} could not be refreshed.`, true);
+    if (decision !== "approve" && current?.status !== "requested") closeEnvironmentOperationDialog();
+  }
+  state.environmentOperationDialog.busy = false;
+  renderEnvironmentOperationCard();
+  renderEnvironmentOperationDialog();
 }
 
 function previewSummary(detail) {
@@ -11764,7 +12119,7 @@ function startRenderPoll(jobId, path) {
         let artifactDetail = null;
         if (job.artifact_id) {
           try {
-            artifactDetail = await invoke("get_artifact_record", { artifact_id: job.artifact_id });
+            artifactDetail = await invoke("get_artifact_record", { artifactId: job.artifact_id });
           } catch (error) {
           addLog("SYSTEM", `Saved render-output details are unavailable: ${error}`);
           }
@@ -11868,7 +12223,7 @@ async function findCompletedRenderArtifact(job) {
   if (!job?.job_id || !isDesktop) return null;
   try {
     const detail = await invoke("get_artifact_record", {
-      artifact_id: `artifact_${job.job_id}_render`,
+      artifactId: `artifact_${job.job_id}_render`,
     });
     if (!detail?.artifact || detail.artifact.run_id !== job.job_id) return null;
     if (detail.run && detail.run.status !== "completed") return null;
@@ -11893,7 +12248,8 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function buildAgentEditorContext() {
+function buildAgentEditorContext(options = {}) {
+  const { diagnostic = state.agentDiagnostic } = options;
   syncDocumentFromEditor({ render: false, persist: false });
   const documentState = activeDocument();
   const files = state.project.files.map((file) => file.path).slice(0, 500);
@@ -11905,6 +12261,7 @@ function buildAgentEditorContext() {
       context_source: state.agentContextSource,
       context_path: state.agentContextPath,
       local_help: state.agentLocalHelpContext,
+      diagnostic,
     };
   }
   const offsets = currentEditorOffsets();
@@ -11930,6 +12287,7 @@ function buildAgentEditorContext() {
     context_source: state.agentContextSource,
     context_path: state.agentContextPath,
     local_help: state.agentLocalHelpContext,
+    diagnostic,
   };
 }
 
@@ -12113,11 +12471,19 @@ function renderFileEditPanel() {
   state.fileEditProposal = proposal;
   const decision = proposal ? state.fileEditDecisions.get(proposal.key) : null;
   const visible = Boolean(proposal);
-  $("#fileEditPanel").classList.toggle("hidden", !visible);
-  if (!visible) return;
-  $("#fileEditPanel").dataset.state = decision || "waiting";
+  const panel = $("#fileEditPanel");
+  panel.classList.toggle("hidden", !visible);
+  if (!visible) {
+    delete panel.dataset.proposalKey;
+    return;
+  }
+  const proposalChanged = panel.dataset.proposalKey !== proposal.key;
+  panel.dataset.proposalKey = proposal.key;
+  if (proposalChanged) panel.open = true;
+  panel.dataset.state = decision || "waiting";
   $("#fileEditPanelTitle").textContent = `${fileEditOperationLabel(proposal.operation)} proposal`;
   $("#fileEditPath").textContent = proposal.path;
+  $("#fileEditPath").title = proposal.path;
   const summaryState = decision === "accepted"
     ? "Already applied"
     : decision === "rejected"
@@ -12129,11 +12495,47 @@ function renderFileEditPanel() {
   $("#fileEditAfter").textContent = boundedFileEditPreview(preview.after, 8000);
   const accepted = decision === "accepted";
   const rejected = decision === "rejected";
-  const undoAvailable = accepted && state.fileEditUndo?.key === proposal.key;
+  const undoAvailable = accepted
+    && state.fileEditUndo?.key === proposal.key
+    && state.fileEditUndoVerifiedKey === proposal.key;
   renderFileEditDecisionNote(decision, undoAvailable);
   $("#fileEditAccept").classList.toggle("hidden", accepted || rejected);
   $("#fileEditReject").classList.toggle("hidden", accepted || rejected);
   $("#fileEditUndo").classList.toggle("hidden", !undoAvailable);
+}
+
+async function verifyFileEditUndo() {
+  const undo = state.fileEditUndo;
+  if (!undo) return;
+  const key = undo.key;
+  try {
+    const current = await projectFileContent(undo.path);
+    if (state.fileEditUndo?.key !== key) return;
+    if (current !== undo.afterContent) {
+      state.fileEditUndo = null;
+      state.fileEditUndoVerifiedKey = null;
+      renderFileEditPanel();
+      return;
+    }
+    state.fileEditUndoVerifiedKey = key;
+    renderFileEditPanel();
+  } catch {
+    if (state.fileEditUndo?.key !== key) return;
+    state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
+    renderFileEditPanel();
+  }
+}
+
+function maybeAutoApplyFileEditProposal() {
+  const proposal = state.fileEditProposal;
+  if (!proposal
+    || state.fileEditDecisions.has(proposal.key)
+    || !state.actAuthorizedTurnIds.has(proposal.turnId)
+    || state.fileEditAutoApplyAttempts.has(proposal.key)
+    || proposal.editorContext?.project_root !== state.project.root) return;
+  state.fileEditAutoApplyAttempts.add(proposal.key);
+  acceptFileEditProposal({ automatic: true });
 }
 
 async function projectFileContent(path) {
@@ -12233,10 +12635,11 @@ async function updateDocumentAfterFileEdit(path, content, start, end) {
   scheduleSessionSave();
 }
 
-async function acceptFileEditProposal() {
+async function acceptFileEditProposal({ automatic = false } = {}) {
   const proposal = state.fileEditProposal;
-  if (!proposal) return;
+  if (!proposal || state.fileEditApplyBusy) return;
   const button = $("#fileEditAccept");
+  state.fileEditApplyBusy = true;
   button.disabled = true;
   try {
     const exists = state.project.files.some((file) => file.path === proposal.path);
@@ -12263,15 +12666,19 @@ async function acceptFileEditProposal() {
       created: proposal.operation === "create",
       start: edit.start,
     };
+    state.fileEditUndoVerifiedKey = null;
     state.fileEditDecisions.set(proposal.key, "accepted");
     persistFileEditDecisions();
     scheduleSessionSave();
+    $("#fileEditPanel").open = false;
     renderFileEditPanel();
-    toast(`Applied Agent edit to ${proposal.path}.`);
+    void verifyFileEditUndo();
+    toast(`${automatic ? "Automatically applied" : "Applied"} Agent edit to ${proposal.path}.`);
   } catch (error) {
     state.internalProjectWrites.delete(proposal.path);
     toast(reportUiFailure("apply Agent file edit", error, "The proposed edit could not be applied. Refresh the project and review the proposal again."), true);
   } finally {
+    state.fileEditApplyBusy = false;
     button.disabled = false;
   }
 }
@@ -12305,6 +12712,7 @@ async function undoFileEditProposal() {
     }
     state.fileEditDecisions.set(undo.key, "undone");
     state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
     persistFileEditDecisions();
     scheduleSessionSave();
     renderFileEditPanel();
@@ -12395,16 +12803,20 @@ async function sendAgentPrompt() {
   $("#agentStateDot").className = "agent-state-dot busy";
   try {
     const editorContext = buildAgentEditorContext();
+    const authorizeChanges = state.agentMode === "act" && state.actAutoApprove;
     const response = await invoke("run_agent", {
       prompt,
       mode: state.agentMode,
       modelId: selectedModelId,
-      autoApprove: state.agentMode === "act" && state.actAutoApprove,
+      autoApprove: authorizeChanges,
       editorContext,
     });
+    if (authorizeChanges && response?.turn_id) state.actAuthorizedTurnIds.add(response.turn_id);
     resetAgentContext();
     resetAgentLocalHelpContext();
     state.activeAgentTurnId = response?.turn_id || null;
+    state.selectedTurnId = response?.turn_id || state.selectedTurnId;
+    state.selectedTurnDetail = null;
     await Promise.all([loadAgentData(), loadRunData()]);
   } catch (error) {
     const message = String(error);
@@ -12895,7 +13307,13 @@ function auditCountLabel(value, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function auditCoverageText(coverage = {}) {
+function auditCoverageText(coverage = {}, currentProjectOnly = false) {
+  if (currentProjectOnly) {
+    const reviewed = `Reviewed ${auditCountLabel(coverage.files_scanned, "current project file")}.`;
+    return coverage.files_skipped
+      ? `${reviewed} ${auditCountLabel(coverage.files_skipped, "file")} could not be reviewed.`
+      : reviewed;
+  }
   const reviewed = `Reviewed ${auditCountLabel(coverage.files_scanned, "file")}, ${auditCountLabel(coverage.runs_considered, "run")}, and ${auditCountLabel(coverage.artifacts_considered, "saved output")}.`;
   if (!coverage.files_skipped) return reviewed;
   return `${reviewed} ${auditCountLabel(coverage.files_skipped, "file")} could not be reviewed.`;
@@ -12924,9 +13342,11 @@ function renderAgentAuditWorkspace(content) {
   summary.className = "agent-review-summary";
   const coverage = result.coverage || {};
   const status = auditStatusPresentation(result.status);
+  const currentProjectOnly = result.scope === "project_current";
   appendAgentReviewSection(summary, "Result", status.label);
   appendAgentReviewSection(summary, "What this means", status.description);
-  appendAgentReviewSection(summary, "Reviewed", auditCoverageText(coverage));
+  appendAgentReviewSection(summary, "Reviewed", auditCoverageText(coverage, currentProjectOnly));
+  if (currentProjectOnly) appendAgentReviewSection(summary, "Scope", "Current project directory only; historical runs and saved outputs are excluded.");
   if (result.truncated) appendAgentReviewSection(summary, "Coverage limitation", "Some project information could not be reviewed, so this result is incomplete.");
   content.append(summary);
 
@@ -13033,12 +13453,21 @@ function renderAgentReviewWorkspace() {
       content.innerHTML = '<div class="agent-review-empty">Select a saved output to review.</div>';
       return;
     }
-    appendAgentReviewSection(summary, "Saved output", `${artifactKindLabel(artifact.artifact_kind)} · ${displayPath(artifact.output_path)}`);
-    appendAgentReviewSection(summary, "Created from", displayPath(artifact.source_path) || "Workspace R");
-    appendAgentReviewSection(summary, "Source details", artifact.provenance_complete ? "Available" : "Incomplete");
-    appendAgentReviewSection(summary, "Needs attention", artifact.incomplete_reason);
-    appendAgentReviewSection(summary, "File", detail?.file_available === false ? "Missing from its recorded location" : "Available at its recorded location");
-    appendAgentReviewSection(summary, "Details", detail?.detail_error);
+    appendAgentReviewSection(summary, "Output", artifactKindLabel(artifact.artifact_kind) + " / " + displayPath(artifact.output_path));
+    appendAgentReviewSection(summary, "Created", formatTimestamp(artifact.created_at));
+    const producingRun = artifact.run_id ? state.runs.find((run) => run.run_id === artifact.run_id) : null;
+    appendAgentReviewSection(summary, "Produced by", producingRun ? humanRunTitle(producingRun) : "Workspace R");
+    if (detail?.file_status === "missing" || detail?.file_available === false) {
+      appendAgentReviewSection(summary, "Availability", "Recorded in history; the file is not in the current project.");
+    } else if (detail?.file_status === "unsupported") {
+      appendAgentReviewSection(summary, "Availability", "File exists in the project, but this format is not supported for preview.");
+    } else if (detail?.file_status === "available") {
+      appendAgentReviewSection(summary, "Availability", "Available in the current project.");
+    }
+    if (artifact.incomplete_reason && !["source_path_unavailable", "document_version_unavailable"].includes(artifact.incomplete_reason)) {
+      appendAgentReviewSection(summary, "Review note", artifact.incomplete_reason);
+    }
+    if (detail?.detail_error) appendAgentReviewSection(summary, "Preview note", detail.detail_error);
     const actions = document.createElement("div");
     actions.className = "agent-review-actions";
     if (artifact.run_id && state.runs.some((run) => run.run_id === artifact.run_id)) {
@@ -13058,13 +13487,6 @@ function renderAgentReviewWorkspace() {
       open.addEventListener("click", () => openDocument(artifact.source_path));
       actions.append(open);
     }
-    if (artifact.output_path && detail?.file_available !== false) {
-      const preview = document.createElement("button");
-      preview.type = "button";
-      preview.textContent = "Open in Viewer";
-      preview.addEventListener("click", () => openAgentArtifactPreview(content, artifact));
-      actions.append(preview);
-    }
     if (actions.childElementCount) summary.append(actions);
   } else {
     const run = state.runs.find((item) => item.run_id === state.agentReviewRunId);
@@ -13077,6 +13499,14 @@ function renderAgentReviewWorkspace() {
     return;
   }
   content.append(summary);
+  if (kind === "artifact" && normalizedArtifactDetail()?.output_path && state.selectedArtifactDetail?.file_status === "available") {
+    openAgentArtifactPreview(content, normalizedArtifactDetail());
+  } else if (kind === "artifact" && state.selectedArtifactDetail?.file_status === "unsupported") {
+    const limitation = document.createElement("p");
+    limitation.className = "agent-review-limitation";
+    limitation.textContent = "The file is available, but this format does not have a Viewer yet.";
+    content.append(limitation);
+  }
 }
 
 async function openAgentArtifactPreview(container, artifact) {
@@ -13093,7 +13523,13 @@ async function openAgentArtifactPreview(container, artifact) {
     const result = await invoke("viewer_read_file", { path: artifact.output_path });
     if (result.project_root !== state.project.root) throw new Error("The project changed while loading this output.");
     wrapper.replaceChildren();
-    if (result.media_type === "text/html") {
+    if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(result.media_type)) {
+      const image = document.createElement("img");
+      image.className = "agent-inline-output-image";
+      image.alt = pathFileName(artifact.output_path);
+      image.src = "data:" + result.media_type + ";base64," + result.content;
+      wrapper.append(image);
+    } else if (result.media_type === "text/html") {
       const frame = document.createElement("iframe");
       frame.className = "agent-inline-viewer-frame";
       frame.setAttribute("sandbox", "allow-scripts");
@@ -13105,6 +13541,11 @@ async function openAgentArtifactPreview(container, artifact) {
       article.className = "viewer-markdown";
       article.innerHTML = viewerSafeMarkdown(result.content);
       wrapper.append(article);
+    } else if (["text/x-r", "text/x-r-markdown", "text/plain", "application/json"].includes(result.media_type)) {
+      const code = document.createElement("pre");
+      code.className = "agent-inline-output-code";
+      code.textContent = result.content;
+      wrapper.append(code);
     } else {
       const parsed = viewerRenderTable(result.content, result.media_type === "text/tab-separated-values" ? "tsv" : "csv");
       const table = document.createElement("div");
@@ -13163,10 +13604,13 @@ function applyPostureLayout() {
   requestAnimationFrame(() => layoutEditor());
 }
 
-$$('[data-posture]').forEach((button) => button.addEventListener("click", () => {
+$$('[data-posture]').forEach((button) => button.addEventListener("click", async () => {
   if (button.dataset.posture === state.posture) return;
   state.posture = button.dataset.posture;
   applyPostureLayout();
+  if (state.posture === "human") {
+    await loadRunData();
+  }
   scheduleSessionSave();
 }));
 
@@ -13237,7 +13681,8 @@ async function openAgentOutput(kind, id) {
   state.selectedArtifactId = id;
   state.agentSelectedOutput = { kind: "artifact", id };
   try {
-    state.selectedArtifactDetail = await invoke("get_artifact_record", { artifact_id: id });
+    const detail = await invoke("get_artifact_record", { artifactId: id });
+    state.selectedArtifactDetail = detail || { artifact, file_available: null };
   } catch (error) {
     state.selectedArtifactDetail = { artifact, file_available: false, detail_error: String(error) };
   }
@@ -13247,24 +13692,29 @@ async function openAgentOutput(kind, id) {
 function renderAgentOutputs() {
   const list = $("#agentOutputsList");
   if (!list) return;
+  const viewport = capturePanelViewport(list, "data-output-key");
   list.replaceChildren();
   const entries = [
     ...state.plots.map((plot, index) => ({ kind: "plot", id: plot.plot_id, record: plot, title: `Plot ${index + 1}`, createdAt: plot.created_at })),
     ...state.artifacts.map((artifact) => ({ kind: "artifact", id: artifact.artifact_id, record: artifact, title: pathFileName(artifact.output_path), createdAt: artifact.created_at })),
   ].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
   $("#agentOutputCount").textContent = String(entries.length);
+  const summary = $("#agentOutputsSummary");
+  if (summary) summary.textContent = `${entries.length} ${entries.length === 1 ? "output" : "outputs"} available for review`;
 
   if (!entries.length) {
     const empty = document.createElement("div");
     empty.className = "agent-output-empty";
     empty.textContent = "No outputs yet. Plots and saved results produced in this project will appear here.";
     list.append(empty);
+    restorePanelViewport(list, viewport, "data-output-key");
     return;
   }
 
   for (const entry of entries) {
     const card = document.createElement("button");
     card.type = "button";
+    card.dataset.outputKey = agentOutputKey(entry.kind, entry.id);
     const selected = agentOutputKey(entry.kind, entry.id) === agentOutputKey(state.agentSelectedOutput?.kind, state.agentSelectedOutput?.id);
     card.className = `agent-output-card${selected ? " active" : ""}`;
     card.setAttribute("aria-label", `Review ${entry.title}`);
@@ -13290,26 +13740,26 @@ function renderAgentOutputs() {
     body.className = "agent-output-body";
     const kind = document.createElement("span");
     kind.className = "agent-output-kind";
-    kind.textContent = entry.kind === "plot" ? "Plot" : artifactKindLabel(entry.record.artifact_kind);
+    kind.textContent = entry.kind === "plot" ? "Plot" : artifactFileTypeLabel(entry.record);
     const title = document.createElement("strong");
     title.textContent = entry.title;
     const source = document.createElement("p");
-    source.textContent = entry.kind === "plot"
-      ? plotSourceLabel(entry.record)
-      : (entry.record.source_path ? `Created from ${displayPath(entry.record.source_path)}` : "Created from Workspace R");
+    source.textContent = entry.kind === "plot" ? plotSourceLabel(entry.record) : artifactListSourceLabel(entry.record);
     const status = document.createElement("p");
     status.textContent = entry.kind === "plot"
       ? `${plotReviewState(entry.record)} · ${formatTimestamp(entry.createdAt)}`
-      : `${entry.record.provenance_complete ? "Source details captured" : "Source details incomplete"} · ${formatTimestamp(entry.createdAt)}`;
+      : formatTimestamp(entry.createdAt);
     body.append(kind, title, source, status);
     card.append(preview, body);
     card.addEventListener("click", () => openAgentOutput(entry.kind, entry.id));
     list.append(card);
   }
+  restorePanelViewport(list, viewport, "data-output-key");
 }
 
 function renderMonitorPanel() {
   const list = $("#monitorRunList");
+  const viewport = capturePanelViewport(list, "data-run-id");
   list.replaceChildren();
 
   const visibleRuns = state.runs.slice(0, 12);
@@ -13326,6 +13776,7 @@ function renderMonitorPanel() {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `monitor-run-item${quiet ? " background" : ""}`;
+      item.dataset.runId = run.run_id;
       const marker = createStateMarker(run.status, prettyStatus(run.status));
       const body = document.createElement("span");
       body.className = "monitor-run-body";
@@ -13350,6 +13801,7 @@ function renderMonitorPanel() {
   if (!visibleRuns.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No runs yet.</div>';
   }
+  restorePanelViewport(list, viewport, "data-run-id");
 }
 
 function renderReviewPanel() {
@@ -13423,7 +13875,7 @@ function invokeAuditWithTimeout() {
     );
   });
   return Promise.race([
-    invoke("audit_reproducibility", { scope: "project" }),
+    invoke("audit_reproducibility", { scope: "project_current" }),
     timeout,
   ]).finally(() => clearTimeout(timeoutId));
 }
@@ -13544,7 +13996,7 @@ function renderAuditPanel() {
   if (state.auditLoading) {
     $("#auditStatus").textContent = auditStatusPresentation("running").label;
     $("#auditStatus").className = "audit-status-badge status-findings";
-    $("#auditCoverage").textContent = "Reviewing files, runs, and saved outputs...";
+    $("#auditCoverage").textContent = "Reviewing the current project directory...";
     $("#auditFindings").innerHTML = '<div class="audit-empty" role="status">Checking project...</div>';
     $("#auditTruncated").classList.add("hidden");
     return;
@@ -14435,6 +14887,7 @@ async function handleExternalDocumentChange(path) {
 }
 
 async function hydrateProject(response) {
+  state.projectRefreshSequence += 1;
   clearAgentLlmCredentialInput();
   closeAgentContextMenu();
   hideAgentFileMentions();
@@ -14447,6 +14900,10 @@ async function hydrateProject(response) {
   state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   state.fileEditProposal = null;
   state.fileEditUndo = null;
+  state.fileEditUndoVerifiedKey = null;
+  state.actAuthorizedTurnIds.clear();
+  state.fileEditAutoApplyAttempts.clear();
+  state.fileEditApplyBusy = false;
   state.agentWorkSurface = "none";
   state.auditResult = null;
   state.auditLoading = false;
@@ -14467,6 +14924,16 @@ async function hydrateProject(response) {
   state.expandedDirectories.clear();
   state.collapsedDirectories.clear();
   state.activeDocument = null;
+  state.runs = [];
+  state.problems = [];
+  state.plots = [];
+  state.artifacts = [];
+  state.selectedPlotId = null;
+  state.selectedArtifactId = null;
+  renderRuns();
+  renderProblems();
+  renderPlots();
+  renderAgentOutputs();
   state.editor.models.forEach((model) => model.dispose());
   state.editor.models.clear();
   state.project = response.project || { root: "", files: [], truncated: false };
@@ -14489,12 +14956,9 @@ async function hydrateProject(response) {
     state.agentSurface = state.posture === "agent" ? "direct" : (session.agent_surface || "direct");
   }
   setProjectStatus("ready");
-  await loadProjectSkills();
+  void loadProjectSkills();
   const sessionDocuments = session.open_documents || [];
   const activeDocumentPath = session.active_document;
-  for (const entry of sessionDocuments) {
-    await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false });
-  }
   const target = activeDocumentPath && state.project.files.some((file) => file.path === activeDocumentPath)
     ? activeDocumentPath
     : sessionDocuments[0]?.path || state.project.files[0]?.path || null;
@@ -14507,6 +14971,19 @@ async function hydrateProject(response) {
     renderActiveDocument();
   }
   applyPostureLayout();
+  const deferredDocuments = sessionDocuments.filter((entry) => entry.path !== target);
+  if (deferredDocuments.length) {
+    const restoreSequence = state.projectRefreshSequence;
+    void (async () => {
+      for (const entry of deferredDocuments) {
+        if (restoreSequence !== state.projectRefreshSequence) return;
+        await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false, preserveActive: true });
+      }
+      if (restoreSequence === state.projectRefreshSequence && target && state.documents[target]) {
+        await openDocument(target, { revealWorkSurface: false });
+      }
+    })();
+  }
 }
 
 function setStartupBusy(busy) {
@@ -14703,6 +15180,7 @@ $("#projectSwitcher").addEventListener("click", async () => {
       return;
     }
     await hydrateProject(response);
+    void loadRunData({ quiet: true });
   } catch (error) {
     toast(reportUiFailure("switch project", error, "The project could not be switched. The current project remains active."), true);
   }
@@ -14881,11 +15359,18 @@ $("#updateView").addEventListener("click", async () => {
   localStorage.setItem("rho.update.dismissed", result.available_version);
   await invoke("open_rho_website", { url: result.release_page_url });
 });
-$("#agentLlmAddProvider").addEventListener("click", clearAgentProviderForm);
+$("#agentLlmAddProvider").addEventListener("click", () => {
+  clearAgentProviderForm();
+  $("#agentLlmAdvanced").open = true;
+  $("#agentLlmProviderDisplayName").focus();
+});
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
 $("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
-$("#agentLlmOpenEnviron").addEventListener("click", openAgentUserEnviron);
-$("#agentLlmAddModel").addEventListener("click", clearAgentModelForm);
+$("#agentLlmAddModel").addEventListener("click", () => {
+  clearAgentModelForm();
+  $("#agentLlmAdvanced").open = true;
+  $("#agentLlmModelId").focus();
+});
 $("#agentLlmLoadCatalog").addEventListener("click", loadAgentLlmCatalog);
 $("#agentLlmCatalogModel").addEventListener("change", applySelectedCatalogModel);
 $("#agentLlmModelProvider").addEventListener("change", () => {
@@ -14957,6 +15442,9 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     state.agentActivityExpanded.clear();
     state.fileEditProposal = null;
     state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
+    state.actAuthorizedTurnIds.clear();
+    state.fileEditAutoApplyAttempts.clear();
     state.fileEditDecisions = new Map();
     clearFileEditDecisions();
     clearAgentEditHighlight();
@@ -15166,7 +15654,7 @@ $("#renderReviewArtifactButton").addEventListener("click", async () => {
   const artifactId = state.lastRender?.artifactId;
   if (!state.lastRender?.artifactAvailable || !artifactId) return;
   try {
-    const detail = await invoke("get_artifact_record", { artifact_id: artifactId });
+    const detail = await invoke("get_artifact_record", { artifactId });
     if (!detail?.artifact) throw new Error("Saved render output is unavailable");
     state.selectedArtifactId = detail.artifact.artifact_id;
     state.selectedArtifactDetail = detail;

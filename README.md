@@ -1,9 +1,10 @@
 # Rho
 
-Rho is an agent-native desktop workbench for R. It combines a persistent R
-workspace, project-aware code editing, scientific outputs, and an AI
-collaborator in one application. The user remains in control: editor, Console,
-and approved Agent actions all work with the same live Workspace R session.
+**Rho** stands for **R-centered Human–AI Orchestration**: an agent-native
+desktop workbench for R. It combines a persistent R workspace, project-aware
+code editing, scientific outputs, and an AI collaborator in one application.
+The user remains in control: editor, Console, and approved Agent actions all
+work with the same live Workspace R session.
 
 ## Features
 

@@ -277,6 +277,9 @@ rho_run_r_preview <- function(value) {
     message <- text_value(message)
     return(sprintf("Error\n%s", if (nzchar(message)) message else "R execution failed."))
   }
+  if (isTRUE(parsed$response_truncated)) {
+    return("R completed successfully. Detailed output was omitted because it exceeded the Agent response limit.")
+  }
 
   sections <- character()
   add_section <- function(label, content) {
@@ -616,7 +619,7 @@ rho_create_aisdk_hooks <- function(connection = .rho_agent_state$connection) {
 rho_create_aisdk_session <- function(model,
                                      system_prompt = NULL,
                                      tools = rho_create_workspace_tools(),
-                                     max_steps = 10L,
+                                     max_steps = 512L,
                                      connection = .rho_agent_state$connection) {
   aisdk::create_chat_session(
     model = model,

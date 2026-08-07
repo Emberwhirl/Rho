@@ -1,10 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result, bail, ensure};
 use rho_agent_transport::{
@@ -58,6 +59,29 @@ const MAX_PROJECT_SKILL_REFERENCES: usize = 4;
 const MAX_PROJECT_SKILL_INSTRUCTION_BYTES: u64 = 8_192;
 const MAX_PROJECT_SKILL_REFERENCE_BYTES: u64 = 16_384;
 const MAX_PROJECT_SKILL_PROMPT_CHARS: usize = 32_768;
+const MAX_GENERATED_OUTPUT_DEPTH: usize = 8;
+const MAX_GENERATED_OUTPUT_ENTRIES: usize = 10_000;
+const MAX_GENERATED_OUTPUT_FILES: usize = 2_000;
+const MAX_GENERATED_OUTPUT_RECORDS: usize = 100;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct GeneratedOutputSnapshot {
+    files: BTreeMap<String, GeneratedOutputSignature>,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeneratedOutputSignature {
+    size_bytes: u64,
+    modified_nanos: u128,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeneratedOutputDelta {
+    path: String,
+    change_kind: &'static str,
+    signature: GeneratedOutputSignature,
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EnvironmentOperationArguments {
@@ -858,6 +882,8 @@ pub async fn dispatch_workspace_request_with_execution_id(
     } else {
         None
     };
+    let generated_output_before = (request_type == "workspace.execute")
+        .then(|| capture_generated_output_snapshot(Path::new(&project_root)));
     store.create_run(&RunDraft {
         run_id: request.execution_id.clone(),
         parent_run_id: arguments
@@ -1027,6 +1053,13 @@ pub async fn dispatch_workspace_request_with_execution_id(
     store.save_identity(broker.identity())?;
     let after = broker.identity().clone();
     let failed = !result["ok"].as_bool().unwrap_or(false);
+    let generated_output_after = (!failed && request_type == "workspace.execute")
+        .then(|| capture_generated_output_snapshot(Path::new(&project_root)));
+    let generated_output_deltas = generated_output_before
+        .as_ref()
+        .zip(generated_output_after.as_ref())
+        .map(|(before, after)| generated_output_deltas(before, after))
+        .unwrap_or_default();
     let environment_snapshot_id_after =
         if environment_operation_requires_after_snapshot(request_type) {
             capture_environment_snapshot_id(session, store).await.ok()
@@ -1108,6 +1141,51 @@ pub async fn dispatch_workspace_request_with_execution_id(
                     .is_some(),
         })?;
     }
+    if !generated_output_deltas.is_empty() {
+        let source_path = arguments
+            .get("source_path")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let document_version = arguments.get("document_version").and_then(Value::as_i64);
+        let (provenance_complete, incomplete_reason) = artifact_provenance_status(
+            Some(&request.execution_id),
+            source_path.as_deref(),
+            document_version,
+        );
+        for delta in generated_output_deltas {
+            let path_hash = sha256_hex(delta.path.as_bytes());
+            store.create_artifact_record(&ArtifactRecordDraft {
+                artifact_id: format!(
+                    "artifact_{}_file_{}",
+                    request.execution_id,
+                    &path_hash[..16]
+                ),
+                artifact_kind: "generated_file".to_string(),
+                run_id: Some(request.execution_id.clone()),
+                project_root: project_root.clone(),
+                output_path: delta.path.clone(),
+                source_path: source_path.clone(),
+                execution_mode: arguments
+                    .get("execution_mode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                document_version,
+                workspace_id: Some(after.workspace_id.clone()),
+                state_revision: Some(after.state_revision as i64),
+                project_revision: Some(after.project_revision as i64),
+                media_type: infer_output_media_type(&delta.path),
+                metadata_json: serde_json::to_string(&json!({
+                    "discovery": "project_file_delta",
+                    "change_kind": delta.change_kind,
+                    "size_bytes": delta.signature.size_bytes,
+                    "scan_truncated": generated_output_before.as_ref().is_some_and(|value| value.truncated)
+                        || generated_output_after.as_ref().is_some_and(|value| value.truncated),
+                }))?,
+                provenance_complete,
+                incomplete_reason: incomplete_reason.clone(),
+            })?;
+        }
+    }
     let mut artifact_id = None;
     let mut artifact_media_type = None;
     if !failed && request_type == "workspace.render_document" {
@@ -1125,31 +1203,36 @@ pub async fn dispatch_workspace_request_with_execution_id(
                 );
                 let created_artifact_id = render_artifact_id(&request.execution_id);
                 let created_media_type = infer_output_media_type(output_path);
-                store.create_artifact_record(&ArtifactRecordDraft {
-                    artifact_id: created_artifact_id.clone(),
-                    artifact_kind: "render_output".to_string(),
-                    run_id: Some(request.execution_id.clone()),
-                    project_root: project_root.clone(),
-                    output_path: artifact_output_path(Some(&project_root), output_path),
-                    source_path,
-                    execution_mode: arguments
-                        .get("execution_mode")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    document_version,
-                    workspace_id: Some(after.workspace_id.clone()),
-                    state_revision: Some(after.state_revision as i64),
-                    project_revision: Some(after.project_revision as i64),
-                    media_type: created_media_type.clone(),
-                    metadata_json: serde_json::to_string(&json!({
-                        "tool": result.get("tool").and_then(Value::as_str),
-                        "source_path": arguments.get("source_path").and_then(Value::as_str),
-                    }))?,
-                    provenance_complete,
-                    incomplete_reason,
-                })?;
-                artifact_id = Some(created_artifact_id);
-                artifact_media_type = Some(created_media_type);
+                let relative_output = artifact_output_path(Some(&project_root), output_path);
+                let output_materialized =
+                    materialized_project_output(Path::new(&project_root), &relative_output);
+                if output_materialized {
+                    store.create_artifact_record(&ArtifactRecordDraft {
+                        artifact_id: created_artifact_id.clone(),
+                        artifact_kind: "render_output".to_string(),
+                        run_id: Some(request.execution_id.clone()),
+                        project_root: project_root.clone(),
+                        output_path: relative_output,
+                        source_path,
+                        execution_mode: arguments
+                            .get("execution_mode")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        document_version,
+                        workspace_id: Some(after.workspace_id.clone()),
+                        state_revision: Some(after.state_revision as i64),
+                        project_revision: Some(after.project_revision as i64),
+                        media_type: created_media_type.clone(),
+                        metadata_json: serde_json::to_string(&json!({
+                            "tool": result.get("tool").and_then(Value::as_str),
+                            "source_path": arguments.get("source_path").and_then(Value::as_str),
+                        }))?,
+                        provenance_complete,
+                        incomplete_reason,
+                    })?;
+                    artifact_id = Some(created_artifact_id);
+                    artifact_media_type = Some(created_media_type);
+                }
             }
         }
     }
@@ -1562,11 +1645,13 @@ session <- rho_create_aisdk_session(
     "propose_file_edit creates a reviewable diff and never writes a file, so do not claim the edit was applied.",
     "Use replace_selection only for a non-empty selection in the same path, insert_at_cursor only for the active path, append only when requested, and create only for a new path.",
     "Treat @file references as project-relative paths. If destination or placement is ambiguous, ask instead of guessing.",
+    "When editor context includes a diagnostic, use its source path, range, message, and nearby anchors as authoritative repair context; do not require the user to restate or manually select a known error range.",
     "Respond in the language used by the user and keep the answer concise.",
     tool_notice,
     mode_policy
   ),
   tools = tools,
+   max_steps = if (identical(mode, "act")) 512L else 128L,
   connection = connection
 )
 turn_error <- tryCatch(
@@ -1617,17 +1702,17 @@ fn desktop_agent_turn_stdin(
     ))
 }
 
+const DESKTOP_AGENT_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+const DESKTOP_AGENT_TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(86_400);
+
 fn configure_agent_process_environment(
     command: &mut tokio::process::Command,
     process_path: Option<&std::ffi::OsStr>,
-    user_environ: Option<&str>,
+    _user_environ: Option<&str>,
     credential_override: Option<(&str, &str)>,
 ) {
     if let Some(process_path) = process_path {
         command.env("PATH", process_path);
-    }
-    if let Some(path) = user_environ {
-        command.env("R_ENVIRON_USER", path);
     }
     if let Some((name, value)) = credential_override {
         command.env(name, value);
@@ -1764,7 +1849,7 @@ pub async fn run_agent_turn(
         )
         .await;
         let output = tokio::time::timeout(
-            std::time::Duration::from_secs(180),
+            DESKTOP_AGENT_TURN_TIMEOUT,
             child.wait_with_output(),
         )
         .await
@@ -1842,7 +1927,7 @@ async fn serve_desktop_agent(
     let mut approved_mutations = HashMap::new();
     loop {
         let incoming = tokio::time::timeout(
-            std::time::Duration::from_secs(120),
+            DESKTOP_AGENT_REQUEST_TIMEOUT,
             read_async_frame(&mut agent.stream),
         )
         .await
@@ -1904,26 +1989,13 @@ async fn serve_desktop_agent(
                         Err(error) => Err(error),
                     }
                 };
-                let response = match result {
-                    Ok(value) => Envelope::new(
-                        MessageKind::Response,
-                        json!({
-                            "type": format!("{request_type}.result"),
-                            "request_id": incoming.id,
-                            "ok": true,
-                            "result": value
-                        }),
-                    ),
-                    Err(error) => Envelope::new(
-                        MessageKind::Response,
-                        json!({
-                            "type": format!("{request_type}.result"),
-                            "request_id": incoming.id,
-                            "ok": false,
-                            "error": error.to_string()
-                        }),
-                    ),
-                };
+                let workspace = context.lock().await.broker.identity().clone();
+                let response = desktop_agent_response(
+                    request_type,
+                    &incoming.id,
+                    result.map_err(|error| error.to_string()),
+                    json!(workspace),
+                );
                 let ok = response.payload["ok"].as_bool().unwrap_or(false);
                 context.lock().await.store.append_event(&response)?;
                 write_async_frame(&mut agent.stream, &response).await?;
@@ -1959,6 +2031,78 @@ async fn serve_desktop_agent(
             }
         }
     }
+}
+
+const DESKTOP_AGENT_RESULT_MAX_BYTES: usize = MAX_FRAME_BYTES / 2;
+
+fn desktop_agent_response(
+    request_type: &str,
+    request_id: &str,
+    result: Result<Value, String>,
+    workspace: Value,
+) -> Envelope {
+    match result {
+        Ok(value) => Envelope::new(
+            MessageKind::Response,
+            json!({
+                "type": format!("{request_type}.result"),
+                "request_id": request_id,
+                "ok": true,
+                "result": desktop_agent_result_projection(request_type, value),
+                "workspace": workspace
+            }),
+        ),
+        Err(error) => Envelope::new(
+            MessageKind::Response,
+            json!({
+                "type": format!("{request_type}.result"),
+                "request_id": request_id,
+                "ok": false,
+                "error": error,
+                "workspace": workspace
+            }),
+        ),
+    }
+}
+
+fn desktop_agent_result_projection(request_type: &str, mut value: Value) -> Value {
+    if let Some(result) = value.as_object_mut()
+        && let Some(events) = result.remove("events")
+    {
+        let event_count = events.as_array().map_or(0, Vec::len);
+        result.insert("event_count".to_string(), json!(event_count));
+        result.insert("events_omitted".to_string(), Value::Bool(true));
+    }
+
+    let encoded_bytes = serde_json::to_vec(&value)
+        .map(|encoded| encoded.len())
+        .unwrap_or(usize::MAX);
+    if encoded_bytes <= DESKTOP_AGENT_RESULT_MAX_BYTES {
+        return value;
+    }
+
+    let execution = value.get("execution");
+    let execution_error = execution
+        .and_then(|item| item.get("error"))
+        .and_then(|item| item.get("message"))
+        .and_then(Value::as_str)
+        .map(|message| bounded_agent_context_text(message, 2_000));
+    json!({
+        "execution_id": value.get("execution_id").cloned().unwrap_or(Value::Null),
+        "artifact_id": value.get("artifact_id").cloned().unwrap_or(Value::Null),
+        "artifact_media_type": value.get("artifact_media_type").cloned().unwrap_or(Value::Null),
+        "workspace": value.get("workspace").cloned().unwrap_or(Value::Null),
+        "execution": {
+            "ok": execution.and_then(|item| item.get("ok")).cloned().unwrap_or(Value::Null),
+            "error": execution_error.map(|message| json!({"message": message}))
+        },
+        "event_count": value.get("event_count").cloned().unwrap_or(json!(0)),
+        "events_omitted": value.get("events_omitted").cloned().unwrap_or(Value::Bool(false)),
+        "response_truncated": true,
+        "response_truncation_reason": "agent_frame_budget",
+        "request_type": request_type,
+        "original_result_bytes": encoded_bytes
+    })
 }
 
 fn authorize_agent_workspace_request(
@@ -3979,6 +4123,164 @@ fn requested_code(request_type: &str, arguments: &Value, bridge_expression: &str
     }
 }
 
+fn generated_output_extension(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "csv"
+            | "tsv"
+            | "txt"
+            | "json"
+            | "rds"
+            | "rda"
+            | "rdata"
+            | "html"
+            | "htm"
+            | "pdf"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "svg"
+            | "xlsx"
+            | "xls"
+            | "parquet"
+            | "feather"
+            | "arrow"
+            | "docx"
+            | "pptx"
+            | "zip"
+            | "gz"
+    )
+}
+
+fn ignored_generated_output_directory(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        ".git" | ".rho" | ".rproj.user" | ".worktrees" | "target" | "renv" | "node_modules"
+    )
+}
+
+fn capture_generated_output_snapshot(root: &Path) -> GeneratedOutputSnapshot {
+    let Ok(root) = root.canonicalize() else {
+        return GeneratedOutputSnapshot {
+            truncated: true,
+            ..Default::default()
+        };
+    };
+    let mut snapshot = GeneratedOutputSnapshot::default();
+    let mut scanned_entries = 0;
+    collect_generated_output_files(&root, &root, 0, &mut scanned_entries, &mut snapshot);
+    snapshot
+}
+
+fn collect_generated_output_files(
+    root: &Path,
+    directory: &Path,
+    depth: usize,
+    scanned_entries: &mut usize,
+    snapshot: &mut GeneratedOutputSnapshot,
+) {
+    if depth > MAX_GENERATED_OUTPUT_DEPTH
+        || *scanned_entries >= MAX_GENERATED_OUTPUT_ENTRIES
+        || snapshot.files.len() >= MAX_GENERATED_OUTPUT_FILES
+    {
+        snapshot.truncated = true;
+        return;
+    }
+    let Ok(read_dir) = fs::read_dir(directory) else {
+        snapshot.truncated = true;
+        return;
+    };
+    let mut entries = read_dir.filter_map(|entry| entry.ok()).collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_ascii_lowercase());
+    for entry in entries {
+        if *scanned_entries >= MAX_GENERATED_OUTPUT_ENTRIES
+            || snapshot.files.len() >= MAX_GENERATED_OUTPUT_FILES
+        {
+            snapshot.truncated = true;
+            return;
+        }
+        *scanned_entries += 1;
+        let Ok(file_type) = entry.file_type() else {
+            snapshot.truncated = true;
+            continue;
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if file_type.is_dir() {
+            if ignored_generated_output_directory(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
+            let Ok(canonical) = path.canonicalize() else {
+                snapshot.truncated = true;
+                continue;
+            };
+            if canonical.starts_with(root) {
+                collect_generated_output_files(
+                    root,
+                    &canonical,
+                    depth + 1,
+                    scanned_entries,
+                    snapshot,
+                );
+            }
+            continue;
+        }
+        if !file_type.is_file() || !generated_output_extension(&path) {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            snapshot.truncated = true;
+            continue;
+        };
+        let Ok(relative) = path.strip_prefix(root) else {
+            continue;
+        };
+        let modified_nanos = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        snapshot.files.insert(
+            relative.to_string_lossy().replace('\\', "/"),
+            GeneratedOutputSignature {
+                size_bytes: metadata.len(),
+                modified_nanos,
+            },
+        );
+    }
+}
+
+fn generated_output_deltas(
+    before: &GeneratedOutputSnapshot,
+    after: &GeneratedOutputSnapshot,
+) -> Vec<GeneratedOutputDelta> {
+    after
+        .files
+        .iter()
+        .filter_map(|(path, signature)| match before.files.get(path) {
+            None => Some(GeneratedOutputDelta {
+                path: path.clone(),
+                change_kind: "created",
+                signature: signature.clone(),
+            }),
+            Some(previous) if previous != signature => Some(GeneratedOutputDelta {
+                path: path.clone(),
+                change_kind: "modified",
+                signature: signature.clone(),
+            }),
+            _ => None,
+        })
+        .take(MAX_GENERATED_OUTPUT_RECORDS)
+        .collect()
+}
+
 fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String {
     let normalized_output = output_path.replace('\\', "/");
     let Some(project_root) = project_root else {
@@ -4000,6 +4302,18 @@ fn artifact_output_path(project_root: Option<&str>, output_path: &str) -> String
     }
 }
 
+fn materialized_project_output(project_root: &Path, relative_output: &str) -> bool {
+    let Ok(canonical_root) = project_root.canonicalize() else {
+        return false;
+    };
+    let output_file = project_root.join(relative_output);
+    output_file.is_file()
+        && output_file
+            .canonicalize()
+            .map(|path| path.starts_with(&canonical_root))
+            .unwrap_or(false)
+}
+
 fn infer_output_media_type(path: &str) -> String {
     let extension = Path::new(path)
         .extension()
@@ -4010,9 +4324,21 @@ fn infer_output_media_type(path: &str) -> String {
         "html" | "htm" => "text/html",
         "pdf" => "application/pdf",
         "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
         "csv" => "text/csv",
-        "tsv" | "txt" => "text/tab-separated-values",
+        "tsv" => "text/tab-separated-values",
+        "txt" => "text/plain",
+        "json" => "application/json",
+        "rds" | "rda" | "rdata" => "application/x-r-data",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls" => "application/vnd.ms-excel",
+        "parquet" => "application/vnd.apache.parquet",
+        "feather" | "arrow" => "application/vnd.apache.arrow.file",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "zip" => "application/zip",
+        "gz" => "application/gzip",
         _ => "application/octet-stream",
     }
     .to_string()
@@ -4314,6 +4640,100 @@ mod tests {
     }
 
     #[test]
+    fn render_output_requires_a_materialized_project_file() {
+        let project = tempfile::tempdir().unwrap();
+        assert!(!materialized_project_output(
+            project.path(),
+            "results/missing.rds"
+        ));
+        fs::create_dir_all(project.path().join("results")).unwrap();
+        fs::write(project.path().join("results/output.rds"), b"rds").unwrap();
+        assert!(materialized_project_output(
+            project.path(),
+            "results/output.rds"
+        ));
+        assert!(!materialized_project_output(
+            project.path(),
+            "../outside.rds"
+        ));
+    }
+
+    #[test]
+    fn generated_output_delta_discovers_created_and_modified_project_results() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir_all(project.path().join("results")).unwrap();
+        fs::create_dir_all(project.path().join(".rho")).unwrap();
+        fs::write(project.path().join("existing.csv"), "a\n1\n").unwrap();
+        fs::write(project.path().join("analysis.R"), "summary(x)\n").unwrap();
+        fs::write(project.path().join(".rho").join("internal.csv"), "hidden\n").unwrap();
+        let before = capture_generated_output_snapshot(project.path());
+
+        fs::write(project.path().join("existing.csv"), "a\n1\n2\n").unwrap();
+        fs::write(
+            project.path().join("results").join("plot.png"),
+            b"png-bytes",
+        )
+        .unwrap();
+        let after = capture_generated_output_snapshot(project.path());
+        let deltas = generated_output_deltas(&before, &after);
+
+        assert_eq!(
+            deltas
+                .iter()
+                .map(|delta| (delta.path.as_str(), delta.change_kind))
+                .collect::<Vec<_>>(),
+            vec![
+                ("existing.csv", "modified"),
+                ("results/plot.png", "created")
+            ]
+        );
+        assert!(!after.files.contains_key("analysis.R"));
+        assert!(!after.files.contains_key(".rho/internal.csv"));
+    }
+
+    #[test]
+    fn generated_output_snapshots_are_root_isolated_and_delta_bounded() {
+        let project_a = tempfile::tempdir().unwrap();
+        let project_b = tempfile::tempdir().unwrap();
+        let before_a = capture_generated_output_snapshot(project_a.path());
+        fs::write(project_a.path().join("result.csv"), "project-a\n").unwrap();
+        fs::write(project_b.path().join("result.csv"), "project-b\n").unwrap();
+        for index in 0..=MAX_GENERATED_OUTPUT_RECORDS {
+            fs::write(
+                project_a.path().join(format!("output-{index:03}.json")),
+                "{}\n",
+            )
+            .unwrap();
+        }
+
+        let deltas_a = generated_output_deltas(
+            &before_a,
+            &capture_generated_output_snapshot(project_a.path()),
+        );
+        let snapshot_b = capture_generated_output_snapshot(project_b.path());
+        assert_eq!(deltas_a.len(), MAX_GENERATED_OUTPUT_RECORDS);
+        assert!(snapshot_b.files.contains_key("result.csv"));
+        assert!(!snapshot_b.files.contains_key("output-000.json"));
+    }
+
+    #[test]
+    fn generated_output_media_types_cover_analysis_files() {
+        assert_eq!(
+            infer_output_media_type("results/table.xlsx"),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_eq!(
+            infer_output_media_type("results/object.rds"),
+            "application/x-r-data"
+        );
+        assert_eq!(
+            infer_output_media_type("results/data.parquet"),
+            "application/vnd.apache.parquet"
+        );
+        assert_eq!(infer_output_media_type("results/figure.jpeg"), "image/jpeg");
+    }
+
+    #[test]
     fn rejects_oversized_bridge_json_before_unbounded_read() {
         let bytes = vec![b' '; MAX_FRAME_BYTES + 1];
         let error = read_bounded_json(bytes.as_slice()).unwrap_err();
@@ -4464,6 +4884,25 @@ mod tests {
         assert!(prompt.contains("rho.local_help_context.v1"));
         assert!(prompt.contains("help_topic"));
         assert!(prompt.contains("Current user request:\n替换当前选区"));
+    }
+
+    #[test]
+    fn contextual_prompt_includes_problem_diagnostic_context() {
+        let context = json!({
+            "active_path": "analysis.R",
+            "context_source": "problem",
+            "diagnostic": {
+                "source_path": "analysis.R",
+                "line_number": 12,
+                "message": "object 'counts' not found",
+                "run_id": "run_failed"
+            }
+        });
+
+        let prompt = contextual_agent_prompt("Fix this problem", &[], Some(&context), None);
+        assert!(prompt.contains("\"context_source\": \"problem\""));
+        assert!(prompt.contains("object 'counts' not found"));
+        assert!(prompt.contains("\"line_number\": 12"));
     }
 
     #[test]
@@ -4684,6 +5123,78 @@ mod tests {
     }
 
     #[test]
+    fn desktop_agent_result_omits_large_persisted_kernel_events() {
+        let workspace = json!({
+            "workspace_id": "workspace_1",
+            "kernel_instance_id": "kernel_1",
+            "execution_seq": 11,
+            "state_revision": 11,
+            "project_revision": 0
+        });
+        let result = json!({
+            "execution_id": "exec_1",
+            "execution": {"ok": true, "stdout": "analysis complete"},
+            "events": [{
+                "parent_id": "exec_1",
+                "data": {"image/png": "x".repeat(MAX_FRAME_BYTES)}
+            }],
+            "workspace": workspace
+        });
+
+        let projected = desktop_agent_result_projection("workspace.execute", result);
+
+        assert_eq!(projected["execution"]["stdout"], "analysis complete");
+        assert_eq!(projected["workspace"]["state_revision"], 11);
+        assert_eq!(projected["event_count"], 1);
+        assert_eq!(projected["events_omitted"], true);
+        assert!(projected.get("events").is_none());
+        assert!(serde_json::to_vec(&projected).unwrap().len() < MAX_FRAME_BYTES);
+    }
+
+    #[test]
+    fn desktop_agent_oversized_non_event_result_returns_truthful_completion_projection() {
+        let result = json!({
+            "execution_id": "exec_oversized",
+            "execution": {"ok": true, "stdout": "x".repeat(DESKTOP_AGENT_RESULT_MAX_BYTES + 1)},
+            "workspace": {"state_revision": 12}
+        });
+
+        let projected = desktop_agent_result_projection("workspace.execute", result);
+
+        assert_eq!(projected["execution_id"], "exec_oversized");
+        assert_eq!(projected["execution"]["ok"], true);
+        assert_eq!(projected["workspace"]["state_revision"], 12);
+        assert_eq!(projected["response_truncated"], true);
+        assert_eq!(
+            projected["response_truncation_reason"],
+            "agent_frame_budget"
+        );
+        assert!(serde_json::to_vec(&projected).unwrap().len() < MAX_FRAME_BYTES);
+    }
+
+    #[test]
+    fn desktop_agent_success_and_error_responses_include_current_workspace() {
+        let workspace = json!({"state_revision": 13, "project_revision": 2});
+        let success = desktop_agent_response(
+            "workspace.snapshot",
+            "req_success",
+            Ok(json!({"ok": true})),
+            workspace.clone(),
+        );
+        let error = desktop_agent_response(
+            "workspace.snapshot",
+            "req_error",
+            Err("workspace state changed".to_string()),
+            workspace,
+        );
+
+        assert_eq!(success.payload["workspace"]["state_revision"], 13);
+        assert_eq!(error.payload["workspace"]["state_revision"], 13);
+        assert_eq!(success.payload["ok"], true);
+        assert_eq!(error.payload["ok"], false);
+    }
+
+    #[test]
     fn desktop_agent_system_credential_is_environment_only() {
         let secret = "system-secret-value";
         let mut command = tokio::process::Command::new("Rscript");
@@ -4716,15 +5227,10 @@ mod tests {
             Some(secret)
         );
         assert_eq!(
-            environment
-                .get("R_ENVIRON_USER")
-                .and_then(|value| value.as_deref()),
-            Some("C:/Users/test/.Renviron")
-        );
-        assert_eq!(
             environment.get("PATH").and_then(|value| value.as_deref()),
             Some("/opt/homebrew/bin:/usr/bin")
         );
+        assert!(!environment.contains_key("R_ENVIRON_USER"));
     }
 
     #[test]
@@ -4748,6 +5254,7 @@ mod tests {
         assert!(script.contains("never claim execution without a successful tool result"));
         assert!(script.contains("Explanation-only requests do not require execution."));
         assert!(script.contains("tools <- if (identical(profile$tool_calling %||% \"unknown\", \"yes\")) rho_create_workspace_tools() else list()"));
+        assert!(script.contains("max_steps = if (identical(mode, \"act\")) 512L else 128L"));
     }
 
     #[test]

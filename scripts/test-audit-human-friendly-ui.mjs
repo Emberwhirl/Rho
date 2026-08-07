@@ -51,6 +51,7 @@ assert.match(js, /function dirtyAuditSourcePaths\(\)/);
 assert.match(js, /documentIsDirty\(documentState\)/);
 assert.match(js, /Save the modified source/);
 assert.match(js, /function invokeAuditWithTimeout\(\)/);
+assert.match(js, /invoke\("audit_reproducibility", \{ scope: "project_current" \}\)/);
 assert.match(js, /Promise\.race\(\[[\s\S]*invoke\("audit_reproducibility"/);
 assert.match(js, /\.finally\(\(\) => clearTimeout\(timeoutId\)\)/);
 assert.match(js, /state\.auditRequestSequence/);
@@ -82,8 +83,11 @@ for (const implementation of [js.slice(agentAuditStart, agentAuditEnd), js.slice
 }
 
 assert.match(css, /\.audit-finding-card/);
+assert.match(css, /#auditPanel \{ display: flex; flex-direction: column; min-height: 0; \}/);
+assert.match(css, /\.audit-findings \{[^}]*min-height: 0;[^}]*overflow-y: auto/);
 assert.match(css, /\.audit-finding-heading/);
 assert.match(css, /\.audit-evidence-links/);
+assert.match(css, /\.agent-review-workspace-content \{[^}]*overflow-y: scroll/);
 assert.doesNotMatch(css, /\.finding-rule\s*\{/);
 assert.match(css, /@media \(max-width: 960px\)[\s\S]*\.audit-button span \{ display: none; \}/);
 
