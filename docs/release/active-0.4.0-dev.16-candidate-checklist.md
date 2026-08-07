@@ -7,10 +7,12 @@ repair and exact-commit fork rehearsal passed on 2026-08-06; upstream `main`
 was integrated on 2026-08-07 and already had an independent development line
 through `0.4.0-dev.15`, so the combined source advances to the single-use
 `0.4.0-dev.16` identity; MAC4-R3 asynchronous notarization orchestration is
-authorized, locally implemented, verified, and contract-reviewed; its hosted
-rehearsal attempt 1 failed closed at the developer-log host allowlist and its
-bounded exact-host repair is locally verified; replacement rehearsal,
-authoritative candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
+authorized, locally implemented, verified, and contract-reviewed; hosted
+attempt 1 failed closed at the log-host allowlist; its exact-host repair passed
+attempt 2's waiter, whose finalizer then failed closed on fresh-R `jsonlite`;
+the bounded dependency repair is locally verified and its replacement
+rehearsal remains open; authoritative candidate/draft, MAC5 acceptance, and
+release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -262,9 +264,10 @@ The accepted workflow must satisfy all of these checks:
   `notary-artifacts-prod.s3.amazonaws.com`; other AWS/S3 hosts remain denied;
 - a fresh macOS finalizer downloads the exact pending record, accepted record,
   and submitted DMG; verifies their identity and original hash agreement;
-  staples the DMG; mounts it; repeats architecture, exact entitlement,
-  codesign, Gatekeeper, and Workspace smoke against the app inside the DMG;
-  then creates the final checksum and platform evidence;
+  installs only `rho.bridge`'s declared non-base runtime import `jsonlite` in
+  its temporary R library; staples the DMG; mounts it; repeats architecture,
+  exact entitlement, codesign, Gatekeeper, and Workspace smoke against the app
+  inside the DMG; then creates the final checksum and platform evidence;
 - aggregate rehearsal/candidate jobs depend only on the finalizer, never on an
   unstapled intermediate. Intermediate artifact names cannot match final asset
   patterns and cannot enter aggregate or publication inputs;
@@ -303,6 +306,21 @@ replay of attempt 1's immutable pending/DMG: the real Accepted log satisfied
 UUID, status, filename, and SHA-256 binding without printing or retaining the
 token, private key, or presigned URL. Replacement hosted evidence remains open.
 
+Hosted attempt 2, run `31161705717` at exact commit
+`de63af75f0cc6e3aa3142725c1b4b8712c7221b3`, passed the exact-host repair:
+`macos-submit` completed in 7 minutes 39 seconds and the Ubuntu waiter completed
+Accepted/log binding in 2 minutes 13 seconds. The finalizer passed immutable
+binding, staple, both Gatekeeper gates, mount, app/Ark codesign, arm64, and exact
+entitlements, then failed Workspace smoke because fresh R did not contain the
+declared `rho.bridge` import `jsonlite`. No final platform/aggregate artifact or
+publication mutation was created. The active repair may install and verify only
+`jsonlite` before final smoke; Suggests, Agent dependencies, smoke weakening,
+and clean-installed-app acceptance remain out of scope.
+The repair passed all 39 deterministic suites, candidate/update self-tests, the
+exact R dependency command, YAML/actionlint, and diff checks. Contract review
+found no app, package, entitlement, public-protocol, version, or NEWS change;
+replacement hosted evidence remains required.
+
 ## macOS Signing And Notarization Gate
 
 The hosted macOS submission, waiter, and finalizer jobs together must record all
@@ -319,6 +337,8 @@ of these as separate passed checks:
   separate `entitlements` evidence check;
 - `codesign --verify --deep --strict --verbose=4` passes for the app;
 - Tauri signs the app and DMG without performing a separate app submission;
+- the fresh finalizer installs and verifies only the declared `rho.bridge`
+  runtime import `jsonlite`; bridge Suggests and Agent packages remain absent;
 - the exact final DMG is submitted once with App Store Connect API credentials,
   the Ubuntu waiter receives `Accepted` for that exact UUID, and its bounded
   terminal log is retrieved and identity-checked;
@@ -402,6 +422,8 @@ evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
 fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
 locally implemented and verified; hosted attempt 1 failed closed and its
-bounded log-host repair/replacement rehearsal remain open. No authoritative
-main-repository candidate, immutable draft, MAC5 installed acceptance, or
-explicit GO exists.
+bounded log-host repair reached attempt 2's finalizer, which failed closed on
+the fresh-runner `jsonlite` prerequisite. The dependency repair is locally
+verified and its replacement rehearsal remains open. No authoritative main-
+repository candidate, immutable draft, MAC5 installed acceptance, or explicit
+GO exists.

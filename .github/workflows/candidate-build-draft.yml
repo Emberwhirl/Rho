@@ -483,6 +483,12 @@ jobs:
           r-version: release
           use-public-rspm: true
 
+      - name: Install exact Workspace smoke runtime dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          Rscript -e "imports <- trimws(strsplit(read.dcf('r/rho.bridge/DESCRIPTION')[1, 'Imports'], ',', fixed = TRUE)[[1]]); imports <- sub(' .*', '', imports); non_base <- sort(setdiff(imports, c('methods', 'utils'))); if (!identical(non_base, 'jsonlite')) stop('rho.bridge non-base Imports changed; review the finalizer dependency contract.'); if (!requireNamespace('jsonlite', quietly = TRUE)) install.packages('jsonlite'); stopifnot(requireNamespace('jsonlite', quietly = TRUE))"
+
       - name: Download immutable DMG submission inputs
         uses: actions/download-artifact@v5
         with:

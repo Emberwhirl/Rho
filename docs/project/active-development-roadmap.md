@@ -169,8 +169,11 @@ and locally implemented/verified; its first exact-commit fork rehearsal proved
 the 7m57s macOS submission split but failed closed on Apple's newly observed
 exact S3 log-delivery host. The bounded allowlist repair and replacement
 rehearsal were activated; the exact-host repair is locally verified and the
-replacement rehearsal remains open. All authoritative candidate/draft creation
-remains NOT RUN. MAC5 remains unauthorized. This stream
+replacement rehearsal passed its waiter but failed closed in the secret-free
+finalizer because fresh R lacked the declared `rho.bridge` import `jsonlite`.
+The bounded finalizer dependency repair is locally verified and its replacement
+rehearsal remains open. All authoritative candidate/draft creation remains NOT
+RUN. MAC5 remains unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
 

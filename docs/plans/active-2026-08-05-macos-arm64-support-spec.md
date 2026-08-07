@@ -26,7 +26,10 @@ notarization orchestration is explicitly authorized, locally implemented,
 verified, and contract-reviewed on 2026-08-07; its first exact-commit hosted
 rehearsal failed closed at the developer-log host allowlist and the bounded
 exact-host repair below is locally verified; its replacement rehearsal remains
-open; MAC5 remains proposed and unauthorized
+open after reaching the finalizer and failing closed on an undeclared fresh-
+runner smoke prerequisite; the bounded dependency repair below is locally
+verified and its replacement rehearsal remains open; MAC5 remains proposed
+and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -619,10 +622,13 @@ Contract:
   the accepted record. A missing, rejected, mismatched, or oversized log cannot
   fabricate success;
 - `macos-finalize` downloads only the exact pending, accepted, and DMG
-  artifacts for its run, recomputes the original hash, staples and validates
-  the DMG, mounts it, and repeats arm64, codesign, exact entitlement,
-  Gatekeeper, and full Workspace smoke against `Rho.app` inside the DMG. It then
-  emits the final checksum and normal macOS platform evidence;
+  artifacts for its run, recomputes the original hash, and installs only
+  `rho.bridge`'s declared non-base runtime import `jsonlite` into the fresh
+  runner's temporary R library. It must not install bridge Suggests, Agent
+  packages, or reuse the submission runner library. It then staples and
+  validates the DMG, mounts it, and repeats arm64, codesign, exact entitlement,
+  Gatekeeper, and full Workspace smoke against `Rho.app` inside the DMG before
+  emitting the final checksum and normal macOS platform evidence;
 - aggregate rehearsal/candidate consumers depend on `macos-finalize`. The
   unstapled DMG, pending record, Apple log, and accepted record use intermediate
   artifact names that cannot match or enter final candidate asset patterns;
@@ -1417,3 +1423,39 @@ Accepted UUID through the patched implementation, retrieved the real developer
 log, and passed UUID/status/filename/SHA-256 binding. No token, private key, or
 presigned URL was printed or retained, and the temporary replay directory was
 removed. The replacement hosted rehearsal remains required.
+
+## MAC4-R3 Hosted Rehearsal Attempt 2 — FAILED CLOSED 2026-08-07
+
+Fork Actions run `31161705717` checked out exact repair commit
+`de63af75f0cc6e3aa3142725c1b4b8712c7221b3`. `macos-submit` released its
+runner after 7 minutes 39 seconds. The Ubuntu waiter completed in 2 minutes
+13 seconds, accepted Apple's exact S3 log delivery, and emitted log-bound
+acceptance. The secret-free finalizer then passed pending/accepted/log/DMG
+binding, staple and validation, DMG Gatekeeper, read-only mount, app/Ark
+codesign, exact arm64, exact entitlements, and app Gatekeeper.
+
+The final Workspace smoke failed when its fresh R installation reached
+`jsonlite::toJSON()` and `loadNamespace()` without `jsonlite` installed.
+`rho.bridge/DESCRIPTION` declares `jsonlite` as its only non-base `Imports`
+dependency; the submission runner had it only because that earlier job runs
+the complete R test-dependency installation. Finalization and aggregate
+evidence remained absent, so no candidate, draft, tag, Release, Pages state,
+acceptance record, or MAC5 mutation occurred.
+
+The bounded repair adds a pre-smoke finalizer step that installs and verifies
+only `jsonlite` in the temporary runner library from the already configured
+public R repository. It does not bundle or mutate R, install bridge Suggests or
+Agent dependencies, weaken the smoke, or claim clean-user-machine acceptance;
+that installed-app condition remains owned by MAC5. Workflow regression tests
+must bind this exact dependency step before final verification. Because attempt
+2 created no final platform/aggregate evidence or candidate/draft, the same
+`0.4.0-dev.16` identity remains valid for a new exact-commit full run.
+
+The dependency repair passed the complete 39-suite deterministic matrix,
+candidate/update self-tests, the exact R DESCRIPTION/namespace command,
+workflow YAML, `actionlint` 1.7.7 with the known `macos-26` catalog suppression,
+and diff checks. Static review proves the dependency step precedes immutable
+finalizer verification, admits only `jsonlite`, and contains no bridge Suggests,
+Agent dependency installation, Apple secret, or smoke bypass. This CI-only
+repair has no application/version/NEWS impact. Replacement hosted evidence is
+still required.

@@ -142,21 +142,34 @@ assert.doesNotMatch(macWaitJob, /notarytool|APPLE_API_KEY_PATH|contents: write/)
 
 assert.match(macFinalizeJob, /runs-on: macos-26\n\s+timeout-minutes: 60/);
 assert.doesNotMatch(macFinalizeJob, /secrets\.|notarytool submit/);
+assert.match(macFinalizeJob, /Install exact Workspace smoke runtime dependency/);
+assert.match(macFinalizeJob, /read\.dcf\('r\/rho\.bridge\/DESCRIPTION'\)/);
+assert.match(macFinalizeJob, /identical\(non_base, 'jsonlite'\)/);
+assert.match(macFinalizeJob, /install\.packages\('jsonlite'\)/);
+assert.doesNotMatch(macFinalizeJob, /remotes::install_deps|rho\.agent/);
 assert.match(macFinalizeJob, /macos-notary\.mjs verify/);
 assert.match(macFinalizeJob, /xcrun stapler staple "\$dmg_path"/);
 assert.match(macFinalizeJob, /hdiutil attach "\$dmg_path" -nobrowse -readonly -mountpoint "\$mount_point"/);
 assert.match(macFinalizeJob, /app_path="\$mount_point\/Rho\.app"/);
 const finalVerifyIndex = macFinalizeJob.indexOf("macos-notary.mjs verify");
+const finalDependencyIndex = macFinalizeJob.indexOf("Install exact Workspace smoke runtime dependency");
 const dmgStapleIndex = macFinalizeJob.indexOf('xcrun stapler staple "$dmg_path"');
 const finalGatekeeperIndex = macFinalizeJob.indexOf("spctl --assess --type execute");
 const finalSmokeIndex = macFinalizeJob.indexOf('"$app_path/Contents/MacOS/rho-desktop" --smoke-test');
 assert.ok(
-  finalVerifyIndex >= 0
+  finalDependencyIndex >= 0
+    && finalDependencyIndex < finalVerifyIndex
     && finalVerifyIndex < dmgStapleIndex
     && dmgStapleIndex < finalGatekeeperIndex
     && finalGatekeeperIndex < finalSmokeIndex,
   "Immutable binding, staple, mounted Gatekeeper, and Workspace smoke must stay ordered",
 );
+const bridgeDescription = read("r/rho.bridge/DESCRIPTION");
+const imports = bridgeDescription.match(/Imports:\n((?:    .+\n?)+)/)?.[1]
+  ?.split(",")
+  .map((value) => value.trim().split(/\s+/)[0])
+  .filter(Boolean);
+assert.deepEqual(imports?.filter((name) => !["methods", "utils"].includes(name)).sort(), ["jsonlite"]);
 assert.match(build, /needs: \[identity, windows-candidate, macos-finalize\]/g);
 assert.doesNotMatch(build, /macos-candidate/);
 
