@@ -277,12 +277,14 @@ fn collect_source_paths(dir: &Path, paths: &mut Vec<PathBuf>) {
                 continue;
             }
 
-            // Only collect files that look like source code.
-            // If the extension is empty (e.g. Makefile) or not a known source
-            // extension, still include it -- the content will speak for itself.
-            if !ext.is_empty() && !SOURCE_EXTENSIONS.iter().any(|e| *e == ext) {
-                // Unknown extension -- include but it won't match R patterns.
-                // Still collect it for portability scanning.
+            // Only collect known R-family source files. Extensionless files
+            // retain the compatibility path used for scripts such as Makefile.
+            if !ext.is_empty()
+                && !SOURCE_EXTENSIONS
+                    .iter()
+                    .any(|e| e.eq_ignore_ascii_case(ext))
+            {
+                continue;
             }
 
             paths.push(path);
@@ -1687,8 +1689,8 @@ mod tests {
         assert_eq!(response.status, AuditStatus::Complete);
         assert_eq!(response.findings.len(), 0);
         assert_eq!(response.summary.total_findings, 0);
-        // renv.lock exists as a text file in the project, so >= 1 files scanned
-        assert!(response.coverage.files_scanned >= 1);
+        // renv.lock is used by package checks but is not an R source file.
+        assert_eq!(response.coverage.files_scanned, 0);
         assert_eq!(response.coverage.runs_considered, 0);
         assert!(!response.truncated);
     }
@@ -2537,5 +2539,35 @@ mod tests {
                 .any(|name| name.contains(".png") || name.contains(".rds")),
             "binary files should be excluded from the file list"
         );
+    }
+
+    #[test]
+    fn source_file_filter_excludes_generated_html_and_keeps_r_sources() {
+        let dir = TempDir::new().unwrap();
+        let project_root = dir.path().to_str().unwrap();
+        for name in ["report.html", "report.css", "report.js"] {
+            std::fs::write(dir.path().join(name), "sample(1)\n").unwrap();
+        }
+        for name in [
+            "analysis.R",
+            "report.Rmd",
+            "report.qmd",
+            "notes.Rnw",
+            "Makefile",
+        ] {
+            std::fs::write(dir.path().join(name), "x <- 1\n").unwrap();
+        }
+
+        let files = scan_source_files(project_root, &AuditLimits::default());
+        let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
+
+        assert!(paths.contains(&"analysis.R"));
+        assert!(paths.contains(&"report.Rmd"));
+        assert!(paths.contains(&"report.qmd"));
+        assert!(paths.contains(&"notes.Rnw"));
+        assert!(paths.contains(&"Makefile"));
+        assert!(!paths.contains(&"report.html"));
+        assert!(!paths.contains(&"report.css"));
+        assert!(!paths.contains(&"report.js"));
     }
 }
