@@ -96,7 +96,7 @@ const state = {
   lockfilePackages: null,
   environmentPackageTab: "installed",
   environmentOperations: [],
-  environmentOperationDialog: { requestId: null, busy: false, returnFocus: null },
+  environmentOperationDialog: { requestId: null, busy: false, phase: "", returnFocus: null },
   packageManagementDialog: { busy: false, returnFocus: null },
   localHelp: { status: "empty", record: null, error: null },
   agentLocalHelpContext: null,
@@ -9203,7 +9203,9 @@ async function loadInstalledPackages() {
     state.installedPackages = result;
     renderPackageList();
   } catch (error) {
-    state.installedPackages = null;
+    // Keep the failure visible. A failed inventory query must not look like an
+    // empty R library, especially while switching projects or refreshing R.
+    state.installedPackages = { error: String(error) };
     renderPackageList();
   }
 }
@@ -10113,7 +10115,7 @@ function renderLastRenderCard() {
 function prettyEnvironmentOperationStatus(status) {
   return {
     requested: "Requested",
-    approved: "Approved",
+    approved: "Starting",
     running: "Running",
     completed: "Completed",
     failed: "Failed",
@@ -10126,7 +10128,8 @@ function prettyEnvironmentOperationStatus(status) {
 
 function environmentOperationTone(status) {
   if (!isDesktop) return mockEnvironmentOperationTone(status);
-  if (["completed", "approved"].includes(status)) return "success";
+  if (status === "completed") return "success";
+  if (status === "approved") return "warning";
   if (["requested", "running"].includes(status)) return "warning";
   if (["failed", "rejected", "cancelled", "interrupted", "stale"].includes(status)) return "error";
   return "";
@@ -11182,13 +11185,14 @@ function formatEnvironmentOperationSummary(request) {
       : "Preview ready. Review the package changes before updating the project environment.";
   }
   if (request.status === "completed") return `${environmentOperationLabel(request.request_name)} finished.${reason}`;
+  if (request.status === "approved") return `${environmentOperationLabel(request.request_name)} approved. Starting Workspace R execution.${reason}`;
   if (request.status === "running") return `${environmentOperationLabel(request.request_name)} is running.${reason}`;
   return `${environmentOperationLabel(request.request_name)} ${prettyEnvironmentOperationStatus(request.status).toLowerCase()}.${reason}`;
 }
 
 function formatEnvironmentOperationMeta(request) {
   if (!request) return "";
-  return request.project_root || "";
+  return displayPath(request.project_root || "");
 }
 
 function renderEnvironmentOperationCard() {
@@ -11274,9 +11278,11 @@ function renderEnvironmentOperationDialog() {
   dialog.classList.remove("hidden");
   $("#environmentOperationDialogTitle").textContent = environmentOperationLabel(request.request_name);
   setStateChip($("#environmentOperationDialogState"), prettyEnvironmentOperationStatus(request.status), request.status);
-  $("#environmentOperationDialogNote").textContent = request.request_name?.startsWith("environment.package_")
-    ? "Review the package, project library, repositories, and partial-write warning before changing the project environment."
-    : "Review the requested package-environment action and changes before continuing.";
+  $("#environmentOperationDialogNote").textContent = state.environmentOperationDialog.busy
+    ? (state.environmentOperationDialog.phase || "Workspace R operation is starting. Please wait for the recorded result.")
+    : request.request_name?.startsWith("environment.package_")
+      ? "Review the package, project library, repositories, and partial-write warning before changing the project environment."
+      : "Review the requested package-environment action and changes before continuing.";
   $("#environmentOperationArguments").textContent = formatEnvironmentOperationArguments(request);
   $("#environmentOperationPreview").textContent = formatEnvironmentOperationPreview(request);
   const error = $("#environmentOperationDialogError");
@@ -11300,6 +11306,7 @@ function renderEnvironmentOperationDialog() {
 function closeEnvironmentOperationDialog() {
   $("#environmentOperationDialog").classList.add("hidden");
   state.environmentOperationDialog.requestId = null;
+  state.environmentOperationDialog.phase = "";
   const returnFocus = state.environmentOperationDialog.returnFocus;
   state.environmentOperationDialog.returnFocus = null;
   if (returnFocus?.focus) returnFocus.focus();
@@ -11355,6 +11362,9 @@ async function respondEnvironmentOperation(decision) {
   const requestId = state.environmentOperationDialog.requestId;
   if (!requestId) return;
   state.environmentOperationDialog.busy = true;
+  state.environmentOperationDialog.phase = decision === "approve"
+    ? "Approval recorded. Starting Workspace R execution..."
+    : decision === "cancel" ? "Cancelling environment operation..." : "Recording rejection...";
   renderEnvironmentOperationCard();
   renderEnvironmentOperationDialog();
   let result = null;
@@ -11386,6 +11396,7 @@ async function respondEnvironmentOperation(decision) {
     if (decision !== "approve" && current?.status !== "requested") closeEnvironmentOperationDialog();
   }
   state.environmentOperationDialog.busy = false;
+  state.environmentOperationDialog.phase = "";
   renderEnvironmentOperationCard();
   renderEnvironmentOperationDialog();
 }

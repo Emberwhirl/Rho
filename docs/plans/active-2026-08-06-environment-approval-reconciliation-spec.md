@@ -23,6 +23,17 @@ Risk class: R2 environment-operation approval and recovery presentation
   reserved for failures whose phase cannot be reconciled.
 - The existing dedicated environment-operation table, project root binding,
   revision checks, snapshot checks, and approval authority remain unchanged.
+- `approved` is an internal transition only. A request must not remain
+  `approved` when dispatch fails before it can be claimed as `running`; such a
+  failure is reconciled to `failed` with a durable reason.
+- User-facing project paths always use the display form (`D:/...` or
+  `//server/share/...`). Verbatim Windows paths such as `//?/D:/...` remain
+  permitted only in internal identity and containment records.
+- After approval the review surface stays open, disables duplicate actions,
+  and reports that Workspace R execution is starting/waiting. Terminal output
+  must identify the actual outcome, including lockfile verification and any
+  refresh or partial-write warning; no successful approval is presented as
+  completion.
 
 ## Verification
 

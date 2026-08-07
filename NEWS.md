@@ -8,6 +8,9 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Environment operations now display readable Windows project paths, show an
+  explicit starting state after approval, and reconcile pre-execution failures
+  as failed requests instead of leaving an unexplained approved state.
 - Self-contained HTML reports up to 32 MiB now open in the central Viewer and
   Agent Output Review. Other preview types retain their 4 MiB limit, and files
   that exceed their limit now report the size restriction instead of a generic

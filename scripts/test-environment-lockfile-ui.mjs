@@ -25,6 +25,8 @@ assert.match(css, /\.pkg-metadata\s*\{[^}]*overflow-wrap:\s*anywhere/);
 
 assert.match(js, /if \(command === "list_lockfile_packages"\)/);
 assert.match(js, /invoke\("list_lockfile_packages", \{ limit: 500 \}\)/);
+assert.match(js, /state\.installedPackages = \{ error: String\(error\) \}/);
+assert.match(js, /empty R library/);
 assert.match(js, /function switchEnvironmentPackageTab\(tab\)/);
 assert.match(js, /Array\.isArray\(attached\) \? attached : attached\?\.values \|\| \[\]/);
 assert.match(js, /stateLabels = \{[\s\S]*matched: "Matched"[\s\S]*version_mismatch: "Version mismatch"[\s\S]*missing_in_library: "Not installed"[\s\S]*missing_in_lockfile: "Not locked"/);

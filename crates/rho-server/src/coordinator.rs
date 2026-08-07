@@ -3262,7 +3262,21 @@ pub async fn decide_environment_operation(
             reason,
         },
     )?;
-    execute_confirmed_environment_operation(&request, origin, session, broker, store).await
+    let result =
+        execute_confirmed_environment_operation(&request, origin, session, broker, store).await;
+    if let Err(error) = &result {
+        // Dispatch can fail before the execution envelope claims the request
+        // as running. Do not leave a user-visible approval without a truthful
+        // terminal outcome.
+        let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
+            request_id: request_id.to_string(),
+            status: "failed".to_string(),
+            run_id: None,
+            terminal_outcome: Some("dispatch_error".to_string()),
+            reason: Some(redact_sensitive_text(&error.to_string())),
+        });
+    }
+    result
 }
 
 async fn capture_environment_snapshot_id(

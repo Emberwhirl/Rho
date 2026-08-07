@@ -2238,6 +2238,58 @@ mod tests {
     }
 
     #[test]
+    fn reconciles_approved_environment_operation_when_dispatch_fails() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        store
+            .create_environment_operation_request(&EnvironmentOperationRequestDraft {
+                request_id: "env_dispatch_error".to_string(),
+                turn_id: None,
+                source: "user".to_string(),
+                request_name: "environment.initialize".to_string(),
+                project_root: "D:/Rho/project".to_string(),
+                arguments_json: "{}".to_string(),
+                preview_json: "{}".to_string(),
+                preview_sha256: "preview_dispatch_error".to_string(),
+                workspace_id: "ws_test".to_string(),
+                state_revision: 1,
+                project_revision: 1,
+                before_snapshot_id: None,
+            })
+            .unwrap();
+        store
+            .decide_environment_operation_request(
+                "env_dispatch_error",
+                &EnvironmentOperationDecisionRecord {
+                    decision: "approve".to_string(),
+                    status: "approved".to_string(),
+                    reason: None,
+                },
+            )
+            .unwrap();
+        store
+            .finish_environment_operation_request(&EnvironmentOperationFinish {
+                request_id: "env_dispatch_error".to_string(),
+                status: "failed".to_string(),
+                run_id: None,
+                terminal_outcome: Some("dispatch_error".to_string()),
+                reason: Some("Workspace R was unavailable before execution started.".to_string()),
+            })
+            .unwrap();
+
+        let detail = store
+            .get_environment_operation_request("D:/Rho/project", "env_dispatch_error")
+            .unwrap()
+            .unwrap();
+        assert_eq!(detail.status, "failed");
+        assert_eq!(detail.terminal_outcome.as_deref(), Some("dispatch_error"));
+        assert_eq!(
+            detail.reason.as_deref(),
+            Some("Workspace R was unavailable before execution started.")
+        );
+    }
+
+    #[test]
     fn environment_package_requests_are_project_isolated() {
         let directory = TempDir::new().unwrap();
         let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
