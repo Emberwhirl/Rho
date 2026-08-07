@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-07
-Current baseline: `0.4.0-dev.17`
+Current baseline: `0.4.0-dev.18`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -176,15 +176,29 @@ Upstream then advanced through `b5800ae`; ordinary merge `9d3086e` and its
 complete affected local matrix passed. Post-merge exact-commit run
 `31165265090` then passed the full review-only rehearsal and independent
 seven-file audit while using 12 minutes 10 seconds of macOS runner time.
-Issue #4's CRED-UX2 completion subsequently advances the application baseline
+Issue #4's CRED-UX2 completion subsequently advanced the application baseline
 to `0.4.0-dev.17`; its provider-card Model settings workflow was implemented
 and passed the complete affected local matrix, deterministic browser review,
-and unsigned arm64 app/DMG smoke on 2026-08-07. That behavior is owned by the
-active system-credential/LLM specification, while the new exact candidate
-identity is owned by the `0.4.0-dev.17` checklist. The `dev.16` runs remain
-historical review-only evidence and cannot validate the new behavior. Exact
-installed-candidate native accessibility, Keychain, live-provider, and MAC5
-acceptance remain open. MAC4-R3 is closed at its refreshed mandatory stop. All
+and unsigned arm64 app/DMG smoke on 2026-08-07. CRED-UX3 then advances the live
+baseline to `0.4.0-dev.18` with bounded discovery-first Provider model lists
+and a manual-ID fallback. The system-credential/LLM specification owns both
+behaviors, while the `0.4.0-dev.18` checklist owns the new exact candidate
+identity. Candidate handoff is now paused because the owner requested a
+capability-routed redesign matching the pinned `aisdk`: Connections, the Model
+library, and named task-to-model routes become separate layers, while future
+optional-route consumers use isolated one-credential workers instead of
+exposing all Provider keys to the main Agent R. CRED-UX4A routing foundation
+was explicitly authorized on 2026-08-07 and its schema V2 migration, routing
+UI, existing Ask/Plan/Act resolution, one-selected-route-credential boundary,
+complete affected automation, deterministic browser review, and independent
+security/contract review are implemented. `rho.agent` advances independently
+to `0.1.3` for its exported capability-route session contract. CRED-UX4B/C
+workers and media consumers remain unauthorized. The pre-redesign local
+`dev.18` artifact is superseded and cannot serve as acceptance evidence. All
+earlier runs and artifacts remain historical exact-source evidence and cannot
+validate the new behavior. Owner acceptance, exact installed-candidate native
+accessibility, Keychain, live-provider discovery, and MAC5 acceptance remain
+open. MAC4-R3 is closed at its refreshed mandatory stop. All
 authoritative candidate/draft creation remains NOT RUN. MAC5 remains
 unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the

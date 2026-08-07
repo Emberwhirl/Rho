@@ -1,26 +1,44 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
 use chrono::Utc;
-use rho_server::coordinator::AgentRuntimeModelProfile;
+use rho_server::coordinator::{AgentRuntimeCapabilityRoute, AgentRuntimeModelProfile};
 use serde::{Deserialize, Serialize};
 
 use crate::project::atomic_write;
 
 const SETTINGS_FILE_NAME: &str = "llm-profiles.json";
+const SETTINGS_V1_BACKUP_FILE_NAME: &str = "llm-profiles.v1.backup.json";
+const SETTINGS_SCHEMA_VERSION: u32 = 2;
+const MAX_SETTINGS_BYTES: usize = 256 * 1024;
 const MAX_ID_LENGTH: usize = 120;
 const MAX_NAME_LENGTH: usize = 160;
 const MAX_MODEL_ID_LENGTH: usize = 240;
 const MAX_URL_LENGTH: usize = 512;
+const MAX_CAPABILITY_NAME_LENGTH: usize = 80;
+const MAX_CAPABILITY_ROUTES: usize = 32;
+const MAX_REQUIRED_CAPABILITIES: usize = 16;
 const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(30);
+const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_MODEL_DISCOVERY_BYTES: usize = 1024 * 1024;
+const MAX_DISCOVERED_MODELS: usize = 100;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const CREDENTIAL_SERVICE: &str = "Rho Agent LLM";
 const MAX_CREDENTIAL_BYTES: usize = 16 * 1024;
+
+static SETTINGS_MUTATION_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn settings_mutation_guard() -> MutexGuard<'static, ()> {
+    SETTINGS_MUTATION_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 trait CredentialStore {
     fn get(&self, provider_id: &str) -> Result<Option<String>>;
@@ -118,9 +136,19 @@ fn system_credential_delete(_provider_id: &str) -> Result<()> {
 #[serde(deny_unknown_fields)]
 pub struct AgentLlmSettings {
     pub schema_version: u32,
-    pub selected_model_id: String,
+    pub revision: u64,
     pub providers: Vec<AgentProviderProfile>,
     pub models: Vec<AgentModelProfile>,
+    pub capability_routes: Vec<AgentCapabilityRoute>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgentLlmSettingsV1 {
+    schema_version: u32,
+    selected_model_id: String,
+    providers: Vec<AgentProviderProfile>,
+    models: Vec<AgentModelProfileV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,17 +174,54 @@ pub struct AgentModelProfile {
     pub display_name: String,
     pub model_id: String,
     pub enabled: bool,
-    pub capabilities: AgentModelCapabilities,
+    pub model_type: AgentCapabilityValue,
+    pub capabilities: BTreeMap<String, AgentCapabilityValue>,
     pub last_test: Option<AgentModelTestResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AgentModelCapabilities {
+struct AgentModelProfileV1 {
+    id: String,
+    provider_id: String,
+    display_name: String,
+    model_id: String,
+    enabled: bool,
+    capabilities: AgentModelCapabilitiesV1,
+    last_test: Option<AgentModelTestResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelCapabilitiesV1 {
     pub tool_calling: String,
     pub reasoning: String,
     pub vision_input: String,
     pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCapabilityValue {
+    pub value: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCapabilityRoute {
+    pub capability: String,
+    pub model_id: String,
+    pub model_type: String,
+    pub required_model_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelCapabilityPatch {
+    pub model_type: Option<String>,
+    #[serde(default)]
+    pub capabilities: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,7 +241,7 @@ pub struct AgentConnectionTestResponse {
     pub credential_status: String,
     pub model_resolved: bool,
     pub latency_ms: Option<u64>,
-    pub capabilities: AgentModelCapabilities,
+    pub capabilities: AgentModelCapabilitiesV1,
     pub message: String,
     pub error_class: Option<String>,
 }
@@ -188,7 +253,28 @@ pub struct AgentCatalogEntry {
     pub id: String,
     pub display_name: String,
     pub description: Option<String>,
-    pub capabilities: AgentModelCapabilities,
+    pub model_type: AgentCapabilityValue,
+    pub capabilities: BTreeMap<String, AgentCapabilityValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentDiscoveredModel {
+    pub id: String,
+    pub display_name: String,
+    pub model_type: AgentCapabilityValue,
+    pub capabilities: BTreeMap<String, AgentCapabilityValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelDiscoveryResponse {
+    pub status: String,
+    pub provider_id: String,
+    pub models: Vec<AgentDiscoveredModel>,
+    pub truncated: bool,
+    pub message: String,
+    pub error_class: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -216,6 +302,23 @@ pub struct AgentModelProfileView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AgentCapabilityRouteView {
+    pub capability: String,
+    pub label: String,
+    pub description: String,
+    pub model_id: Option<String>,
+    pub model_display_name: Option<String>,
+    pub provider_display_name: Option<String>,
+    pub model_type: String,
+    pub required_model_capabilities: Vec<String>,
+    pub configured: bool,
+    pub inherited_from: Option<String>,
+    pub compatibility: String,
+    pub credential_status: String,
+    pub consumer_status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct AgentSelectedModelView {
     pub id: String,
     pub display_name: String,
@@ -228,16 +331,22 @@ pub struct AgentSelectedModelView {
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentLlmSettingsView {
     pub schema_version: u32,
+    pub revision: u64,
+    /// Compatibility projection for the existing composer. The persisted V2
+    /// authority is the `agent.chat` route, not this derived field.
     pub selected_model_id: String,
     pub providers: Vec<AgentProviderProfileView>,
     pub models: Vec<AgentModelProfileView>,
     pub selected_model: Option<AgentSelectedModelView>,
+    pub capability_routes: Vec<AgentCapabilityRouteView>,
     pub user_environ: AgentUserEnvironInfo,
     pub validation_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedAgentModel {
+    pub settings_revision: u64,
+    pub route_capability: String,
     pub effective_model_ref: String,
     pub runtime_profile: AgentRuntimeModelProfile,
     pub provider_id: String,
@@ -264,10 +373,85 @@ pub fn settings_path(data_dir: &Path) -> PathBuf {
     data_dir.join(SETTINGS_FILE_NAME)
 }
 
+pub fn settings_v1_backup_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(SETTINGS_V1_BACKUP_FILE_NAME)
+}
+
+fn capability_value(value: &str, source: &str) -> AgentCapabilityValue {
+    AgentCapabilityValue {
+        value: value.to_string(),
+        source: source.to_string(),
+    }
+}
+
+fn unknown_capabilities() -> BTreeMap<String, AgentCapabilityValue> {
+    capability_names()
+        .iter()
+        .map(|name| ((*name).to_string(), capability_value("unknown", "unknown")))
+        .collect()
+}
+
+fn capability_names() -> &'static [&'static str] {
+    &[
+        "function_call",
+        "reasoning",
+        "vision_input",
+        "image_output",
+        "image_edit",
+        "audio_input",
+        "audio_output",
+        "structured_output",
+        "web_search",
+    ]
+}
+
+fn model_capability<'a>(model: &'a AgentModelProfile, name: &str) -> &'a AgentCapabilityValue {
+    model.capabilities.get(name).unwrap_or_else(|| {
+        // Validation guarantees the bounded vocabulary is complete before any
+        // model reaches this helper.
+        unreachable!("validated model is missing capability {name}")
+    })
+}
+
+fn model_function_call(model: &AgentModelProfile) -> &str {
+    &model_capability(model, "function_call").value
+}
+
+fn chat_model_id(settings: &AgentLlmSettings) -> Result<&str> {
+    settings
+        .capability_routes
+        .iter()
+        .find(|route| route.capability == "agent.chat")
+        .map(|route| route.model_id.as_str())
+        .context("The required agent.chat route is missing.")
+}
+
+fn increment_revision(settings: &mut AgentLlmSettings) -> Result<()> {
+    settings.revision = settings
+        .revision
+        .checked_add(1)
+        .context("Agent LLM settings revision overflowed.")?;
+    Ok(())
+}
+
 pub fn default_settings() -> AgentLlmSettings {
+    let mut capabilities = unknown_capabilities();
+    for (name, value) in [
+        ("function_call", "yes"),
+        ("reasoning", "yes"),
+        ("vision_input", "no"),
+        ("image_output", "no"),
+        ("image_edit", "no"),
+        ("audio_input", "no"),
+        ("audio_output", "no"),
+        ("structured_output", "yes"),
+        ("web_search", "no"),
+    ] {
+        capabilities.insert(name.to_string(), capability_value(value, "aisdk_catalog"));
+    }
     AgentLlmSettings {
-        schema_version: 1,
-        selected_model_id: "model-deepseek-v4-flash".to_string(),
+        schema_version: SETTINGS_SCHEMA_VERSION,
+        revision: 1,
         providers: vec![AgentProviderProfile {
             id: "provider-deepseek-existing".to_string(),
             display_name: "DeepSeek".to_string(),
@@ -286,13 +470,15 @@ pub fn default_settings() -> AgentLlmSettings {
             display_name: "DeepSeek V4 Flash".to_string(),
             model_id: "deepseek-v4-flash".to_string(),
             enabled: true,
-            capabilities: AgentModelCapabilities {
-                tool_calling: "yes".to_string(),
-                reasoning: "yes".to_string(),
-                vision_input: "no".to_string(),
-                source: "catalog".to_string(),
-            },
+            model_type: capability_value("language", "aisdk_catalog"),
+            capabilities,
             last_test: None,
+        }],
+        capability_routes: vec![AgentCapabilityRoute {
+            capability: "agent.chat".to_string(),
+            model_id: "model-deepseek-v4-flash".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: Vec::new(),
         }],
     }
 }
@@ -306,21 +492,156 @@ pub fn load_settings(data_dir: &Path) -> Result<AgentLlmSettings> {
     }
     let bytes = std::fs::read(&path)
         .with_context(|| format!("reading Agent LLM settings {}", path.display()))?;
-    let settings: AgentLlmSettings = serde_json::from_slice(&bytes)
+    ensure!(
+        bytes.len() <= MAX_SETTINGS_BYTES,
+        "Agent LLM settings exceed the 256 KiB limit."
+    );
+    let envelope: serde_json::Value = serde_json::from_slice(&bytes)
         .with_context(|| format!("decoding Agent LLM settings {}", path.display()))?;
+    let schema_version = envelope
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .context("Agent LLM settings are missing a numeric schema_version.")?;
+    let settings = match schema_version {
+        1 => {
+            let legacy: AgentLlmSettingsV1 = serde_json::from_value(envelope)
+                .with_context(|| format!("decoding V1 Agent LLM settings {}", path.display()))?;
+            validate_settings_v1(&legacy)?;
+            migrate_settings_v1(legacy)?
+        }
+        2 => serde_json::from_value(envelope)
+            .with_context(|| format!("decoding V2 Agent LLM settings {}", path.display()))?,
+        _ => bail!("Unsupported Agent LLM schema version."),
+    };
     validate_settings(&settings)?;
     Ok(settings)
 }
 
 pub fn save_settings(data_dir: &Path, settings: &AgentLlmSettings) -> Result<()> {
+    save_settings_with(data_dir, settings, |path, bytes| atomic_write(path, bytes))
+}
+
+fn save_settings_with<F>(data_dir: &Path, settings: &AgentLlmSettings, write: F) -> Result<()>
+where
+    F: FnMut(&Path, &[u8]) -> Result<()>,
+{
+    save_settings_with_components(
+        data_dir,
+        settings,
+        |value| serde_json::to_vec_pretty(value).map_err(Into::into),
+        write,
+    )
+}
+
+fn save_settings_with_components<S, F>(
+    data_dir: &Path,
+    settings: &AgentLlmSettings,
+    serialize: S,
+    mut write: F,
+) -> Result<()>
+where
+    S: FnOnce(&AgentLlmSettings) -> Result<Vec<u8>>,
+    F: FnMut(&Path, &[u8]) -> Result<()>,
+{
     validate_settings(settings)?;
     let path = settings_path(data_dir);
-    let bytes = serde_json::to_vec_pretty(settings)?;
-    atomic_write(&path, &bytes)
-        .with_context(|| format!("writing Agent LLM settings {}", path.display()))
+    let bytes = serialize(settings)?;
+    ensure!(
+        bytes.len() <= MAX_SETTINGS_BYTES,
+        "Agent LLM settings exceed the 256 KiB limit."
+    );
+
+    if path.exists() {
+        let current = std::fs::read(&path)
+            .with_context(|| format!("reading Agent LLM settings {}", path.display()))?;
+        ensure!(
+            current.len() <= MAX_SETTINGS_BYTES,
+            "Existing Agent LLM settings exceed the 256 KiB limit."
+        );
+        let envelope: serde_json::Value = serde_json::from_slice(&current)
+            .with_context(|| format!("decoding Agent LLM settings {}", path.display()))?;
+        let version = envelope
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            .context("Agent LLM settings are missing a numeric schema_version.")?;
+        if version == 1 {
+            let backup_path = settings_v1_backup_path(data_dir);
+            if backup_path.exists() {
+                let existing = std::fs::read(&backup_path).with_context(|| {
+                    format!("reading Agent LLM V1 backup {}", backup_path.display())
+                })?;
+                ensure!(
+                    existing == current,
+                    "The existing Agent LLM V1 backup does not match the migration source."
+                );
+            } else {
+                write(&backup_path, &current).with_context(|| {
+                    format!("writing Agent LLM V1 backup {}", backup_path.display())
+                })?;
+            }
+        } else {
+            ensure!(version == 2, "Unsupported Agent LLM schema version.");
+        }
+    }
+
+    write(&path, &bytes).with_context(|| format!("writing Agent LLM settings {}", path.display()))
+}
+
+fn migrate_settings_v1(legacy: AgentLlmSettingsV1) -> Result<AgentLlmSettings> {
+    let selected_model_id = legacy.selected_model_id.clone();
+    let models = legacy
+        .models
+        .into_iter()
+        .map(|model| {
+            let source = match model.capabilities.source.as_str() {
+                "catalog" => "aisdk_catalog",
+                "declared" => "user_declared",
+                "probe" => "provider_response",
+                _ => "unknown",
+            };
+            let mut capabilities = unknown_capabilities();
+            capabilities.insert(
+                "function_call".to_string(),
+                capability_value(&model.capabilities.tool_calling, source),
+            );
+            capabilities.insert(
+                "reasoning".to_string(),
+                capability_value(&model.capabilities.reasoning, source),
+            );
+            capabilities.insert(
+                "vision_input".to_string(),
+                capability_value(&model.capabilities.vision_input, source),
+            );
+            AgentModelProfile {
+                id: model.id,
+                provider_id: model.provider_id,
+                display_name: model.display_name,
+                model_id: model.model_id,
+                enabled: model.enabled,
+                model_type: capability_value("unknown", "unknown"),
+                capabilities,
+                last_test: model.last_test,
+            }
+        })
+        .collect::<Vec<_>>();
+    let settings = AgentLlmSettings {
+        schema_version: SETTINGS_SCHEMA_VERSION,
+        revision: 0,
+        providers: legacy.providers,
+        models,
+        capability_routes: vec![AgentCapabilityRoute {
+            capability: "agent.chat".to_string(),
+            model_id: selected_model_id,
+            model_type: "language".to_string(),
+            required_model_capabilities: Vec::new(),
+        }],
+    };
+    validate_settings(&settings)?;
+    Ok(settings)
 }
 
 pub fn save_provider(data_dir: &Path, provider: AgentProviderProfile) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
     let mut settings = load_settings(data_dir)?;
     if let Some(slot) = settings
         .providers
@@ -331,6 +652,7 @@ pub fn save_provider(data_dir: &Path, provider: AgentProviderProfile) -> Result<
     } else {
         settings.providers.push(provider);
     }
+    increment_revision(&mut settings)?;
     save_settings(data_dir, &settings)?;
     Ok(settings)
 }
@@ -356,6 +678,7 @@ fn delete_provider_with_store_and_save<F>(
 where
     F: FnOnce(&Path, &AgentLlmSettings) -> Result<()>,
 {
+    let _guard = settings_mutation_guard();
     let mut settings = load_settings(data_dir)?;
     ensure!(
         !settings
@@ -372,6 +695,7 @@ where
         settings.providers.len() != before,
         "Unknown provider: {provider_id}"
     );
+    increment_revision(&mut settings)?;
     let previous_credential = credential_store.get(provider_id)?;
     credential_store.delete(provider_id)?;
     if let Err(save_error) = save(data_dir, &settings) {
@@ -398,6 +722,7 @@ fn set_credential_with_store(
     credential: &str,
     credential_store: &impl CredentialStore,
 ) -> Result<()> {
+    let _guard = settings_mutation_guard();
     let settings = load_settings(data_dir)?;
     let provider = settings
         .providers
@@ -425,6 +750,7 @@ fn delete_credential_with_store(
     provider_id: &str,
     credential_store: &impl CredentialStore,
 ) -> Result<()> {
+    let _guard = settings_mutation_guard();
     let settings = load_settings(data_dir)?;
     let provider = settings
         .providers
@@ -439,64 +765,216 @@ fn delete_credential_with_store(
 }
 
 pub fn save_model(data_dir: &Path, model: AgentModelProfile) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
     let mut settings = load_settings(data_dir)?;
+    if let Some(existing) = settings.models.iter().find(|item| item.id == model.id) {
+        ensure!(
+            existing.model_type == model.model_type && existing.capabilities == model.capabilities,
+            "Use the capability declaration command to change model evidence."
+        );
+        ensure!(
+            model.enabled
+                || existing.enabled == model.enabled
+                || !settings
+                    .capability_routes
+                    .iter()
+                    .any(|route| route.model_id == model.id),
+            "Reassign this model's capability routes before disabling it."
+        );
+    }
     if let Some(slot) = settings.models.iter_mut().find(|item| item.id == model.id) {
         *slot = model;
     } else {
         settings.models.push(model);
     }
+    increment_revision(&mut settings)?;
     save_settings(data_dir, &settings)?;
     Ok(settings)
 }
 
 pub fn delete_model(data_dir: &Path, request: &DeleteModelRequest) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
     let mut settings = load_settings(data_dir)?;
-    let existing = settings
+    let _existing = settings
         .models
         .iter()
         .find(|model| model.id == request.model_id)
         .cloned()
         .with_context(|| format!("Unknown model: {}", request.model_id))?;
-    if settings.selected_model_id == request.model_id {
-        let replacement_id = request
-            .replacement_model_id
-            .as_deref()
-            .context("Select another enabled model before deleting the current default.")?;
-        let replacement = settings
-            .models
+    ensure!(
+        !settings
+            .capability_routes
             .iter()
-            .find(|model| model.id == replacement_id)
-            .with_context(|| format!("Unknown replacement model: {replacement_id}"))?;
-        ensure!(
-            replacement.enabled,
-            "Replacement model must remain enabled."
-        );
-        ensure!(
-            replacement.id != existing.id,
-            "Replacement model must differ from the deleted model."
-        );
-        settings.selected_model_id = replacement.id.clone();
-    }
+            .any(|route| route.model_id == request.model_id),
+        "Reassign or remove this model's capability routes before deleting it."
+    );
     settings.models.retain(|model| model.id != request.model_id);
+    increment_revision(&mut settings)?;
     save_settings(data_dir, &settings)?;
     Ok(settings)
 }
 
-pub fn select_model(data_dir: &Path, model_id: &str) -> Result<AgentLlmSettings> {
+pub fn save_capability_route(
+    data_dir: &Path,
+    expected_revision: u64,
+    route: AgentCapabilityRoute,
+) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
+    save_capability_route_with_save(data_dir, expected_revision, route, save_settings)
+}
+
+fn save_capability_route_with_save<F>(
+    data_dir: &Path,
+    expected_revision: u64,
+    route: AgentCapabilityRoute,
+    save: F,
+) -> Result<AgentLlmSettings>
+where
+    F: FnOnce(&Path, &AgentLlmSettings) -> Result<()>,
+{
     let mut settings = load_settings(data_dir)?;
+    ensure!(
+        settings.revision == expected_revision,
+        "Model settings changed while this route editor was open. Reload and try again."
+    );
+    validate_route_candidate(&settings, &route, true)?;
+    if let Some(slot) = settings
+        .capability_routes
+        .iter_mut()
+        .find(|item| item.capability == route.capability)
+    {
+        *slot = route;
+    } else {
+        ensure!(
+            settings.capability_routes.len() < MAX_CAPABILITY_ROUTES,
+            "Capability routes are limited to 32."
+        );
+        settings.capability_routes.push(route);
+    }
+    settings
+        .capability_routes
+        .sort_by(|left, right| left.capability.cmp(&right.capability));
+    increment_revision(&mut settings)?;
+    save(data_dir, &settings)?;
+    Ok(settings)
+}
+
+pub fn delete_capability_route(
+    data_dir: &Path,
+    expected_revision: u64,
+    capability: &str,
+) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
+    delete_capability_route_with_save(data_dir, expected_revision, capability, save_settings)
+}
+
+fn delete_capability_route_with_save<F>(
+    data_dir: &Path,
+    expected_revision: u64,
+    capability: &str,
+    save: F,
+) -> Result<AgentLlmSettings>
+where
+    F: FnOnce(&Path, &AgentLlmSettings) -> Result<()>,
+{
+    let mut settings = load_settings(data_dir)?;
+    ensure!(
+        settings.revision == expected_revision,
+        "Model settings changed while this route editor was open. Reload and try again."
+    );
+    validate_capability_name(capability)?;
+    ensure!(
+        capability != "agent.chat",
+        "The required agent.chat route cannot be removed."
+    );
+    let before = settings.capability_routes.len();
+    settings
+        .capability_routes
+        .retain(|route| route.capability != capability);
+    ensure!(
+        settings.capability_routes.len() != before,
+        "Unknown capability route: {capability}"
+    );
+    increment_revision(&mut settings)?;
+    save(data_dir, &settings)?;
+    Ok(settings)
+}
+
+pub fn declare_model_capabilities(
+    data_dir: &Path,
+    expected_revision: u64,
+    model_id: &str,
+    patch: AgentModelCapabilityPatch,
+) -> Result<AgentLlmSettings> {
+    let _guard = settings_mutation_guard();
+    declare_model_capabilities_with_save(
+        data_dir,
+        expected_revision,
+        model_id,
+        patch,
+        save_settings,
+    )
+}
+
+fn declare_model_capabilities_with_save<F>(
+    data_dir: &Path,
+    expected_revision: u64,
+    model_id: &str,
+    patch: AgentModelCapabilityPatch,
+    save: F,
+) -> Result<AgentLlmSettings>
+where
+    F: FnOnce(&Path, &AgentLlmSettings) -> Result<()>,
+{
+    ensure!(
+        patch.model_type.is_some() || !patch.capabilities.is_empty(),
+        "Declare at least one model type or capability value."
+    );
+    let mut settings = load_settings(data_dir)?;
+    ensure!(
+        settings.revision == expected_revision,
+        "Model settings changed while this capability editor was open. Reload and try again."
+    );
     let model = settings
         .models
-        .iter()
-        .find(|item| item.id == model_id)
+        .iter_mut()
+        .find(|model| model.id == model_id)
         .with_context(|| format!("Unknown model: {model_id}"))?;
-    ensure!(model.enabled, "Selected model must be enabled.");
-    settings.selected_model_id = model_id.to_string();
-    save_settings(data_dir, &settings)?;
+    if let Some(model_type) = patch.model_type {
+        ensure!(
+            matches!(
+                model_type.as_str(),
+                "language" | "embedding" | "image" | "unknown"
+            ),
+            "Model type must be language, embedding, image or unknown."
+        );
+        model.model_type = capability_value(&model_type, "user_declared");
+    }
+    for (name, value) in patch.capabilities {
+        ensure!(
+            capability_names().contains(&name.as_str()),
+            "Unsupported model capability: {name}"
+        );
+        ensure!(
+            matches!(value.as_str(), "yes" | "no" | "unknown"),
+            "Capability values must be yes, no or unknown."
+        );
+        model
+            .capabilities
+            .insert(name, capability_value(&value, "user_declared"));
+    }
+    increment_revision(&mut settings)?;
+    save(data_dir, &settings)?;
     Ok(settings)
 }
 
 pub fn settings_view(data_dir: &Path, _rscript: &Path) -> Result<AgentLlmSettingsView> {
+    let _guard = settings_mutation_guard();
     let settings = load_settings(data_dir)?;
+    settings_view_from_settings(settings)
+}
+
+pub fn settings_view_from_settings(settings: AgentLlmSettings) -> Result<AgentLlmSettingsView> {
     let statuses = credential_status_map(&settings.providers, &SystemCredentialStore)?;
     Ok(build_settings_view(
         settings,
@@ -519,11 +997,6 @@ if (!is.data.frame(models) || !nrow(models)) {
   cat("[]")
   quit(save = "no", status = 0L)
 }
-models <- models[models$type == "language", , drop = FALSE]
-if (!nrow(models)) {
-  cat("[]")
-  quit(save = "no", status = 0L)
-}
 field_value <- function(data, row, name, default = "") {
   if (!(name %in% names(data))) {
     return(default)
@@ -534,12 +1007,18 @@ field_value <- function(data, row, name, default = "") {
   }
   as.character(value)[[1L]]
 }
-field_flag <- function(data, row, name) {
+field_capability <- function(data, row, name) {
   if (!(name %in% names(data))) {
-    return(FALSE)
+    return(list(value = "unknown", source = "unknown"))
   }
   value <- data[[name]][[row]]
-  isTRUE(as.logical(value)[[1L]])
+  if (length(value) == 0L || is.null(value) || is.na(value)) {
+    return(list(value = "unknown", source = "unknown"))
+  }
+  list(
+    value = if (isTRUE(as.logical(value)[[1L]])) "yes" else "no",
+    source = "aisdk_catalog"
+  )
 }
 rows <- lapply(seq_len(nrow(models)), function(i) {
   id <- field_value(models, i, "id", "")
@@ -550,17 +1029,513 @@ rows <- lapply(seq_len(nrow(models)), function(i) {
     id = id,
     display_name = family,
     description = if (is.na(description)) NULL else description,
+    model_type = list(
+      value = field_value(models, i, "type", "unknown"),
+      source = if ("type" %in% names(models) && !is.na(models$type[[i]])) "aisdk_catalog" else "unknown"
+    ),
     capabilities = list(
-      tool_calling = if (field_flag(models, i, "function_call")) "yes" else "no",
-      reasoning = if (field_flag(models, i, "reasoning")) "yes" else "no",
-      vision_input = if (field_flag(models, i, "vision_input")) "yes" else "no",
-      source = "catalog"
+      function_call = field_capability(models, i, "function_call"),
+      reasoning = field_capability(models, i, "reasoning"),
+      vision_input = field_capability(models, i, "vision_input"),
+      image_output = field_capability(models, i, "image_output"),
+      image_edit = field_capability(models, i, "image_edit"),
+      audio_input = field_capability(models, i, "audio_input"),
+      audio_output = field_capability(models, i, "audio_output"),
+      structured_output = field_capability(models, i, "structured_output"),
+      web_search = field_capability(models, i, "web_search")
     )
   )
 })
 cat(jsonlite::toJSON(unname(rows), auto_unbox = TRUE, null = "null"))
 "#;
     run_r_json(rscript, script, &[], None, None, None, None)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelDiscoveryFormat {
+    OpenAi,
+    Anthropic,
+    Gemini,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelDiscoveryAuth {
+    Bearer,
+    Anthropic,
+    Gemini,
+}
+
+#[derive(Debug, Clone)]
+struct ModelDiscoveryTarget {
+    url: reqwest::Url,
+    format: ModelDiscoveryFormat,
+    auth: ModelDiscoveryAuth,
+}
+
+pub fn discover_models(
+    data_dir: &Path,
+    rscript: &Path,
+    provider_id: &str,
+) -> Result<AgentModelDiscoveryResponse> {
+    let client = model_discovery_client()?;
+    let mut response =
+        discover_models_with_store(data_dir, provider_id, &SystemCredentialStore, &client)?;
+    if response.status == "ready" && !response.models.is_empty() {
+        let settings = load_settings(data_dir)?;
+        if let Some(provider) = settings
+            .providers
+            .iter()
+            .find(|item| item.id == provider_id)
+        {
+            if let Ok(entries) = catalog(rscript) {
+                enrich_discovered_models(provider, &mut response.models, &entries);
+            }
+        }
+    }
+    Ok(response)
+}
+
+fn enrich_discovered_models(
+    provider: &AgentProviderProfile,
+    models: &mut [AgentDiscoveredModel],
+    entries: &[AgentCatalogEntry],
+) {
+    let provider_key = provider
+        .registered_provider_id
+        .as_deref()
+        .unwrap_or(&provider.kind)
+        .to_ascii_lowercase();
+    for model in models {
+        if let Some(entry) = entries.iter().find(|entry| {
+            entry.provider.eq_ignore_ascii_case(&provider_key) && entry.id == model.id
+        }) {
+            model.model_type = entry.model_type.clone();
+            model.capabilities = entry.capabilities.clone();
+        }
+    }
+}
+
+fn model_discovery_client() -> Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .timeout(MODEL_DISCOVERY_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .user_agent("Rho model discovery")
+        .build()
+        .context("building the bounded Provider model-discovery client")
+}
+
+fn discover_models_with_store(
+    data_dir: &Path,
+    provider_id: &str,
+    credential_store: &impl CredentialStore,
+    client: &reqwest::blocking::Client,
+) -> Result<AgentModelDiscoveryResponse> {
+    let settings = load_settings(data_dir)?;
+    let provider = settings
+        .providers
+        .iter()
+        .find(|provider| provider.id == provider_id)
+        .with_context(|| format!("Unknown provider: {provider_id}"))?;
+    let Some(target) = model_discovery_target(provider)? else {
+        return Ok(model_discovery_result(
+            provider_id,
+            "unsupported",
+            Vec::new(),
+            false,
+            "This provider does not expose a supported model list. Enter a model ID manually.",
+            Some("unsupported"),
+        ));
+    };
+
+    let credential = if provider.api_key_required {
+        match credential_store.get(provider_id) {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                return Ok(model_discovery_result(
+                    provider_id,
+                    "error",
+                    Vec::new(),
+                    false,
+                    "No API key is stored for this provider. Save a key or enter a model ID manually.",
+                    Some("credential"),
+                ));
+            }
+            Err(_) => {
+                return Ok(model_discovery_result(
+                    provider_id,
+                    "error",
+                    Vec::new(),
+                    false,
+                    "The system credential store is unavailable. Retry or enter a model ID manually.",
+                    Some("credential"),
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut request = client
+        .get(target.url)
+        .header(reqwest::header::ACCEPT, "application/json");
+    if let Some(secret) = credential.as_deref() {
+        request = match target.auth {
+            ModelDiscoveryAuth::Bearer => request.bearer_auth(secret),
+            ModelDiscoveryAuth::Anthropic => request
+                .header("x-api-key", secret)
+                .header("anthropic-version", "2023-06-01"),
+            ModelDiscoveryAuth::Gemini => request.header("x-goog-api-key", secret),
+        };
+    }
+
+    let response = match request.send() {
+        Ok(response) => response,
+        Err(error) => {
+            let (class, message) = if error.is_timeout() {
+                (
+                    "timeout",
+                    "Model discovery timed out. Retry or enter a model ID manually.",
+                )
+            } else {
+                (
+                    "network",
+                    "Rho could not reach the provider model list. Retry or enter a model ID manually.",
+                )
+            };
+            return Ok(model_discovery_result(
+                provider_id,
+                "error",
+                Vec::new(),
+                false,
+                message,
+                Some(class),
+            ));
+        }
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let (result_status, class, message) = match status.as_u16() {
+            401 | 403 => (
+                "error",
+                "auth",
+                "The provider rejected the stored API key. Replace the key or enter a model ID manually.",
+            ),
+            404 => (
+                "unsupported",
+                "unsupported",
+                "This provider does not expose a model list at the configured endpoint. Enter a model ID manually.",
+            ),
+            429 => (
+                "error",
+                "rate_limit",
+                "The provider rate-limited model discovery. Retry later or enter a model ID manually.",
+            ),
+            300..=399 => (
+                "unsupported",
+                "unsupported",
+                "The provider redirected its model list. Rho does not forward API keys across redirects; enter a model ID manually.",
+            ),
+            _ => (
+                "error",
+                "response",
+                "The provider model list returned an error. Retry or enter a model ID manually.",
+            ),
+        };
+        return Ok(model_discovery_result(
+            provider_id,
+            result_status,
+            Vec::new(),
+            false,
+            message,
+            Some(class),
+        ));
+    }
+
+    let mut bounded = response.take((MAX_MODEL_DISCOVERY_BYTES + 1) as u64);
+    let mut bytes = Vec::new();
+    if bounded.read_to_end(&mut bytes).is_err() {
+        return Ok(model_discovery_result(
+            provider_id,
+            "error",
+            Vec::new(),
+            false,
+            "Rho could not read the provider model list. Retry or enter a model ID manually.",
+            Some("network"),
+        ));
+    }
+    if bytes.len() > MAX_MODEL_DISCOVERY_BYTES {
+        return Ok(model_discovery_result(
+            provider_id,
+            "error",
+            Vec::new(),
+            false,
+            "The provider model list exceeded Rho's 1 MiB safety limit. Enter a model ID manually.",
+            Some("response"),
+        ));
+    }
+
+    let (models, truncated) = match parse_discovered_models(target.format, &bytes) {
+        Ok(result) => result,
+        Err(_) => {
+            return Ok(model_discovery_result(
+                provider_id,
+                "error",
+                Vec::new(),
+                false,
+                "The provider returned an invalid model list. Retry or enter a model ID manually.",
+                Some("response"),
+            ));
+        }
+    };
+    let message = if models.is_empty() {
+        "The provider returned no usable generation models. Enter a model ID manually.".to_string()
+    } else if truncated {
+        format!(
+            "Loaded the first {} models. The provider reported additional models.",
+            models.len()
+        )
+    } else {
+        format!("Loaded {} available models.", models.len())
+    };
+    Ok(model_discovery_result(
+        provider_id,
+        "ready",
+        models,
+        truncated,
+        &message,
+        None,
+    ))
+}
+
+fn model_discovery_target(provider: &AgentProviderProfile) -> Result<Option<ModelDiscoveryTarget>> {
+    let fixed = |url: &str, format, auth| -> Result<Option<ModelDiscoveryTarget>> {
+        Ok(Some(ModelDiscoveryTarget {
+            url: reqwest::Url::parse(url).map_err(|_| {
+                anyhow::anyhow!("The built-in model-discovery endpoint is invalid.")
+            })?,
+            format,
+            auth,
+        }))
+    };
+    match provider.kind.as_str() {
+        "openai" => fixed(
+            "https://api.openai.com/v1/models",
+            ModelDiscoveryFormat::OpenAi,
+            ModelDiscoveryAuth::Bearer,
+        ),
+        "anthropic" => fixed(
+            "https://api.anthropic.com/v1/models?limit=100",
+            ModelDiscoveryFormat::Anthropic,
+            ModelDiscoveryAuth::Anthropic,
+        ),
+        "gemini" => fixed(
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+            ModelDiscoveryFormat::Gemini,
+            ModelDiscoveryAuth::Gemini,
+        ),
+        "registered" => match provider
+            .registered_provider_id
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "deepseek" => fixed(
+                "https://api.deepseek.com/models",
+                ModelDiscoveryFormat::OpenAi,
+                ModelDiscoveryAuth::Bearer,
+            ),
+            "openai" => fixed(
+                "https://api.openai.com/v1/models",
+                ModelDiscoveryFormat::OpenAi,
+                ModelDiscoveryAuth::Bearer,
+            ),
+            "anthropic" => fixed(
+                "https://api.anthropic.com/v1/models?limit=100",
+                ModelDiscoveryFormat::Anthropic,
+                ModelDiscoveryAuth::Anthropic,
+            ),
+            "gemini" | "google" => fixed(
+                "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+                ModelDiscoveryFormat::Gemini,
+                ModelDiscoveryAuth::Gemini,
+            ),
+            _ => Ok(None),
+        },
+        "openai_compatible" | "local_openai_compatible" => {
+            let Some(base_url) = provider.base_url.as_deref() else {
+                return Ok(None);
+            };
+            let mut url = reqwest::Url::parse(base_url)
+                .map_err(|_| anyhow::anyhow!("The configured Base URL is invalid."))?;
+            ensure!(
+                matches!(url.scheme(), "http" | "https"),
+                "The configured Base URL must use HTTP or HTTPS."
+            );
+            ensure!(
+                url.username().is_empty() && url.password().is_none(),
+                "The configured Base URL must not contain credentials."
+            );
+            url.set_fragment(None);
+            if !url.path().trim_end_matches('/').ends_with("/models") {
+                let path = format!("{}/models", url.path().trim_end_matches('/'));
+                url.set_path(&path);
+            }
+            let anthropic = provider.wire_api.as_deref() == Some("anthropic_messages");
+            Ok(Some(ModelDiscoveryTarget {
+                url,
+                format: if anthropic {
+                    ModelDiscoveryFormat::Anthropic
+                } else {
+                    ModelDiscoveryFormat::OpenAi
+                },
+                auth: if anthropic {
+                    ModelDiscoveryAuth::Anthropic
+                } else {
+                    ModelDiscoveryAuth::Bearer
+                },
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn parse_discovered_models(
+    format: ModelDiscoveryFormat,
+    bytes: &[u8],
+) -> Result<(Vec<AgentDiscoveredModel>, bool)> {
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).context("decoding the Provider model list")?;
+    let object = value
+        .as_object()
+        .context("the Provider model list must be a JSON object")?;
+    let (entries, mut truncated) = match format {
+        ModelDiscoveryFormat::OpenAi | ModelDiscoveryFormat::Anthropic => (
+            object
+                .get("data")
+                .and_then(serde_json::Value::as_array)
+                .context("the Provider model list has no data array")?,
+            object
+                .get("has_more")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        ),
+        ModelDiscoveryFormat::Gemini => (
+            object
+                .get("models")
+                .and_then(serde_json::Value::as_array)
+                .context("the Gemini model list has no models array")?,
+            object
+                .get("nextPageToken")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|token| !token.is_empty()),
+        ),
+    };
+    let mut models = Vec::new();
+    let mut seen = HashSet::new();
+    for entry in entries {
+        let Some(entry) = entry.as_object() else {
+            continue;
+        };
+        if format == ModelDiscoveryFormat::Gemini {
+            let supports_generation = entry
+                .get("supportedGenerationMethods")
+                .or_else(|| entry.get("supportedActions"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|methods| {
+                    methods.iter().any(|method| {
+                        method
+                            .as_str()
+                            .is_some_and(|method| method.eq_ignore_ascii_case("generateContent"))
+                    })
+                });
+            if !supports_generation {
+                continue;
+            }
+        }
+        let id = match format {
+            ModelDiscoveryFormat::Gemini => entry
+                .get("baseModelId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    entry
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .map(|value| value.strip_prefix("models/").unwrap_or(value))
+                }),
+            _ => entry.get("id").and_then(serde_json::Value::as_str),
+        }
+        .map(str::trim)
+        .unwrap_or_default();
+        if id.is_empty()
+            || id.chars().count() > MAX_MODEL_ID_LENGTH
+            || id.chars().any(char::is_control)
+            || !seen.insert(id.to_string())
+        {
+            continue;
+        }
+        if models.len() == MAX_DISCOVERED_MODELS {
+            truncated = true;
+            break;
+        }
+        let display_name = entry
+            .get(if format == ModelDiscoveryFormat::Gemini {
+                "displayName"
+            } else {
+                "display_name"
+            })
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty() && !value.chars().any(char::is_control))
+            .unwrap_or(id);
+        let mut capabilities = unknown_capabilities();
+        if format == ModelDiscoveryFormat::Gemini {
+            if let Some(reasoning) = entry.get("thinking").and_then(serde_json::Value::as_bool) {
+                capabilities.insert(
+                    "reasoning".to_string(),
+                    capability_value(if reasoning { "yes" } else { "no" }, "provider_response"),
+                );
+            }
+        }
+        models.push(AgentDiscoveredModel {
+            id: id.to_string(),
+            display_name: truncate_chars(display_name, MAX_NAME_LENGTH),
+            model_type: capability_value("unknown", "unknown"),
+            capabilities,
+        });
+    }
+    models.sort_by(|left, right| {
+        left.display_name
+            .to_ascii_lowercase()
+            .cmp(&right.display_name.to_ascii_lowercase())
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    Ok((models, truncated))
+}
+
+fn truncate_chars(value: &str, max: usize) -> String {
+    value.chars().take(max).collect()
+}
+
+fn model_discovery_result(
+    provider_id: &str,
+    status: &str,
+    models: Vec<AgentDiscoveredModel>,
+    truncated: bool,
+    message: &str,
+    error_class: Option<&str>,
+) -> AgentModelDiscoveryResponse {
+    AgentModelDiscoveryResponse {
+        status: status.to_string(),
+        provider_id: provider_id.to_string(),
+        models,
+        truncated,
+        message: message.to_string(),
+        error_class: error_class.map(str::to_string),
+    }
 }
 
 pub fn test_model(
@@ -571,6 +1546,15 @@ pub fn test_model(
     test_control: Option<&AgentModelTestControl>,
 ) -> Result<AgentLlmSettingsView> {
     let settings = load_settings(data_dir)?;
+    let test_model = settings
+        .models
+        .iter()
+        .find(|model| model.id == model_id)
+        .with_context(|| format!("Unknown model: {model_id}"))?;
+    ensure!(
+        test_model.model_type.value == "language",
+        "Only language models use the text connection test. Image and embedding probes are not installed."
+    );
     let resolved = resolve_model_with_settings(&settings, Some(model_id))?;
     let credential_statuses = credential_status_map(&settings.providers, &SystemCredentialStore)?;
     let provider_credential = credential_statuses.get(&resolved.provider_id).cloned();
@@ -624,13 +1608,16 @@ pub fn test_model(
             test_control,
         )?
     };
+    let _guard = settings_mutation_guard();
     let mut latest_settings = load_settings(data_dir)?;
     let latest_resolved = resolve_model_with_settings(&latest_settings, Some(model_id))?;
     ensure!(
-        latest_resolved.runtime_profile == resolved.runtime_profile,
+        latest_settings.revision == settings.revision
+            && latest_resolved.runtime_profile == resolved.runtime_profile,
         "The model configuration changed during the connection test; the test result was not saved."
     );
     update_model_after_test(&mut latest_settings, model_id, &result)?;
+    increment_revision(&mut latest_settings)?;
     save_settings(data_dir, &latest_settings)?;
     let statuses = credential_status_map(&latest_settings.providers, &SystemCredentialStore)?;
     Ok(build_settings_view(
@@ -643,18 +1630,75 @@ pub fn test_model(
 pub fn resolve_model_for_turn(
     data_dir: &Path,
     requested_model_id: Option<&str>,
+    mode: &str,
 ) -> Result<ResolvedAgentModel> {
     let settings = load_settings(data_dir)?;
-    resolve_model_with_settings(&settings, requested_model_id)
+    resolve_model_for_turn_with_settings(&settings, requested_model_id, mode)
 }
 
-pub fn credential_override_for_model(
+pub fn resolve_model_and_credential_for_turn(
     data_dir: &Path,
     requested_model_id: Option<&str>,
-) -> Result<Option<(String, String)>> {
+    mode: &str,
+) -> Result<(ResolvedAgentModel, Option<(String, String)>)> {
+    let _guard = settings_mutation_guard();
     let settings = load_settings(data_dir)?;
-    let resolved = resolve_model_with_settings(&settings, requested_model_id)?;
-    credential_override_with_store(&settings, &resolved.provider_id, &SystemCredentialStore)
+    resolve_model_and_credential_for_turn_with_store(
+        &settings,
+        requested_model_id,
+        mode,
+        &SystemCredentialStore,
+    )
+}
+
+fn resolve_model_and_credential_for_turn_with_store(
+    settings: &AgentLlmSettings,
+    requested_model_id: Option<&str>,
+    mode: &str,
+    credential_store: &impl CredentialStore,
+) -> Result<(ResolvedAgentModel, Option<(String, String)>)> {
+    let resolved = resolve_model_for_turn_with_settings(settings, requested_model_id, mode)?;
+    let credential =
+        credential_override_with_store(settings, &resolved.provider_id, credential_store)?;
+    Ok((resolved, credential))
+}
+
+fn resolve_model_for_turn_with_settings(
+    settings: &AgentLlmSettings,
+    requested_model_id: Option<&str>,
+    mode: &str,
+) -> Result<ResolvedAgentModel> {
+    ensure!(
+        matches!(mode, "ask" | "plan" | "act"),
+        "Unsupported Agent mode."
+    );
+    let (target_id, resolved_route) = if mode == "act" {
+        if let Some(route) = settings
+            .capability_routes
+            .iter()
+            .find(|route| route.capability == "agent.act")
+        {
+            (route.model_id.as_str(), "agent.act")
+        } else {
+            (chat_model_id(settings)?, "agent.chat")
+        }
+    } else {
+        (chat_model_id(settings)?, "agent.chat")
+    };
+    if let Some(requested) = requested_model_id {
+        ensure!(
+            requested == target_id,
+            "Per-turn model overrides are unavailable. Assign the model to the effective capability route first."
+        );
+    }
+    let resolved = resolve_model_id_with_settings(settings, target_id, resolved_route)?;
+    if mode == "act" {
+        ensure!(
+            resolved.runtime_profile.tool_calling == "yes",
+            "Act is unavailable because its effective model does not declare function_call=yes."
+        );
+    }
+    Ok(resolved)
 }
 
 fn credential_override_with_store(
@@ -682,14 +1726,9 @@ fn credential_override_with_store(
 
 pub fn validate_settings(settings: &AgentLlmSettings) -> Result<()> {
     ensure!(
-        settings.schema_version == 1,
+        settings.schema_version == SETTINGS_SCHEMA_VERSION,
         "Unsupported Agent LLM schema version."
     );
-    validate_bounded(
-        &settings.selected_model_id,
-        "Selected model ID",
-        MAX_ID_LENGTH,
-    )?;
     ensure!(
         !settings.providers.is_empty(),
         "At least one provider is required."
@@ -723,12 +1762,184 @@ pub fn validate_settings(settings: &AgentLlmSettings) -> Result<()> {
             "Each model must reference an existing provider."
         );
     }
+    ensure!(
+        !settings.capability_routes.is_empty()
+            && settings.capability_routes.len() <= MAX_CAPABILITY_ROUTES,
+        "Agent LLM settings must contain between 1 and 32 capability routes."
+    );
+    let mut route_names = HashSet::new();
+    for route in &settings.capability_routes {
+        ensure!(
+            route_names.insert(route.capability.clone()),
+            "Capability route names must be unique."
+        );
+        validate_route_candidate(settings, route, false)?;
+    }
+    ensure!(
+        settings
+            .capability_routes
+            .iter()
+            .filter(|route| route.capability == "agent.chat")
+            .count()
+            == 1,
+        "Exactly one agent.chat route is required."
+    );
+    Ok(())
+}
+
+fn validate_settings_v1(settings: &AgentLlmSettingsV1) -> Result<()> {
+    ensure!(
+        settings.schema_version == 1,
+        "Expected Agent LLM schema V1."
+    );
+    validate_bounded(
+        &settings.selected_model_id,
+        "Selected model ID",
+        MAX_ID_LENGTH,
+    )?;
+    ensure!(
+        !settings.providers.is_empty(),
+        "At least one provider is required."
+    );
+    ensure!(
+        !settings.models.is_empty(),
+        "At least one model is required."
+    );
+    let mut provider_ids = HashSet::new();
+    for provider in &settings.providers {
+        validate_provider(provider)?;
+        ensure!(
+            provider_ids.insert(&provider.id),
+            "Provider IDs must be unique."
+        );
+    }
+    let mut model_ids = HashSet::new();
+    for model in &settings.models {
+        validate_bounded(&model.id, "Model ID", MAX_ID_LENGTH)?;
+        validate_bounded(&model.provider_id, "Provider reference", MAX_ID_LENGTH)?;
+        validate_bounded(&model.display_name, "Model display name", MAX_NAME_LENGTH)?;
+        validate_bounded(&model.model_id, "Provider model ID", MAX_MODEL_ID_LENGTH)?;
+        validate_capabilities_v1(&model.capabilities)?;
+        ensure!(model_ids.insert(&model.id), "Model IDs must be unique.");
+        ensure!(
+            provider_ids.contains(&model.provider_id),
+            "Each model must reference an existing provider."
+        );
+    }
     let selected = settings
         .models
         .iter()
         .find(|model| model.id == settings.selected_model_id)
         .context("Selected model must exist.")?;
     ensure!(selected.enabled, "Selected model must remain enabled.");
+    Ok(())
+}
+
+fn standard_route_contract(capability: &str) -> Option<(&'static str, &'static [&'static str])> {
+    match capability {
+        "agent.chat" => Some(("language", &[])),
+        "agent.act" => Some(("language", &["function_call"])),
+        "vision.inspect" => Some(("language", &["vision_input"])),
+        "image.generate" => Some(("image", &["image_output"])),
+        "image.edit" => Some(("image", &["image_edit"])),
+        "embedding.default" => Some(("embedding", &[])),
+        _ => None,
+    }
+}
+
+fn validate_capability_name(value: &str) -> Result<()> {
+    validate_bounded(value, "Capability route", MAX_CAPABILITY_NAME_LENGTH)?;
+    ensure!(
+        value.chars().all(|character| character.is_ascii_lowercase()
+            || character.is_ascii_digit()
+            || matches!(character, '.' | '_' | '-')),
+        "Capability routes use lowercase canonical ASCII names."
+    );
+    ensure!(
+        value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase()),
+        "Capability routes must start with a lowercase letter."
+    );
+    Ok(())
+}
+
+fn validate_route_candidate(
+    settings: &AgentLlmSettings,
+    route: &AgentCapabilityRoute,
+    reject_unknown: bool,
+) -> Result<()> {
+    validate_capability_name(&route.capability)?;
+    validate_bounded(&route.model_id, "Route model ID", MAX_ID_LENGTH)?;
+    ensure!(
+        matches!(
+            route.model_type.as_str(),
+            "language" | "embedding" | "image"
+        ),
+        "Route model type must be language, embedding or image."
+    );
+    ensure!(
+        route.required_model_capabilities.len() <= MAX_REQUIRED_CAPABILITIES,
+        "A route may require at most 16 model capabilities."
+    );
+    let mut required = HashSet::new();
+    for name in &route.required_model_capabilities {
+        validate_capability_name(name)?;
+        ensure!(
+            capability_names().contains(&name.as_str()),
+            "Unsupported required model capability: {name}"
+        );
+        ensure!(
+            required.insert(name),
+            "Required model capabilities must be unique."
+        );
+    }
+    if let Some((model_type, capabilities)) = standard_route_contract(&route.capability) {
+        ensure!(
+            route.model_type == model_type,
+            "The {} route requires model type {model_type}.",
+            route.capability
+        );
+        ensure!(
+            route.required_model_capabilities
+                == capabilities
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>(),
+            "The {} route has a fixed capability contract.",
+            route.capability
+        );
+    }
+    let model = settings
+        .models
+        .iter()
+        .find(|model| model.id == route.model_id)
+        .with_context(|| format!("Unknown route model: {}", route.model_id))?;
+    ensure!(model.enabled, "Capability routes require an enabled model.");
+    ensure!(
+        model.model_type.value == "unknown" || model.model_type.value == route.model_type,
+        "The selected model type is incompatible with this route."
+    );
+    if reject_unknown {
+        ensure!(
+            model.model_type.value != "unknown",
+            "Declare this model's type before assigning the route."
+        );
+    }
+    for name in &route.required_model_capabilities {
+        let value = model_capability(model, name);
+        ensure!(
+            value.value != "no",
+            "The selected model is incompatible with required capability {name}."
+        );
+        if reject_unknown {
+            ensure!(
+                value.value == "yes",
+                "Declare required capability {name} before assigning the route."
+            );
+        }
+    }
     Ok(())
 }
 
@@ -744,6 +1955,7 @@ fn build_settings_view(
     user_environ: AgentUserEnvironInfo,
     statuses: HashMap<String, CredentialPresentation>,
 ) -> AgentLlmSettingsView {
+    let selected_model_id = chat_model_id(&settings).unwrap_or_default().to_string();
     let provider_map = settings
         .providers
         .iter()
@@ -776,8 +1988,8 @@ fn build_settings_view(
                     .get(&profile.provider_id)
                     .cloned()
                     .unwrap_or_else(|| "Provider".to_string()),
-                selected: profile.id == settings.selected_model_id,
-                act_enabled: profile.enabled && profile.capabilities.tool_calling == "yes",
+                selected: profile.id == selected_model_id,
+                act_enabled: profile.enabled && model_function_call(&profile) == "yes",
                 selector_status,
                 profile,
             }
@@ -792,17 +2004,164 @@ fn build_settings_view(
                 display_name: model.profile.display_name.clone(),
                 provider_display_name: model.provider_display_name.clone(),
                 selector_status: model.selector_status.clone(),
-                tool_calling: model.profile.capabilities.tool_calling.clone(),
+                tool_calling: model_function_call(&model.profile).to_string(),
                 act_enabled: model.act_enabled,
             });
+    let capability_routes = build_capability_route_views(&settings, &statuses);
     AgentLlmSettingsView {
         schema_version: settings.schema_version,
-        selected_model_id: settings.selected_model_id,
+        revision: settings.revision,
+        selected_model_id,
         providers,
         models,
         selected_model,
+        capability_routes,
         user_environ,
         validation_error: None,
+    }
+}
+
+fn build_capability_route_views(
+    settings: &AgentLlmSettings,
+    statuses: &HashMap<String, CredentialPresentation>,
+) -> Vec<AgentCapabilityRouteView> {
+    let standard = [
+        ("agent.chat", "Chat", "Ask and Plan turns"),
+        ("agent.act", "Act", "Tool-enabled Act turns"),
+        ("vision.inspect", "Inspect images", "Consumer not installed"),
+        (
+            "image.generate",
+            "Generate images",
+            "Consumer not installed",
+        ),
+        ("image.edit", "Edit images", "Consumer not installed"),
+        ("embedding.default", "Embeddings", "Consumer not installed"),
+    ];
+    let chat_route = settings
+        .capability_routes
+        .iter()
+        .find(|route| route.capability == "agent.chat");
+    let mut views = standard
+        .iter()
+        .map(|(capability, label, description)| {
+            let configured = settings
+                .capability_routes
+                .iter()
+                .find(|route| route.capability == *capability);
+            let inherited = if configured.is_none() && *capability == "agent.act" {
+                chat_route
+            } else {
+                None
+            };
+            let effective = configured.or(inherited);
+            build_capability_route_view(
+                settings,
+                statuses,
+                capability,
+                label,
+                description,
+                configured,
+                effective,
+                inherited.map(|_| "agent.chat".to_string()),
+            )
+        })
+        .collect::<Vec<_>>();
+    for route in settings.capability_routes.iter().filter(|route| {
+        !standard
+            .iter()
+            .any(|(capability, _, _)| *capability == route.capability)
+    }) {
+        views.push(build_capability_route_view(
+            settings,
+            statuses,
+            &route.capability,
+            &route.capability,
+            "Custom route; unavailable until a typed consumer is registered",
+            Some(route),
+            Some(route),
+            None,
+        ));
+    }
+    views
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_capability_route_view(
+    settings: &AgentLlmSettings,
+    statuses: &HashMap<String, CredentialPresentation>,
+    capability: &str,
+    label: &str,
+    description: &str,
+    configured: Option<&AgentCapabilityRoute>,
+    effective: Option<&AgentCapabilityRoute>,
+    inherited_from: Option<String>,
+) -> AgentCapabilityRouteView {
+    let model = effective.and_then(|route| {
+        settings
+            .models
+            .iter()
+            .find(|model| model.id == route.model_id)
+    });
+    let provider = model.and_then(|model| {
+        settings
+            .providers
+            .iter()
+            .find(|provider| provider.id == model.provider_id)
+    });
+    let required = standard_route_contract(capability)
+        .map(|(_, values)| values.iter().map(|value| value.to_string()).collect())
+        .or_else(|| effective.map(|route| route.required_model_capabilities.clone()))
+        .unwrap_or_default();
+    let expected_type = standard_route_contract(capability)
+        .map(|(value, _)| value.to_string())
+        .or_else(|| effective.map(|route| route.model_type.clone()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let compatibility = match model {
+        None => "unassigned",
+        Some(model)
+            if model.model_type.value != "unknown" && model.model_type.value != expected_type =>
+        {
+            "incompatible"
+        }
+        Some(model)
+            if required
+                .iter()
+                .any(|name| model_capability(model, name).value == "no") =>
+        {
+            "incompatible"
+        }
+        Some(model)
+            if model.model_type.value == "unknown"
+                || required
+                    .iter()
+                    .any(|name| model_capability(model, name).value == "unknown") =>
+        {
+            "needs_review"
+        }
+        Some(_) => "compatible",
+    };
+    let credential_status = provider
+        .and_then(|provider| statuses.get(&provider.id))
+        .map(|status| status.status.clone())
+        .unwrap_or_else(|| "unavailable".to_string());
+    AgentCapabilityRouteView {
+        capability: capability.to_string(),
+        label: label.to_string(),
+        description: description.to_string(),
+        model_id: model.map(|model| model.id.clone()),
+        model_display_name: model.map(|model| model.display_name.clone()),
+        provider_display_name: provider.map(|provider| provider.display_name.clone()),
+        model_type: expected_type,
+        required_model_capabilities: required,
+        configured: configured.is_some(),
+        inherited_from,
+        compatibility: compatibility.to_string(),
+        credential_status,
+        consumer_status: if matches!(capability, "agent.chat" | "agent.act") {
+            "available".to_string()
+        } else {
+            "not_installed".to_string()
+        },
     }
 }
 
@@ -810,7 +2169,18 @@ fn resolve_model_with_settings(
     settings: &AgentLlmSettings,
     requested_model_id: Option<&str>,
 ) -> Result<ResolvedAgentModel> {
-    let target_id = requested_model_id.unwrap_or(&settings.selected_model_id);
+    let target_id = match requested_model_id {
+        Some(value) => value,
+        None => chat_model_id(settings)?,
+    };
+    resolve_model_id_with_settings(settings, target_id, "agent.chat")
+}
+
+fn resolve_model_id_with_settings(
+    settings: &AgentLlmSettings,
+    target_id: &str,
+    route_capability: &str,
+) -> Result<ResolvedAgentModel> {
     let model = settings
         .models
         .iter()
@@ -834,22 +2204,6 @@ fn resolve_model_with_settings(
             })
             .collect::<String>()
     );
-    let runtime_profile = AgentRuntimeModelProfile {
-        profile_id: model.id.clone(),
-        provider_kind: provider.kind.clone(),
-        runtime_provider_id: runtime_provider_id.clone(),
-        registered_provider_id: provider.registered_provider_id.clone(),
-        model_id: model.model_id.clone(),
-        api_key_env: provider.api_key_env.clone(),
-        api_key_required: provider.api_key_required,
-        base_url: provider.base_url.clone(),
-        base_url_env: provider.base_url_env.clone(),
-        wire_api: provider.wire_api.clone(),
-        disable_stream_options: provider.disable_stream_options.unwrap_or(false),
-        tool_calling: model.capabilities.tool_calling.clone(),
-        provider_display_name: provider.display_name.clone(),
-        model_display_name: model.display_name.clone(),
-    };
     let effective_model_ref = if provider.kind == "registered" {
         format!(
             "{}:{}",
@@ -862,7 +2216,44 @@ fn resolve_model_with_settings(
     } else {
         format!("{runtime_provider_id}:{}", model.model_id)
     };
+    let (route_model_type, required_model_capabilities) = settings
+        .capability_routes
+        .iter()
+        .find(|route| route.capability == route_capability && route.model_id == model.id)
+        .map(|route| {
+            (
+                route.model_type.clone(),
+                route.required_model_capabilities.clone(),
+            )
+        })
+        .unwrap_or_else(|| (model.model_type.value.clone(), Vec::new()));
+    let runtime_profile = AgentRuntimeModelProfile {
+        settings_revision: settings.revision,
+        route_capability: route_capability.to_string(),
+        profile_id: model.id.clone(),
+        provider_kind: provider.kind.clone(),
+        runtime_provider_id: runtime_provider_id.clone(),
+        registered_provider_id: provider.registered_provider_id.clone(),
+        model_id: model.model_id.clone(),
+        api_key_env: provider.api_key_env.clone(),
+        api_key_required: provider.api_key_required,
+        base_url: provider.base_url.clone(),
+        base_url_env: provider.base_url_env.clone(),
+        wire_api: provider.wire_api.clone(),
+        disable_stream_options: provider.disable_stream_options.unwrap_or(false),
+        tool_calling: model_function_call(model).to_string(),
+        provider_display_name: provider.display_name.clone(),
+        model_display_name: model.display_name.clone(),
+        capability_routes: vec![AgentRuntimeCapabilityRoute {
+            capability: route_capability.to_string(),
+            model: effective_model_ref.clone(),
+            model_type: route_model_type,
+            required_model_capabilities,
+        }],
+    };
     Ok(ResolvedAgentModel {
+        settings_revision: settings.revision,
+        route_capability: route_capability.to_string(),
         effective_model_ref,
         runtime_profile,
         provider_id: provider.id.clone(),
@@ -888,8 +2279,17 @@ fn update_model_after_test(
         error_class: result.error_class.clone(),
         message: Some(result.message.clone()),
     });
-    if model.capabilities.source != "declared" {
-        model.capabilities = result.capabilities.clone();
+    for (name, value) in [
+        ("function_call", result.capabilities.tool_calling.as_str()),
+        ("reasoning", result.capabilities.reasoning.as_str()),
+        ("vision_input", result.capabilities.vision_input.as_str()),
+    ] {
+        if model_capability(model, name).source != "user_declared" {
+            model.capabilities.insert(
+                name.to_string(),
+                capability_value(value, "provider_response"),
+            );
+        }
     }
     Ok(())
 }
@@ -960,11 +2360,53 @@ fn validate_model(model: &AgentModelProfile) -> Result<()> {
     validate_bounded(&model.provider_id, "Provider reference", MAX_ID_LENGTH)?;
     validate_bounded(&model.display_name, "Model display name", MAX_NAME_LENGTH)?;
     validate_bounded(&model.model_id, "Provider model ID", MAX_MODEL_ID_LENGTH)?;
-    validate_capabilities(&model.capabilities)?;
+    validate_capability_value(&model.model_type, true)?;
+    ensure!(
+        matches!(
+            model.model_type.value.as_str(),
+            "language" | "embedding" | "image" | "unknown"
+        ),
+        "Model type must be language, embedding, image or unknown."
+    );
+    ensure!(
+        model.capabilities.len() == capability_names().len()
+            && capability_names()
+                .iter()
+                .all(|name| model.capabilities.contains_key(*name)),
+        "Model capabilities must use the complete supported vocabulary."
+    );
+    for (name, value) in &model.capabilities {
+        ensure!(
+            capability_names().contains(&name.as_str()),
+            "Unsupported model capability: {name}"
+        );
+        validate_capability_value(value, false)?;
+    }
     Ok(())
 }
 
-fn validate_capabilities(capabilities: &AgentModelCapabilities) -> Result<()> {
+fn validate_capability_value(value: &AgentCapabilityValue, model_type: bool) -> Result<()> {
+    if !model_type {
+        ensure!(
+            matches!(value.value.as_str(), "yes" | "no" | "unknown"),
+            "Capability values must be yes, no or unknown."
+        );
+    }
+    ensure!(
+        matches!(
+            value.source.as_str(),
+            "aisdk_catalog" | "provider_response" | "user_declared" | "unknown"
+        ),
+        "Capability provenance is unsupported."
+    );
+    ensure!(
+        value.value != "unknown" || value.source == "unknown" || value.source == "user_declared",
+        "Unknown values require unknown or user-declared provenance."
+    );
+    Ok(())
+}
+
+fn validate_capabilities_v1(capabilities: &AgentModelCapabilitiesV1) -> Result<()> {
     for value in [
         capabilities.tool_calling.as_str(),
         capabilities.reasoning.as_str(),
@@ -1133,8 +2575,8 @@ fn credential_presentation_for_provider(provider: &AgentProviderProfile) -> Cred
     }
 }
 
-fn inferred_capabilities(profile: &AgentRuntimeModelProfile) -> AgentModelCapabilities {
-    AgentModelCapabilities {
+fn inferred_capabilities(profile: &AgentRuntimeModelProfile) -> AgentModelCapabilitiesV1 {
+    AgentModelCapabilitiesV1 {
         tool_calling: profile.tool_calling.clone(),
         reasoning: "unknown".to_string(),
         vision_input: "unknown".to_string(),
@@ -1344,6 +2786,10 @@ fn hide_console_window(_command: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write as _;
+    use std::net::TcpListener;
+    use std::sync::Barrier;
+    use std::thread;
     use tempfile::TempDir;
 
     #[derive(Default)]
@@ -1371,6 +2817,76 @@ mod tests {
             ensure!(!self.fail_delete, "injected credential delete failure");
             self.entries.lock().unwrap().remove(provider_id);
             Ok(())
+        }
+    }
+
+    fn spawn_discovery_server(
+        status: &str,
+        extra_headers: &[(&str, &str)],
+        body: String,
+        delay: Duration,
+    ) -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let headers = extra_headers
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect::<Vec<_>>();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while request.len() < 16 * 1024 {
+                let count = stream.read(&mut chunk).unwrap_or(0);
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            if !delay.is_zero() {
+                thread::sleep(delay);
+            }
+            let mut response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+                body.len()
+            );
+            for (name, value) in headers {
+                response.push_str(&format!("{name}: {value}\r\n"));
+            }
+            response.push_str("\r\n");
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.write_all(body.as_bytes());
+            String::from_utf8_lossy(&request).into_owned()
+        });
+        (format!("http://{address}/v1"), handle)
+    }
+
+    fn save_custom_discovery_provider(directory: &TempDir, base_url: String) {
+        let mut settings = default_settings();
+        let provider = &mut settings.providers[0];
+        provider.kind = "openai_compatible".to_string();
+        provider.registered_provider_id = None;
+        provider.base_url = Some(base_url);
+        provider.base_url_env = None;
+        provider.wire_api = Some("chat_completions".to_string());
+        save_settings(directory.path(), &settings).unwrap();
+    }
+
+    fn store_with_discovery_secret(secret: &str) -> MemoryCredentialStore {
+        MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([(
+                "provider-deepseek-existing".to_string(),
+                secret.to_string(),
+            )])),
+            fail_set: false,
+            fail_delete: false,
         }
     }
 
@@ -1424,7 +2940,8 @@ mod tests {
     #[test]
     fn default_migration_preserves_deepseek_flash() {
         let settings = default_settings();
-        assert_eq!(settings.selected_model_id, "model-deepseek-v4-flash");
+        assert_eq!(chat_model_id(&settings).unwrap(), "model-deepseek-v4-flash");
+        assert_eq!(settings.schema_version, 2);
         assert_eq!(settings.models[0].model_id, "deepseek-v4-flash");
         assert_eq!(
             settings.providers[0].registered_provider_id.as_deref(),
@@ -1438,8 +2955,404 @@ mod tests {
         let settings = default_settings();
         save_settings(directory.path(), &settings).unwrap();
         let loaded = load_settings(directory.path()).unwrap();
-        assert_eq!(loaded.selected_model_id, settings.selected_model_id);
+        assert_eq!(
+            chat_model_id(&loaded).unwrap(),
+            chat_model_id(&settings).unwrap()
+        );
         assert_eq!(loaded.models[0].display_name, "DeepSeek V4 Flash");
+    }
+
+    fn legacy_settings_bytes() -> Vec<u8> {
+        serde_json::to_vec_pretty(&AgentLlmSettingsV1 {
+            schema_version: 1,
+            selected_model_id: "model-deepseek-v4-flash".to_string(),
+            providers: default_settings().providers,
+            models: vec![AgentModelProfileV1 {
+                id: "model-deepseek-v4-flash".to_string(),
+                provider_id: "provider-deepseek-existing".to_string(),
+                display_name: "DeepSeek V4 Flash".to_string(),
+                model_id: "deepseek-v4-flash".to_string(),
+                enabled: true,
+                capabilities: AgentModelCapabilitiesV1 {
+                    tool_calling: "yes".to_string(),
+                    reasoning: "yes".to_string(),
+                    vision_input: "no".to_string(),
+                    source: "catalog".to_string(),
+                },
+                last_test: None,
+            }],
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn v1_read_projects_without_rewrite_then_first_mutation_backs_up_and_migrates() {
+        let directory = TempDir::new().unwrap();
+        let legacy = legacy_settings_bytes();
+        std::fs::write(settings_path(directory.path()), &legacy).unwrap();
+
+        let projected = load_settings(directory.path()).unwrap();
+        assert_eq!(projected.schema_version, 2);
+        assert_eq!(projected.revision, 0);
+        assert_eq!(projected.models[0].model_type.value, "unknown");
+        assert_eq!(
+            projected.models[0].capabilities["function_call"].source,
+            "aisdk_catalog"
+        );
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            legacy
+        );
+        assert!(!settings_v1_backup_path(directory.path()).exists());
+
+        let migrated = declare_model_capabilities(
+            directory.path(),
+            0,
+            "model-deepseek-v4-flash",
+            AgentModelCapabilityPatch {
+                model_type: Some("language".to_string()),
+                capabilities: BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(migrated.revision, 1);
+        assert_eq!(
+            std::fs::read(settings_v1_backup_path(directory.path())).unwrap(),
+            legacy
+        );
+        let reopened = load_settings(directory.path()).unwrap();
+        assert_eq!(reopened.schema_version, 2);
+        assert_eq!(reopened.revision, 1);
+        assert_eq!(reopened.models[0].model_type.source, "user_declared");
+    }
+
+    #[test]
+    fn v1_migration_backup_and_v2_write_failures_leave_recoverable_source() {
+        let directory = TempDir::new().unwrap();
+        let legacy = legacy_settings_bytes();
+        let path = settings_path(directory.path());
+        std::fs::write(&path, &legacy).unwrap();
+        let projected = load_settings(directory.path()).unwrap();
+
+        let result = save_settings_with(directory.path(), &projected, |target, _| {
+            if target == settings_v1_backup_path(directory.path()) {
+                bail!("injected backup failure")
+            }
+            unreachable!("V2 write must not run after backup failure")
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), legacy);
+        assert!(!settings_v1_backup_path(directory.path()).exists());
+
+        let result = save_settings_with(directory.path(), &projected, |target, bytes| {
+            if target == settings_v1_backup_path(directory.path()) {
+                atomic_write(target, bytes)
+            } else {
+                bail!("injected V2 write failure")
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), legacy);
+        assert_eq!(
+            std::fs::read(settings_v1_backup_path(directory.path())).unwrap(),
+            legacy
+        );
+        assert_eq!(load_settings(directory.path()).unwrap().schema_version, 2);
+    }
+
+    #[test]
+    fn corrupt_unsupported_and_oversized_settings_fail_closed() {
+        let directory = TempDir::new().unwrap();
+        let path = settings_path(directory.path());
+        std::fs::write(&path, b"not json").unwrap();
+        assert!(load_settings(directory.path()).is_err());
+        std::fs::write(&path, br#"{"schema_version":99}"#).unwrap();
+        assert!(load_settings(directory.path()).is_err());
+        std::fs::write(&path, vec![b'x'; MAX_SETTINGS_BYTES + 1]).unwrap();
+        let error = load_settings(directory.path()).unwrap_err().to_string();
+        assert!(error.contains("256 KiB"));
+    }
+
+    #[test]
+    fn route_mutations_enforce_revision_contract_and_model_dependencies() {
+        let directory = TempDir::new().unwrap();
+        save_settings(directory.path(), &default_settings()).unwrap();
+        let revision = load_settings(directory.path()).unwrap().revision;
+        let route = AgentCapabilityRoute {
+            capability: "agent.act".to_string(),
+            model_id: "model-deepseek-v4-flash".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: vec!["function_call".to_string()],
+        };
+        let routed = save_capability_route(directory.path(), revision, route).unwrap();
+        assert_eq!(routed.revision, revision + 1);
+        assert!(
+            save_capability_route(
+                directory.path(),
+                revision,
+                routed.capability_routes[0].clone(),
+            )
+            .is_err()
+        );
+
+        let mut disabled = routed.models[0].clone();
+        disabled.enabled = false;
+        assert!(save_model(directory.path(), disabled).is_err());
+        assert!(
+            delete_model(
+                directory.path(),
+                &DeleteModelRequest {
+                    model_id: "model-deepseek-v4-flash".to_string(),
+                    replacement_model_id: None,
+                },
+            )
+            .is_err()
+        );
+        let without_act =
+            delete_capability_route(directory.path(), routed.revision, "agent.act").unwrap();
+        assert_eq!(without_act.revision, routed.revision + 1);
+        assert!(
+            delete_capability_route(directory.path(), without_act.revision, "agent.chat",).is_err()
+        );
+    }
+
+    #[test]
+    fn route_mutation_write_failures_preserve_disk_state_and_recover() {
+        let directory = TempDir::new().unwrap();
+        save_settings(directory.path(), &default_settings()).unwrap();
+        let original = std::fs::read(settings_path(directory.path())).unwrap();
+        let revision = load_settings(directory.path()).unwrap().revision;
+        let act_route = AgentCapabilityRoute {
+            capability: "agent.act".to_string(),
+            model_id: "model-deepseek-v4-flash".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: vec!["function_call".to_string()],
+        };
+
+        let result = save_capability_route_with_save(
+            directory.path(),
+            revision,
+            act_route.clone(),
+            |data_dir, settings| {
+                save_settings_with_components(
+                    data_dir,
+                    settings,
+                    |_| bail!("injected serialization failure"),
+                    |_, _| unreachable!("write must not run after serialization failure"),
+                )
+            },
+        );
+        assert!(result.unwrap_err().to_string().contains("serialization"));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
+        );
+
+        let result = save_capability_route_with_save(
+            directory.path(),
+            revision,
+            act_route.clone(),
+            |_, _| bail!("injected route write failure"),
+        );
+        assert!(result.unwrap_err().to_string().contains("injected"));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
+        );
+
+        let routed = save_capability_route(directory.path(), revision, act_route).unwrap();
+        let routed_bytes = std::fs::read(settings_path(directory.path())).unwrap();
+        let result = delete_capability_route_with_save(
+            directory.path(),
+            routed.revision,
+            "agent.act",
+            |_, _| bail!("injected route delete failure"),
+        );
+        assert!(result.unwrap_err().to_string().contains("injected"));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            routed_bytes
+        );
+
+        let result = declare_model_capabilities_with_save(
+            directory.path(),
+            routed.revision,
+            "model-deepseek-v4-flash",
+            AgentModelCapabilityPatch {
+                model_type: None,
+                capabilities: BTreeMap::from([("reasoning".to_string(), "no".to_string())]),
+            },
+            |_, _| bail!("injected capability write failure"),
+        );
+        assert!(result.unwrap_err().to_string().contains("injected"));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            routed_bytes
+        );
+
+        let incompatible = declare_model_capabilities(
+            directory.path(),
+            routed.revision,
+            "model-deepseek-v4-flash",
+            AgentModelCapabilityPatch {
+                model_type: None,
+                capabilities: BTreeMap::from([("function_call".to_string(), "no".to_string())]),
+            },
+        );
+        assert!(incompatible.is_err());
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            routed_bytes
+        );
+
+        let recovered = declare_model_capabilities(
+            directory.path(),
+            routed.revision,
+            "model-deepseek-v4-flash",
+            AgentModelCapabilityPatch {
+                model_type: None,
+                capabilities: BTreeMap::from([("reasoning".to_string(), "no".to_string())]),
+            },
+        )
+        .unwrap();
+        assert_eq!(recovered.revision, routed.revision + 1);
+        assert_eq!(recovered.models[0].capabilities["reasoning"].value, "no");
+    }
+
+    #[test]
+    fn simultaneous_route_writes_accept_exactly_one_revision() {
+        let directory = TempDir::new().unwrap();
+        save_settings(directory.path(), &default_settings()).unwrap();
+        let revision = load_settings(directory.path()).unwrap().revision;
+        let data_dir = Arc::new(directory.path().to_path_buf());
+        let barrier = Arc::new(Barrier::new(3));
+        let routes = [
+            AgentCapabilityRoute {
+                capability: "agent.act".to_string(),
+                model_id: "model-deepseek-v4-flash".to_string(),
+                model_type: "language".to_string(),
+                required_model_capabilities: vec!["function_call".to_string()],
+            },
+            AgentCapabilityRoute {
+                capability: "analysis.summarize".to_string(),
+                model_id: "model-deepseek-v4-flash".to_string(),
+                model_type: "language".to_string(),
+                required_model_capabilities: Vec::new(),
+            },
+        ];
+        let handles = routes
+            .into_iter()
+            .map(|route| {
+                let data_dir = Arc::clone(&data_dir);
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    barrier.wait();
+                    save_capability_route(&data_dir, revision, route)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        barrier.wait();
+        let outcomes = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes.iter().filter(|outcome| outcome.is_err()).count(),
+            1
+        );
+        let reopened = load_settings(directory.path()).unwrap();
+        assert_eq!(reopened.revision, revision + 1);
+        assert_eq!(reopened.capability_routes.len(), 2);
+    }
+
+    #[test]
+    fn two_provider_routes_resolve_one_effective_credential_per_turn() {
+        let mut settings = default_settings();
+        let mut provider = settings.providers[0].clone();
+        provider.id = "provider-act".to_string();
+        provider.display_name = "Act Provider".to_string();
+        provider.registered_provider_id = Some("openai".to_string());
+        provider.api_key_env = Some("OPENAI_API_KEY".to_string());
+        settings.providers.push(provider);
+        let mut model = settings.models[0].clone();
+        model.id = "model-act".to_string();
+        model.provider_id = "provider-act".to_string();
+        model.display_name = "Act Model".to_string();
+        model.model_id = "gpt-act".to_string();
+        settings.models.push(model);
+        settings.capability_routes.push(AgentCapabilityRoute {
+            capability: "agent.act".to_string(),
+            model_id: "model-act".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: vec!["function_call".to_string()],
+        });
+        validate_settings(&settings).unwrap();
+        let store = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([
+                (
+                    "provider-deepseek-existing".to_string(),
+                    "chat-secret".to_string(),
+                ),
+                ("provider-act".to_string(), "act-secret".to_string()),
+            ])),
+            fail_set: false,
+            fail_delete: false,
+        };
+
+        let (chat, chat_credential) =
+            resolve_model_and_credential_for_turn_with_store(&settings, None, "ask", &store)
+                .unwrap();
+        assert_eq!(chat.route_capability, "agent.chat");
+        assert_eq!(chat.provider_id, "provider-deepseek-existing");
+        assert_eq!(chat_credential.unwrap().1, "chat-secret");
+
+        let (act, act_credential) =
+            resolve_model_and_credential_for_turn_with_store(&settings, None, "act", &store)
+                .unwrap();
+        assert_eq!(act.route_capability, "agent.act");
+        assert_eq!(act.provider_id, "provider-act");
+        assert_eq!(act_credential.unwrap().1, "act-secret");
+        assert!(resolve_model_for_turn_with_settings(&settings, Some("model-act"), "ask").is_err());
+        assert!(
+            resolve_model_for_turn_with_settings(
+                &settings,
+                Some("model-deepseek-v4-flash"),
+                "act",
+            )
+            .is_err()
+        );
+        assert!(!serde_json::to_string(&settings).unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn act_fallback_is_visible_and_requires_chat_function_call_compatibility() {
+        let settings = default_settings();
+        let act = resolve_model_for_turn_with_settings(&settings, None, "act").unwrap();
+        assert_eq!(act.route_capability, "agent.chat");
+        let statuses = HashMap::from([(
+            "provider-deepseek-existing".to_string(),
+            CredentialPresentation {
+                status: "detected".to_string(),
+                source: "system".to_string(),
+            },
+        )]);
+        let view = build_settings_view(settings.clone(), system_credential_info(), statuses);
+        let act_view = view
+            .capability_routes
+            .iter()
+            .find(|route| route.capability == "agent.act")
+            .unwrap();
+        assert_eq!(act_view.inherited_from.as_deref(), Some("agent.chat"));
+        assert_eq!(act_view.compatibility, "compatible");
+
+        let mut incompatible = settings;
+        incompatible.models[0].capabilities.insert(
+            "function_call".to_string(),
+            capability_value("no", "user_declared"),
+        );
+        assert!(resolve_model_for_turn_with_settings(&incompatible, None, "act").is_err());
     }
 
     #[test]
@@ -1568,7 +3481,7 @@ mod tests {
         second_model.display_name = "Second Model".to_string();
         settings.providers.push(second_provider);
         settings.models = vec![second_model];
-        settings.selected_model_id = "model-second".to_string();
+        settings.capability_routes[0].model_id = "model-second".to_string();
         save_settings(directory.path(), &settings).unwrap();
 
         let original = load_settings(directory.path()).unwrap();
@@ -1667,7 +3580,7 @@ mod tests {
     #[test]
     fn selected_model_must_exist_and_be_enabled() {
         let mut settings = default_settings();
-        settings.selected_model_id = "missing".to_string();
+        settings.capability_routes[0].model_id = "missing".to_string();
         assert!(validate_settings(&settings).is_err());
         let mut settings = default_settings();
         settings.models[0].enabled = false;
@@ -1690,6 +3603,395 @@ mod tests {
         settings.providers[0].wire_api = Some("chat_completions".to_string());
         settings.providers[0].api_key_env = Some("OPENAI_API_KEY".to_string());
         assert!(validate_settings(&settings).is_err());
+    }
+
+    #[test]
+    fn discovery_targets_cover_builtin_and_literal_custom_providers() {
+        let mut provider = default_settings().providers.remove(0);
+        let deepseek = model_discovery_target(&provider).unwrap().unwrap();
+        assert_eq!(deepseek.url.as_str(), "https://api.deepseek.com/models");
+        assert_eq!(deepseek.format, ModelDiscoveryFormat::OpenAi);
+        assert_eq!(deepseek.auth, ModelDiscoveryAuth::Bearer);
+
+        provider.kind = "anthropic".to_string();
+        provider.registered_provider_id = None;
+        let anthropic = model_discovery_target(&provider).unwrap().unwrap();
+        assert_eq!(anthropic.url.path(), "/v1/models");
+        assert_eq!(anthropic.url.query(), Some("limit=100"));
+        assert_eq!(anthropic.format, ModelDiscoveryFormat::Anthropic);
+        assert_eq!(anthropic.auth, ModelDiscoveryAuth::Anthropic);
+
+        provider.kind = "gemini".to_string();
+        let gemini = model_discovery_target(&provider).unwrap().unwrap();
+        assert_eq!(gemini.url.path(), "/v1beta/models");
+        assert_eq!(gemini.url.query(), Some("pageSize=100"));
+        assert_eq!(gemini.format, ModelDiscoveryFormat::Gemini);
+        assert_eq!(gemini.auth, ModelDiscoveryAuth::Gemini);
+
+        provider.kind = "openai_compatible".to_string();
+        provider.base_url = Some("https://example.test/api/v1?tenant=one".to_string());
+        provider.wire_api = Some("chat_completions".to_string());
+        let custom = model_discovery_target(&provider).unwrap().unwrap();
+        assert_eq!(
+            custom.url.as_str(),
+            "https://example.test/api/v1/models?tenant=one"
+        );
+
+        provider.base_url = None;
+        provider.base_url_env = Some("CUSTOM_BASE_URL".to_string());
+        assert!(model_discovery_target(&provider).unwrap().is_none());
+    }
+
+    #[test]
+    fn discovery_parsers_filter_dedupe_sort_and_bound_models() {
+        let mut data = (0..105)
+            .map(|index| {
+                serde_json::json!({
+                    "id": format!("model-{index:03}"),
+                    "display_name": format!("Model {index:03}")
+                })
+            })
+            .collect::<Vec<_>>();
+        data.push(serde_json::json!({ "id": "model-001", "display_name": "Duplicate" }));
+        data.push(serde_json::json!({ "id": "bad\nmodel", "display_name": "Bad" }));
+        let bytes = serde_json::to_vec(&serde_json::json!({ "data": data })).unwrap();
+        let (models, truncated) =
+            parse_discovered_models(ModelDiscoveryFormat::OpenAi, &bytes).unwrap();
+        assert_eq!(models.len(), MAX_DISCOVERED_MODELS);
+        assert!(truncated);
+        assert_eq!(models.first().unwrap().id, "model-000");
+        assert_eq!(models.last().unwrap().id, "model-099");
+        assert!(models.iter().all(|model| model.id != "bad\nmodel"));
+        assert!(models.iter().all(|model| {
+            model.model_type.source == "unknown"
+                && model
+                    .capabilities
+                    .values()
+                    .all(|value| value.source == "unknown")
+        }));
+
+        assert!(
+            parse_discovered_models(ModelDiscoveryFormat::OpenAi, br#"{"models":[]}"#).is_err()
+        );
+        assert!(parse_discovered_models(ModelDiscoveryFormat::OpenAi, b"not json").is_err());
+    }
+
+    #[test]
+    fn gemini_discovery_keeps_generation_models_and_reports_pagination() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "models": [
+                {
+                    "name": "models/gemini-z",
+                    "baseModelId": "gemini-z",
+                    "displayName": "Gemini Z",
+                    "supportedGenerationMethods": ["generateContent"],
+                    "thinking": true
+                },
+                {
+                    "name": "models/text-embedding",
+                    "displayName": "Embedding",
+                    "supportedGenerationMethods": ["embedContent"]
+                },
+                {
+                    "name": "models/gemini-a",
+                    "displayName": "Gemini A",
+                    "supportedActions": ["generateContent"],
+                    "thinking": false
+                }
+            ],
+            "nextPageToken": "next-page"
+        }))
+        .unwrap();
+        let (models, truncated) =
+            parse_discovered_models(ModelDiscoveryFormat::Gemini, &bytes).unwrap();
+        assert!(truncated);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "gemini-a");
+        assert_eq!(models[0].capabilities["reasoning"].value, "no");
+        assert_eq!(
+            models[0].capabilities["reasoning"].source,
+            "provider_response"
+        );
+        assert_eq!(models[1].id, "gemini-z");
+        assert_eq!(models[1].capabilities["reasoning"].value, "yes");
+    }
+
+    #[test]
+    fn anthropic_discovery_uses_human_display_names() {
+        let bytes = br#"{
+            "data": [
+                {"id":"claude-example","display_name":"Claude Example"}
+            ],
+            "has_more": false
+        }"#;
+        let (models, truncated) =
+            parse_discovered_models(ModelDiscoveryFormat::Anthropic, bytes).unwrap();
+        assert!(!truncated);
+        assert_eq!(models[0].id, "claude-example");
+        assert_eq!(models[0].display_name, "Claude Example");
+    }
+
+    #[test]
+    fn discovery_sends_only_the_expected_auth_header_and_never_mutates_settings() {
+        let directory = TempDir::new().unwrap();
+        let secret = "discovery-secret-never-returned";
+        let body = serde_json::json!({
+            "data": [
+                {"id":"z-model"},
+                {"id":"a-model"}
+            ]
+        })
+        .to_string();
+        let (base_url, server) = spawn_discovery_server("200 OK", &[], body, Duration::ZERO);
+        save_custom_discovery_provider(&directory, base_url);
+        let before = std::fs::read(settings_path(directory.path())).unwrap();
+        let store = store_with_discovery_secret(secret);
+
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        let request = server.join().unwrap();
+
+        assert_eq!(response.status, "ready");
+        assert_eq!(response.models[0].id, "a-model");
+        assert!(request.starts_with("GET /v1/models HTTP/1.1\r\n"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains(&format!("authorization: bearer {secret}").to_ascii_lowercase())
+        );
+        assert!(!serde_json::to_string(&response).unwrap().contains(secret));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn missing_discovery_credential_rejects_before_network_access() {
+        let directory = TempDir::new().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        save_custom_discovery_provider(
+            &directory,
+            format!("http://{}/v1", listener.local_addr().unwrap()),
+        );
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &MemoryCredentialStore::default(),
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response.status, "error");
+        assert_eq!(response.error_class.as_deref(), Some("credential"));
+        assert!(matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    }
+
+    #[test]
+    fn discovery_redacts_provider_error_bodies_and_refuses_redirects() {
+        let directory = TempDir::new().unwrap();
+        let secret = "credential-that-must-not-leak";
+        let (base_url, server) = spawn_discovery_server(
+            "401 Unauthorized",
+            &[],
+            format!("provider echoed {secret}"),
+            Duration::ZERO,
+        );
+        save_custom_discovery_provider(&directory, base_url);
+        let store = store_with_discovery_secret(secret);
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        server.join().unwrap();
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert_eq!(response.error_class.as_deref(), Some("auth"));
+        assert!(!serialized.contains(secret));
+        assert!(!serialized.contains("provider echoed"));
+
+        let redirect_target = TcpListener::bind("127.0.0.1:0").unwrap();
+        redirect_target.set_nonblocking(true).unwrap();
+        let location = format!("http://{}/models", redirect_target.local_addr().unwrap());
+        let (base_url, server) = spawn_discovery_server(
+            "302 Found",
+            &[("Location", location.as_str())],
+            String::new(),
+            Duration::ZERO,
+        );
+        save_custom_discovery_provider(&directory, base_url);
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(response.status, "unsupported");
+        assert!(matches!(
+            redirect_target.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
+    }
+
+    #[test]
+    fn discovery_bounds_oversized_responses_and_timeouts() {
+        let directory = TempDir::new().unwrap();
+        let secret = "bounded-secret";
+        let (base_url, server) = spawn_discovery_server(
+            "200 OK",
+            &[],
+            "x".repeat(MAX_MODEL_DISCOVERY_BYTES + 1),
+            Duration::ZERO,
+        );
+        save_custom_discovery_provider(&directory, base_url);
+        let store = store_with_discovery_secret(secret);
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(response.error_class.as_deref(), Some("response"));
+        assert!(response.message.contains("1 MiB"));
+
+        let (base_url, server) = spawn_discovery_server(
+            "200 OK",
+            &[],
+            r#"{"data":[]}"#.to_string(),
+            Duration::from_millis(150),
+        );
+        save_custom_discovery_provider(&directory, base_url);
+        let short_client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_millis(40))
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
+            .build()
+            .unwrap();
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &short_client,
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(response.error_class.as_deref(), Some("timeout"));
+        assert!(!serde_json::to_string(&response).unwrap().contains(secret));
+    }
+
+    #[test]
+    fn unknown_and_unsupported_discovery_preserve_authority() {
+        let directory = TempDir::new().unwrap();
+        save_settings(directory.path(), &default_settings()).unwrap();
+        let store = store_with_discovery_secret("secret");
+        assert!(
+            discover_models_with_store(
+                directory.path(),
+                "unknown-provider",
+                &store,
+                &model_discovery_client().unwrap(),
+            )
+            .is_err()
+        );
+
+        let mut settings = default_settings();
+        settings.providers[0].registered_provider_id = Some("unlisted-provider".to_string());
+        save_settings(directory.path(), &settings).unwrap();
+        let response = discover_models_with_store(
+            directory.path(),
+            "provider-deepseek-existing",
+            &store,
+            &model_discovery_client().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(response.status, "unsupported");
+        assert!(response.models.is_empty());
+    }
+
+    #[test]
+    fn catalog_enrichment_requires_an_exact_provider_and_model_match() {
+        let mut settings = default_settings();
+        let provider = settings.providers.remove(0);
+        let mut models = vec![
+            AgentDiscoveredModel {
+                id: "deepseek-v4-flash".to_string(),
+                display_name: "DeepSeek V4 Flash".to_string(),
+                model_type: capability_value("unknown", "unknown"),
+                capabilities: unknown_capabilities(),
+            },
+            AgentDiscoveredModel {
+                id: "unlisted-model".to_string(),
+                display_name: "Unlisted".to_string(),
+                model_type: capability_value("unknown", "unknown"),
+                capabilities: unknown_capabilities(),
+            },
+        ];
+        let mut catalog_capabilities = unknown_capabilities();
+        catalog_capabilities.insert(
+            "function_call".to_string(),
+            capability_value("yes", "aisdk_catalog"),
+        );
+        let entries = vec![AgentCatalogEntry {
+            provider: "deepseek".to_string(),
+            id: "deepseek-v4-flash".to_string(),
+            display_name: "DeepSeek V4 Flash".to_string(),
+            description: None,
+            model_type: capability_value("language", "aisdk_catalog"),
+            capabilities: catalog_capabilities,
+        }];
+
+        enrich_discovered_models(&provider, &mut models, &entries);
+        assert_eq!(models[0].model_type.value, "language");
+        assert_eq!(
+            models[0].capabilities["function_call"].source,
+            "aisdk_catalog"
+        );
+        assert_eq!(models[1].model_type.value, "unknown");
+        assert!(
+            models[1]
+                .capabilities
+                .values()
+                .all(|capability| capability.source == "unknown")
+        );
+    }
+
+    #[test]
+    fn text_connection_test_rejects_non_language_models_before_probe() {
+        let directory = TempDir::new().unwrap();
+        let mut settings = default_settings();
+        let mut image_model = settings.models[0].clone();
+        image_model.id = "model-image".to_string();
+        image_model.model_id = "image-model".to_string();
+        image_model.display_name = "Image model".to_string();
+        image_model.model_type = capability_value("image", "user_declared");
+        image_model.capabilities = unknown_capabilities();
+        settings.models.push(image_model);
+        save_settings(directory.path(), &settings).unwrap();
+
+        let error = test_model(
+            directory.path(),
+            Path::new("/missing/Rscript"),
+            Path::new("/missing/rho.agent"),
+            "model-image",
+            None,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("Only language models"));
     }
 
     #[test]

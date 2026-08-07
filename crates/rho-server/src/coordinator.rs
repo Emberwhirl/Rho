@@ -33,7 +33,17 @@ pub struct CoordinatorRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AgentRuntimeCapabilityRoute {
+    pub capability: String,
+    pub model: String,
+    pub model_type: String,
+    pub required_model_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AgentRuntimeModelProfile {
+    pub settings_revision: u64,
+    pub route_capability: String,
     pub profile_id: String,
     pub provider_kind: String,
     pub runtime_provider_id: String,
@@ -48,6 +58,7 @@ pub struct AgentRuntimeModelProfile {
     pub tool_calling: String,
     pub provider_display_name: String,
     pub model_display_name: String,
+    pub capability_routes: Vec<AgentRuntimeCapabilityRoute>,
 }
 
 const MAX_CANONICAL_SNAPSHOT_BYTES: usize = 2 * 1024 * 1024;
@@ -1627,6 +1638,7 @@ mode_policy <- switch(
   )
 )
 resolved_model <- rho_resolve_model_profile(profile)
+capability_models <- rho_runtime_profile_capability_models(profile, resolved_model)
 tools <- if (identical(profile$tool_calling %||% "unknown", "yes")) rho_create_workspace_tools() else list()
 tool_notice <- if (identical(profile$tool_calling %||% "unknown", "yes")) {
   "Workspace and file proposal tools are enabled."
@@ -1651,7 +1663,8 @@ session <- rho_create_aisdk_session(
     mode_policy
   ),
   tools = tools,
-   max_steps = if (identical(mode, "act")) 512L else 128L,
+  max_steps = if (identical(mode, "act")) 512L else 128L,
+  capability_models = capability_models,
   connection = connection
 )
 turn_error <- tryCatch(
@@ -1667,13 +1680,24 @@ turn_error <- tryCatch(
 if (is.null(turn_error)) {
   rho_agent_emit(
     "desktop.agent_completed",
-    list(model = resolved_model, mode = mode),
+    list(
+      model = resolved_model,
+      mode = mode,
+      capability = profile$route_capability,
+      settings_revision = profile$settings_revision
+    ),
     connection
   )
 } else {
   rho_agent_emit(
     "desktop.agent_failed",
-    list(model = resolved_model, mode = mode, error = turn_error),
+    list(
+      model = resolved_model,
+      mode = mode,
+      capability = profile$route_capability,
+      settings_revision = profile$settings_revision,
+      error = turn_error
+    ),
     connection
   )
 }
@@ -5080,6 +5104,8 @@ mod tests {
     fn desktop_agent_prompt_transport_uses_stdin_instead_of_command_args() {
         let prompt = "x".repeat(40_000);
         let profile = AgentRuntimeModelProfile {
+            settings_revision: 7,
+            route_capability: "agent.chat".to_string(),
             profile_id: "model-deepseek-v4-flash".to_string(),
             provider_kind: "registered".to_string(),
             runtime_provider_id: "rho_profile_provider_deepseek".to_string(),
@@ -5094,6 +5120,12 @@ mod tests {
             tool_calling: "yes".to_string(),
             provider_display_name: "DeepSeek".to_string(),
             model_display_name: "DeepSeek V4 Flash".to_string(),
+            capability_routes: vec![AgentRuntimeCapabilityRoute {
+                capability: "agent.chat".to_string(),
+                model: "deepseek:deepseek-v4-flash".to_string(),
+                model_type: "language".to_string(),
+                required_model_capabilities: Vec::new(),
+            }],
         };
         let args = desktop_agent_turn_args(4321, Path::new("r/rho.agent"), "ask");
         let stdin_payload = desktop_agent_turn_stdin("secret-token", &profile, &prompt).unwrap();

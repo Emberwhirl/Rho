@@ -1,11 +1,14 @@
 # Rho 0.4.0-dev.17 Cross-Platform Candidate Checklist
 
-Status: active development-candidate identity; Issue #4 Model settings behavior
-is implemented and locally verified; authoritative candidate assets,
-GitHub Release draft, installed-candidate acceptance, MAC5, and release GO are
-NOT RUN and unauthorized
+Status: historical development-candidate snapshot; Issue #4 Model settings
+behavior was implemented and locally verified, but this identity was
+superseded by `0.4.0-dev.18` before authoritative candidate assets, a GitHub
+Release draft, installed-candidate acceptance, MAC5, or release GO were run
 
 Date: 2026-08-07
+
+Historical boundary: all local app/DMG hashes and verification facts below
+remain exact to `0.4.0-dev.17`. They cannot satisfy any `0.4.0-dev.18` gate.
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 installed acceptance, and update-publication inputs

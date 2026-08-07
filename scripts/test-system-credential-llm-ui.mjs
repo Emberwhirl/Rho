@@ -13,7 +13,7 @@ assert.match(
   /id="agentLlmCredential" type="password" autocomplete="new-password" spellcheck="false"/,
   "The API key must be a transient password input without browser autofill"
 );
-for (const label of ["Provider type", "Model", "API key", "Save", "Test connection", "Use this model"]) {
+for (const label of ["Model routing", "Connections", "Model library", "Provider type", "Model", "API key", "Save", "Test connection", "Assign to Chat"]) {
   assert.ok(html.includes(label), `Missing required primary setting: ${label}`);
 }
 for (const id of ["agentLlmCurrentSelection", "agentLlmCurrentStatus", "agentLlmProviderList", "agentLlmModelList"]) {
@@ -44,7 +44,13 @@ for (const id of [
   "agentLlmModelToolCalling",
   "agentLlmModelReasoning",
   "agentLlmModelVisionInput",
-  "agentLlmModelCapabilitySource",
+  "agentLlmModelImageOutput",
+  "agentLlmModelImageEdit",
+  "agentLlmModelAudioInput",
+  "agentLlmModelAudioOutput",
+  "agentLlmModelStructuredOutput",
+  "agentLlmModelWebSearch",
+  "agentLlmModelEvidence",
   "agentLlmDeleteModel",
 ]) assert.ok(modelDialog.includes(`id="${id}"`), `${id} must be isolated in the model editor`);
 assert.ok(html.indexOf('id="agentLlmDeleteProvider"') > advancedStart, "Provider deletion must follow Provider Advanced");

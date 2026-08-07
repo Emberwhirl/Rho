@@ -318,6 +318,8 @@ rho_tool_result_preview <- function(tool, value) {
 rho_validate_runtime_model_profile <- function(profile) {
   stopifnot(is.list(profile))
   required <- c(
+    "settings_revision",
+    "route_capability",
     "profile_id",
     "provider_kind",
     "runtime_provider_id",
@@ -344,7 +346,38 @@ rho_validate_runtime_model_profile <- function(profile) {
   if (!(profile$tool_calling %in% c("yes", "no", "unknown"))) {
     stop(sprintf("Unsupported tool calling capability: %s", profile$tool_calling))
   }
+  if (length(profile$capability_routes %||% list()) != 1L) {
+    stop("Runtime model profiles must contain exactly one effective capability route.")
+  }
   invisible(profile)
+}
+
+rho_runtime_profile_capability_models <- function(profile, resolved_model = NULL) {
+  rho_validate_runtime_model_profile(profile)
+  routes <- profile$capability_routes %||% list()
+  route <- routes[[1L]]
+  capability <- route$capability %||% ""
+  if (!identical(capability, profile$route_capability %||% "")) {
+    stop("Runtime capability route does not match the effective route.")
+  }
+  model <- resolved_model %||% route$model %||% ""
+  if (!nzchar(model) || !identical(route$model %||% "", model)) {
+    stop("Runtime capability route does not match the effective model.")
+  }
+  type <- route$model_type %||% "auto"
+  if (!(type %in% c("language", "embedding", "image", "auto"))) {
+    stop("Runtime capability route has an unsupported model type.")
+  }
+  output <- list()
+  output[[capability]] <- list(
+    model = model,
+    type = type,
+    required_model_capabilities = unlist(
+      route$required_model_capabilities %||% list(),
+      use.names = FALSE
+    )
+  )
+  aisdk::normalize_capability_model_routes(output)
 }
 
 rho_redact_known_values <- function(text, values = character()) {
@@ -620,6 +653,7 @@ rho_create_aisdk_session <- function(model,
                                      system_prompt = NULL,
                                      tools = rho_create_workspace_tools(),
                                      max_steps = 512L,
+                                     capability_models = list(),
                                      connection = .rho_agent_state$connection) {
   aisdk::create_chat_session(
     model = model,
@@ -627,7 +661,10 @@ rho_create_aisdk_session <- function(model,
     tools = tools,
     hooks = rho_create_aisdk_hooks(connection),
     max_steps = as.integer(max_steps),
-    metadata = list(rho_desktop = TRUE)
+    metadata = list(
+      rho_desktop = TRUE,
+      capability_models = aisdk::normalize_capability_model_routes(capability_models)
+    )
   )
 }
 

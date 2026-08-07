@@ -4,6 +4,30 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.18 - 2026-08-07
+
+### Improved
+
+- Model settings now separates Connections, the Model library, and typed Model
+  routing. Chat and Act can use different language models, while image,
+  editing, vision, and embedding routes preserve their capability contracts
+  until their isolated consumers are installed.
+- Provider discovery imports model type and capability evidence only from an
+  exact pinned `aisdk` catalog match; Provider responses and manual declarations
+  remain distinguishable, and unknown capabilities are never guessed.
+- Existing V1 model settings migrate deterministically to the V2 `agent.chat`
+  route. The first explicit change preserves a byte-identical V1 backup, route
+  writes use revision checks, and Ask/Plan/Act resolve one route and one
+  credential without silent Provider fallback.
+- Add provider and Add model now fetch the configured provider's available
+  models first for OpenAI, DeepSeek, Anthropic, Gemini, compatible, custom,
+  and local endpoints. Choosing a discovered model still requires an explicit
+  Save before settings change.
+- Manual Model ID entry remains available in a secondary disclosure and opens
+  automatically when discovery is unsupported, empty, or fails. Model-list
+  requests are bounded, do not send prompts, do not follow redirects, and use
+  the provider credential only in the required authentication header.
+
 ## 0.4.0-dev.17 - 2026-08-07
 
 ### Improved

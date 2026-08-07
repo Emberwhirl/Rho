@@ -18,7 +18,8 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as SyncRwLock};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use agent_llm::{
-    AgentLlmSettingsView, AgentModelProfile, AgentModelTestControl, AgentProviderProfile,
+    AgentCapabilityRoute, AgentLlmSettingsView, AgentModelCapabilityPatch,
+    AgentModelDiscoveryResponse, AgentModelProfile, AgentModelTestControl, AgentProviderProfile,
     DeleteModelRequest,
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -488,8 +489,10 @@ struct EnvironmentOperationDecisionRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AgentLlmSelectRequest {
     model_id: String,
+    expected_revision: u64,
 }
 
 fn runtime_config(state: &AppState) -> Result<RuntimeConfig> {
@@ -2837,14 +2840,12 @@ async fn run_agent(
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let turn_id = format!("agent_turn_{}", Uuid::new_v4());
-    let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, model_id.as_deref())
-        .map_err(display_error)?;
-    let credential_override =
-        agent_llm::credential_override_for_model(&config.data_dir, model_id.as_deref())
-            .map_err(display_error)?;
-    if mode == "act" && resolved_model.runtime_profile.tool_calling != "yes" {
-        return Err("The selected model does not support Act mode.".to_string());
-    }
+    let (resolved_model, credential_override) = agent_llm::resolve_model_and_credential_for_turn(
+        &config.data_dir,
+        model_id.as_deref(),
+        &mode,
+    )
+    .map_err(display_error)?;
     let auto_approve = auto_approve.unwrap_or(false) && mode == "act";
     {
         let mut context_guard = context.lock().await;
@@ -2887,7 +2888,9 @@ async fn run_agent(
                     "model_profile_id": resolved_model.runtime_profile.profile_id,
                     "model_display_name": resolved_model.model_display_name,
                     "provider_display_name": resolved_model.provider_display_name,
-                    "effective_model": resolved_model.effective_model_ref
+                    "effective_model": resolved_model.effective_model_ref,
+                    "model_settings_revision": resolved_model.settings_revision,
+                    "capability_route": resolved_model.route_capability
                 }))
                 .map_err(display_error)?,
             })
@@ -2952,8 +2955,8 @@ async fn agent_llm_save_provider(
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::save_provider(&config.data_dir, provider).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let settings = agent_llm::save_provider(&config.data_dir, provider).map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
 #[tauri::command]
@@ -2962,8 +2965,9 @@ async fn agent_llm_delete_provider(
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::delete_provider(&config.data_dir, &provider_id).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let settings =
+        agent_llm::delete_provider(&config.data_dir, &provider_id).map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
 #[tauri::command]
@@ -2994,8 +2998,8 @@ async fn agent_llm_save_model(
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::save_model(&config.data_dir, model).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let settings = agent_llm::save_model(&config.data_dir, model).map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
 #[tauri::command]
@@ -3004,8 +3008,8 @@ async fn agent_llm_delete_model(
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::delete_model(&config.data_dir, &request).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let settings = agent_llm::delete_model(&config.data_dir, &request).map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
 #[tauri::command]
@@ -3014,8 +3018,61 @@ async fn agent_llm_select_model(
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::select_model(&config.data_dir, &request.model_id).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let settings = agent_llm::save_capability_route(
+        &config.data_dir,
+        request.expected_revision,
+        AgentCapabilityRoute {
+            capability: "agent.chat".to_string(),
+            model_id: request.model_id,
+            model_type: "language".to_string(),
+            required_model_capabilities: Vec::new(),
+        },
+    )
+    .map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_save_capability_route(
+    expected_revision: u64,
+    route: AgentCapabilityRoute,
+    state: State<'_, AppState>,
+) -> Result<AgentLlmSettingsView, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    let settings = agent_llm::save_capability_route(&config.data_dir, expected_revision, route)
+        .map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_delete_capability_route(
+    expected_revision: u64,
+    capability: String,
+    state: State<'_, AppState>,
+) -> Result<AgentLlmSettingsView, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    let settings =
+        agent_llm::delete_capability_route(&config.data_dir, expected_revision, &capability)
+            .map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_declare_model_capabilities(
+    expected_revision: u64,
+    model_id: String,
+    patch: AgentModelCapabilityPatch,
+    state: State<'_, AppState>,
+) -> Result<AgentLlmSettingsView, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    let settings = agent_llm::declare_model_capabilities(
+        &config.data_dir,
+        expected_revision,
+        &model_id,
+        patch,
+    )
+    .map_err(display_error)?;
+    agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
 #[tauri::command]
@@ -3061,6 +3118,22 @@ async fn agent_llm_catalog(state: State<'_, AppState>) -> Result<Value, String> 
     let config = runtime_config(&state).map_err(display_error)?;
     let entries = agent_llm::catalog(&config.rscript).map_err(display_error)?;
     serde_json::to_value(entries).map_err(display_error)
+}
+
+#[tauri::command]
+async fn agent_llm_discover_models(
+    provider_id: String,
+    state: State<'_, AppState>,
+) -> Result<AgentModelDiscoveryResponse, String> {
+    let config = runtime_config(&state).map_err(display_error)?;
+    let data_dir = config.data_dir.clone();
+    let rscript = config.rscript.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        agent_llm::discover_models(&data_dir, &rscript, &provider_id)
+    })
+    .await
+    .map_err(display_error)?
+    .map_err(display_error)
 }
 
 #[derive(Deserialize)]
@@ -6809,7 +6882,7 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         let turn_id = format!("smoke_turn_{}", Uuid::new_v4());
         let prompt =
             "请检查 rho_desktop_smoke 对象，告诉我它有多少行和多少列。不要修改工作区。".to_string();
-        let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, None)?;
+        let resolved_model = agent_llm::resolve_model_for_turn(&config.data_dir, None, "ask")?;
         {
             let mut context_guard = context.lock().await;
             let identity = context_guard.broker.identity().clone();
@@ -7067,10 +7140,14 @@ fn main() {
             agent_llm_save_model,
             agent_llm_delete_model,
             agent_llm_select_model,
+            agent_llm_save_capability_route,
+            agent_llm_delete_capability_route,
+            agent_llm_declare_model_capabilities,
             agent_llm_refresh_credentials,
             agent_llm_test_model,
             agent_llm_cancel_test,
             agent_llm_catalog,
+            agent_llm_discover_models,
             list_agent_turns,
             clear_agent_history,
             list_approval_requests,

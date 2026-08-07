@@ -37,6 +37,11 @@ for (const id of [
   "agentLlmSaveCredential",
   "agentLlmTestModel",
   "agentLlmSelectDefault",
+  "agentLlmRoutingTab",
+  "agentLlmConnectionsTab",
+  "agentLlmLibraryTab",
+  "agentLlmRouteList",
+  "agentLlmLibraryList",
 ]) assert.ok(mainDialog.includes(`id="${id}"`), `${id} must be in the default provider-card surface`);
 
 assert.match(mainDialog, /id="agentLlmProviderList"[^>]*role="listbox"/);
@@ -88,10 +93,17 @@ for (const id of [
   "agentLlmModelProvider",
   "agentLlmModelId",
   "agentLlmModelEnabled",
+  "agentLlmModelType",
   "agentLlmModelToolCalling",
   "agentLlmModelReasoning",
   "agentLlmModelVisionInput",
-  "agentLlmModelCapabilitySource",
+  "agentLlmModelImageOutput",
+  "agentLlmModelImageEdit",
+  "agentLlmModelAudioInput",
+  "agentLlmModelAudioOutput",
+  "agentLlmModelStructuredOutput",
+  "agentLlmModelWebSearch",
+  "agentLlmModelEvidence",
   "agentLlmSaveModel",
   "agentLlmModelStatus",
 ]) assert.ok(modelDialog.includes(`id="${id}"`), `${id} must be in the dedicated Model editor`);
@@ -103,6 +115,8 @@ assert.match(css, /\.agent-llm-shell\s*\{[^}]*grid-template-columns:\s*minmax\(1
 assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.agent-llm-shell\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
 assert.match(css, /\.agent-llm-danger-zone/);
 assert.match(css, /\.agent-llm-provider-card/);
+assert.match(css, /\.agent-llm-route-card/);
+assert.match(css, /\.agent-llm-library-card/);
 assert.match(css, /\.agent-llm-operation-status\.(?:working|success|warning|error)/);
 assert.match(css, /\.menu-popover\[hidden\]\s*\{\s*display:\s*none;/, "Closed menus must leave the accessibility tree");
 
@@ -117,6 +131,10 @@ for (const name of [
   "advanceAgentLlmProviderWizard",
   "finishAgentLlmProviderWizard",
   "openAgentLlmModelDialog",
+  "switchAgentLlmView",
+  "renderAgentLlmRouting",
+  "renderAgentLlmLibrary",
+  "persistAgentCapabilityRoute",
   "saveAgentLlmCredential",
   "maybeFailMockAgentLlm",
   "trapAgentLlmDialogFocus",
@@ -144,7 +162,8 @@ assert.match(wizardAdvance, /clearAgentLlmCredentialInput\(\)/);
 assert.match(wizardAdvance, /Enter the provider Base URL before continuing[\s\S]*clearAgentLlmCredentialInput|clearAgentLlmCredentialInput\(\)[\s\S]*Enter the provider Base URL before continuing/);
 const wizardFinish = sliceBetween(js, "async function finishAgentLlmProviderWizard()", "\nfunction openAgentLlmModelDialog", "Provider wizard Model transition");
 assert.match(wizardFinish, /agent_llm_save_model/);
-assert.match(wizardFinish, /agent_llm_select_model/);
+assert.doesNotMatch(wizardFinish, /agent_llm_select_model/);
+assert.match(wizardFinish, /Assign it to a capability route/);
 assert.match(wizardFinish, /Provider saved; model not saved/);
 
 for (const state of ["working", "success", "warning", "error"]) {
@@ -174,4 +193,4 @@ assert.match(js, /requestAnimationFrame\(\(\) => \$\("#agentLlmClose"\)\.focus\(
 assert.match(js, /state\.agentLlm\.returnFocusElement/);
 assert.doesNotMatch(js, /async function saveAgentLlmConfiguration\(/);
 
-console.log("Issue #4 original Model settings contract checks passed.");
+console.log("Issue #4 Model settings and capability-routing contract checks passed.");

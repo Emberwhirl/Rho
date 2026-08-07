@@ -322,6 +322,71 @@ test_that("aisdk session is marked as a Rho desktop session", {
   expect_true(session$get_metadata("rho_desktop"))
 })
 
+test_that("desktop aisdk sessions preserve typed capability routes", {
+  skip_if_not_installed("aisdk")
+  routes <- list(
+    agent.chat = list(
+      model = "deepseek:deepseek-v4-flash",
+      type = "language",
+      required_model_capabilities = character()
+    )
+  )
+  session <- rho_create_aisdk_session(
+    model = NULL,
+    tools = list(),
+    capability_models = routes
+  )
+
+  effective <- session$get_metadata("capability_models")
+  expect_identical(names(effective), "agent.chat")
+  expect_identical(effective[[1L]]$model, "deepseek:deepseek-v4-flash")
+  expect_identical(effective[[1L]]$type, "language")
+})
+
+test_that("runtime profile admits exactly one matching non-secret route", {
+  skip_if_not_installed("aisdk")
+  profile <- list(
+    settings_revision = 9L,
+    route_capability = "agent.act",
+    profile_id = "model-act",
+    provider_kind = "registered",
+    runtime_provider_id = "rho_profile_provider_act",
+    registered_provider_id = "deepseek",
+    model_id = "deepseek-v4-flash",
+    api_key_env = "DEEPSEEK_API_KEY",
+    api_key_required = TRUE,
+    base_url = NULL,
+    base_url_env = NULL,
+    wire_api = NULL,
+    disable_stream_options = FALSE,
+    tool_calling = "yes",
+    capability_routes = list(list(
+      capability = "agent.act",
+      model = "deepseek:deepseek-v4-flash",
+      model_type = "language",
+      required_model_capabilities = list("function_call")
+    ))
+  )
+
+  routes <- rho.agent:::rho_runtime_profile_capability_models(
+    profile,
+    "deepseek:deepseek-v4-flash"
+  )
+  expect_identical(names(routes), "agent.act")
+  expect_identical(routes[[1L]]$required_model_capabilities, "function_call")
+
+  profile$capability_routes[[1L]]$capability <- "image.generate"
+  expect_error(
+    rho.agent:::rho_runtime_profile_capability_models(profile),
+    "does not match"
+  )
+  profile$capability_routes <- c(profile$capability_routes, profile$capability_routes)
+  expect_error(
+    rho.agent:::rho_runtime_profile_capability_models(profile),
+    "exactly one"
+  )
+})
+
 test_that("desktop aisdk sessions allow long multi-step analyses", {
   expect_identical(eval(formals(rho_create_aisdk_session)$max_steps), 512L)
 })

@@ -1,6 +1,6 @@
 Package: rho.agent
 Title: Rho Agent Process Adapter
-Version: 0.1.2
+Version: 0.1.3
 Authors@R: person("Rho", "Contributors", email = "rho@example.com", role = c("aut", "cre"))
 Description: Authenticated framed transport and structured event helpers for
     the Rho Agent R process powered by aisdk.

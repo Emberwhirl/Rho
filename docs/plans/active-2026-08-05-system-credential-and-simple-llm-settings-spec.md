@@ -5,12 +5,23 @@ implemented; the separately owned macOS Keychain adapter was implemented and
 verified in MAC3 on 2026-08-05; CRED-UX2 was explicitly authorized by the
 project owner on 2026-08-07 to complete the original Issue #4 requirements;
 CRED-UX2 implementation and local verification completed on 2026-08-07, while
-exact installed-candidate acceptance remains open
+exact installed-candidate acceptance remains open; CRED-UX3 provider model
+discovery was explicitly authorized by the project owner on 2026-08-07 and is
+implemented with deterministic verification; its candidate handoff is paused
+because the project owner requested a capability-routed redesign on 2026-08-07;
+CRED-UX4A routing foundation was explicitly authorized by the project owner on
+2026-08-07; implementation, the complete affected automated matrix,
+deterministic browser review, and an independent security/contract review are
+complete, while owner and exact installed-candidate acceptance remain open;
+CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
 
 Risk: R3 because the work creates, reads, replaces, and deletes model
-credentials and injects one credential into a supervised Agent R process.
+credentials, injects one credential into a supervised Agent R or isolated
+capability-worker process, uses a credential for a bounded provider
+model-discovery request, and proposes a settings migration plus typed
+capability-execution boundary.
 
 Owning documents: this specification owns the Windows system-credential
 boundary and the simplified model-configuration workflow. The implemented
@@ -28,6 +39,23 @@ automated verification, and representative macOS installed-app acceptance
 before release handoff. CRED-UX2 does not authorize OAuth, account sync,
 per-project credentials, model routing, a new credential backend, or provider
 network discovery beyond the existing explicit connection test and catalog.
+
+Authorized work package: CRED-UX3, discovery-first model selection for the
+guided Add provider flow and Add model editor. It adds one read-only bounded
+Provider request and retains manual Model ID entry as a truthful fallback.
+Mandatory stop: contract review, automated verification, independent safety
+review, and a new local macOS candidate before release handoff. CRED-UX3 does
+not authorize background polling, model auto-save, model routing, OAuth,
+account sync, a new credential source, or a settings-schema change.
+
+Implemented work package: CRED-UX4A, capability-routed model foundation. The
+project owner explicitly authorized implementation on 2026-08-07 after review
+of the three-layer redesign. This activates only schema V2, deterministic V1
+migration, metadata provenance, settings routing UI, existing Ask/Plan/Act
+route resolution, and one selected-route credential per Agent child. The next
+mandatory stop is the CRED-UX4A verification and owner-acceptance gate.
+Capability-worker execution, new media tools, optional-route credential use,
+CRED-UX4B, and CRED-UX4C remain separately gated.
 
 Authorized follow-up: simplify the delivered settings surface and make the
 Windows system credential the only Agent LLM API-key source. Legacy
@@ -60,9 +88,11 @@ options.
 - The frontend may hold the key only in the password input while the user is
   editing and while one save command is in flight. It clears the input after
   every success, failure, dialog close, provider change, and project change.
-- Rust retrieves a key only for connection testing or the selected Agent turn.
-  It injects the value under the profile's existing `api_key_env` name into
-  that short-lived Agent R child process. Workspace R never receives it.
+- Rust retrieves a key only for connection testing, an explicit model-discovery
+  request, or the selected Agent turn. Connection testing and Agent execution
+  inject the value under the profile's existing `api_key_env` name into a
+  short-lived Agent R child process. Model discovery attaches it only to the
+  provider-specific HTTP authentication header. Workspace R never receives it.
 - Exact key values never cross back from Rust. Views return only `stored`,
   `environment`, `not_detected`, `not_required`, or `unavailable` projections.
 - Agent LLM API keys are read only from the Windows system credential store.
@@ -346,9 +376,470 @@ version authorities, and update `NEWS.md`. No R package contract changes, so no
 R package version bump is required. This authorization does not authorize a
 tag, GitHub Release, Pages update, public distribution, or MAC5 release GO.
 
+## CRED-UX3 Provider Model Discovery
+
+### Problem, Authorization, And Primary UX
+
+The delivered Add provider and Add model flows make a manually typed Model ID
+the default even when the configured Provider exposes an authenticated model
+list. On 2026-08-07 the project owner explicitly requested that Rho fetch that
+list for the common API providers and use manual entry only as a fallback.
+
+After a guided Connection step has durably saved provider metadata and any
+required credential, its Model step immediately performs one discovery
+request. Opening `Add model` for an existing provider does the same. The
+default Model surface is a labelled `Available models` selector with loading,
+ready, empty, unsupported, and error states plus an explicit `Refresh models`
+action. A discovered choice fills the existing non-secret model draft but does
+not save, enable, test, or select it until the user invokes the existing save
+action.
+
+`Enter a model ID manually` is a secondary, initially closed disclosure. Rho
+opens it automatically when discovery is unsupported, empty, or fails, and the
+user can open it at any time for a model omitted by the Provider. Editing an
+existing model opens its current ID fields because the task is editing durable
+metadata, not choosing a new Provider model. Discovery never removes or
+overwrites an existing model and never silently substitutes another model.
+
+The UI states that discovery uses the stored Provider key, sends no prompt, and
+may contact the configured Provider. It does not describe the static
+`aisdk::list_models()` metadata catalog as a live Provider result. That catalog
+may still supply non-authoritative capability hints after an exact Provider and
+model-ID match.
+
+### Typed Command And Provider Strategies
+
+Add one read-only typed command:
+
+```text
+agent_llm_discover_models(provider_id) -> {
+  status: ready | unsupported | error,
+  provider_id,
+  models: [{ id, display_name, capabilities }],
+  truncated,
+  message,
+  error_class?
+}
+```
+
+The command resolves `provider_id` from the current global settings and rejects
+an unknown provider before credential or network access. It reads the provider's
+credential from the existing system store immediately before the request. A
+key-required provider with a missing or unavailable credential returns a
+redacted `credential` error. A key-optional local Provider sends no
+authentication header.
+
+Supported strategies are:
+
+- OpenAI and OpenAI-compatible: authenticated `GET /models`, parsing bounded
+  OpenAI-style `data[].id` entries;
+- DeepSeek: authenticated `GET https://api.deepseek.com/models` with the same
+  response shape;
+- Anthropic: authenticated `GET https://api.anthropic.com/v1/models` using
+  `x-api-key` plus the required `anthropic-version` header;
+- Gemini: authenticated
+  `GET https://generativelanguage.googleapis.com/v1beta/models` using the
+  `x-goog-api-key` header and retaining only models that advertise
+  `generateContent`;
+- a custom literal Base URL: append `/models` without replacing its host,
+  scheme, port, or existing path; use the configured OpenAI or Anthropic wire
+  authentication style.
+
+An unrecognized registered Provider and a custom Provider configured only by
+`base_url_env` return `unsupported`; CRED-UX3 does not read an environment URL
+or expand its possible secret/network authority. The manual path remains fully
+functional. Provider responses are suggestions only and do not become a new
+catalog, persistence source, capability authority, or compatibility promise.
+
+### Bounds, Redaction, Failure, And Recovery
+
+- Each invocation performs at most one HTTP request, has a 15-second total
+  timeout, accepts at most 1 MiB of response bytes, exposes at most 100 unique
+  valid models, and reads only the first Provider page. `truncated=true` reports
+  an additional page or entries beyond the model limit.
+- Redirects and automatic retries are disabled so an authentication header is
+  never forwarded to another location. The request does not use an
+  environment-derived Base URL. Fixed built-in endpoints use HTTPS; an explicit
+  literal custom/local URL retains the user's already validated endpoint
+  authority.
+- Credentials never enter a URL, command argument, request/response object,
+  frontend state, settings file, log, diagnostic, toast, or Provider error
+  body. Error projection names only a bounded class: `credential`, `auth`,
+  `rate_limit`, `network`, `timeout`, `unsupported`, or `response`.
+- Non-success HTTP response bodies are discarded. Malformed, oversized, or
+  structurally invalid success bodies fail closed. Empty, duplicate, blank, or
+  over-limit model IDs are ignored; display names are bounded and fall back to
+  the model ID.
+- Discovery is read-only. Success, rejection, cancellation by closing the
+  dialog, timeout, parsing failure, and retry leave provider/model metadata,
+  credentials, and global selection unchanged. Late results are applied only
+  when they still match the active dialog, scope, and Provider.
+- Browser/mock mode implements the same command and deterministic loading,
+  ready, empty, unsupported, auth-failure, malformed-response, retry, stale
+  Provider, and manual-fallback projections without containing a real key.
+
+### CRED-UX3 Verification And Acceptance
+
+Focused automated evidence must prove:
+
+- provider-specific URL, authentication-header, response-shape, Gemini
+  generation-method filtering, deduplication, sorting, bounds, and truncation;
+- unknown Provider and missing credential reject before network access;
+- redirects are not followed and response/error serialization never contains
+  the injected credential, response body, or a secret-bearing endpoint;
+- timeout/network, 401/403, 404/unsupported, 429, malformed JSON, oversized
+  response, empty list, and retry paths are truthful and preserve settings;
+- wizard discovery starts only after the provider/key save sequence completes,
+  while Add model discovers for the selected Provider and discards stale
+  results after a Provider switch or dialog close;
+- discovered selection fills a draft but does not mutate settings until Save;
+  manual entry is initially secondary and becomes visible on every required
+  fallback path;
+- browser/mock command parity, keyboard/focus containment, narrow layout, JS
+  syntax, Rust format/tests, complete affected frontend tests, and
+  `git diff --check` pass.
+
+Representative installed-app acceptance uses a disposable Provider credential
+without recording it in screenshots or evidence. It verifies one successful
+live list, one auth/failure fallback, manual entry, refresh, Provider switching,
+close/reopen recovery, and that no model changes until Save. Live evidence is
+separate from deterministic tests and remains `NOT RUN` until performed.
+
+### CRED-UX3 Version And Release Impact
+
+CRED-UX3 changes the default user-visible model setup workflow. After reviewed
+implementation and the full affected automated matrix pass, the next local
+development candidate advances from `0.4.0-dev.17` to `0.4.0-dev.18`, keeps all
+application version authorities synchronized, and updates `NEWS.md`. No R
+package API or contents change. This work package does not authorize a tag,
+GitHub Release, Pages update, public distribution, or MAC5 release GO.
+
+## CRED-UX4 Capability-Routed Model Architecture
+
+### Status, Evidence, And Correction
+
+The project owner requested this redesign on 2026-08-07 after observing that
+`aisdk` model configuration is not a single global choice. Design work is
+authorized and cross-reviewed. The owner explicitly activated CRED-UX4A on
+2026-08-07. CRED-UX4B and CRED-UX4C are not active.
+
+The exact `aisdk` commit pinned by `rho.agent`,
+`1e2fa54358dda647a6d5cbf64c0625642c673e4c`, already provides:
+
+- a default `ChatSession` language model;
+- arbitrary normalized capability route names;
+- session routes that override global routes;
+- route model types `auto`, `language`, `embedding`, and `image`;
+- `required_model_capabilities` validation;
+- `set_capability_model()`, `get_capability_model()`,
+  `list_capability_models()`, `clear_capability_model()`, and
+  `resolve_model_for_capability()`.
+
+The current Rho contract does not represent that model. It persists one
+`selected_model_id`, imports only language models from `aisdk::list_models()`,
+transports one runtime model profile, injects one selected Provider credential,
+and creates `ChatSession` without capability routes. CRED-UX3 correctly solves
+Provider model discovery but does not solve routing. A Provider model list is
+also not capability evidence: most `/models` responses contain IDs but omit
+reliable type and feature metadata.
+
+### Goals And Non-goals
+
+CRED-UX4 will make the model system three independent layers:
+
+1. **Connections** own Provider endpoint metadata and one system credential.
+2. **Model library** owns model identity, type, capability metadata, provenance,
+   readiness, and test history.
+3. **Capability routing** maps a typed Rho/`aisdk` task to one enabled model.
+
+The redesign must let one model serve multiple routes and let different routes
+use models from different Providers. It must make every effective route visible
+and must never infer a route from natural-language prompt classification.
+
+This design does not itself authorize image upload, image generation, image
+editing, semantic search, a generic external-execution API, automatic model
+routing, automatic fallback after Provider failure, background discovery,
+OAuth, project-scoped credentials, or changes to the `aisdk` repository. Those
+behaviors require the typed consumers and work packages below.
+
+### User Model: Routes, Not One Current Model
+
+The primary Model settings surface becomes **Model routing** rather than a
+Provider rail. It presents these standard routes:
+
+| Route | Type | Required capability | Consumer |
+| --- | --- | --- | --- |
+| `agent.chat` | language | none | ordinary Ask and Plan turns; required |
+| `agent.act` | language | `function_call` | Act turns; optional explicit override |
+| `vision.inspect` | language | `vision_input` | typed image/plot inspection worker |
+| `image.generate` | image | `image_output` | typed image-generation worker |
+| `image.edit` | image | `image_edit` | typed image-edit worker |
+| `embedding.default` | embedding | none | typed embedding/retrieval worker |
+
+`agent.chat` replaces the ambiguous Current model concept. If `agent.act` is
+unset, the UI explicitly shows that Act uses `agent.chat` only when that model
+advertises or declares `function_call=yes`; otherwise Act is unavailable. This
+is a visible compatibility rule, not failure fallback. A Provider error never
+causes another model to be selected silently.
+
+Advanced users may add a custom route with a bounded canonical name, model
+type, and required capability list. A custom route becomes executable only
+when a registered typed consumer requests that exact route. Merely naming a
+route does not create a tool or cause prompt classification.
+
+Connections and Model library remain directly accessible secondary surfaces.
+Add provider becomes `Connection -> Import models -> Assign uses`. Importing or
+manually adding a model never assigns it automatically. When no `agent.chat`
+route exists, setup requires one enabled language model before completion;
+all other routes are optional.
+
+Each route row shows model, Provider, model type, compatibility, credential
+readiness, and consumer availability. Model pickers filter compatible models
+first, then show unknown-capability models in a separate `Needs review` group.
+Models with an explicitly incompatible type or capability are rejected, not
+hidden. Unknown metadata may be chosen only with a visible warning and an
+explicit user declaration; the declaration does not masquerade as Provider or
+catalog evidence.
+
+### Capability Metadata And Provenance
+
+Model metadata uses tri-state `yes | no | unknown` attributes and a separate
+model type `language | embedding | image | unknown`. The initial bounded
+attribute vocabulary mirrors the pinned `aisdk` registry:
+
+```text
+function_call, reasoning, vision_input, image_output, image_edit,
+audio_input, audio_output, structured_output, web_search
+```
+
+Every effective type and attribute records one provenance value:
+
+```text
+aisdk_catalog | provider_response | user_declared | unknown
+```
+
+Provider discovery proves only that an ID was returned by the configured
+endpoint. Rho enriches an exact Provider/model-ID match with
+`aisdk::list_models()` metadata, without treating the static catalog as live
+availability. A user declaration overrides only the named attribute and keeps
+its provenance. An unknown value is not silently converted to `no`; an
+explicit `no` blocks a route requiring that capability, matching `aisdk`'s
+fail-closed-on-known-incompatibility behavior.
+
+Model testing is type-specific. A language model may use the existing bounded
+`generate_text` probe. Settings must not generate an image or embedding merely
+because a model was imported. Image and embedding live probes require a
+separate explicit action, cost warning, bounded disposable input/output, and an
+authorized implementation package. Until then their connection readiness and
+capability provenance remain distinct from a successful language probe.
+
+### Persistence Schema V2 And Migration
+
+The authorized CRED-UX4A non-secret settings shape is:
+
+```text
+AgentLlmSettingsV2 {
+  schema_version: 2,
+  revision: u64,
+  providers: [AgentProviderProfile],
+  models: [AgentModelProfileV2 {
+    id, provider_id, display_name, model_id, enabled,
+    model_type: CapabilityValueWithSource,
+    capabilities: map<capability, CapabilityValueWithSource>,
+    last_test?
+  }],
+  capability_routes: [AgentCapabilityRoute {
+    capability, model_id, model_type, required_model_capabilities
+  }]
+}
+```
+
+There is no second selected-model authority in V2. The required `agent.chat`
+route is what the Agent composer displays and what a normal turn records.
+
+Migration from V1 is deterministic:
+
+- the exact V1 `selected_model_id` becomes the `agent.chat` route;
+- existing Provider/model stable IDs and credential accounts are unchanged;
+- existing tool-calling, reasoning, and vision fields retain their values and
+  provenance;
+- new capability fields and an unknown model type remain `unknown`; Rho does
+  not guess from a model-name substring;
+- no optional route is invented;
+- before the first explicit V2 mutation, Rho atomically writes a same-directory
+  non-secret V1 backup, then atomically writes V2; a backup failure prevents
+  migration, and a V2 write failure leaves the V1 source recoverable;
+- read-only opening may project V1 as V2 in memory but does not rewrite disk;
+- repeated migration/reopen is idempotent, and unsupported/corrupt schemas
+  fail closed without touching credentials.
+
+The settings file is capped at 256 KiB; Providers and models retain their
+existing bounds; routes are capped at 32; required capabilities at 16 per
+route; route and capability tokens use bounded canonical ASCII names. The
+presentation view includes a revision. Every route mutation supplies the
+expected revision and rejects stale dialogs before writing.
+
+Deleting or disabling a model referenced by any route is rejected until the
+route is reassigned or removed. Removing a route never removes its model or
+credential. Removing a credential leaves routes configured but visibly not
+ready. Provider deletion remains blocked until all of its models are removed.
+
+### Least-Privilege Runtime Architecture
+
+Rho must not inject every routed Provider key into the long-lived scope of one
+Agent turn. The runtime is split into two paths:
+
+```text
+Ask / Plan / Act
+  -> broker resolves agent.chat or agent.act
+  -> one short-lived Agent R process
+  -> one Provider credential
+  -> aisdk ChatSession default model
+
+Typed capability operation
+  -> broker resolves exact capability + settings revision
+  -> one isolated short-lived capability worker
+  -> one model profile + one Provider credential
+  -> aisdk resolve_model_for_capability()
+  -> bounded typed result / temporary artifact
+```
+
+The main Agent R receives only the credential for the effective
+`agent.chat`/`agent.act` model. It may receive non-secret route summaries for
+tool availability and attribution, but never optional-route credentials. A
+capability tool sends only a typed request and opaque project/artifact identity
+to Rust. Rust re-resolves the route against the current settings revision,
+retrieves that one Provider key immediately before spawn, and injects it into
+the isolated worker environment. Credentials never cross frontend state,
+stdin JSON, broker frames, settings, arguments, events, logs, or artifacts.
+
+Each worker has a fixed operation kind, bounded input/output, timeout,
+cancellation, process-tree termination, and one-result contract. It cannot use
+Workspace R directly. Scientific object or file access remains broker-owned;
+the worker receives only an admitted bounded copy or artifact reference. Any
+project file mutation continues through the existing file proposal/export
+lanes. Generated media first lands in broker-owned temporary storage and is
+registered/exported only through the existing Artifact contract.
+
+The broker records route resolution and execution attribution without secrets:
+capability, settings revision, model/profile ID, effective Provider/model ref,
+operation ID, status, elapsed time, and artifact IDs. A missing credential,
+stale revision, incompatible capability, unavailable consumer, timeout,
+cancellation, Provider failure, or persistence failure remains on the selected
+route and never falls back to `agent.chat` or another model.
+
+### Typed Command And Worker Boundaries
+
+The first implementation package may add only these settings commands:
+
+```text
+agent_llm_save_capability_route(expected_revision, route)
+agent_llm_delete_capability_route(expected_revision, capability)
+agent_llm_declare_model_capabilities(expected_revision, model_id, patch)
+```
+
+They return a fresh presentation view, perform one atomic settings mutation,
+and never read a credential or contact a Provider. Provider discovery remains
+the separately bounded CRED-UX3 read path.
+
+Capability execution is a later typed broker command/tool family, not a string
+shell, arbitrary R, generic HTTP proxy, or reuse of `approval_requests`. Each
+consumer defines its own request/response shape, byte budgets, artifact rules,
+and whether user confirmation is required. Media and embedding consumers may
+not be enabled by merely landing the V2 settings schema.
+
+### Work Packages And Mandatory Stops
+
+#### CRED-UX4A — routing foundation
+
+- V2 schema, deterministic V1 migration/backup/recovery, revision checks;
+- complete model type/capability/provenance projection from the existing
+  `aisdk` catalog plus user declarations;
+- Model routing, Connections, and Model library UI with browser/mock parity;
+- functional `agent.chat` and `agent.act` route resolution for existing turns;
+- exactly one selected-route credential in the Agent child;
+- no media/embedding worker and no optional-route credential use.
+
+Mandatory stop: migration and rollback evidence, two-Provider routing tests,
+stale/failure recovery, complete affected matrix, browser review, independent
+credential review, and owner acceptance before CRED-UX4B.
+
+#### CRED-UX4B — isolated capability workers
+
+- broker-owned worker contract and lifecycle;
+- `vision.inspect`, `image.generate`, `image.edit`, and `embedding.default`
+  consumers added one at a time as vertical slices;
+- one route, model, Provider credential, operation, and bounded result per
+  worker;
+- exact attribution, cancellation, crash recovery, artifacts, and negative
+  tests for every consumer.
+
+Each consumer has its own authorization and stop. One authorization does not
+activate the next consumer or a custom generic executor.
+
+#### CRED-UX4C — media interaction
+
+Image attachments, generated-image review, editing controls, cost/confirmation
+copy, and installed-app acceptance are a separate product package. It may use
+the accepted workers but cannot broaden their credential, filesystem, or
+network authority.
+
+### Verification Contract
+
+CRED-UX4A must prove:
+
+- exact V1-to-V2 migration, backup-before-write ordering, idempotent reopen,
+  corrupt/unsupported rejection, injected backup/write failure, and recovery;
+- route normalization, uniqueness, bounds, required `agent.chat`, model/type
+  compatibility, explicit-no rejection, unknown warning, and no guessed facts;
+- success, invalid, stale revision, serialization failure, restart/reopen, and
+  deletion/disable dependency behavior for every route mutation;
+- Ask/Plan resolve `agent.chat`; Act resolves `agent.act` or the visibly
+  compatible `agent.chat`; running turns retain their start-bound route/model;
+- two Providers can own different routes without credential or settings
+  crossover, while one Agent child receives exactly one key;
+- model-list discovery remains read-only and transient; capability metadata
+  sources remain distinguishable;
+- empty, loading, compatible, unknown, incompatible, missing-key, stale,
+  failure, retry, long-name, keyboard, and narrow-window UI states;
+- R adapter session metadata matches the pinned `aisdk` route schema;
+- complete Rust/R/frontend/release matrix and an independent security review.
+
+CRED-UX4B additionally proves for each consumer:
+
+- only the resolved worker receives its one credential and the main Agent,
+  Workspace R, sibling workers, stdin, frames, logs, diagnostics, and artifacts
+  do not;
+- project/artifact identity, settings revision, model profile, and capability
+  are bound before execution;
+- malformed, oversized, foreign-project, stale, missing-input, timeout,
+  cancellation, child crash, Provider error, output persistence failure, and
+  restart recovery paths fail truthfully without fallback;
+- concurrent workers cannot swap routes, credentials, results, or artifacts;
+- generated output stays temporary until an existing reviewed artifact/export
+  action admits it.
+
+### Version And Release Impact
+
+Design-only CRED-UX4 work does not change a package version or `NEWS.md`.
+Because `0.4.0-dev.18` has not been committed, pushed, accepted, or distributed,
+an explicitly authorized CRED-UX4A may join that integration identity; the
+already built pre-redesign local app/DMG is superseded and must not be cited or
+handed off. The exact post-implementation source must rerun the full matrix and
+rebuild the app/DMG. If `dev.18` is committed or distributed before CRED-UX4A
+activation, CRED-UX4 requires the next unused development identity instead.
+
+CRED-UX4 changes only desktop/Rho adapter contracts unless a worker requires a
+change to exported `rho.agent` behavior. The implementation review decides the
+R package version independently. No design or local build authorizes a tag,
+Release, candidate workflow, MAC5, Pages mutation, or publication.
+
 ## Compatibility And Recovery
 
-- Existing profile schema and stable IDs are unchanged.
+- Through CRED-UX3, the existing profile schema and stable IDs are unchanged.
+  If CRED-UX4A is separately activated, its V2 migration contract above
+  supersedes only the schema statement while preserving stable Provider/model
+  identities and system credential accounts.
 - Existing `.Renviron` API keys are no longer detected or used; users must save
   the key once in Windows Credential Manager.
 - System credentials survive provider display-name and model changes because
@@ -568,3 +1059,81 @@ recorded separately before release handoff.
 Version decision: Cargo, lockfile, Tauri, package, workflow defaults,
 cache-busting metadata, `NEWS.md`, roadmap, and the active candidate checklist
 are synchronized at `0.4.0-dev.17`. No R package contract or version changed.
+
+## CRED-UX3 And CRED-UX4A Implementation Evidence — 2026-08-07
+
+CRED-UX3 discovery and the authorized CRED-UX4A routing foundation are
+implemented in the undistributed `0.4.0-dev.18` development identity.
+
+- The non-secret settings authority is schema V2 with a monotonic revision,
+  deterministic read-only V1 projection, byte-identical backup before the
+  first V2 mutation, atomic persistence, strict bounds, and fail-closed corrupt
+  or unsupported schema handling. Route mutation success, invalid/stale input,
+  simultaneous writers, serialization/write failure, reopen, dependency
+  rejection, and recovery have deterministic coverage.
+- Connections, Model library, and Model routing are separate UI layers.
+  Provider discovery remains read-only and never assigns a route. Exact
+  Provider/model matches may add all nine pinned `aisdk` catalog attributes;
+  Provider, catalog, user-declared, and unknown evidence remain distinct.
+  Compatible, Needs review, and Incompatible models are presented separately.
+- Ask and Plan resolve `agent.chat`; Act resolves explicit `agent.act` or the
+  visible compatible Chat route. A per-turn model value cannot bypass the
+  effective persisted route. A two-Provider fixture proves that each turn
+  receives only its selected route and one matching credential.
+- Agent R validates exactly one non-secret effective route and records it in
+  ChatSession metadata using the pinned `aisdk` route schema. The exported
+  `rho_create_aisdk_session()` contract therefore advances `rho.agent` from
+  `0.1.2` to `0.1.3`; its package NEWS and generated documentation are updated.
+- The deliberately separate post-test security/contract review found and
+  resolved route-override bypass, incomplete catalog-evidence preservation,
+  Act fallback compatibility, mock initialization order, stale/mock parity,
+  and stale `.Renviron` design wording before this evidence was recorded. No
+  unresolved blocking finding remains in the authorized package.
+
+Final affected automated evidence from the reviewed worktree:
+
+```text
+cargo fmt --all -- --check
+cargo test --workspace --all-targets
+  PASS (rho-desktop: 144 passed, 1 opt-in Keychain smoke ignored;
+  rho-server: 47; rho-store: 92; all remaining workspace targets passed)
+Rscript -e "testthat::test_local('r/rho.bridge')"
+  PASS (515)
+Rscript -e "testthat::test_local('r/rho.agent')"
+  PASS (60)
+node --check desktop/dist/app.js
+all scripts/test-*.mjs
+  PASS (42 scripts)
+node scripts/candidate-release.mjs --test true
+node scripts/generate-update-site.mjs --test true
+bash scripts/test-bootstrap-ark-macos.sh
+workflow YAML parse and git diff --check
+  PASS
+```
+
+Deterministic browser review passed all three settings layers, separate Chat
+and Act assignment, compatible/Needs review/Incompatible grouping, full
+nine-attribute catalog provenance, stale reload, missing-key presentation,
+Advanced navigation, child-dialog focus restoration, keyboard operation,
+long content, and `700 x 850` narrow-window containment. The normal review
+viewport was `1715 x 891`. Only a disposable mock value was used and cleared;
+no real Provider credential or network request was used.
+
+Tauri CLI 2.11.4 built an unsigned arm64 application and the post-redesign
+`Rho_0.4.0-dev.18_aarch64.dmg`. The first combined bundle attempt truthfully
+failed because processes running from its read/write interstitial volume kept
+that volume busy; those exact temporary processes exited, the volume detached,
+and the documented split build/bundle recovery completed without signing. The
+final DMG is 21,166,579 bytes with SHA-256
+`75d6cdf20affb75ca94b5a81050c321eb41975b14c0a43bea2c40a9652da2723`.
+`hdiutil verify` passed; the read-only mounted app and Ark are arm64; the app
+reports `0.4.0-dev.18` and macOS 14.0; and its complete Workspace smoke passed,
+including Plot, data view, stale rejection, two-project isolation, restart,
+interrupt, crash recovery, and durable events.
+
+Version decision: all application authorities remain synchronized at the
+unused `0.4.0-dev.18` identity, while `rho.agent` independently advances to
+`0.1.3`. `NEWS.md` and package NEWS describe implemented behavior. The
+document remains active because owner acceptance, real Keychain/live-Provider
+use, exact installed-candidate accessibility, authoritative candidate assets,
+MAC5, and release GO remain `NOT RUN`. CRED-UX4B/C are still unauthorized.

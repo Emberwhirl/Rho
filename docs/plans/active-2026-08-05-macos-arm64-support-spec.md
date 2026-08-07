@@ -36,8 +36,9 @@ affected local validation passed, and replacement run `31165265090` at exact
 post-merge commit `c4661bbe25dcc326737c51b385c65865a795edb9` passed the
 full independently verified review-only rehearsal with 12 minutes 10 seconds
 of macOS-runner use; the refreshed MAC4-R3 mandatory stop is reached; Issue #4
-CRED-UX2 subsequently advances the live development identity to
-`0.4.0-dev.17`, while every `dev.16` run remains exact-source historical
+CRED-UX2 subsequently advanced the live development identity to
+`0.4.0-dev.17`; CRED-UX3 provider model discovery advances it again to
+`0.4.0-dev.18`, while every earlier run remains exact-source historical
 evidence and cannot validate the new frontend behavior;
 authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
 
@@ -126,8 +127,9 @@ The first rehearsal identity was `0.4.0-dev.1`; installed-app evidence rejected
 it before any authoritative candidate or draft existed. The repaired fork-only
 `0.4.0-dev.2` rehearsal passed. Because synchronized upstream source already
 advanced independently through `0.4.0-dev.15`, the integrated source first
-became `0.4.0-dev.16`; the Issue #4 completion advances the current development
-candidate to `0.4.0-dev.17`. It supports macOS 14 or later, arm64 R 4.4 or later, and an
+became `0.4.0-dev.16`; the Issue #4 completion advanced the development
+candidate to `0.4.0-dev.17`, and CRED-UX3 advances the current development
+candidate to `0.4.0-dev.18`. It supports macOS 14 or later, arm64 R 4.4 or later, and an
 arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
@@ -392,7 +394,7 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.17-candidate-checklist.md`; the historical
+  `docs/release/active-0.4.0-dev.18-candidate-checklist.md`; the historical
   `0.4.0-dev.16` and old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
@@ -1630,3 +1632,41 @@ SHA-256 `0f919f8366bade4d12554be87bf07f9117cbeac04397de9e7447935555516f76`.
 These are development facts only: signing, notarization, Gatekeeper,
 authoritative candidate evidence, exact installed acceptance, MAC5, and
 publication remain `NOT RUN` for `dev.17`.
+
+## CRED-UX3 Application Identity Amendment — 2026-08-07
+
+Provider model discovery is a user-visible desktop workflow owned by the
+active system-credential/LLM specification. It does not change the macOS
+runtime, Keychain adapter, entitlements, notarization protocol, artifact
+schema, update protocol, or MAC4/MAC5 authority. It advances the shared
+application identity from `0.4.0-dev.17` to `0.4.0-dev.18` across Cargo,
+Tauri, frontend package/lockfile, browser mock, cache-busting, workflow
+defaults, roadmap, checklist, and `NEWS.md`; R package versions remain
+unchanged.
+
+The `0.4.0-dev.17` checklist and its local app/DMG evidence become historical.
+No prior artifact, hash, test result, notarization receipt, or acceptance fact
+can satisfy a `dev.18` row. The active `0.4.0-dev.18` checklist owns all future
+candidate, installed-acceptance, and GO/NO-GO facts. This amendment authorizes
+only a local unsigned arm64 development candidate; authoritative workflows,
+tag, Release, draft, MAC5, Pages, and publication remain unauthorized.
+
+## CRED-UX4A Application Identity Amendment — 2026-08-07
+
+The separately authorized capability-routing foundation joins the still-unused
+`0.4.0-dev.18` integration identity and supersedes the pre-redesign local
+artifact. It does not change the macOS runtime, Keychain adapter, entitlement,
+notarization, artifact, update, MAC4, or MAC5 authority. Its exported Agent R
+session route contract independently advances `rho.agent` to `0.1.3`.
+
+The complete affected automation and deterministic browser review passed.
+Tauri CLI 2.11.4 then produced a post-redesign unsigned arm64
+`Rho_0.4.0-dev.18_aarch64.dmg`. `hdiutil verify` passed; the read-only mounted
+app and bundled Ark are arm64; the app reports version `0.4.0-dev.18` and
+minimum macOS 14.0; and its complete Workspace smoke passed. The DMG is
+21,166,579 bytes with SHA-256
+`75d6cdf20affb75ca94b5a81050c321eb41975b14c0a43bea2c40a9652da2723`.
+These are local development facts only. Signing, notarization, staple,
+Gatekeeper candidate assessment, real Keychain/live-Provider acceptance,
+authoritative candidate evidence, MAC5, and publication remain `NOT RUN` and
+unauthorized.

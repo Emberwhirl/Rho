@@ -32,8 +32,9 @@ for (const context of [
   "delete model provider",
   "save model",
   "delete model",
-  "select model",
-  "load model catalog",
+  "assign Chat route",
+  "save capability route",
+  "discover provider models",
   "save API key",
   "remove stored API key",
 ]) assert.ok(js.includes(`reportUiFailure("${context}"`), `Missing projection boundary for ${context}`);
@@ -112,11 +113,22 @@ assert.ok(advancedStart >= 0, "Each provider needs its own Advanced disclosure")
 for (const id of ["agentLlmRegisteredProviderId", "agentLlmProviderApiKeyEnv", "agentLlmProviderBaseUrlEnv", "agentLlmProviderWireApi", "agentLlmProviderDisableStreamOptions"]) {
   assert.ok(advancedSettings.includes(`id="${id}"`), `${id} must be inside Provider Advanced`);
 }
-for (const id of ["agentLlmModelToolCalling", "agentLlmModelReasoning", "agentLlmModelVisionInput", "agentLlmModelCapabilitySource"]) {
+for (const id of [
+  "agentLlmModelToolCalling",
+  "agentLlmModelReasoning",
+  "agentLlmModelVisionInput",
+  "agentLlmModelImageOutput",
+  "agentLlmModelImageEdit",
+  "agentLlmModelAudioInput",
+  "agentLlmModelAudioOutput",
+  "agentLlmModelStructuredOutput",
+  "agentLlmModelWebSearch",
+  "agentLlmModelEvidence",
+]) {
   assert.ok(modelDialog.includes(`id="${id}"`), `${id} must be inside the dedicated model editor`);
 }
 assert.match(advancedSettings, /<summary>Provider Advanced<\/summary>/);
-assert.match(modelDialog, /<summary>Model capabilities<\/summary>/);
+assert.match(modelDialog, /<summary>Model capabilities and evidence<\/summary>/);
 assert.ok(html.indexOf('id="agentLlmModelList"') < advancedStart, "The model chooser must stay in the primary flow");
 
 const modelSettings = js.slice(js.indexOf("function renderAgentLlmDialog()"), js.indexOf("\nfunction openAgentLlmDialog"));
