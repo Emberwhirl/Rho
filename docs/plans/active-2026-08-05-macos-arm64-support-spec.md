@@ -23,8 +23,10 @@ day; upstream `main` was integrated without history rewriting on 2026-08-07
 and its independent development line through `0.4.0-dev.15` requires the
 combined candidate to advance to `0.4.0-dev.16`; MAC4-R3 asynchronous
 notarization orchestration is explicitly authorized, locally implemented,
-verified, and contract-reviewed on 2026-08-07; its exact-commit hosted
-rehearsal remains NOT RUN; MAC5 remains proposed and unauthorized
+verified, and contract-reviewed on 2026-08-07; its first exact-commit hosted
+rehearsal failed closed at the developer-log host allowlist and the bounded
+exact-host repair below is locally verified; its replacement rehearsal remains
+open; MAC5 remains proposed and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -609,10 +611,13 @@ Contract:
   are retryable under bounded delay/attempt/deadline rules. Unknown statuses,
   wrong identity/name, malformed or oversized responses, 401/403/404, and
   other 4xx fail closed;
-- after `Accepted`, retrieve the exact submission's log URL, require HTTPS and
-  an Apple-controlled host, download bounded JSON, and bind its submission ID
-  and status into the accepted record. A missing, rejected, mismatched, or
-  oversized log cannot fabricate success;
+- after `Accepted`, retrieve the exact submission's log URL and require
+  credential-free HTTPS on an allowlisted Apple delivery host. The allowlist is
+  Apple/itunes subdomains plus the observed exact Notary service bucket
+  `notary-artifacts-prod.s3.amazonaws.com`; arbitrary AWS/S3 buckets remain
+  forbidden. Download bounded JSON and bind its submission ID and status into
+  the accepted record. A missing, rejected, mismatched, or oversized log cannot
+  fabricate success;
 - `macos-finalize` downloads only the exact pending, accepted, and DMG
   artifacts for its run, recomputes the original hash, staples and validates
   the DMG, mounts it, and repeats arm64, codesign, exact entitlement,
@@ -1375,6 +1380,40 @@ entitlements, credential authority, or public protocol, so the integrated
 application identity remains `0.4.0-dev.16` and `NEWS.md` does not change for
 this CI-only orchestration slice.
 
-The required exact-commit credentialed fork rehearsal is still NOT RUN. This
-local checkpoint creates no tag, Release, draft, Pages state, acceptance
-record, or MAC5 authority; the release decision remains NO-GO.
+At this local checkpoint the required exact-commit credentialed fork rehearsal
+was NOT RUN; the subsequent failed-closed attempt is recorded below. The local
+checkpoint created no tag, Release, draft, Pages state, acceptance record, or
+MAC5 authority; the release decision remained NO-GO.
+
+## MAC4-R3 Hosted Rehearsal Attempt 1 — FAILED CLOSED 2026-08-07
+
+Fork Actions run `31160557569` checked out exact commit
+`d40abeec0e3688e668a8fcf8d68a4e8bdf15e5f9`. The new `macos-submit` job
+completed build, signing, exact architecture/entitlement checks, Workspace
+smoke, one no-wait submission, credential cleanup, and immutable handoff in
+7 minutes 57 seconds, proving that the multi-hour Apple wait no longer holds a
+macOS runner. The Ubuntu waiter observed `In Progress` and then `Accepted`
+roughly two minutes later, but deliberately rejected the authenticated `/logs`
+response because its credential-free HTTPS URL used
+`notary-artifacts-prod.s3.amazonaws.com`, outside the initial Apple/itunes-only
+host allowlist. `macos-finalize` was skipped and no aggregate rehearsal,
+candidate, tag, Release, draft, Pages state, or acceptance evidence was created.
+
+A read-only query using the local Team API key reproduced HTTP 200,
+`submissionsLog`, HTTPS/443, and that exact hostname without printing the
+presigned URL, bearer token, or private key. The bounded repair adds only this
+exact host; it does not allow arbitrary `amazonaws.com` or S3 buckets, redirects,
+credentials in URLs, non-HTTPS, or non-443 ports. Regression tests must prove
+the exact host succeeds and sibling/arbitrary S3 hosts remain rejected. The
+same `0.4.0-dev.16` identity remains valid because attempt 1 emitted no final
+platform or aggregate artifact and created no candidate/draft; a new commit and
+full workflow Run ID are required for replacement evidence.
+
+The exact-host repair passed its positive case plus arbitrary-bucket,
+region-qualified sibling, and hostname-suffix-confusion negative cases in the
+complete 39-suite deterministic matrix. A local read-only replay then
+downloaded attempt 1's immutable pending/DMG artifact, queried the already
+Accepted UUID through the patched implementation, retrieved the real developer
+log, and passed UUID/status/filename/SHA-256 binding. No token, private key, or
+presigned URL was printed or retained, and the temporary replay directory was
+removed. The replacement hosted rehearsal remains required.

@@ -171,6 +171,7 @@ assert.match(notaryContract, /alg: "ES256"/);
 assert.match(notaryContract, /aud: "appstoreconnect-v1"/);
 assert.match(notaryContract, /MAX_NOTARY_LOG_BYTES = 1024 \* 1024/);
 assert.match(notaryContract, /dsaEncoding: "ieee-p1363"/);
+assert.match(notaryContract, /EXACT_DEVELOPER_LOG_HOSTS = new Set\(\["notary-artifacts-prod\.s3\.amazonaws\.com"\]\)/);
 assert.match(read(".github/workflows/candidate-publish.yml"), /default: v0\.4\.0-dev\.16/);
 assert.match(build, /draft: true/);
 assert.match(build, /prerelease: true/);

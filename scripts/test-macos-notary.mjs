@@ -86,8 +86,8 @@ function pollingHarness(pending, {
   statusResponses = [response(200, statusBody(pending))],
   logUrlResponse,
   developerLogResponse,
+  developerLogUrl = "https://osxapps-ssl.itunes.apple.com/notary/developer-log.json?token=bounded-test",
 } = {}) {
-  const logUrl = "https://osxapps-ssl.itunes.apple.com/notary/developer-log.json?token=bounded-test";
   const statusQueue = [...statusResponses];
   const calls = [];
   const request = async (options) => {
@@ -99,9 +99,9 @@ function pollingHarness(pending, {
       return next;
     }
     if (options.url === `https://appstoreconnect.apple.com/notary/v2/submissions/${pending.submission.id}/logs`) {
-      return logUrlResponse || response(200, logUrlBody(pending, logUrl));
+      return logUrlResponse || response(200, logUrlBody(pending, developerLogUrl));
     }
-    if (options.url === logUrl || options.url === logUrlResponse?.developerLogUrl) {
+    if (options.url === developerLogUrl) {
       return developerLogResponse || response(200, developerLog(pending));
     }
     throw new Error(`Unexpected test URL ${new URL(options.url).origin}`);
@@ -435,6 +435,57 @@ try {
     pollIntervalMs: 1000,
     maxWaitMs: 20_000,
   }), /not an allowed HTTPS URL/);
+
+  const exactS3LogHarness = pollingHarness(pending, {
+    developerLogUrl: "https://notary-artifacts-prod.s3.amazonaws.com/notary/developer-log.json?X-Amz-Signature=bounded-test",
+  });
+  assert.equal((await waitForAccepted(pending, {
+    issuer,
+    keyId,
+    privateKey: privatePem,
+    request: exactS3LogHarness.request,
+    sleep: exactS3LogHarness.sleep,
+    now: exactS3LogHarness.now,
+    pollIntervalMs: 1000,
+    maxWaitMs: 20_000,
+  })).accepted.status, "accepted");
+
+  for (const developerLogUrl of [
+    "https://another-bucket.s3.amazonaws.com/notary-log.json",
+    "https://notary-artifacts-prod.s3.us-west-2.amazonaws.com/notary-log.json",
+    "https://notary-artifacts-prod.s3.amazonaws.com.evil.example/notary-log.json",
+    "http://notary-artifacts-prod.s3.amazonaws.com/notary-log.json",
+    "https://bounded-user@notary-artifacts-prod.s3.amazonaws.com/notary-log.json",
+    "https://notary-artifacts-prod.s3.amazonaws.com:444/notary-log.json",
+  ]) {
+    const arbitraryS3Harness = pollingHarness(pending, {
+      logUrlResponse: response(200, logUrlBody(pending, developerLogUrl)),
+    });
+    await expectReject(() => waitForAccepted(pending, {
+      issuer,
+      keyId,
+      privateKey: privatePem,
+      request: arbitraryS3Harness.request,
+      sleep: arbitraryS3Harness.sleep,
+      now: arbitraryS3Harness.now,
+      pollIntervalMs: 1000,
+      maxWaitMs: 20_000,
+    }), /not an allowed HTTPS URL/);
+  }
+
+  const redirectLogHarness = pollingHarness(pending, {
+    developerLogResponse: response(302, Buffer.alloc(0), { location: "https://notary-artifacts-prod.s3.amazonaws.com/redirected.json" }),
+  });
+  await expectReject(() => waitForAccepted(pending, {
+    issuer,
+    keyId,
+    privateKey: privatePem,
+    request: redirectLogHarness.request,
+    sleep: redirectLogHarness.sleep,
+    now: redirectLogHarness.now,
+    pollIntervalMs: 1000,
+    maxWaitMs: 20_000,
+  }), /developer log request failed with HTTP 302/);
 
   const badLogHarness = pollingHarness(pending, {
     developerLogResponse: response(200, developerLog(pending, { sha256: "b".repeat(64) })),

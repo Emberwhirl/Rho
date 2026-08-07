@@ -29,6 +29,7 @@ const RUN_ID_PATTERN = /^[1-9][0-9]{0,19}$/;
 const RUN_ATTEMPT_PATTERN = /^[1-9][0-9]{0,5}$/;
 const API_KEY_ID_PATTERN = /^[A-Z0-9]{10}$/;
 const APPLE_STATUSES = new Set(["Accepted", "In Progress", "Invalid", "Rejected"]);
+const EXACT_DEVELOPER_LOG_HOSTS = new Set(["notary-artifacts-prod.s3.amazonaws.com"]);
 
 function fail(message) {
   throw new Error(message);
@@ -359,7 +360,8 @@ function isAllowedDeveloperLogUrl(value) {
   const allowedHost = hostname === "apple.com"
     || hostname.endsWith(".apple.com")
     || hostname === "itunes.apple.com"
-    || hostname.endsWith(".itunes.apple.com");
+    || hostname.endsWith(".itunes.apple.com")
+    || EXACT_DEVELOPER_LOG_HOSTS.has(hostname);
   return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && allowedHost;
 }
 

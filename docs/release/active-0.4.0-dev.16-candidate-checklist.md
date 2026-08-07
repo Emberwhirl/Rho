@@ -8,8 +8,9 @@ was integrated on 2026-08-07 and already had an independent development line
 through `0.4.0-dev.15`, so the combined source advances to the single-use
 `0.4.0-dev.16` identity; MAC4-R3 asynchronous notarization orchestration is
 authorized, locally implemented, verified, and contract-reviewed; its hosted
-rehearsal, authoritative candidate/draft, MAC5 acceptance, and release GO
-remain NOT RUN
+rehearsal attempt 1 failed closed at the developer-log host allowlist and its
+bounded exact-host repair is locally verified; replacement rehearsal,
+authoritative candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -255,8 +256,10 @@ The accepted workflow must satisfy all of these checks:
 - the waiter downloads and bounds Apple's terminal log JSON even on success,
   validates that it identifies the same submission, and emits an immutable
   accepted record. Unknown status, malformed/oversized JSON, wrong ID/name,
-  non-HTTPS or non-Apple log URL, exhausted retry, and timeout all fail without
-  fabricating acceptance;
+  non-HTTPS or non-allowlisted log URL, exhausted retry, and timeout all fail
+  without fabricating acceptance. Allowed delivery hosts are Apple/itunes
+  subdomains and the exact observed Notary bucket
+  `notary-artifacts-prod.s3.amazonaws.com`; other AWS/S3 hosts remain denied;
 - a fresh macOS finalizer downloads the exact pending record, accepted record,
   and submitted DMG; verifies their identity and original hash agreement;
   staples the DMG; mounts it; repeats architecture, exact entitlement,
@@ -284,7 +287,21 @@ Keychain smoke ignored, both complete R package suites, and diff checks. Review
 confirmed that this is CI-only orchestration: application behavior, entitlement
 set, package contracts, and public protocols are unchanged, so version remains
 `0.4.0-dev.16` and no new `NEWS.md` entry is required. Hosted evidence is NOT
-RUN and the decision remains NO-GO.
+RUN at this local checkpoint and the decision remains NO-GO.
+
+Hosted attempt 1, run `31160557569` at exact commit
+`d40abeec0e3688e668a8fcf8d68a4e8bdf15e5f9`, proved `macos-submit` completed
+and released its runner in 7 minutes 57 seconds. The Ubuntu waiter received
+`Accepted` but failed closed because Apple's authenticated `/logs` response now
+delivered the presigned JSON from the exact host
+`notary-artifacts-prod.s3.amazonaws.com`. Finalization and aggregate evidence
+were skipped, and no candidate, draft, tag, Release, or Pages mutation occurred.
+The active repair may add only this exact hostname with positive and arbitrary-
+S3 negative coverage, then must run a new exact-commit full rehearsal.
+That repair passed the complete 39-suite deterministic matrix and a read-only
+replay of attempt 1's immutable pending/DMG: the real Accepted log satisfied
+UUID, status, filename, and SHA-256 binding without printing or retaining the
+token, private key, or presigned URL. Replacement hosted evidence remains open.
 
 ## macOS Signing And Notarization Gate
 
@@ -384,6 +401,7 @@ publication do not by themselves prove live Pages acceptance.
 evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
 fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
-locally implemented and verified but not yet rehearsed. No authoritative
+locally implemented and verified; hosted attempt 1 failed closed and its
+bounded log-host repair/replacement rehearsal remain open. No authoritative
 main-repository candidate, immutable draft, MAC5 installed acceptance, or
 explicit GO exists.
