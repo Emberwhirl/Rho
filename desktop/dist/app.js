@@ -140,6 +140,7 @@ const state = {
   selectedTurnDetail: null,
   fileEditProposal: null,
   fileEditUndo: null,
+  fileEditUndoVerifiedKey: null,
   fileEditDecisions: new Map(),
   actAuthorizedTurnIds: new Set(),
   fileEditAutoApplyAttempts: new Set(),
@@ -3424,6 +3425,11 @@ function syncDocumentFromEditor(options = {}) {
     documentState.content = editor.value;
     documentState.cursorStart = editor.selectionStart;
     documentState.cursorEnd = editor.selectionEnd;
+  }
+  if (state.fileEditUndo?.path === documentState.path && state.fileEditUndo.afterContent !== documentState.content) {
+    state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
+    renderFileEditPanel();
   }
   if (render) {
     renderProjectFiles();
@@ -7991,23 +7997,42 @@ async function requestRenameSymbol(options = {}) {
     toast("Place the cursor on one ordinary R identifier to rename it.", true);
     return;
   }
-  const newName = options.newName || await promptRefactorName({
+  let newName = options.newName || await promptRefactorName({
     title: "Rename symbol",
     message: `Review every bounded project reference before changing ${oldName}.`,
     label: "New symbol name",
     defaultValue: oldName,
   });
   if (!newName) return;
-  openRefactorReview(null, "loading", options.returnFocus || document.activeElement);
-  try {
-    state.refactor.proposal = await buildRenameRefactorProposal(oldName, newName);
-    state.refactor.status = "review";
-    setRefactorReviewError();
-  } catch (error) {
-    state.refactor.status = "error";
-    setRefactorReviewError(error);
+  const returnFocus = options.returnFocus || document.activeElement;
+  for (;;) {
+    state.refactor.status = "loading";
+    state.refactor.error = null;
+    updateEditorChrome();
+    try {
+      const proposal = await buildRenameRefactorProposal(oldName, newName);
+      state.refactor.proposal = proposal;
+      state.refactor.status = "review";
+      openRefactorReview(proposal, "review", returnFocus);
+      return;
+    } catch (error) {
+      state.refactor.status = "idle";
+      state.refactor.proposal = null;
+      state.refactor.error = String(error);
+      updateEditorChrome();
+      newName = await promptRefactorName({
+        title: "Rename symbol - try again",
+        message: userFacingError(error, `Rename ${oldName} could not be prepared.`),
+        label: `New name for ${oldName}`,
+        defaultValue: newName,
+      });
+      if (!newName) {
+        state.refactor.error = null;
+        updateEditorChrome();
+        return;
+      }
+    }
   }
-  renderRefactorReview();
 }
 
 async function requestExtractFunction(options = {}) {
@@ -12455,11 +12480,36 @@ function renderFileEditPanel() {
   $("#fileEditAfter").textContent = boundedFileEditPreview(preview.after, 8000);
   const accepted = decision === "accepted";
   const rejected = decision === "rejected";
-  const undoAvailable = accepted && state.fileEditUndo?.key === proposal.key;
+  const undoAvailable = accepted
+    && state.fileEditUndo?.key === proposal.key
+    && state.fileEditUndoVerifiedKey === proposal.key;
   renderFileEditDecisionNote(decision, undoAvailable);
   $("#fileEditAccept").classList.toggle("hidden", accepted || rejected);
   $("#fileEditReject").classList.toggle("hidden", accepted || rejected);
   $("#fileEditUndo").classList.toggle("hidden", !undoAvailable);
+}
+
+async function verifyFileEditUndo() {
+  const undo = state.fileEditUndo;
+  if (!undo) return;
+  const key = undo.key;
+  try {
+    const current = await projectFileContent(undo.path);
+    if (state.fileEditUndo?.key !== key) return;
+    if (current !== undo.afterContent) {
+      state.fileEditUndo = null;
+      state.fileEditUndoVerifiedKey = null;
+      renderFileEditPanel();
+      return;
+    }
+    state.fileEditUndoVerifiedKey = key;
+    renderFileEditPanel();
+  } catch {
+    if (state.fileEditUndo?.key !== key) return;
+    state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
+    renderFileEditPanel();
+  }
 }
 
 function maybeAutoApplyFileEditProposal() {
@@ -12601,10 +12651,13 @@ async function acceptFileEditProposal({ automatic = false } = {}) {
       created: proposal.operation === "create",
       start: edit.start,
     };
+    state.fileEditUndoVerifiedKey = null;
     state.fileEditDecisions.set(proposal.key, "accepted");
     persistFileEditDecisions();
     scheduleSessionSave();
+    $("#fileEditPanel").open = false;
     renderFileEditPanel();
+    void verifyFileEditUndo();
     toast(`${automatic ? "Automatically applied" : "Applied"} Agent edit to ${proposal.path}.`);
   } catch (error) {
     state.internalProjectWrites.delete(proposal.path);
@@ -12644,6 +12697,7 @@ async function undoFileEditProposal() {
     }
     state.fileEditDecisions.set(undo.key, "undone");
     state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
     persistFileEditDecisions();
     scheduleSessionSave();
     renderFileEditPanel();
@@ -14830,6 +14884,7 @@ async function hydrateProject(response) {
   state.installedHelp = { status: "empty", record: null, error: null, activeView: "overview", running: false };
   state.fileEditProposal = null;
   state.fileEditUndo = null;
+  state.fileEditUndoVerifiedKey = null;
   state.actAuthorizedTurnIds.clear();
   state.fileEditAutoApplyAttempts.clear();
   state.fileEditApplyBusy = false;
@@ -15371,6 +15426,7 @@ $("#clearAgentHistoryButton").addEventListener("click", async () => {
     state.agentActivityExpanded.clear();
     state.fileEditProposal = null;
     state.fileEditUndo = null;
+    state.fileEditUndoVerifiedKey = null;
     state.actAuthorizedTurnIds.clear();
     state.fileEditAutoApplyAttempts.clear();
     state.fileEditDecisions = new Map();

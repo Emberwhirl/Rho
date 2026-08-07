@@ -4,7 +4,7 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
-## 0.4.0-dev.14 - 2026-08-06
+## 0.4.0-dev.15 - 2026-08-07
 
 ### Fixed
 
@@ -22,9 +22,14 @@ this file records behavior that is already available in a released build.
 - Agent Timeline, Task Rail, Monitor, and Outputs refreshes now preserve the
   user's active surface, scroll position, and focused item when new results
   arrive.
+- Applied file proposals now collapse to a compact completed summary, and
+  Undo is shown only after the edited file is verified unchanged.
 - Problems now offers a direct `Fix with Agent` entry that opens the source,
   carries structured diagnostic context, and starts the existing reviewable
   file-proposal flow.
+- Rename Symbol now opens Review only after a valid proposal is built. Lookup
+  or source-state failures return to a retryable name prompt with the entered
+  replacement preserved instead of showing an empty Review panel.
 
 ## 0.4.0-dev.13 - 2026-08-06
 

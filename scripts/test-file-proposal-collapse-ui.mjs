@@ -26,5 +26,11 @@ assert.match(js, /panel\.dataset\.proposalKey = proposal\.key;/);
 assert.match(js, /if \(proposalChanged\) panel\.open = true;/);
 assert.match(js, /delete panel\.dataset\.proposalKey;/);
 assert.match(js, /\$\("#fileEditPath"\)\.title = proposal\.path;/);
+assert.match(js, /fileEditUndoVerifiedKey: null/);
+assert.match(js, /const undoAvailable = accepted[\s\S]*state\.fileEditUndoVerifiedKey === proposal\.key/);
+assert.match(js, /async function verifyFileEditUndo\(\)/);
+assert.match(js, /\$\("#fileEditPanel"\)\.open = false;/);
+assert.match(js, /void verifyFileEditUndo\(\);/);
+assert.match(js, /state\.fileEditUndo = null;[\s\S]*state\.fileEditUndoVerifiedKey = null;/);
 
 console.log("File proposal collapse contract checks passed.");
