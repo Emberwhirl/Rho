@@ -1,12 +1,10 @@
 # Rho 0.4.0-dev.18 Cross-Platform Candidate Checklist
 
-Status: active development-candidate identity; CRED-UX3 provider model
-discovery and CRED-UX4A capability routing are implemented; their complete
-affected automated matrix, deterministic browser review, and independent
-security/contract review passed; the pre-redesign local app/DMG is superseded
-and is not acceptance evidence; authoritative candidate assets, GitHub Release
-draft, installed-candidate acceptance, MAC5, and release GO are NOT RUN and
-unauthorized
+Status: historical rejected development identity; CRED-UX3 provider model
+discovery and CRED-UX4A capability routing were implemented and locally
+verified, but the exact installed DMG exposed an unrecoverable settings-entry
+state. No authoritative candidate assets, GitHub Release draft, MAC5 evidence,
+or release GO were created.
 
 Date: 2026-08-07
 
@@ -18,9 +16,9 @@ Risk: R4
 Owning documents: the active macOS arm64 specification owns the MAC4/MAC5
 sequence, runtime, signing, notarization, and DMG contract. The active
 system-credential and simple-LLM-settings specification owns CRED-UX3 behavior
-and the active CRED-UX4A routing foundation. This checklist
-alone owns the exact `0.4.0-dev.18` cross-platform candidate identity,
-candidate evidence, installed-acceptance ledger, and GO/NO-GO decision.
+and the active CRED-UX4A routing foundation. This checklist now preserves only
+the immutable `0.4.0-dev.18` source, artifact, installed rejection, and NO-GO
+record. The next active checklist owns all `0.4.0-dev.19` candidate authority.
 
 The historical `0.4.0-dev.16` and `0.4.0-dev.17` checklists record immutable
 earlier-source evidence. None of their artifacts, hashes, runs, notarization
@@ -207,9 +205,9 @@ acceptance record, and an explicit GO.
 
 ## Current Decision
 
-`NO-GO`. `0.4.0-dev.18` is the development identity for discovery-first
-Provider model selection and the capability-routed Connections/Model
-library/Model routing foundation. Owner acceptance, authoritative
-cross-platform candidate construction, immutable draft creation,
-live/installed-provider acceptance, MAC5, publication, and live update
-acceptance are all NOT RUN and unauthorized.
+`NO-GO`, immutable and historical. The owner installed the exact local
+`0.4.0-dev.18` DMG and observed that a failed settings read disabled the only
+model-settings entry control while instructing the user to open those settings.
+That installed rejection supersedes all earlier local development acceptance
+language. The identity, artifact, and hash must not be overwritten or reused;
+all replacement work advances to `0.4.0-dev.19`.

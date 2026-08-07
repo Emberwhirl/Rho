@@ -135,7 +135,9 @@ const modelSettings = js.slice(js.indexOf("function renderAgentLlmDialog()"), js
 assert.doesNotMatch(modelSettings, /settings\.user_environ\.path|provider\.kind\}.*credential/);
 assert.doesNotMatch(modelSettings, /settings\.validation_error \|\||result\.message \|\|/);
 assert.match(modelSettings, /providerReadiness\(provider, settings\)/);
-assert.match(modelSettings, /modelConnectionLabel\(model\)/);
+assert.match(modelSettings, /createAgentConnectionModelCard\(/);
+const connectionModelCard = js.slice(js.indexOf("function createAgentConnectionModelCard"), js.indexOf("\nfunction providerConnectionLabel"));
+assert.match(connectionModelCard, /modelConnectionLabel\(model\)/);
 const modelSettingActions = js.slice(js.indexOf("async function saveAgentProvider()"), js.indexOf("\nfunction syncAgentPolling"));
 assert.doesNotMatch(modelSettingActions, /toast\(String\(error\)|toast\(`[^`]*\$\{error\}/);
 assert.doesNotMatch(modelSettingActions, /toast\(`Opened \$\{info\.path\}|Copied \$\{envName\}/);

@@ -4,6 +4,33 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.19 - 2026-08-07
+
+### Fixed
+
+- Model settings remains reachable when its first settings read fails or no
+  models exist. The composer model button stays available, opening settings
+  performs one safe read-only retry, an explicit Retry action remains visible,
+  and bounded startup diagnostics retain the underlying failure without
+  exposing credentials.
+
+### Improved
+
+- Connections is now the first Model settings task. Provider presets use a
+  visual card chooser, common connections expose an optional Base URL, and the
+  reviewed `aisdk.providers` adapters add DeepSeek, Moonshot/Kimi, Stepfun,
+  Volcengine, AiHubMix, xAI, OpenRouter, Bailian, and NVIDIA support.
+- Blank Provider endpoints now resolve to Rho's reviewed defaults; undeclared
+  ambient API keys and endpoint variables cannot override the selected
+  system-credential connection.
+- Provider model lists and model cards now show default `aisdk` type and
+  capability evidence. Model options use visible capability switches instead
+  of nine dropdowns, while manual changes remain explicit user declarations.
+- Connections and Model routing now link in both directions. A model card can
+  open its compatible route choices, and every assigned or candidate route can
+  return to the exact connection and model without silently assigning or
+  switching providers.
+
 ## 0.4.0-dev.18 - 2026-08-07
 
 ### Improved

@@ -2945,8 +2945,19 @@ async fn run_agent(
 
 #[tauri::command]
 async fn agent_llm_settings(state: State<'_, AppState>) -> Result<AgentLlmSettingsView, String> {
-    let config = runtime_config(&state).map_err(display_error)?;
-    agent_llm::settings_view(&config.data_dir, &config.rscript).map_err(display_error)
+    let result = (|| {
+        let config = runtime_config(&state)?;
+        agent_llm::settings_view(&config.data_dir, &config.rscript)
+    })();
+    match result {
+        Ok(view) => Ok(view),
+        Err(error) => {
+            write_startup_log(&format!(
+                "agent_llm_settings outcome=failed detail={error:#}"
+            ));
+            Err(display_error(error))
+        }
+    }
 }
 
 #[tauri::command]

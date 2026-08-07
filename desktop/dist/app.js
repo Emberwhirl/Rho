@@ -51,8 +51,11 @@ const state = {
   projectRefreshSequence: 0,
   agentLlm: {
     settings: null,
-    activeView: "routing",
+    activeView: "connections",
     selectedRouteCapability: "agent.chat",
+    routingFocusModelId: null,
+    routingExpandedCapability: null,
+    settingsLoading: false,
     selectedModelId: null,
     selectorOpen: false,
     settingsOpen: false,
@@ -425,6 +428,7 @@ const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
 let mockEvidenceClaimCreateFailure = null;
 let mockAgentLlmFailure = previewParams.get("failure") || null;
+let mockAgentLlmLoadFailureConsumed = false;
 
 function seedMockEvidenceClaims() {
   const currentProject = mockLastProject;
@@ -690,6 +694,36 @@ const AGENT_MODEL_CAPABILITIES = [
   "structured_output",
   "web_search",
 ];
+
+const AGENT_CAPABILITY_LABELS = {
+  function_call: "Tool calling",
+  reasoning: "Reasoning",
+  vision_input: "Vision input",
+  image_output: "Image output",
+  image_edit: "Image editing",
+  audio_input: "Audio input",
+  audio_output: "Audio output",
+  structured_output: "Structured output",
+  web_search: "Web search",
+};
+
+const AGENT_PROVIDER_PRESETS = {
+  deepseek: { displayName: "DeepSeek", description: "Reasoning and chat models", kind: "registered", registeredProviderId: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY", defaultBaseUrl: "https://api.deepseek.com", wireApi: "chat_completions", keyRequired: true },
+  openai: { displayName: "OpenAI", description: "GPT, reasoning and image models", kind: "openai", registeredProviderId: null, apiKeyEnv: "OPENAI_API_KEY", defaultBaseUrl: "https://api.openai.com/v1", wireApi: null, keyRequired: true },
+  anthropic: { displayName: "Anthropic", description: "Claude language and vision models", kind: "anthropic", registeredProviderId: null, apiKeyEnv: "ANTHROPIC_API_KEY", defaultBaseUrl: "https://api.anthropic.com/v1", wireApi: null, keyRequired: true },
+  gemini: { displayName: "Gemini", description: "Google multimodal models", kind: "gemini", registeredProviderId: null, apiKeyEnv: "GEMINI_API_KEY", defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/models", wireApi: null, keyRequired: true },
+  moonshot: { displayName: "Moonshot", description: "Kimi Open Platform models", kind: "registered", registeredProviderId: "moonshot", apiKeyEnv: "MOONSHOT_API_KEY", defaultBaseUrl: "https://api.moonshot.cn/v1", wireApi: "chat_completions", keyRequired: true },
+  kimi: { displayName: "Kimi Code", description: "Kimi coding membership endpoint", kind: "registered", registeredProviderId: "kimi", apiKeyEnv: "KIMI_API_KEY", defaultBaseUrl: "https://api.kimi.com/coding/v1", wireApi: "anthropic_messages", keyRequired: true },
+  stepfun: { displayName: "Stepfun", description: "Language and image models", kind: "registered", registeredProviderId: "stepfun", apiKeyEnv: "STEPFUN_API_KEY", defaultBaseUrl: "https://api.stepfun.com/v1", wireApi: "chat_completions", keyRequired: true },
+  volcengine: { displayName: "Volcengine", description: "ByteDance Ark model endpoints", kind: "registered", registeredProviderId: "volcengine", apiKeyEnv: "ARK_API_KEY", defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3", wireApi: "chat_completions", keyRequired: true },
+  aihubmix: { displayName: "AiHubMix", description: "Unified multi-provider gateway", kind: "registered", registeredProviderId: "aihubmix", apiKeyEnv: "AIHUBMIX_API_KEY", defaultBaseUrl: "https://aihubmix.com/v1", wireApi: "chat_completions", keyRequired: true },
+  xai: { displayName: "xAI", description: "Grok language and image models", kind: "registered", registeredProviderId: "xai", apiKeyEnv: "XAI_API_KEY", defaultBaseUrl: "https://api.x.ai/v1", wireApi: "chat_completions", keyRequired: true },
+  openrouter: { displayName: "OpenRouter", description: "One API for many model vendors", kind: "registered", registeredProviderId: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", defaultBaseUrl: "https://openrouter.ai/api/v1", wireApi: "chat_completions", keyRequired: true },
+  bailian: { displayName: "Bailian", description: "Alibaba Cloud DashScope models", kind: "registered", registeredProviderId: "bailian", apiKeyEnv: "DASHSCOPE_API_KEY", defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", wireApi: "chat_completions", keyRequired: true },
+  nvidia: { displayName: "NVIDIA", description: "NVIDIA NIM model endpoints", kind: "registered", registeredProviderId: "nvidia", apiKeyEnv: "NVIDIA_API_KEY", defaultBaseUrl: "https://integrate.api.nvidia.com/v1", wireApi: "chat_completions", keyRequired: true },
+  openai_compatible: { displayName: "Custom compatible", description: "OpenAI or Anthropic-compatible API", kind: "openai_compatible", registeredProviderId: null, apiKeyEnv: null, defaultBaseUrl: null, wireApi: "chat_completions", keyRequired: true },
+  local_openai_compatible: { displayName: "Local compatible", description: "Local OpenAI-compatible service", kind: "local_openai_compatible", registeredProviderId: null, apiKeyEnv: null, defaultBaseUrl: null, wireApi: "chat_completions", keyRequired: false },
+};
 
 const STANDARD_AGENT_ROUTES = [
   { capability: "agent.chat", label: "Chat", description: "Ask and Plan turns", modelType: "language", required: [], consumer: "available" },
@@ -1816,7 +1850,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.18",
+      version: "0.4.0-dev.19",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1834,8 +1868,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.18",
-      available_version: "0.4.0-dev.18",
+      installed_version: "0.4.0-dev.19",
+      available_version: "0.4.0-dev.19",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2559,6 +2593,10 @@ async function mockInvoke(command, args) {
     return { status: "interrupt_requested", run_id: active?.run_id || null };
   }
   if (command === "agent_llm_settings" || command === "agent_llm_refresh_credentials") {
+    if (command === "agent_llm_settings" && mockAgentLlmFailure === "load-settings" && !mockAgentLlmLoadFailureConsumed) {
+      mockAgentLlmLoadFailureConsumed = true;
+      throw new Error("Injected one-shot Agent model settings read failure");
+    }
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_set_credential") {
@@ -6141,7 +6179,7 @@ function syncAgentComposerState() {
     button.classList.toggle("active", button.dataset.agentMode === state.agentMode);
   });
   $("#actAutoApprove").disabled = state.agentBusy || state.agentMode !== "act" || actBlocked;
-  $("#agentModelSelector").disabled = selectorLocked || !(state.agentLlm.settings?.models || []).length;
+  $("#agentModelSelector").disabled = selectorLocked;
   const note = $("#agentCapabilityNote");
   if (reason && !state.agentBusy) {
     note.textContent = reason;
@@ -6199,6 +6237,38 @@ async function loadAgentLlmSettings() {
   renderAgentModelSelector();
   renderAgentLlmDialog();
   syncAgentComposerState();
+}
+
+async function retryAgentLlmSettings() {
+  if (state.agentLlm.settingsLoading) return;
+  state.agentLlm.settingsLoading = true;
+  setAgentLlmOperationState("working", "Reloading model settings…");
+  renderAgentLlmDialog();
+  try {
+    const settings = await invoke("agent_llm_settings");
+    state.agentLlm.settings = settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
+    state.agentLlm.selectedModelId = state.agentLlm.settings.selected_model_id || null;
+    state.agentLlm.lastTestResult = null;
+    ensureAgentLlmSelectionState();
+    updateAgentModelLabel();
+    renderAgentModelSelector();
+    setAgentLlmOperationState("success", "Model settings reloaded.");
+  } catch (error) {
+    state.agentLlm.settings = emptyAgentLlmSettings(String(error));
+    state.agentLlm.selectedModelId = null;
+    setAgentLlmOperationState("error", reportUiFailure(
+      "reload Agent model settings",
+      error,
+      "Model settings could not be reloaded. Your saved connections were not changed; retry or copy diagnostics.",
+    ));
+  } finally {
+    state.agentLlm.settingsLoading = false;
+    ensureAgentLlmSelectionState();
+    updateAgentModelLabel();
+    renderAgentModelSelector();
+    renderAgentLlmDialog();
+    syncAgentComposerState();
+  }
 }
 
 function setAgentInputBusy(busy) {
@@ -6325,7 +6395,6 @@ function positionAgentModelMenu() {
 }
 
 function openAgentModelSelector(focusPosition = null) {
-  if (!state.agentLlm.settings?.models?.length) return;
   state.agentLlm.selectorOpen = true;
   $("#agentModelSelector").setAttribute("aria-expanded", "true");
   $("#agentModelSelectorMenu").classList.remove("hidden");
@@ -6411,6 +6480,58 @@ function createAgentLlmListRow(titleText, metaText, active, className = "agent-l
   meta.textContent = metaText;
   row.append(title, meta);
   return row;
+}
+
+function createAgentConnectionModelCard(model, settings, active) {
+  const card = document.createElement("article");
+  card.className = `agent-llm-connection-model-card${active ? " active" : ""}`;
+  card.setAttribute("role", "option");
+  card.setAttribute("aria-selected", String(Boolean(active)));
+  const summary = document.createElement("button");
+  summary.type = "button";
+  summary.className = "agent-llm-connection-model-summary";
+  const heading = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = model.display_name;
+  const meta = document.createElement("span");
+  meta.textContent = modelConnectionLabel(model);
+  heading.append(title, meta);
+  summary.append(heading);
+  appendModelCapabilityChips(summary, model);
+  const provenance = document.createElement("small");
+  const automatic = [model.model_type, ...Object.values(model.capabilities || {})]
+    .filter(Boolean)
+    .filter((value) => value.value !== "unknown" && value.source === "aisdk_catalog").length;
+  provenance.textContent = automatic
+    ? `${automatic} default capability facts from aisdk`
+    : "Capability facts need review";
+  summary.append(provenance);
+  summary.addEventListener("click", () => {
+    state.agentLlm.selectedModelEditorId = model.id;
+    state.agentLlm.editingModelId = model.id;
+    state.agentLlm.lastTestResult = model.last_test || null;
+    renderAgentLlmDialog();
+  });
+  const routes = (settings.capability_routes || [])
+    .filter((route) => route.configured && route.model_id === model.id)
+    .map((route) => route.label || route.capability);
+  const assignment = document.createElement("p");
+  assignment.textContent = routes.length ? `Used for: ${routes.join(", ")}` : "Not assigned to a route";
+  const actions = document.createElement("div");
+  actions.className = "agent-llm-connection-model-actions";
+  const assign = document.createElement("button");
+  assign.type = "button";
+  assign.className = "primary";
+  assign.textContent = "Assign uses";
+  assign.disabled = !model.enabled;
+  assign.addEventListener("click", () => focusAgentModelRouting(model.id));
+  const review = document.createElement("button");
+  review.type = "button";
+  review.textContent = "Model options";
+  review.addEventListener("click", () => reviewAgentRouteModel(model.id));
+  actions.append(assign, review);
+  card.append(summary, assignment, actions);
+  return card;
 }
 
 function providerConnectionLabel(provider) {
@@ -6527,7 +6648,16 @@ function renderAgentCredentialFields() {
   const kind = $("#agentLlmProviderKind").value;
   const compatible = ["openai_compatible", "local_openai_compatible"].includes(kind);
   const keyRequired = Boolean($("#agentLlmProviderApiKeyRequired").checked);
-  $("#agentLlmBaseUrlField").classList.toggle("hidden", !compatible);
+  const preset = Object.values(AGENT_PROVIDER_PRESETS).find((item) => (
+    item.kind === kind
+    && (kind !== "registered" || item.registeredProviderId === $("#agentLlmRegisteredProviderId").value.trim().toLowerCase())
+  )) || null;
+  $("#agentLlmProviderBaseUrl").placeholder = preset?.defaultBaseUrl || "https://api.example.com/v1";
+  $("#agentLlmProviderBaseUrlHint").textContent = compatible
+    ? "Required unless Advanced supplies a Base URL environment variable."
+    : preset?.defaultBaseUrl
+      ? `Optional. Leave blank to use ${preset.defaultBaseUrl}.`
+      : "Optional for reviewed registered Providers; otherwise leave blank.";
   $("#agentLlmCredentialField").classList.toggle("hidden", !keyRequired);
   $("#agentLlmCredentialStatus").textContent = keyRequired ? credentialStatusLabel(provider) : "Not required";
   $("#agentLlmDeleteCredential").classList.toggle(
@@ -6563,6 +6693,8 @@ function agentLlmDiscoveryElements(scope) {
   return scope === "wizard"
     ? {
       select: $("#agentLlmWizardDiscoveredModel"),
+      cards: $("#agentLlmWizardDiscoveredModelCards"),
+      capabilityGrid: $("#agentLlmWizardCapabilityGrid"),
       status: $("#agentLlmWizardDiscoveryStatus"),
       refresh: $("#agentLlmWizardRefreshModels"),
       manual: $("#agentLlmWizardManualModel"),
@@ -6581,6 +6713,8 @@ function agentLlmDiscoveryElements(scope) {
     }
     : {
       select: $("#agentLlmModelDiscoveredModel"),
+      cards: $("#agentLlmModelDiscoveredModelCards"),
+      capabilityGrid: $("#agentLlmModelCapabilityGrid"),
       status: $("#agentLlmModelDiscoveryStatus"),
       refresh: $("#agentLlmRefreshModels"),
       manual: $("#agentLlmModelManualFields"),
@@ -6597,6 +6731,120 @@ function agentLlmDiscoveryElements(scope) {
       webSearch: $("#agentLlmModelWebSearch"),
       modelType: $("#agentLlmModelType"),
     };
+}
+
+function agentCapabilityInputMap(elements) {
+  return {
+    function_call: elements.toolCalling,
+    reasoning: elements.reasoning,
+    vision_input: elements.visionInput,
+    image_output: elements.imageOutput,
+    image_edit: elements.imageEdit,
+    audio_input: elements.audioInput,
+    audio_output: elements.audioOutput,
+    structured_output: elements.structuredOutput,
+    web_search: elements.webSearch,
+  };
+}
+
+function modelCapabilitySummary(model, { includeUnknown = false } = {}) {
+  const chips = [{ label: agentModelType(model), state: agentModelType(model) === "unknown" ? "unknown" : "type" }];
+  for (const name of AGENT_MODEL_CAPABILITIES) {
+    const value = agentModelCapability(model, name);
+    if (value === "yes" || (includeUnknown && value === "unknown")) {
+      chips.push({ label: AGENT_CAPABILITY_LABELS[name], state: value });
+    }
+  }
+  return chips;
+}
+
+function appendModelCapabilityChips(container, model, options = {}) {
+  const row = document.createElement("div");
+  row.className = "agent-llm-model-capabilities";
+  for (const item of modelCapabilitySummary(model, options)) {
+    const chip = document.createElement("span");
+    chip.dataset.state = item.state;
+    chip.textContent = item.label;
+    row.append(chip);
+  }
+  container.append(row);
+}
+
+function renderAgentLlmDiscoveredModelCards(scope) {
+  const record = agentLlmDiscoveryRecord(scope);
+  const elements = agentLlmDiscoveryElements(scope);
+  if (!elements.cards) return;
+  elements.cards.replaceChildren();
+  const selectedId = elements.select.value;
+  for (const model of record.models) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-llm-discovered-model-card${model.id === selectedId ? " active" : ""}`;
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(model.id === selectedId));
+    const title = document.createElement("strong");
+    title.textContent = model.display_name || model.id;
+    const id = document.createElement("code");
+    id.textContent = model.id;
+    button.append(title, id);
+    appendModelCapabilityChips(button, model);
+    const source = document.createElement("small");
+    source.textContent = model.model_type?.source === "aisdk_catalog"
+      ? "Default capabilities from aisdk catalog"
+      : "Capability details need review";
+    button.append(source);
+    button.addEventListener("click", () => {
+      elements.select.value = model.id;
+      applyAgentLlmDiscoveredModel(scope);
+      renderAgentLlmDiscoveredModelCards(scope);
+    });
+    elements.cards.append(button);
+  }
+  if (!record.models.length && record.status !== "loading") {
+    const empty = document.createElement("div");
+    empty.className = "agent-llm-empty";
+    empty.textContent = record.status === "idle" ? "Fetch models to review their default capabilities." : "No Provider models are available here; use manual entry.";
+    elements.cards.append(empty);
+  }
+}
+
+function renderAgentCapabilityPanel(scope, sourceModel = null) {
+  const elements = agentLlmDiscoveryElements(scope);
+  if (!elements.capabilityGrid) return;
+  const inputs = agentCapabilityInputMap(elements);
+  const discovered = agentLlmDiscoveryRecord(scope).models.find((item) => item.id === elements.select.value) || null;
+  const existing = scope === "model"
+    ? state.agentLlm.settings?.models?.find((item) => item.id === state.agentLlm.editingModelId) || null
+    : null;
+  const evidenceModel = sourceModel || discovered || existing;
+  elements.capabilityGrid.replaceChildren();
+  for (const name of AGENT_MODEL_CAPABILITIES) {
+    const input = inputs[name];
+    const value = input?.value || "unknown";
+    const evidence = evidenceModel?.capabilities?.[name];
+    const source = evidence?.value === value ? evidence.source : "user_declared";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "agent-llm-capability-toggle";
+    button.dataset.value = value;
+    button.dataset.source = source;
+    button.setAttribute("role", "switch");
+    button.setAttribute("aria-checked", String(value === "yes"));
+    button.setAttribute("aria-label", `${AGENT_CAPABILITY_LABELS[name]}: ${value}`);
+    const label = document.createElement("span");
+    label.textContent = AGENT_CAPABILITY_LABELS[name];
+    const status = document.createElement("small");
+    const sourceLabel = source === "aisdk_catalog" ? "auto" : source === "provider_response" ? "provider" : source === "user_declared" ? "declared" : "unknown";
+    status.textContent = `${value === "yes" ? "On" : value === "no" ? "Off" : "Unknown"} · ${sourceLabel}`;
+    const track = document.createElement("i");
+    track.setAttribute("aria-hidden", "true");
+    button.append(label, status, track);
+    button.addEventListener("click", () => {
+      input.value = value === "yes" ? "no" : "yes";
+      renderAgentCapabilityPanel(scope, evidenceModel);
+    });
+    elements.capabilityGrid.append(button);
+  }
 }
 
 function resetAgentLlmDiscovery(scope, providerId = null) {
@@ -6649,6 +6897,8 @@ function renderAgentLlmDiscovery(scope) {
   if (["unsupported", "error"].includes(record.status) || (record.status === "ready" && !record.models.length)) {
     elements.manual.open = true;
   }
+  renderAgentLlmDiscoveredModelCards(scope);
+  renderAgentCapabilityPanel(scope);
 }
 
 function applyAgentLlmDiscoveredModel(scope) {
@@ -6668,6 +6918,7 @@ function applyAgentLlmDiscoveredModel(scope) {
   elements.audioOutput.value = model.capabilities?.audio_output?.value || "unknown";
   elements.structuredOutput.value = model.capabilities?.structured_output?.value || "unknown";
   elements.webSearch.value = model.capabilities?.web_search?.value || "unknown";
+  renderAgentCapabilityPanel(scope, model);
 }
 
 function agentLlmDiscoveryContextIsCurrent(scope, providerId, requestId) {
@@ -6732,7 +6983,7 @@ async function discoverAgentLlmModels(providerId, scope) {
   const focusWasOnStatus = document.activeElement === elements.status;
   renderAgentLlmDiscovery(scope);
   if (focusWasOnStatus) {
-    if (record.status === "ready" && record.models.length) elements.select.focus();
+    if (record.status === "ready" && record.models.length) elements.cards.querySelector("button")?.focus();
     else {
       elements.manual.open = true;
       elements.modelId.focus();
@@ -6788,6 +7039,7 @@ function renderAgentModelForm() {
   $("#agentLlmModelEvidence").textContent = evidence.join(" · ");
   $("#agentLlmModelEnabled").checked = model ? Boolean(model.enabled) : true;
   $("#agentLlmModelManualFields").open = Boolean(model);
+  $("#agentLlmModelCapabilities").open = true;
   renderAgentLlmDiscovery("model");
 }
 
@@ -6811,11 +7063,11 @@ function renderAgentLlmCurrentSelection(settings) {
 }
 
 function switchAgentLlmView(view, { focus = false } = {}) {
-  const next = ["routing", "connections", "library"].includes(view) ? view : "routing";
+  const next = ["routing", "connections", "library"].includes(view) ? view : "connections";
   state.agentLlm.activeView = next;
   const definitions = [
-    ["routing", "#agentLlmRoutingTab", "#agentLlmRoutingPanel"],
     ["connections", "#agentLlmConnectionsTab", "#agentLlmShell"],
+    ["routing", "#agentLlmRoutingTab", "#agentLlmRoutingPanel"],
     ["library", "#agentLlmLibraryTab", "#agentLlmLibraryPanel"],
   ];
   for (const [name, tabSelector, panelSelector] of definitions) {
@@ -6930,8 +7182,94 @@ function reviewAgentRouteModel(modelId) {
   openAgentLlmModelDialog(model.id);
 }
 
+function openAgentConnectionForModel(modelId) {
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId);
+  if (!model) return;
+  state.agentLlm.selectedProviderId = model.provider_id;
+  state.agentLlm.selectedModelEditorId = model.id;
+  state.agentLlm.editingProviderId = model.provider_id;
+  state.agentLlm.editingModelId = model.id;
+  switchAgentLlmView("connections");
+  renderAgentLlmDialog();
+  requestAnimationFrame(() => $("#agentLlmSelectedProviderName")?.focus());
+}
+
+function focusAgentModelRouting(modelId) {
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId);
+  if (!model) return;
+  state.agentLlm.routingFocusModelId = model.id;
+  state.agentLlm.routingExpandedCapability = null;
+  switchAgentLlmView("routing");
+  renderAgentLlmDialog();
+  requestAnimationFrame(() => $("#agentLlmRoutingContext")?.focus());
+}
+
+function createAgentRouteModelCard(model, route, settings) {
+  const compatibility = agentRouteCompatibility(model, route);
+  const provider = settings.providers.find((item) => item.id === model.provider_id) || null;
+  const assigned = route.configured && route.model_id === model.id;
+  const card = document.createElement("article");
+  card.className = `agent-llm-route-model-card${state.agentLlm.routingFocusModelId === model.id ? " highlighted" : ""}`;
+  card.dataset.compatibility = compatibility;
+  const heading = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = model.display_name;
+  const meta = document.createElement("span");
+  meta.textContent = `${provider?.display_name || model.provider_display_name || "Provider"} · ${modelSelectorStatusLabel(model)}`;
+  heading.append(title, meta);
+  card.append(heading);
+  appendModelCapabilityChips(card, model, { includeUnknown: compatibility === "needs_review" });
+  const explanation = document.createElement("p");
+  explanation.textContent = compatibility === "compatible"
+    ? "Matches this route's type and required capabilities."
+    : compatibility === "needs_review"
+      ? "One or more required capabilities are unknown. Review them before assignment."
+      : "This model has an incompatible type or an explicitly unsupported capability.";
+  card.append(explanation);
+  const actions = document.createElement("div");
+  actions.className = "agent-llm-route-model-actions";
+  const use = document.createElement("button");
+  use.type = "button";
+  use.className = "primary";
+  use.textContent = assigned ? "Assigned" : "Use for this route";
+  use.disabled = assigned || compatibility !== "compatible";
+  use.addEventListener("click", () => persistAgentCapabilityRoute(route, model.id));
+  const review = document.createElement("button");
+  review.type = "button";
+  review.textContent = compatibility === "needs_review" ? "Review capabilities" : "Review model";
+  review.addEventListener("click", () => reviewAgentRouteModel(model.id));
+  const connection = document.createElement("button");
+  connection.type = "button";
+  connection.textContent = "Open connection";
+  connection.addEventListener("click", () => openAgentConnectionForModel(model.id));
+  actions.append(use, review, connection);
+  card.append(actions);
+  return card;
+}
+
 function renderAgentLlmRouting(settings) {
   $("#agentLlmRoutingRevision").textContent = `Revision ${settings.revision ?? "—"}`;
+  const focusedModel = settings.models.find((item) => item.id === state.agentLlm.routingFocusModelId) || null;
+  const context = $("#agentLlmRoutingContext");
+  context.replaceChildren();
+  context.classList.toggle("hidden", !focusedModel);
+  context.tabIndex = focusedModel ? -1 : 0;
+  if (focusedModel) {
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = `Assign uses for ${focusedModel.display_name}`;
+    const note = document.createElement("span");
+    note.textContent = "Choose an explicit compatible route below. Importing a model never assigns it automatically.";
+    copy.append(title, note);
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Show all models";
+    clear.addEventListener("click", () => {
+      state.agentLlm.routingFocusModelId = null;
+      renderAgentLlmDialog();
+    });
+    context.append(copy, clear);
+  }
   const list = $("#agentLlmRouteList");
   list.replaceChildren();
   for (const route of settings.capability_routes || []) {
@@ -6947,46 +7285,50 @@ function renderAgentLlmRouting(settings) {
     const description = document.createElement("span");
     description.textContent = `${route.capability} · ${route.description || "Typed capability route"}`;
     title.append(strong, description);
-    const editor = document.createElement("div");
-    editor.className = "agent-llm-route-editor";
-    const select = document.createElement("select");
-    select.setAttribute("aria-label", `${route.label || route.capability} model`);
-    routeModelOptions(select, route, settings, route.configured ? route.model_id : null);
     const meta = document.createElement("div");
     meta.className = "agent-llm-route-meta";
     meta.textContent = routeStatusCopy(route, model);
-    editor.append(select, meta);
     const actions = document.createElement("div");
     actions.className = "agent-llm-route-actions";
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "primary";
-    save.textContent = route.configured ? "Update" : "Assign";
-    const review = document.createElement("button");
-    review.type = "button";
-    review.textContent = "Review model";
-    review.classList.add("hidden");
+    const choose = document.createElement("button");
+    choose.type = "button";
+    choose.className = "primary";
+    const expanded = Boolean(focusedModel) || state.agentLlm.routingExpandedCapability === route.capability;
+    choose.textContent = expanded ? "Hide models" : route.configured ? "Change model" : "Choose model";
+    choose.setAttribute("aria-expanded", String(Boolean(expanded)));
+    choose.addEventListener("click", () => {
+      if (focusedModel) state.agentLlm.routingFocusModelId = null;
+      state.agentLlm.routingExpandedCapability = expanded ? null : route.capability;
+      renderAgentLlmDialog();
+    });
+    const connection = document.createElement("button");
+    connection.type = "button";
+    connection.textContent = "Open connection";
+    connection.disabled = !model;
+    connection.addEventListener("click", () => openAgentConnectionForModel(model?.id));
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = route.capability === "agent.chat" ? "Required" : "Remove";
     remove.disabled = route.capability === "agent.chat" || !route.configured;
-    const syncButtons = () => {
-      const chosen = settings.models.find((item) => item.id === select.value) || null;
-      const compatibility = chosen ? agentRouteCompatibility(chosen, route) : "unassigned";
-      save.disabled = !chosen || compatibility !== "compatible";
-      review.classList.toggle("hidden", compatibility !== "needs_review");
-      review.disabled = compatibility !== "needs_review";
-      meta.textContent = chosen
-        ? routeStatusCopy({ ...route, compatibility, inherited_from: null, credential_status: settings.providers.find((provider) => provider.id === chosen.provider_id)?.credential_status }, chosen)
-        : routeStatusCopy(route, model);
-    };
-    select.addEventListener("change", syncButtons);
-    save.addEventListener("click", () => persistAgentCapabilityRoute(route, select.value));
-    review.addEventListener("click", () => reviewAgentRouteModel(select.value));
     remove.addEventListener("click", () => removeAgentCapabilityRoute(route));
-    actions.append(save, review, remove);
-    syncButtons();
-    card.append(title, editor, actions);
+    actions.append(choose, connection, remove);
+    const modelPanel = document.createElement("div");
+    modelPanel.className = `agent-llm-route-model-grid${expanded ? "" : " hidden"}`;
+    if (expanded) {
+      const candidates = (focusedModel ? [focusedModel] : settings.models.filter((item) => item.enabled));
+      for (const candidate of candidates) modelPanel.append(createAgentRouteModelCard(candidate, route, settings));
+      if (!candidates.length) {
+        const empty = document.createElement("div");
+        empty.className = "agent-llm-empty";
+        empty.textContent = "No enabled models are available. Add a Provider connection and import a model first.";
+        const add = document.createElement("button");
+        add.type = "button";
+        add.textContent = "Add a connection";
+        add.addEventListener("click", () => switchAgentLlmView("connections", { focus: true }));
+        modelPanel.append(empty, add);
+      }
+    }
+    card.append(title, meta, actions, modelPanel);
     list.append(card);
   }
   renderAgentLlmCustomRouteModels(settings);
@@ -7079,10 +7421,11 @@ function renderAgentLlmDialog() {
   const selectedModel = providerModels.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
   renderAgentLlmCurrentSelection(settings);
   $("#agentLlmUserEnviron").textContent = "Connections store keys; the model library stores evidence; capability routes choose each typed use.";
-  $("#agentLlmValidation").textContent = settings.validation_error
+  $("#agentLlmValidationMessage").textContent = settings.validation_error
     ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
     : "";
   $("#agentLlmValidation").classList.toggle("hidden", !settings.validation_error);
+  $("#agentLlmRetrySettings").disabled = state.agentLlm.settingsLoading;
   const providerList = $("#agentLlmProviderList");
   providerList.replaceChildren();
   if (!settings.providers.length) {
@@ -7135,20 +7478,11 @@ function renderAgentLlmDialog() {
     modelList.append(empty);
   } else {
     for (const model of providerModels) {
-      const row = createAgentLlmListRow(
-        model.display_name,
-        modelConnectionLabel(model),
+      modelList.append(createAgentConnectionModelCard(
+        model,
+        settings,
         model.id === state.agentLlm.selectedModelEditorId,
-        "agent-llm-model-card",
-      );
-      row.addEventListener("click", () => {
-        clearAgentLlmCredentialInput();
-        state.agentLlm.selectedModelEditorId = model.id;
-        state.agentLlm.editingModelId = model.id;
-        state.agentLlm.lastTestResult = model.last_test || null;
-        renderAgentLlmDialog();
-      });
-      modelList.append(row);
+      ));
     }
   }
   const result = state.agentLlm.lastTestResult;
@@ -7179,6 +7513,10 @@ function openAgentLlmDialog() {
       : null;
   }
   state.agentLlm.settingsOpen = true;
+  const retryFailedRead = Boolean(state.agentLlm.settings?.validation_error);
+  if (retryFailedRead || !(state.agentLlm.settings?.providers || []).length) {
+    state.agentLlm.activeView = "connections";
+  }
   clearAgentLlmCredentialInput();
   setAgentLlmMainDialogInert(false);
   labelAgentLlmModal();
@@ -7187,6 +7525,7 @@ function openAgentLlmDialog() {
   renderAgentLlmDialog();
   $("#agentLlmDialog").classList.remove("hidden");
   requestAnimationFrame(() => $("#agentLlmClose").focus());
+  if (retryFailedRead) void retryAgentLlmSettings();
 }
 
 function closeAgentLlmDialog() {
@@ -7255,6 +7594,7 @@ function readAgentProviderForm() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   const displayName = $("#agentLlmProviderDisplayName").value.trim();
   const ids = settings.providers.map((provider) => provider.id);
+  const literalBaseUrl = $("#agentLlmProviderBaseUrl").value.trim() || null;
   return {
     id: state.agentLlm.editingProviderId || uniqueAgentId("provider", displayName || "provider", ids),
     display_name: displayName,
@@ -7262,8 +7602,8 @@ function readAgentProviderForm() {
     registered_provider_id: $("#agentLlmRegisteredProviderId").value.trim() || null,
     api_key_env: $("#agentLlmProviderApiKeyEnv").value.trim() || null,
     api_key_required: $("#agentLlmProviderApiKeyRequired").checked,
-    base_url: $("#agentLlmProviderBaseUrl").value.trim() || null,
-    base_url_env: $("#agentLlmProviderBaseUrlEnv").value.trim() || null,
+    base_url: literalBaseUrl,
+    base_url_env: literalBaseUrl ? null : ($("#agentLlmProviderBaseUrlEnv").value.trim() || null),
     wire_api: $("#agentLlmProviderWireApi").value || null,
     disable_stream_options: $("#agentLlmProviderDisableStreamOptions").checked ? true : null,
   };
@@ -7307,15 +7647,7 @@ function readAgentModelForm() {
 }
 
 function wizardProviderPreset(kind) {
-  const presets = {
-    deepseek: { displayName: "DeepSeek", kind: "registered", registeredProviderId: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY" },
-    openai: { displayName: "OpenAI", kind: "openai", registeredProviderId: null, apiKeyEnv: "OPENAI_API_KEY" },
-    anthropic: { displayName: "Anthropic", kind: "anthropic", registeredProviderId: null, apiKeyEnv: "ANTHROPIC_API_KEY" },
-    gemini: { displayName: "Gemini", kind: "gemini", registeredProviderId: null, apiKeyEnv: "GEMINI_API_KEY" },
-    openai_compatible: { displayName: "Compatible provider", kind: "openai_compatible", registeredProviderId: null, apiKeyEnv: null },
-    local_openai_compatible: { displayName: "Local provider", kind: "local_openai_compatible", registeredProviderId: null, apiKeyEnv: null },
-  };
-  return presets[kind] || presets.openai_compatible;
+  return AGENT_PROVIDER_PRESETS[kind] || AGENT_PROVIDER_PRESETS.openai_compatible;
 }
 
 function wizardApiKeyEnvironment(displayName, preset) {
@@ -7327,6 +7659,29 @@ function wizardApiKeyEnvironment(displayName, preset) {
   return `RHO_${stem}_API_KEY`;
 }
 
+function renderAgentProviderPresetGrid() {
+  const grid = $("#agentLlmWizardProviderGrid");
+  if (!grid) return;
+  const selected = $("#agentLlmWizardProviderKind").value;
+  grid.replaceChildren();
+  for (const [id, preset] of Object.entries(AGENT_PROVIDER_PRESETS)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-llm-provider-preset${id === selected ? " active" : ""}`;
+    button.dataset.providerPreset = id;
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(id === selected));
+    const title = document.createElement("strong");
+    title.textContent = preset.displayName;
+    const description = document.createElement("span");
+    description.textContent = preset.description;
+    const endpoint = document.createElement("small");
+    endpoint.textContent = preset.defaultBaseUrl ? "Managed default endpoint" : "Custom endpoint required";
+    button.append(title, description, endpoint);
+    grid.append(button);
+  }
+}
+
 function syncAgentLlmWizardProviderFields({ resetName = false } = {}) {
   const kind = $("#agentLlmWizardProviderKind").value;
   const preset = wizardProviderPreset(kind);
@@ -7334,12 +7689,15 @@ function syncAgentLlmWizardProviderFields({ resetName = false } = {}) {
   if (resetName || !$("#agentLlmWizardProviderName").value.trim()) {
     $("#agentLlmWizardProviderName").value = preset.displayName;
   }
-  if (kind === "local_openai_compatible") $("#agentLlmWizardApiKeyRequired").checked = false;
-  else if (resetName) $("#agentLlmWizardApiKeyRequired").checked = true;
-  $("#agentLlmWizardBaseUrlField").classList.toggle("hidden", !compatible);
+  if (resetName) $("#agentLlmWizardApiKeyRequired").checked = preset.keyRequired;
+  $("#agentLlmWizardBaseUrlField").classList.remove("hidden");
+  $("#agentLlmWizardBaseUrl").placeholder = preset.defaultBaseUrl || "https://api.example.com/v1";
+  $("#agentLlmWizardBaseUrlHint").textContent = compatible
+    ? "Required for a custom Provider because it has no managed default."
+    : `Optional. Leave blank to use ${preset.defaultBaseUrl}.`;
   $("#agentLlmWizardCredentialField").classList.toggle("hidden", !$("#agentLlmWizardApiKeyRequired").checked);
-  if (compatible && !$("#agentLlmWizardApiFormat").value) $("#agentLlmWizardApiFormat").value = "chat_completions";
-  if (!compatible) $("#agentLlmWizardApiFormat").value = "";
+  if (resetName || !$("#agentLlmWizardApiFormat").value) $("#agentLlmWizardApiFormat").value = preset.wireApi || "";
+  renderAgentProviderPresetGrid();
 }
 
 function refreshAgentLlmWizardAccessibility(step) {
@@ -7434,7 +7792,6 @@ function readAgentLlmWizardProvider() {
   const choice = $("#agentLlmWizardProviderKind").value;
   const preset = wizardProviderPreset(choice);
   const displayName = $("#agentLlmWizardProviderName").value.trim();
-  const compatible = ["openai_compatible", "local_openai_compatible"].includes(choice);
   const ids = settings.providers.map((provider) => provider.id);
   return {
     id: state.agentLlm.wizardProviderId || uniqueAgentId("provider", displayName || choice, ids),
@@ -7443,9 +7800,9 @@ function readAgentLlmWizardProvider() {
     registered_provider_id: preset.registeredProviderId,
     api_key_env: $("#agentLlmWizardApiKeyRequired").checked ? wizardApiKeyEnvironment(displayName, preset) : null,
     api_key_required: $("#agentLlmWizardApiKeyRequired").checked,
-    base_url: compatible ? ($("#agentLlmWizardBaseUrl").value.trim() || null) : null,
+    base_url: $("#agentLlmWizardBaseUrl").value.trim() || null,
     base_url_env: null,
-    wire_api: compatible ? ($("#agentLlmWizardApiFormat").value || null) : null,
+    wire_api: $("#agentLlmWizardApiFormat").value || preset.wireApi || null,
     disable_stream_options: null,
   };
 }
@@ -7487,7 +7844,7 @@ function openAgentLlmProviderWizard() {
   $("#agentLlmProviderWizard").classList.remove("hidden");
   renderAgentLlmWizardStep();
   labelAgentLlmModal("agentLlmWizardTitle");
-  $("#agentLlmWizardProviderName").focus();
+  $("#agentLlmWizardProviderGrid [aria-checked=\"true\"]")?.focus();
 }
 
 function closeAgentLlmProviderWizard() {
@@ -7575,7 +7932,7 @@ async function finishAgentLlmProviderWizard() {
     const discovery = state.agentLlm.wizardDiscovery;
     setAgentLlmOperationState("warning", "Choose an available model, or enter a model ID manually, before finishing.", "wizard");
     if (discovery.status === "ready" && discovery.models.length) {
-      $("#agentLlmWizardDiscoveredModel").focus();
+      $("#agentLlmWizardDiscoveredModelCards button")?.focus();
     } else {
       $("#agentLlmWizardManualModel").open = true;
       $("#agentLlmWizardModelId").focus();
@@ -7751,7 +8108,7 @@ async function saveAgentModel() {
   if (!model.provider_id || !model.model_id) {
     setAgentLlmOperationState("warning", "Choose an available model, or enter a model ID manually, before saving.", "model");
     if (state.agentLlm.modelDiscovery.status === "ready" && state.agentLlm.modelDiscovery.models.length) {
-      $("#agentLlmModelDiscoveredModel").focus();
+      $("#agentLlmModelDiscoveredModelCards button")?.focus();
     } else {
       $("#agentLlmModelManualFields").open = true;
       $("#agentLlmModelId").focus();
@@ -11576,6 +11933,11 @@ async function maybeApplyPreviewScenario() {
       switchAgentLlmView("connections");
       $("#agentLlmProviderAdvanced").open = true;
     }
+    if (previewParams.get("state") === "routing") {
+      state.agentLlm.routingExpandedCapability = "agent.chat";
+      switchAgentLlmView("routing");
+      renderAgentLlmDialog();
+    }
     if (previewParams.get("state") === "add-model") {
       window.setTimeout(() => recordPreviewLayoutEvidence(), 140);
     } else {
@@ -12222,7 +12584,7 @@ function recordPreviewLayoutEvidence() {
       state: previewParams.get("state") || "default",
       counts: {
         providers: $$(".agent-llm-provider-card").length,
-        visible_models: $$(".agent-llm-model-card").length,
+        visible_models: $$(".agent-llm-connection-model-card").length,
       },
       disclosures: {
         provider_advanced_open: $("#agentLlmProviderAdvanced").open,
@@ -16782,6 +17144,7 @@ $("#agentModelSelectorMenu").addEventListener("keydown", (event) => {
   }
 });
 $("#agentLlmClose").addEventListener("click", closeAgentLlmDialog);
+$("#agentLlmRetrySettings").addEventListener("click", () => void retryAgentLlmSettings());
 $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
@@ -16889,7 +17252,13 @@ $("#agentLlmProviderWizard").addEventListener("click", (event) => {
   }
   const button = event.target.closest?.("button");
   if (!button || !$("#agentLlmProviderWizard").contains(button)) return;
-  if (["agentLlmWizardClose", "agentLlmWizardCancel"].includes(button.id)) closeAgentLlmProviderWizard();
+  if (button.dataset.providerPreset) {
+    clearAgentLlmCredentialInput();
+    $("#agentLlmWizardProviderKind").value = button.dataset.providerPreset;
+    $("#agentLlmWizardBaseUrl").value = "";
+    syncAgentLlmWizardProviderFields({ resetName: true });
+    $("#agentLlmWizardProviderGrid [aria-checked=\"true\"]")?.focus();
+  } else if (["agentLlmWizardClose", "agentLlmWizardCancel"].includes(button.id)) closeAgentLlmProviderWizard();
   else if (button.id === "agentLlmWizardContinue") void advanceAgentLlmProviderWizard();
   else if (button.id === "agentLlmWizardBack") {
     state.agentLlm.wizardStep = "connection";
@@ -16917,6 +17286,17 @@ $("#agentLlmProviderWizard").addEventListener("input", (event) => {
   if (event.target.id === "agentLlmWizardModelId") $("#agentLlmWizardDiscoveredModel").value = "";
 });
 $("#agentLlmProviderWizard").addEventListener("keydown", (event) => {
+  const preset = event.target.closest?.("[data-provider-preset]");
+  if (preset && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const choices = Array.from($("#agentLlmWizardProviderGrid").querySelectorAll("[data-provider-preset]"));
+    const current = choices.indexOf(preset);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? choices.length - 1
+        : (current + (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1) + choices.length) % choices.length;
+    choices[next]?.click();
+    return;
+  }
   trapAgentLlmDialogFocus(event, $("#agentLlmProviderWizard"), closeAgentLlmProviderWizard);
 });
 $("#agentLlmProviderKind").addEventListener("change", () => {

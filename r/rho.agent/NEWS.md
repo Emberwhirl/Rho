@@ -1,3 +1,12 @@
+# rho.agent 0.1.4
+
+- Added explicit, bounded runtime adapters for the reviewed
+  `aisdk.providers` catalog, including optional literal Base URL overrides,
+  while retaining the existing one-route/one-credential Agent boundary.
+- Runtime Provider construction now passes explicit reviewed endpoints and the
+  selected system-store credential, preventing undeclared ambient Provider
+  variables from changing the effective connection.
+
 # rho.agent 0.1.3
 
 - Added one effective, typed capability-route projection to each desktop

@@ -13,6 +13,12 @@ CRED-UX4A routing foundation was explicitly authorized by the project owner on
 2026-08-07; implementation, the complete affected automated matrix,
 deterministic browser review, and an independent security/contract review are
 complete, while owner and exact installed-candidate acceptance remain open;
+CRED-UX4A-R1 Provider-first recovery and provider-catalog integration was
+explicitly authorized by the project owner on 2026-08-07 after the installed
+`0.4.0-dev.18` DMG exposed an unrecoverable settings-entry state; its
+implementation, complete affected local matrix, independent security/contract
+review, browser review, and unsigned arm64 replacement-DMG verification are
+complete, while owner installed-app and live-Provider acceptance remain open;
 CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
@@ -56,6 +62,17 @@ route resolution, and one selected-route credential per Agent child. The next
 mandatory stop is the CRED-UX4A verification and owner-acceptance gate.
 Capability-worker execution, new media tools, optional-route credential use,
 CRED-UX4B, and CRED-UX4C remain separately gated.
+
+Authorized work package: CRED-UX4A-R1, installed-app recovery plus a
+Provider-first Connections -> models -> routing workflow backed by the pinned
+`aisdk.providers` adapter catalog. It may extend named Provider presets,
+Provider-specific runtime construction, optional literal Base URL overrides,
+model capability presentation, and Connections/routing navigation. It may not
+add a capability worker, use an optional-route credential, infer a route from
+prompt text, auto-assign an imported model, or broaden the existing credential
+and Provider-network lanes. The mandatory stop is a new `0.4.0-dev.19` local
+candidate, complete affected verification, independent credential/contract
+review, and owner installed-app acceptance.
 
 Authorized follow-up: simplify the delivered settings surface and make the
 Windows system credential the only Agent LLM API-key source. Legacy
@@ -764,6 +781,114 @@ Mandatory stop: migration and rollback evidence, two-Provider routing tests,
 stale/failure recovery, complete affected matrix, browser review, independent
 credential review, and owner acceptance before CRED-UX4B.
 
+#### CRED-UX4A-R1 — Provider-first recovery and catalog integration
+
+Authorization: the project owner explicitly authorized the formal repair and
+the bounded Provider-first enhancement on 2026-08-07. This package is active.
+It is D3/R3 because it changes credential-adjacent Provider construction,
+runtime dependency admission, Provider discovery endpoints, route mutation
+entry points, and installed-app recovery. It retains schema V2 and every
+credential, revision, project, and no-fallback boundary owned above.
+
+The exact installed `0.4.0-dev.18` app reproduced this invariant violation:
+
+1. a transient `agent_llm_settings` read failure was converted to an empty
+   frontend settings projection;
+2. the composer disabled its only model-settings trigger when the projection
+   contained no models;
+3. the trigger handler independently refused to open the menu without models;
+4. the banner instructed the user to open Model settings, producing no
+   reachable recovery action even though the durable V2 settings and Keychain
+   account remained valid.
+
+The protected recovery invariant is: unless an active turn or approval locks
+model changes, Model settings remains reachable from the composer for loading,
+empty, invalid, unavailable, and configured states. An initial read failure
+must retain a bounded retry action, a retry must re-read durable state rather
+than repair or overwrite it, and Rust must record a bounded credential-redacted
+failure class in startup diagnostics. Opening Model settings after a failed
+read performs one explicit retry; repeated failure remains visible and
+retryable without touching providers, models, routes, or credentials.
+
+The package imports `aisdk.providers` version `0.1.0` from exact commit
+`5cf315e5eedad7d83b224c96595da346e1192a85`. It exposes only the reviewed named
+adapters registered by that package: DeepSeek, Moonshot, Kimi, Stepfun,
+Volcengine, AiHubMix, xAI, OpenRouter, Bailian, and NVIDIA. OpenAI, Anthropic,
+and Gemini remain core `aisdk` Providers. Runtime construction uses an explicit
+Rho-owned allowlist and one selected Provider profile; it never accepts a
+package, function, expression, or constructor name from settings. A missing or
+incompatible `aisdk.providers` installation produces a bounded actionable
+runtime error for an affected Provider and never falls back to a different
+Provider. The independently versioned `rho.agent` package advances because its
+runtime adapter and declared dependency contract change.
+
+Each reviewed preset defines a display name, stable registered Provider ID,
+default API-key environment name, default endpoint, wire format, and model
+discovery strategy. These defaults are presentation/runtime metadata, not
+credentials and not durable model availability. Provider model discovery
+retains one bounded request, no redirects/retries, exact authentication-header
+rules, body/error redaction, and manual entry fallback. A literal Base URL is a
+common visible optional override for every named/core Provider; blank means the
+adapter's reviewed default. Custom/local compatible Providers still require a
+literal Base URL because they have no default. Environment-derived Base URLs
+remain Advanced and unavailable to discovery, preserving the existing network
+authority boundary.
+
+Model settings opens on **Connections**. The normal workflow is:
+
+1. choose a Provider from an accessible card grid, optionally override its
+   Base URL, store its key, and test the connection;
+2. fetch/import a model from card-based Provider results, with manual Model ID
+   entry as the existing fallback;
+3. inspect the model's default type and capability values with evidence labels;
+4. explicitly assign one or more compatible named uses in Model routing.
+
+Provider choice, discovered-model choice, standard route assignment, and the
+nine capability values use panel/card/switch presentation rather than default
+HTML selects. Low-frequency wire format, custom route type, and destructive
+controls may remain progressively disclosed. Capability controls preserve
+tri-state truth: catalog/Provider values display as automatic evidence;
+changing a value creates a user declaration; unknown is never displayed as a
+known `no`. Context window and maximum output values are presentation-only
+catalog facts in this package and are not accepted as execution limits unless
+a later runtime contract adopts them.
+
+Connections and Model routing are bidirectionally linked:
+
+- each imported model card shows Provider, model type, positive/default
+  capability badges, provenance, current route assignments, and an `Assign
+  uses` action;
+- `Assign uses` opens Model routing with that exact stable model ID in context;
+  each standard route then presents an explicit compatible `Use for this
+  route` action, a `Review capabilities` action for unknown evidence, or a
+  disabled incompatibility explanation;
+- each assigned route card links back to its exact Provider connection and
+  model review surface;
+- an empty route surface offers `Add a connection`, and adding/importing a
+  model never assigns it automatically;
+- route writes continue to use the current expected revision, and stale or
+  failed writes keep the previous durable route visible after reloading.
+
+Mock mode adds a one-shot `agent_llm_settings` failure followed by successful
+retry and stays in command parity with the real backend. Automated evidence
+must cover the recovery cause (not only the disabled-button symptom), keyboard
+and pointer access with zero models, repeated retry failure, successful retry,
+Provider-card selection, custom Base URL validation/default behavior, every
+named preset mapping, exact catalog enrichment, card-based model selection,
+compatible/unknown/incompatible routing, stale route writes, two-Provider
+isolation, missing dependency, credential redaction, normal and narrow layouts,
+and no accidental route mutation. Live Provider calls remain separate owner
+acceptance and never run in deterministic tests.
+
+`0.4.0-dev.18` was committed, handed to the owner as a DMG, installed under
+`/Applications`, and rejected by the recovery reproduction above. Its source,
+artifact, and hash become historical evidence and cannot be overwritten or
+relabelled. Reviewed user-visible implementation therefore advances every
+application version authority to the next unused identity,
+`0.4.0-dev.19`, updates `NEWS.md`, and creates a new candidate checklist. The
+authorization does not permit a tag, Release, hosted candidate workflow,
+notarization, MAC5, Pages mutation, or public distribution.
+
 #### CRED-UX4B — isolated capability workers
 
 - broker-owned worker contract and lifecycle;
@@ -822,12 +947,12 @@ CRED-UX4B additionally proves for each consumer:
 ### Version And Release Impact
 
 Design-only CRED-UX4 work does not change a package version or `NEWS.md`.
-Because `0.4.0-dev.18` has not been committed, pushed, accepted, or distributed,
-an explicitly authorized CRED-UX4A may join that integration identity; the
-already built pre-redesign local app/DMG is superseded and must not be cited or
-handed off. The exact post-implementation source must rerun the full matrix and
-rebuild the app/DMG. If `dev.18` is committed or distributed before CRED-UX4A
-activation, CRED-UX4 requires the next unused development identity instead.
+CRED-UX4A originally joined `0.4.0-dev.18` before its handoff. The owner later
+installed and rejected that exact DMG under the CRED-UX4A-R1 reproduction
+above, so its identity, artifact, hash, and earlier evidence are historical.
+The authorized replacement implementation advances the application to
+`0.4.0-dev.19`, reruns the complete affected matrix, and rebuilds a distinct
+app/DMG. It must not overwrite or relabel `dev.18` evidence.
 
 CRED-UX4 changes only desktop/Rho adapter contracts unless a worker requires a
 change to exported `rho.agent` behavior. The implementation review decides the
@@ -1062,8 +1187,9 @@ are synchronized at `0.4.0-dev.17`. No R package contract or version changed.
 
 ## CRED-UX3 And CRED-UX4A Implementation Evidence — 2026-08-07
 
-CRED-UX3 discovery and the authorized CRED-UX4A routing foundation are
-implemented in the undistributed `0.4.0-dev.18` development identity.
+CRED-UX3 discovery and the authorized CRED-UX4A routing foundation were
+implemented in the later installed-and-rejected `0.4.0-dev.18` development
+identity.
 
 - The non-secret settings authority is schema V2 with a monotonic revision,
   deterministic read-only V1 projection, byte-identical backup before the
@@ -1131,9 +1257,56 @@ reports `0.4.0-dev.18` and macOS 14.0; and its complete Workspace smoke passed,
 including Plot, data view, stale rejection, two-project isolation, restart,
 interrupt, crash recovery, and durable events.
 
-Version decision: all application authorities remain synchronized at the
-unused `0.4.0-dev.18` identity, while `rho.agent` independently advances to
-`0.1.3`. `NEWS.md` and package NEWS describe implemented behavior. The
-document remains active because owner acceptance, real Keychain/live-Provider
-use, exact installed-candidate accessibility, authoritative candidate assets,
-MAC5, and release GO remain `NOT RUN`. CRED-UX4B/C are still unauthorized.
+Historical version decision: application authorities were synchronized at
+`0.4.0-dev.18`, while `rho.agent` independently advanced to `0.1.3`. The
+subsequent owner-installed recovery rejection supersedes local acceptance and
+forces replacement identity `0.4.0-dev.19`. CRED-UX4B/C remain unauthorized.
+
+## CRED-UX4A-R1 Implementation Evidence — 2026-08-07
+
+The Provider-first recovery package is implemented at replacement identity
+`0.4.0-dev.19`; `rho.agent` independently advances to `0.1.4` because its
+runtime contract now imports and explicitly constructs the reviewed
+`aisdk.providers` adapters.
+
+- The composer model button remains reachable with zero models or a failed
+  settings read. Opening Model settings performs one read-only retry and keeps
+  a visible retry action; the real command logs bounded failures and mock mode
+  reproduces a one-shot failure without mutating saved settings.
+- Connections is first. Provider, discovered-model, capability, connection-
+  model, and route-model choices use cards/switches for frequent decisions.
+  The common connection section owns the optional literal Base URL, while
+  environment indirection stays Advanced and is never expanded by discovery.
+- The exact pinned `aisdk.providers` commit contributes ten explicit named
+  constructors; unreviewed registered IDs cannot receive a Base URL override
+  or arbitrary package/function dispatch.
+- Default model type/capability evidence is visible on discovery, Connection,
+  and routing cards. Model options opens its switches by default; overrides
+  remain user-declared. Connection cards and route candidates link in both
+  directions without automatic route assignment or silent fallback.
+- Focused JavaScript, Rust, and R adapter checks pass. Deterministic browser
+  review covers default, empty, Provider wizard, model options, Add model, and
+  routing states at normal and narrow viewports with no page errors, horizontal
+  overflow, or Provider/detail overlap.
+- The complete affected matrix passes: 43 frontend contract scripts, complete
+  Rust workspace/all-targets tests, complete `rho.bridge`/`rho.agent` suites,
+  release/update fixtures, macOS Ark fixture, workflow parse, format, syntax,
+  metadata, and diff checks. Independent final review found no unresolved
+  credential, Provider-network, schema, persistence, routing, or sequencing
+  conflict. That review found and repaired one pre-handoff boundary gap:
+  provider constructors now receive an explicit reviewed default endpoint and
+  explicit system-store key value, so an undeclared ambient API key, endpoint,
+  backup endpoint, or Kimi/Moonshot option cannot silently override the Rho
+  profile. Only the profile's explicit Advanced Base URL environment field is
+  resolved.
+- Tauri CLI 2.11.4 produced a local unsigned arm64 app and
+  `Rho_0.4.0-dev.19_aarch64.dmg`. `hdiutil verify`, exact app/Ark arm64 checks,
+  version `0.4.0-dev.19`, macOS 14.0 minimum, and read-only mounted-DMG
+  Workspace smoke all pass. The DMG is 21,213,923 bytes with SHA-256
+  `8fbe232b92b752216e907743cba45316acaaae1e0b20c5f9a12e77c6122906c1`.
+  Its linker ad-hoc signature is development-only and intentionally does not
+  satisfy Developer ID, notarization, staple, or Gatekeeper gates.
+
+No real Provider request or credential was used. Authoritative candidate,
+installed-app/live-Provider acceptance, MAC5, and publication remain `NOT RUN`
+and unauthorized.

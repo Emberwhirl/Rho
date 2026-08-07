@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-07
-Current baseline: `0.4.0-dev.18`
+Current baseline: `0.4.0-dev.19`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -179,26 +179,27 @@ seven-file audit while using 12 minutes 10 seconds of macOS runner time.
 Issue #4's CRED-UX2 completion subsequently advanced the application baseline
 to `0.4.0-dev.17`; its provider-card Model settings workflow was implemented
 and passed the complete affected local matrix, deterministic browser review,
-and unsigned arm64 app/DMG smoke on 2026-08-07. CRED-UX3 then advances the live
-baseline to `0.4.0-dev.18` with bounded discovery-first Provider model lists
-and a manual-ID fallback. The system-credential/LLM specification owns both
-behaviors, while the `0.4.0-dev.18` checklist owns the new exact candidate
-identity. Candidate handoff is now paused because the owner requested a
-capability-routed redesign matching the pinned `aisdk`: Connections, the Model
-library, and named task-to-model routes become separate layers, while future
-optional-route consumers use isolated one-credential workers instead of
-exposing all Provider keys to the main Agent R. CRED-UX4A routing foundation
-was explicitly authorized on 2026-08-07 and its schema V2 migration, routing
-UI, existing Ask/Plan/Act resolution, one-selected-route-credential boundary,
-complete affected automation, deterministic browser review, and independent
-security/contract review are implemented. `rho.agent` advances independently
-to `0.1.3` for its exported capability-route session contract. CRED-UX4B/C
-workers and media consumers remain unauthorized. The pre-redesign local
-`dev.18` artifact is superseded and cannot serve as acceptance evidence. All
+and unsigned arm64 app/DMG smoke on 2026-08-07. CRED-UX3 and CRED-UX4A then
+advanced the live baseline to `0.4.0-dev.18` with bounded Provider discovery,
+schema V2 capability routing, and the existing one-route/one-credential
+Ask/Plan/Act boundary. The owner installed and rejected that exact DMG because
+a failed settings read disabled the only Model settings entry. CRED-UX4A-R1 is
+the authorized Provider-first recovery package: it advances the replacement
+baseline to `0.4.0-dev.19`, keeps settings reachable and retryable, pins
+explicit `aisdk.providers` adapters, exposes optional Base URL and default
+capability cards/switches, and links Connections with Model routing. Its
+complete affected automation, independent security/contract review,
+deterministic browser review, and local unsigned arm64 replacement-DMG
+verification pass. Owner-installed recovery plus live Provider/Keychain
+acceptance is the next acceptance checkpoint.
+`rho.agent` advances independently to `0.1.4` for its explicit provider-adapter
+contract. CRED-UX4B/C workers and media consumers remain unauthorized. The
+`dev.18` artifact is rejected and cannot serve as acceptance evidence. All
 earlier runs and artifacts remain historical exact-source evidence and cannot
-validate the new behavior. Owner acceptance, exact installed-candidate native
-accessibility, Keychain, live-provider discovery, and MAC5 acceptance remain
-open. MAC4-R3 is closed at its refreshed mandatory stop. All
+validate the replacement behavior. Owner acceptance, exact
+installed-candidate native accessibility, Keychain, live-provider discovery,
+and MAC5 acceptance remain open. MAC4-R3 is closed at its refreshed mandatory
+stop. All
 authoritative candidate/draft creation remains NOT RUN. MAC5 remains
 unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the

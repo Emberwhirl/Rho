@@ -41,10 +41,11 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; `0.4.0-dev.1` installed artifact rejected; bounded `0.4.0-dev.2` entitlement repair and replacement rehearsal passed; latest upstream `b5800ae` integrated at `0.4.0-dev.16`; MAC4-R3 local matrix and post-merge exact-commit rehearsal `31165265090` passed; CRED-UX2 and CRED-UX3 advance the live baseline through `0.4.0-dev.18` without reusing earlier evidence | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | MAC4-R3 is closed at refreshed review-only exact-commit fork evidence; MAC5 remains unauthorized; full M3 remains open for authoritative candidate gates, macOS x64, and Linux x64 |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; `0.4.0-dev.1` installed artifact rejected; bounded `0.4.0-dev.2` entitlement repair and replacement rehearsal passed; latest upstream `b5800ae` integrated at `0.4.0-dev.16`; MAC4-R3 local matrix and post-merge exact-commit rehearsal `31165265090` passed; Issue #4 work advances the live baseline through replacement identity `0.4.0-dev.19` without reusing earlier evidence; its complete local matrix and unsigned mounted-DMG smoke pass | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | MAC4-R3 is closed at refreshed review-only exact-commit fork evidence; owner-installed `dev.19` recovery and live Provider/Keychain acceptance remain open; MAC5 remains unauthorized; full M3 remains open for authoritative candidate gates, macOS x64, and Linux x64 |
 | `release/historical-0.4.0-dev.16-candidate-checklist.md` | historical; review-only rehearsals passed and the decision remained NO-GO before the baseline advanced | immutable `0.4.0-dev.16` rehearsal evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, MAC5, or publication row |
-| `release/historical-0.4.0-dev.17-candidate-checklist.md` | historical; CRED-UX2 local matrix, browser review, and unsigned app/DMG smoke passed before CRED-UX3 advanced the baseline | immutable `0.4.0-dev.17` local evidence and NO-GO snapshot only | cannot authorize or satisfy any `0.4.0-dev.18` candidate, installed acceptance, MAC5, or publication row |
-| `release/active-0.4.0-dev.18-candidate-checklist.md` | active development identity; CRED-UX3 and CRED-UX4A implementation, deterministic affected matrix, browser review, and independent review complete; post-redesign local artifact verification recorded separately from acceptance; authoritative assets/draft, installed acceptance, MAC5, and GO NOT RUN | sole live `0.4.0-dev.18` cross-platform candidate identity, evidence binding, installed-acceptance ledger, and GO/NO-GO decision | authoritative candidate requires separate main-repository authorization; exact installed accessibility/Keychain/live-provider evidence and MAC5/upload/publication remain separately gated |
+| `release/historical-0.4.0-dev.17-candidate-checklist.md` | historical; CRED-UX2 local matrix, browser review, and unsigned app/DMG smoke passed before CRED-UX3 advanced the baseline | immutable `0.4.0-dev.17` local evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, installed acceptance, MAC5, or publication row |
+| `release/historical-0.4.0-dev.18-candidate-checklist.md` | historical rejected identity; CRED-UX3/CRED-UX4A local evidence passed, but owner installation exposed the settings-entry recovery deadlock | immutable `0.4.0-dev.18` source/artifact/hash, installed rejection, and NO-GO record only | cannot authorize or satisfy any `0.4.0-dev.19` candidate, acceptance, MAC5, or publication row |
+| `release/active-0.4.0-dev.19-candidate-checklist.md` | active replacement development identity; CRED-UX4A-R1 implementation, complete affected matrix, independent security/contract review, deterministic browser review, and local unsigned artifact verification complete; authoritative assets/draft, installed acceptance, MAC5, and GO NOT RUN | sole live `0.4.0-dev.19` cross-platform candidate identity, future evidence binding, installed-acceptance ledger, and GO/NO-GO decision | owner-installed recovery and live Provider/Keychain acceptance remain open; authoritative candidate requires separate main-repository authorization; exact installed accessibility and MAC5/upload/publication remain separately gated |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -79,7 +80,7 @@ semantics.
 | `plans/active-2026-08-06-current-project-check-spec.md` | active; implementation and automated/browser verification complete 2026-08-07; installed acceptance open | current-directory-only Check Project scope and scrollable Agent Review presentation | historical project audit scope remains available to internal callers; no mutation, repair, or execution authority |
 | `plans/active-2026-08-06-environment-approval-reconciliation-spec.md` | active; implementation and focused frontend verification complete 2026-08-07; installed acceptance open | direct environment approval terminal-state reconciliation and refresh-failure isolation | dedicated environment-operation request table, project/revision/snapshot stale guards, and separate Agent approval lane remain authoritative |
 | `plans/active-2026-08-05-human-facing-information-projection-spec.md` | active; WP1-WP4 implementation and automated/browser verification complete 2026-08-05; installed acceptance open | shared user-facing projection of internal identifiers, errors, statuses, paths, and implementation terminology | UX1 language authority and all existing workflow/backend authority preserved; installed/display-scale acceptance remains separate |
-| `plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md` | active; CRED-UX1/CRED-UX2 implemented and verified as recorded; MAC3 Keychain adapter verified; CRED-UX3 discovery-first model selection implemented with deterministic verification; CRED-UX4A implementation, complete affected automation, browser review, and independent review complete 2026-08-07; owner/installed acceptance open | shared native system-credential semantics, Model settings, bounded Provider discovery, and implemented three-layer Connection/Model/Capability routing foundation; proposed least-privilege worker architecture remains staged; macOS spec owns its adapter | CRED-UX4A exclusively owns V2 migration, routing UI, Ask/Plan/Act route resolution, and one selected-route credential; CRED-UX4B/C workers/media, optional-route credential use, and release action remain unauthorized |
+| `plans/active-2026-08-05-system-credential-and-simple-llm-settings-spec.md` | active; CRED-UX1/CRED-UX2 implemented and verified as recorded; MAC3 Keychain adapter verified; CRED-UX3 and CRED-UX4A implemented with recorded deterministic evidence; installed `0.4.0-dev.18` rejected for an unrecoverable settings-entry state; CRED-UX4A-R1 implementation, complete local matrix, security/contract review, browser review, and unsigned-DMG verification complete 2026-08-07 | shared native system-credential semantics, Model settings, bounded Provider discovery, implemented three-layer Connection/Model/Capability routing, and the bounded Provider-first recovery plus `aisdk.providers` integration; proposed least-privilege worker architecture remains staged; macOS spec owns its adapter | owner-installed recovery and live Provider/Keychain acceptance remain open; CRED-UX4B/C workers/media, optional-route credential use, hosted release action, and MAC5 remain unauthorized |
 | `plans/active-2026-08-04-plot-review-surface-spec.md` | active; PLOT-UX1 implemented and automated/browser verified 2026-08-04; installed acceptance open | plot-first preview layout, side Plot navigation, progressive disclosure, and human-readable Saved outputs projection | WP3/BH4/PLOT-PAYLOAD-1/PLOT-ROOT-1/M1-M3 authority preserved; installed acceptance remains open |
 | `plans/active-2026-08-04-agent-execution-output-review-repair-spec.md` | active; AGENT-LOOP-1 implemented and automated/browser verified 2026-08-04; duplicate-Plot repair implemented and automated verified 2026-08-05; adaptive long-running Act budget implemented 2026-08-06; HUMAN-OUTPUT-REFRESH-1 implemented and automated/browser verified 2026-08-06; installed acceptance open | display-only path cleanup, direct Act execution instruction, Agent-first Outputs-to-Review loop, single-execution duplicate Plot suppression, adaptive long-running Act liveness, and Agent-to-Human refresh of existing Plots and WP3 Artifacts | existing project/session filters, persistence, Workspace R identity, project/revision/approval/tool guards preserved; no new schema or authority; exact installed-candidate acceptance remains open |
 | `plans/active-2026-08-04-plot-payload-normalization-repair-spec.md` | active; PLOT-PAYLOAD-1 implemented and automated/browser verified 2026-08-04; installed acceptance open | canonical PNG base64 ingress plus compatible historical preview/export | WP3 provenance/export, BH4 retention, and M3 presentation boundaries preserved; rebuilt installed-app confirmation remains open |
@@ -182,8 +183,13 @@ The active system-credential specification is the single owner of Model
 settings credential presentation, the CRED-UX2 original Issue #4 workflow, and
 the CRED-UX3 discovery-first model picker. Its implemented CRED-UX4A package
 owns the Connection/Model/Capability foundation and existing-turn routing.
-Owner and installed-candidate acceptance remain open. The future worker
-boundary remains proposed; CRED-UX4B/C are not active.
+Its active CRED-UX4A-R1 package owns the installed settings-entry recovery,
+Provider-first ordering, reviewed `aisdk.providers` adapter allowlist, optional
+literal Base URL overrides, model capability cards, and Connections/routing
+navigation. It does not own a new credential source, network lane, schema, or
+capability consumer. Owner and replacement installed-candidate acceptance
+remain open. The future worker boundary remains proposed; CRED-UX4B/C are not
+active.
 CRED-UX2 supersedes only CRED-UX1's single global Advanced layout. It replaces
 that layout with provider cards, one selected-provider Advanced disclosure, a
 dedicated Add provider Connection -> Model workflow, a dedicated Model editor,
@@ -215,6 +221,12 @@ The redesign does not transfer model semantics into the frontend and does not
 authorize prompt-classified routing. Rho owns stable persisted references,
 revision checks, credential isolation, typed consumer admission, and user-facing
 projection; `aisdk` retains model construction and capability-route resolution.
+CRED-UX4A-R1 adds `aisdk.providers` only through a pinned dependency and an
+explicit Rho-owned constructor/preset allowlist. The package's load-time
+registry does not authorize settings to name an arbitrary R package or
+function. Provider model responses remain availability suggestions, while an
+exact `aisdk` catalog match remains the only automatic default-capability
+evidence used for model cards and route compatibility.
 
 The proposed worker boundary deliberately avoids injecting all optional-route
 keys into the main Agent R. Existing Agent turns receive only the effective
@@ -457,8 +469,9 @@ repaired `0.4.0-dev.2` rehearsal remain historical fork evidence. Upstream
 independently advanced through `0.4.0-dev.15`; after non-rewriting integration,
 the combined source first became `0.4.0-dev.16`. Its checklist and passing
 review-only runs are now historical because Issue #4's user-visible changes
-advanced the live candidate through `0.4.0-dev.17` and CRED-UX3 advances it to
-`0.4.0-dev.18`, owned by the D4 active checklist. MAC4 implemented parallel candidate
+advanced the live candidate through `0.4.0-dev.17` and CRED-UX3 advanced it to
+the now-rejected `0.4.0-dev.18`. CRED-UX4A-R1 owns the replacement
+`0.4.0-dev.19` identity under its active checklist. MAC4 implemented parallel candidate
 construction, signed/notarized macOS packaging automation, immutable draft
 assembly, and a separately gated publish workflow. The fork-only credentialed
 rehearsal passed automation but its installed DMG was rejected; no
@@ -529,11 +542,11 @@ of macOS-runner use. The draft job skipped and no tag, Release, draft, or Pages
 site exists. This closes the refreshed review-only stop without expanding
 authority.
 
-The active `0.4.0-dev.18` checklist inherits these unchanged automation gates,
-not their results. CRED-UX3 changes credentialed Provider-network and frontend
-behavior and therefore requires a new exact-source validation, candidate, and
-installed-acceptance ledger; no earlier run, notarization receipt, hash, or
-artifact is composable with it.
+The active `0.4.0-dev.19` checklist inherits these unchanged automation gates,
+not their results. CRED-UX4A-R1 changes credentialed Provider-network, Agent R,
+and frontend behavior and therefore requires a new exact-source validation,
+candidate, and installed-acceptance ledger; no earlier run, notarization
+receipt, hash, or artifact is composable with it.
 
 ### macOS arm64 platform ownership
 

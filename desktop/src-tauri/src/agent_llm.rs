@@ -1310,96 +1310,139 @@ fn discover_models_with_store(
 }
 
 fn model_discovery_target(provider: &AgentProviderProfile) -> Result<Option<ModelDiscoveryTarget>> {
-    let fixed = |url: &str, format, auth| -> Result<Option<ModelDiscoveryTarget>> {
-        Ok(Some(ModelDiscoveryTarget {
-            url: reqwest::Url::parse(url).map_err(|_| {
-                anyhow::anyhow!("The built-in model-discovery endpoint is invalid.")
-            })?,
-            format,
-            auth,
-        }))
+    let Some((default_base_url, format, auth)) = provider_discovery_contract(provider) else {
+        return Ok(None);
     };
+    if provider.base_url.is_none() && provider.base_url_env.is_some() {
+        // Environment-derived Base URLs remain runtime-only. Discovery never
+        // expands them into new credential-bearing network authority or falls
+        // back to a different default endpoint.
+        return Ok(None);
+    }
+    let Some(base_url) = provider.base_url.as_deref().or(default_base_url) else {
+        return Ok(None);
+    };
+    Ok(Some(ModelDiscoveryTarget {
+        url: provider_models_url(base_url, format)?,
+        format,
+        auth,
+    }))
+}
+
+fn reviewed_registered_provider_id(provider: &AgentProviderProfile) -> Option<&str> {
+    let id = provider.registered_provider_id.as_deref()?;
+    reviewed_registered_provider_ids()
+        .iter()
+        .find(|candidate| id.eq_ignore_ascii_case(candidate))
+        .copied()
+}
+
+fn reviewed_registered_provider_ids() -> &'static [&'static str] {
+    &[
+        "deepseek",
+        "moonshot",
+        "kimi",
+        "stepfun",
+        "volcengine",
+        "aihubmix",
+        "xai",
+        "openrouter",
+        "bailian",
+        "nvidia",
+    ]
+}
+
+fn provider_default_base_url(provider: &AgentProviderProfile) -> Option<&'static str> {
     match provider.kind.as_str() {
-        "openai" => fixed(
-            "https://api.openai.com/v1/models",
-            ModelDiscoveryFormat::OpenAi,
-            ModelDiscoveryAuth::Bearer,
-        ),
-        "anthropic" => fixed(
-            "https://api.anthropic.com/v1/models?limit=100",
-            ModelDiscoveryFormat::Anthropic,
-            ModelDiscoveryAuth::Anthropic,
-        ),
-        "gemini" => fixed(
-            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
-            ModelDiscoveryFormat::Gemini,
-            ModelDiscoveryAuth::Gemini,
-        ),
-        "registered" => match provider
-            .registered_provider_id
-            .as_deref()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "deepseek" => fixed(
-                "https://api.deepseek.com/models",
-                ModelDiscoveryFormat::OpenAi,
-                ModelDiscoveryAuth::Bearer,
-            ),
-            "openai" => fixed(
-                "https://api.openai.com/v1/models",
-                ModelDiscoveryFormat::OpenAi,
-                ModelDiscoveryAuth::Bearer,
-            ),
-            "anthropic" => fixed(
-                "https://api.anthropic.com/v1/models?limit=100",
-                ModelDiscoveryFormat::Anthropic,
-                ModelDiscoveryAuth::Anthropic,
-            ),
-            "gemini" | "google" => fixed(
-                "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+        "openai" => Some("https://api.openai.com/v1"),
+        "anthropic" => Some("https://api.anthropic.com/v1"),
+        "gemini" => Some("https://generativelanguage.googleapis.com/v1beta/models"),
+        "registered" => match reviewed_registered_provider_id(provider)? {
+            "deepseek" => Some("https://api.deepseek.com"),
+            "moonshot" => Some("https://api.moonshot.cn/v1"),
+            "kimi" => Some("https://api.kimi.com/coding/v1"),
+            "stepfun" => Some("https://api.stepfun.com/v1"),
+            "volcengine" => Some("https://ark.cn-beijing.volces.com/api/v3"),
+            "aihubmix" => Some("https://aihubmix.com/v1"),
+            "xai" => Some("https://api.x.ai/v1"),
+            "openrouter" => Some("https://openrouter.ai/api/v1"),
+            "bailian" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            "nvidia" => Some("https://integrate.api.nvidia.com/v1"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn provider_discovery_contract(
+    provider: &AgentProviderProfile,
+) -> Option<(
+    Option<&'static str>,
+    ModelDiscoveryFormat,
+    ModelDiscoveryAuth,
+)> {
+    let provider_id = reviewed_registered_provider_id(provider);
+    let anthropic = provider.kind == "anthropic"
+        || provider.wire_api.as_deref() == Some("anthropic_messages")
+        || provider_id == Some("kimi");
+    let gemini = provider.kind == "gemini";
+    let supported = matches!(
+        provider.kind.as_str(),
+        "openai" | "anthropic" | "gemini" | "openai_compatible" | "local_openai_compatible"
+    ) || provider_id.is_some();
+    supported.then(|| {
+        if gemini {
+            (
+                provider_default_base_url(provider),
                 ModelDiscoveryFormat::Gemini,
                 ModelDiscoveryAuth::Gemini,
-            ),
-            _ => Ok(None),
-        },
-        "openai_compatible" | "local_openai_compatible" => {
-            let Some(base_url) = provider.base_url.as_deref() else {
-                return Ok(None);
-            };
-            let mut url = reqwest::Url::parse(base_url)
-                .map_err(|_| anyhow::anyhow!("The configured Base URL is invalid."))?;
-            ensure!(
-                matches!(url.scheme(), "http" | "https"),
-                "The configured Base URL must use HTTP or HTTPS."
-            );
-            ensure!(
-                url.username().is_empty() && url.password().is_none(),
-                "The configured Base URL must not contain credentials."
-            );
-            url.set_fragment(None);
-            if !url.path().trim_end_matches('/').ends_with("/models") {
-                let path = format!("{}/models", url.path().trim_end_matches('/'));
-                url.set_path(&path);
-            }
-            let anthropic = provider.wire_api.as_deref() == Some("anthropic_messages");
-            Ok(Some(ModelDiscoveryTarget {
-                url,
-                format: if anthropic {
-                    ModelDiscoveryFormat::Anthropic
-                } else {
-                    ModelDiscoveryFormat::OpenAi
-                },
-                auth: if anthropic {
-                    ModelDiscoveryAuth::Anthropic
-                } else {
-                    ModelDiscoveryAuth::Bearer
-                },
-            }))
+            )
+        } else if anthropic {
+            (
+                provider_default_base_url(provider),
+                ModelDiscoveryFormat::Anthropic,
+                ModelDiscoveryAuth::Anthropic,
+            )
+        } else {
+            (
+                provider_default_base_url(provider),
+                ModelDiscoveryFormat::OpenAi,
+                ModelDiscoveryAuth::Bearer,
+            )
         }
-        _ => Ok(None),
+    })
+}
+
+fn provider_models_url(base_url: &str, format: ModelDiscoveryFormat) -> Result<reqwest::Url> {
+    let mut url = reqwest::Url::parse(base_url)
+        .map_err(|_| anyhow::anyhow!("The configured Base URL is invalid."))?;
+    ensure!(
+        matches!(url.scheme(), "http" | "https"),
+        "The configured Base URL must use HTTP or HTTPS."
+    );
+    ensure!(
+        url.username().is_empty() && url.password().is_none(),
+        "The configured Base URL must not contain credentials."
+    );
+    url.set_fragment(None);
+    if !url.path().trim_end_matches('/').ends_with("/models") {
+        let path = format!("{}/models", url.path().trim_end_matches('/'));
+        url.set_path(&path);
     }
+    if matches!(
+        format,
+        ModelDiscoveryFormat::Anthropic | ModelDiscoveryFormat::Gemini
+    ) {
+        let parameter = if format == ModelDiscoveryFormat::Gemini {
+            ("pageSize", "100")
+        } else {
+            ("limit", "100")
+        };
+        if !url.query_pairs().any(|(name, _)| name == parameter.0) {
+            url.query_pairs_mut().append_pair(parameter.0, parameter.1);
+        }
+    }
+    Ok(url)
 }
 
 fn parse_discovered_models(
@@ -2323,6 +2366,12 @@ fn validate_provider(provider: &AgentProviderProfile) -> Result<()> {
             provider.registered_provider_id.is_some(),
             "Registered providers require a provider ID."
         );
+        if provider.base_url.is_some() || provider.base_url_env.is_some() {
+            ensure!(
+                reviewed_registered_provider_id(provider).is_some(),
+                "Base URL overrides are available only for reviewed registered providers."
+            );
+        }
     }
     validate_env_name(provider.api_key_env.as_deref(), provider.api_key_required)?;
     validate_env_name(provider.base_url_env.as_deref(), false)?;
@@ -2348,8 +2397,11 @@ fn validate_provider(provider: &AgentProviderProfile) -> Result<()> {
         );
     } else {
         ensure!(
-            provider.base_url.is_none() && provider.base_url_env.is_none(),
-            "Built-in providers do not accept custom base URLs in V1."
+            matches!(
+                provider.wire_api.as_deref(),
+                None | Some("chat_completions") | Some("responses") | Some("anthropic_messages")
+            ),
+            "Built-in providers accept only a bounded optional Base URL override and supported wire API."
         );
     }
     Ok(())
@@ -3606,6 +3658,23 @@ mod tests {
     }
 
     #[test]
+    fn reviewed_builtin_and_registered_providers_accept_optional_base_urls() {
+        let mut settings = default_settings();
+        settings.providers[0].base_url =
+            Some("https://gateway.example.test/deepseek/v1".to_string());
+        settings.providers[0].wire_api = Some("chat_completions".to_string());
+        assert!(validate_settings(&settings).is_ok());
+
+        settings.providers[0].registered_provider_id = Some("unlisted-provider".to_string());
+        let error = validate_settings(&settings).unwrap_err().to_string();
+        assert!(error.contains("reviewed registered providers"));
+
+        settings.providers[0].kind = "openai".to_string();
+        settings.providers[0].registered_provider_id = None;
+        assert!(validate_settings(&settings).is_ok());
+    }
+
+    #[test]
     fn discovery_targets_cover_builtin_and_literal_custom_providers() {
         let mut provider = default_settings().providers.remove(0);
         let deepseek = model_discovery_target(&provider).unwrap().unwrap();
@@ -3640,6 +3709,38 @@ mod tests {
         provider.base_url = None;
         provider.base_url_env = Some("CUSTOM_BASE_URL".to_string());
         assert!(model_discovery_target(&provider).unwrap().is_none());
+
+        provider = default_settings().providers.remove(0);
+        provider.base_url = Some("https://gateway.example.test/team/v1".to_string());
+        let overridden = model_discovery_target(&provider).unwrap().unwrap();
+        assert_eq!(
+            overridden.url.as_str(),
+            "https://gateway.example.test/team/v1/models"
+        );
+
+        provider.base_url = None;
+        provider.base_url_env = Some("DEEPSEEK_BASE_URL".to_string());
+        assert!(model_discovery_target(&provider).unwrap().is_none());
+
+        for registered_provider_id in [
+            "deepseek",
+            "moonshot",
+            "kimi",
+            "stepfun",
+            "volcengine",
+            "aihubmix",
+            "xai",
+            "openrouter",
+            "bailian",
+            "nvidia",
+        ] {
+            provider = default_settings().providers.remove(0);
+            provider.registered_provider_id = Some(registered_provider_id.to_string());
+            let target = model_discovery_target(&provider).unwrap().unwrap();
+            assert!(target.url.path().ends_with("/models"));
+            assert!(target.url.username().is_empty());
+            assert!(target.url.password().is_none());
+        }
     }
 
     #[test]

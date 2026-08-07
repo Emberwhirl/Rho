@@ -54,7 +54,8 @@ assert.match(dialog, /role="tablist"/);
 assert.match(dialog, /data-agent-llm-view="routing"/);
 assert.match(dialog, /data-agent-llm-view="connections"/);
 assert.match(dialog, /data-agent-llm-view="library"/);
-assert.ok(dialog.indexOf('id="agentLlmRoutingPanel"') < dialog.indexOf('id="agentLlmShell"'), "routing must be the primary surface");
+assert.ok(dialog.indexOf('id="agentLlmShell"') < dialog.indexOf('id="agentLlmRoutingPanel"'), "Connections must be the primary surface before routing");
+assert.match(dialog, /<button(?=[^>]*data-agent-llm-view="connections")(?=[^>]*aria-selected="true")[^>]*>/);
 assert.match(dialog, /Consumer not installed/);
 
 for (const selector of [

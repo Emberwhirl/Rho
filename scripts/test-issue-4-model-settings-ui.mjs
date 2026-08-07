@@ -54,15 +54,18 @@ assert.doesNotMatch(mainDialog, /id="agentLlmModelDisplayName"|id="agentLlmModel
 for (const id of [
   "agentLlmProviderDisplayName",
   "agentLlmProviderKind",
-  "agentLlmProviderBaseUrl",
   "agentLlmRegisteredProviderId",
   "agentLlmProviderApiKeyEnv",
   "agentLlmProviderBaseUrlEnv",
   "agentLlmProviderWireApi",
   "agentLlmProviderApiKeyRequired",
   "agentLlmProviderDisableStreamOptions",
-  "agentLlmSaveProvider",
 ]) assert.ok(providerAdvanced.includes(`id="${id}"`), `${id} must be scoped to Provider Advanced`);
+const providerConnection = sliceBetween(mainDialog, '<section class="agent-llm-section agent-llm-connection-section">', '<section class="agent-llm-section agent-llm-model-section">', "API connection section");
+for (const id of ["agentLlmProviderBaseUrl", "agentLlmSaveProvider"]) {
+  assert.ok(providerConnection.includes(`id="${id}"`), `${id} must be a common API connection control`);
+}
+assert.ok(mainDialog.indexOf('id="agentLlmProviderBaseUrl"') < mainDialog.indexOf('id="agentLlmProviderAdvanced"'));
 assert.match(providerAdvanced, /<summary>Provider Advanced<\/summary>/);
 assert.doesNotMatch(providerAdvanced, /\sopen(?:\s|>)/);
 assert.ok(providerDanger.includes('id="agentLlmDeleteProvider"'), "Provider deletion must be isolated in its Danger zone");
