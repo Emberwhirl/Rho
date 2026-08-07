@@ -11,8 +11,10 @@ authorized, locally implemented, verified, and contract-reviewed; hosted
 attempt 1 failed closed at the log-host allowlist; its exact-host repair passed
 attempt 2's waiter, whose finalizer then failed closed on fresh-R `jsonlite`;
 the bounded dependency repair and replacement exact-commit rehearsal passed;
-MAC4-R3 is complete at its review-only mandatory stop; authoritative
-candidate/draft, MAC5 acceptance, and release GO remain NOT RUN
+upstream subsequently advanced through `b5800ae`; ordinary merge `9d3086e` and
+the complete affected local matrix passed, so MAC4-R3 requires one new exact-
+commit review-only rehearsal; authoritative candidate/draft, MAC5 acceptance,
+and release GO remain NOT RUN
 
 Change class: D4 release candidate, signing/notarization, GitHub Release draft,
 and update-publication inputs
@@ -353,8 +355,23 @@ both Gatekeeper checks, exact arm64/entitlements, and DMG-internal Workspace
 smoke. Repository audit found zero tags, zero Releases/drafts, no Pages site,
 and a skipped draft-assembly job. GitHub's Node.js 20 action-runtime warnings
 are a bounded follow-up; they did not affect this passing immutable evidence.
-MAC4-R3 is closed at the mandated review-only stop and cannot satisfy any
-Required Draft Asset or MAC5 row.
+For that source, MAC4-R3 was closed at the mandated review-only stop and could
+not satisfy any Required Draft Asset or MAC5 row.
+
+The final pre-handoff upstream refresh added commits `801e38e` and `b5800ae`
+after that successful run. Ordinary merge `9d3086e` contains upstream `main`,
+preserves the new R-source-only Check Project behavior and its owning active
+specification, and records the user-visible change under the combined
+`0.4.0-dev.16` NEWS section. The complete local affected matrix passed with
+285 Rust tests, one opt-in native-Keychain test ignored, all 92 `rho-store`
+tests, all 39 JavaScript contracts, both complete R package suites, and format,
+syntax, UI-contract, release-contract, and diff checks.
+
+Run `31163017077` cannot validate code added after its exact commit. Because
+there is still no authoritative candidate/draft/tag/Release, `0.4.0-dev.16`
+remains available for a new full exact-commit fork rehearsal. Until that run
+and its independent artifact audit pass, MAC4-R3 is reopened at its review-only
+hosted gate; no Required Draft Asset or MAC5 row changes state.
 
 ## macOS Signing And Notarization Gate
 
@@ -457,7 +474,7 @@ evidence. The `0.4.0-dev.2` repair and replacement rehearsal passed, but remain
 fork-only historical evidence after the upstream version-line integration.
 The integrated `0.4.0-dev.16` source identity is selected and MAC4-R3 is
 implemented, locally verified, and passed exact-commit fork rehearsal
-`31163017077`; its review-only mandatory stop is reached. That rehearsal is not
-an authoritative candidate and does not fill any draft or MAC5 acceptance row.
-No authoritative main-repository candidate, immutable draft, MAC5 installed
-acceptance, or explicit GO exists.
+`31163017077` for its pre-refresh source. Latest upstream `b5800ae` is now
+integrated and locally verified, but its new exact-commit fork rehearsal is
+pending. No authoritative main-repository candidate, immutable draft, MAC5
+installed acceptance, or explicit GO exists.

@@ -30,8 +30,11 @@ covered; replacement run `31163017077` at exact commit
 `8de3dcc1dafc9e8562d239a6051a9113b778f1c3` passed the full review-only
 rehearsal, reduced total macOS-runner use to 13 minutes 51 seconds, and
 produced an independently verified seven-file artifact; the MAC4-R3 mandatory
-stop is reached; authoritative candidate/draft creation and MAC5 remain NOT
-RUN and unauthorized
+stop was reached for that source; upstream then advanced through `b5800ae`;
+the new commits were integrated by ordinary merge `9d3086e`, their complete
+affected local validation passed, and the exact-commit hosted rehearsal is
+therefore reopened and pending; authoritative candidate/draft creation and
+MAC5 remain NOT RUN and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1513,7 +1516,38 @@ upload-artifact, and download-artifact action revisions still declare the
 retiring Node.js 20 runtime and were forced onto Node.js 24. The exact evidence
 run passed; updating those action majors is a bounded follow-up and must not
 rewrite this immutable rehearsal result. This CI-only slice does not change
-application behavior or package contracts, so the version remains
-`0.4.0-dev.16` and `NEWS.md` remains unchanged. MAC4-R3 is complete at its
-mandatory review-only stop. Release decision remains NO-GO; an authoritative
-main-repository candidate/draft and MAC5 require separate authorization.
+application behavior or package contracts, so the version remained
+`0.4.0-dev.16` and `NEWS.md` remained unchanged for that slice. MAC4-R3 was
+complete at its mandatory review-only stop for that source. Release decision
+remained NO-GO; an authoritative main-repository candidate/draft and MAC5
+required separate authorization.
+
+## MAC4-R3 Latest Upstream Refresh — LOCALLY VERIFIED / REHEARSAL PENDING 2026-08-07
+
+A final pre-handoff fetch found that upstream `main` had advanced from
+`28ba1345efe70d28dc34214e5cc3ef03542c8122` to
+`b5800ae2dcb81da2ba90f4ba03d65cedffcc8d44` after run `31163017077`.
+Commits `801e38e` and `b5800ae` narrow Check Project scanning to R-family and
+extensionless source files, add its regression contract and NEWS entry, and
+update the overlapping current-project/environment documents. They were
+integrated by ordinary merge `9d3086e` without rebase, reset, force push, or
+history rewriting; upstream `main` is an ancestor of the resulting branch.
+
+The upstream source-filter contract remains its behavior owner. Integration
+moved its user-visible NEWS bullet from upstream's `0.4.0-dev.15` section into
+the combined `0.4.0-dev.16` section; no application metadata changes are
+required because no authoritative `dev.16` candidate, draft, tag, or Release
+exists. Local verification passed `cargo fmt --all -- --check`, the complete
+Rust workspace with 285 passed and one opt-in native-Keychain test ignored
+(including all 92 `rho-store` tests), all 39 deterministic JavaScript contract
+suites, complete `rho.bridge` and `rho.agent` testthat suites, JavaScript
+syntax, the human-friendly project-check UI contract, the MAC4 release
+contract, and `git diff --check`.
+
+The passing artifact from run `31163017077` remains immutable historical
+evidence for exact commit `8de3dcc1dafc9e8562d239a6051a9113b778f1c3`, but
+it cannot validate source added afterward. A new full Windows/macOS fork
+rehearsal must check out one exact post-merge commit, produce new seven-file
+evidence, and repeat the zero-publication audit before this mandatory stop can
+close again. MAC5 and every authoritative candidate/publication mutation
+remain unauthorized.

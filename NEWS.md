@@ -32,6 +32,9 @@ this file records behavior that is already available in a released build.
 - macOS project fixtures now compare canonical `/private/var` aliases, local
   lockfile source details stay inside the active project, and Bioconductor
   fixture provenance no longer depends on packages installed on the test Mac.
+- Check Project now limits source scanning to R, Rmd, Qmd, Rnw, and
+  extensionless source files, so generated HTML and other non-R assets do not
+  produce source reproducibility findings.
 
 ## 0.4.0-dev.15 - 2026-08-07
 
@@ -59,9 +62,6 @@ this file records behavior that is already available in a released build.
 - Rename Symbol now opens Review only after a valid proposal is built. Lookup
   or source-state failures return to a retryable name prompt with the entered
   replacement preserved instead of showing an empty Review panel.
-- Check Project now limits source scanning to R, Rmd, Qmd, Rnw, and
-  extensionless source files, so generated HTML and other non-R assets do not
-  produce source reproducibility findings.
 
 ## 0.4.0-dev.13 - 2026-08-06
 

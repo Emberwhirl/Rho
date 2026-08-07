@@ -172,7 +172,9 @@ Replacement run `31163017077` at exact `0.4.0-dev.16` fork commit
 `8de3dcc1dafc9e8562d239a6051a9113b778f1c3` passed the full Windows/macOS
 review-only rehearsal, independent seven-file evidence validation, and zero-
 publication audit while using 13 minutes 51 seconds of macOS runner time.
-MAC4-R3 is closed at its mandatory review-only stop. All authoritative
+Upstream then advanced through `b5800ae`; ordinary merge `9d3086e` and its
+complete affected local matrix passed, but the new source requires a new
+exact-commit fork rehearsal before MAC4-R3 can close again. All authoritative
 candidate/draft creation remains NOT RUN. MAC5 remains unauthorized. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
