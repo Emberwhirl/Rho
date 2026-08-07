@@ -1,6 +1,7 @@
 # Current Project Check
 
-Status: active implementation contract; implementation in progress
+Status: active; implementation and automated/browser verification complete
+2026-08-07; installed acceptance open
 
 Date: 2026-08-06
 Authorization: user explicitly requested that Check Project inspect the
@@ -26,3 +27,13 @@ Risk class: R2 project-scoped read-only audit and presentation
 - Frontend contract tests cover the current-project command scope and the
   scrollable Agent Review content region.
 - Installed-app visual acceptance remains separate.
+
+## Implementation Evidence
+
+The Check Project entry now invokes `project_current`, while the historical
+project audit scope remains available to internal callers. The current scope
+excludes historical runs and saved artifacts, and both Human and Agent Review
+present findings in bounded scrollable regions. Current-project Rust coverage,
+the human-friendly audit UI contract, JavaScript syntax checks, and the
+affected frontend matrix passed on 2026-08-07. Installed-app visual acceptance
+remains open.
