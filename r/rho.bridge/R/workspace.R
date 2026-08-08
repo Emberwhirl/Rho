@@ -188,7 +188,7 @@ rho_detect_renv_state <- function(project_dir = getwd()) {
   has_lockfile <- file.exists(lockfile)
   renv_available <- requireNamespace("renv", quietly = TRUE)
   active <- any(startsWith(lib_paths, renv_library))
-  installed <- rho_installed_packages(limit = 10000L)
+  installed <- rho_project_installed_packages(project_dir, limit = 10000L)
   lockfile_state <- rho_read_lockfile(project_dir)
   synchronization <- if (!has_lockfile) {
     "no_lockfile"
@@ -249,10 +249,19 @@ rho_runtime_state <- function() {
   )
 }
 
+# renv can temporarily expose a project library before it has been created or
+# restored. Keep inventory useful by including the valid site and base R
+# libraries as fallbacks for the current session.
+rho_effective_library_paths <- function() {
+  paths <- unique(c(.libPaths(), .Library.site, .Library))
+  paths <- paths[nzchar(paths) & dir.exists(paths)]
+  normalizePath(paths, winslash = "/", mustWork = FALSE)
+}
+
 rho_installed_packages <- function(limit = 10000L) {
   rows <- tryCatch(
     utils::installed.packages(
-      lib.loc = .libPaths(),
+      lib.loc = rho_effective_library_paths(),
       fields = c("Package", "Version", "LibPath")
     ),
     error = function(e) e
@@ -291,12 +300,41 @@ rho_installed_packages <- function(limit = 10000L) {
   )
 }
 
+rho_project_installed_packages <- function(project_dir, limit = 10000L) {
+  if (!requireNamespace("renv", quietly = TRUE)) {
+    return(list(values = list(), total_count = 0L, truncated = FALSE, incomplete_reason = "renv unavailable"))
+  }
+  project_library <- tryCatch(
+    rho_environment_project_library(project_dir),
+    error = function(e) NULL
+  )
+  if (is.null(project_library) || !dir.exists(project_library)) {
+    return(list(values = list(), total_count = 0L, truncated = FALSE, incomplete_reason = NULL))
+  }
+  rows <- tryCatch(
+    utils::installed.packages(lib.loc = project_library, fields = c("Package", "Version", "LibPath")),
+    error = function(e) e
+  )
+  if (inherits(rows, "error")) {
+    return(list(values = list(), total_count = 0L, truncated = FALSE, incomplete_reason = conditionMessage(rows)))
+  }
+  packages <- lapply(seq_len(nrow(rows)), function(index) {
+    list(
+      name = as.character(rows[index, "Package"]),
+      version = as.character(rows[index, "Version"]),
+      library = normalizePath(as.character(rows[index, "LibPath"]), winslash = "/", mustWork = FALSE)
+    )
+  })
+  packages <- packages[order(vapply(packages, function(item) item$name, character(1)))]
+  list(values = head(packages, as.integer(limit)), total_count = length(packages), truncated = length(packages) > as.integer(limit), incomplete_reason = NULL)
+}
+
 #' Return a browsable installed-package list for the Environment panel.
 #' Includes priority ("base" / "recommended") and build version.
 rho_list_installed_packages <- function(limit = 500L) {
   rows <- tryCatch(
     utils::installed.packages(
-      lib.loc = .libPaths(),
+      lib.loc = rho_effective_library_paths(),
       fields = c("Package", "Version", "LibPath", "Priority", "Built")
     ),
     error = function(e) e
@@ -357,7 +395,7 @@ rho_lockfile_inventory_text <- function(value, max_bytes = 512L) {
 
 rho_lockfile_inventory_installed_rows <- function() {
   utils::installed.packages(
-    lib.loc = .libPaths(),
+    lib.loc = rho_effective_library_paths(),
     fields = c(
       "Package", "Version", "LibPath", "Repository", "RemoteType",
       "RemoteUrl", "RemoteUsername", "RemoteRepo", "RemoteRef"
@@ -823,7 +861,7 @@ rho_environment_evidence <- function(project_dir = getwd(), package_limit = 1000
 #' @export
 rho_environment_status_preview <- function(project_dir = getwd(), diff_limit = 50L) {
   project_dir <- normalizePath(project_dir, winslash = "/", mustWork = FALSE)
-  installed <- rho_installed_packages(limit = 10000L)
+  installed <- rho_project_installed_packages(project_dir, limit = 10000L)
   lockfile <- rho_read_lockfile(project_dir)
   renv_status <- rho_read_only_renv_status(project_dir)
   diff <- if (isTRUE(lockfile$valid)) {
@@ -890,7 +928,7 @@ rho_read_only_renv_status <- function(project_dir) {
   synchronized <- tryCatch(
     {
       lockfile_packages <- rho_read_lockfile(project_dir)$packages
-      installed <- rho_installed_packages(limit = 10000L)
+      installed <- rho_project_installed_packages(project_dir, limit = 10000L)
       length(rho_compare_lockfile_library(lockfile_packages, installed$values, limit = 1L)$values) == 0L
     },
     error = function(e) NULL
@@ -1148,7 +1186,8 @@ rho_execute_renv_operation <- function(operation,
         } else if (identical(operation, "initialize")) {
           renv::init(
             project = project_dir,
-            bare = FALSE,
+            # Initialization scaffolds only; Restore is a separate explicit operation.
+            bare = TRUE,
             force = FALSE,
             repos = repositories,
             bioconductor = bioconductor,

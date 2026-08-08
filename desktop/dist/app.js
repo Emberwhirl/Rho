@@ -95,8 +95,10 @@ const state = {
   installedPackages: null,
   lockfilePackages: null,
   environmentPackageTab: "installed",
+  packageInventoryDialog: { open: false, returnFocus: null },
   environmentOperations: [],
   environmentOperationDialog: { requestId: null, busy: false, phase: "", returnFocus: null },
+  environmentOperationPollTimer: null,
   packageManagementDialog: { busy: false, returnFocus: null },
   localHelp: { status: "empty", record: null, error: null },
   agentLocalHelpContext: null,
@@ -9201,11 +9203,13 @@ async function loadInstalledPackages() {
   try {
     const result = await invoke("list_installed_packages", { limit: 500 });
     state.installedPackages = result;
+    renderReproducibilityInventorySummary();
     renderPackageList();
   } catch (error) {
     // Keep the failure visible. A failed inventory query must not look like an
     // empty R library, especially while switching projects or refreshing R.
     state.installedPackages = { error: String(error) };
+    renderReproducibilityInventorySummary();
     renderPackageList();
   }
 }
@@ -9216,7 +9220,44 @@ async function loadLockfilePackages() {
   } catch (error) {
     state.lockfilePackages = { error: String(error) };
   }
+  renderReproducibilityInventorySummary();
   renderPackageList();
+}
+
+function renderReproducibilityInventorySummary() {
+  const installed = state.installedPackages;
+  const lockfile = state.lockfilePackages;
+  if (!$("#reproducibilityStatus")) return;
+  const installedText = installed?.error
+    ? "Installed packages unavailable"
+    : installed
+      ? `${installed.total_count ?? installed.packages?.length ?? 0} installed packages`
+      : "Installed packages loading";
+  const lockfileText = lockfile?.error
+    ? "Lockfile unavailable"
+    : lockfile
+      ? `${lockfile.total_count ?? lockfile.packages?.length ?? 0} locked packages`
+      : "Lockfile loading";
+  const renvText = $("#reproducibilityStatus").textContent || "Project package environment status is unavailable.";
+  $("#reproducibilityStatus").textContent = `${renvText.split(". Use the inventory")[0]}. ${installedText}; ${lockfileText}.`;
+}
+
+function openPackageInventoryDialog(tab = "installed", trigger = null) {
+  state.packageInventoryDialog.open = true;
+  state.packageInventoryDialog.returnFocus = trigger || document.activeElement;
+  switchEnvironmentPackageTab(tab);
+  $("#packageInventoryDialog").classList.remove("hidden");
+  $("#packageInventoryDialog").setAttribute("aria-hidden", "false");
+  $("#packageFilter")?.focus();
+}
+
+function closePackageInventoryDialog() {
+  $("#packageInventoryDialog").classList.add("hidden");
+  $("#packageInventoryDialog").setAttribute("aria-hidden", "true");
+  state.packageInventoryDialog.open = false;
+  const returnFocus = state.packageInventoryDialog.returnFocus;
+  state.packageInventoryDialog.returnFocus = null;
+  if (returnFocus?.focus) returnFocus.focus();
 }
 
 function loadPackageInventories() {
@@ -10027,6 +10068,8 @@ function renderEnvironmentSummary() {
   renderEnvironmentOperationCard();
   if (!environment) {
     renderStatusItems($("#environmentContract"), [{ label: "Snapshot unavailable", status: "unavailable" }]);
+    $("#reproducibilitySummary").textContent = "renv status unavailable";
+    $("#reproducibilityStatus").textContent = "Project package environment status is unavailable.";
     renderStatusItems($("#renderCapability"), [{ label: "Render tooling not checked", status: "neutral" }]);
     $("#renderDocumentHint").textContent = renderDocumentHintText();
     $("#renderDocumentButton").disabled = true;
@@ -10054,6 +10097,15 @@ function renderEnvironmentSummary() {
     : /unavailable|error|invalid/.test(renvStatus)
       ? "failed"
       : "warning";
+  const lockfileState = renv.synchronization || "unknown";
+  const lockfileLabel = {
+    synchronized: "Lockfile in sync",
+    drifted: "Lockfile differs",
+    no_lockfile: "No lockfile",
+    invalid_lockfile: "Lockfile needs attention",
+  }[lockfileState] || "Lockfile status unavailable";
+  $("#reproducibilitySummary").textContent = `${renv.status || "unknown"} · ${lockfileLabel}`;
+  $("#reproducibilityStatus").textContent = `${renvLabel}. ${lockfileLabel}. Use the inventory buttons for package details.`;
   renderStatusItems($("#environmentContract"), [
     { label: renvLabel, status: renvTone },
     { label: bioc.version ? `Bioconductor ${bioc.version}` : "Bioconductor version not detected", status: bioc.version ? "completed" : "neutral" },
@@ -11304,6 +11356,7 @@ function renderEnvironmentOperationDialog() {
 }
 
 function closeEnvironmentOperationDialog() {
+  stopEnvironmentOperationPolling();
   $("#environmentOperationDialog").classList.add("hidden");
   state.environmentOperationDialog.requestId = null;
   state.environmentOperationDialog.phase = "";
@@ -11328,6 +11381,25 @@ async function loadEnvironmentOperationData({ quiet = false } = {}) {
     if (!quiet) toast(reportUiFailure("load environment operations", error, "Package and environment actions could not be loaded. Refresh Environment and try again."), true);
     return false;
   }
+}
+
+function stopEnvironmentOperationPolling() {
+  if (state.environmentOperationPollTimer) {
+    clearInterval(state.environmentOperationPollTimer);
+    state.environmentOperationPollTimer = null;
+  }
+}
+
+function startEnvironmentOperationPolling(requestId) {
+  stopEnvironmentOperationPolling();
+  state.environmentOperationPollTimer = setInterval(async () => {
+    const loaded = await loadEnvironmentOperationData({ quiet: true });
+    if (!loaded) return;
+    const current = state.environmentOperations.find((item) => item.request_id === requestId);
+    if (current && !["requested", "approved", "running"].includes(current.status)) {
+      stopEnvironmentOperationPolling();
+    }
+  }, 1000);
 }
 
 async function beginEnvironmentOperation(operation, options = {}) {
@@ -11367,6 +11439,7 @@ async function respondEnvironmentOperation(decision) {
     : decision === "cancel" ? "Cancelling environment operation..." : "Recording rejection...";
   renderEnvironmentOperationCard();
   renderEnvironmentOperationDialog();
+  if (decision === "approve") startEnvironmentOperationPolling(requestId);
   let result = null;
   let commandError = null;
   try {
@@ -11379,6 +11452,7 @@ async function respondEnvironmentOperation(decision) {
   }
 
   const reloaded = await loadEnvironmentOperationData({ quiet: true });
+  stopEnvironmentOperationPolling();
   const current = state.environmentOperations.find((item) => item.request_id === requestId) || null;
   if (commandError) {
     if (reloaded && current && current.status !== "requested") {
@@ -12008,6 +12082,7 @@ function renderEnvironment() {
     $("#environmentList").append(row);
   }
   $("#objectCount").textContent = String(state.objects.length);
+  $("#objectCountLabel").textContent = `${state.objects.length} object${state.objects.length === 1 ? "" : "s"}`;
   const selectedName = state.selectedDataObjectDetail?.name || state.selectedObjectDetail?.name || "Object Preview";
   $("#objectPreviewTitle").textContent = selectedName;
   $("#objectPreviewMeta").textContent = state.selectedDataObjectDetail?.display_kind
@@ -15532,6 +15607,10 @@ $("#agentContextNewFile").addEventListener("click", async () => {
 $("#refreshEnvironment").addEventListener("click", refreshEnvironment);
 $("#packageFilter").addEventListener("input", renderPackageList);
 $$('[data-package-tab]').forEach((button) => button.addEventListener("click", () => switchEnvironmentPackageTab(button.dataset.packageTab)));
+$("#viewInstalledPackages").addEventListener("click", (event) => openPackageInventoryDialog("installed", event.currentTarget));
+$("#viewLockfilePackages").addEventListener("click", (event) => openPackageInventoryDialog("lockfile", event.currentTarget));
+$("#packageInventoryClose").addEventListener("click", closePackageInventoryDialog);
+$("[data-package-inventory-close]").addEventListener("click", closePackageInventoryDialog);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
 initEvidencePanel();
 initChunkPanel();
@@ -15781,6 +15860,9 @@ $$('[data-menu-command]').forEach((item) => item.addEventListener("keydown", (ev
   }
 }));
 document.addEventListener("click", (event) => {
+  if (event.target.closest("#packageInventoryDialog") && event.target.closest("[data-package-inventory-close]")) {
+    closePackageInventoryDialog();
+  }
   if (!event.target.closest(".menu-item")) closeWorkbenchMenus();
   if (!event.target.closest("#agentContextButton") && !event.target.closest("#agentContextMenu")) {
     closeAgentContextMenu();
@@ -15799,6 +15881,12 @@ document.addEventListener("click", (event) => {
   }
   if (!event.target.closest("#packageManagementDialog") && $("#packageManagementDialog").classList.contains("hidden")) {
     state.packageManagementDialog.returnFocus = null;
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.packageInventoryDialog.open) {
+    event.preventDefault();
+    closePackageInventoryDialog();
   }
 });
 document.addEventListener("keydown", (event) => {

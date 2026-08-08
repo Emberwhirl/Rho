@@ -22,6 +22,7 @@ assert.match(css, /\.package-state\.missing_in_lockfile/);
 assert.match(css, /\.package-state\.matched/);
 assert.match(css, /\.package-row\.lockfile \.pkg-name\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*normal/);
 assert.match(css, /\.pkg-metadata\s*\{[^}]*overflow-wrap:\s*anywhere/);
+assert.match(css, /\.environment-panel\s*\{[^}]*overflow-y:\s*auto/);
 
 assert.match(js, /if \(command === "list_lockfile_packages"\)/);
 assert.match(js, /invoke\("list_lockfile_packages", \{ limit: 500 \}\)/);

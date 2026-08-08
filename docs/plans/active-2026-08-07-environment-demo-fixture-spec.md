@@ -22,10 +22,22 @@ Work package: ENVIRONMENT-DEMO-1
 - A failed Installed inventory query must remain distinguishable from a genuine
   empty library; the Environment panel displays the query error instead of
   reporting zero installed packages.
+- Installed inventory falls back to existing site and base R library paths when
+  an uncreated renv project library is the only active path.
+- The Environment context surface remains vertically scrollable when its
+  summary, package inventory, and object preview exceed the viewport.
+- Environment operation requests with no repository override serialize
+  `repositories: null` and execute successfully as project-default repos.
+- Initialize renv does not install or restore the packages in the fixture
+  lockfile; it creates the project scaffold, while Restore remains explicit.
+- Environment previews compare the project library with the lockfile rather
+  than reporting unrelated packages from the user's global R libraries.
 
 ## Verification
 
 Validate the lockfile as JSON with a `Packages` object, parse the R example,
 confirm the fixture file inventory, run the focused Environment UI contract
-test, and run `git diff --check`. Installed-app acceptance is performed by the
-user following the README.
+test, parse the bridge inventory helper and verify it returns at least one
+library/package on the development R installation, and run `git diff --check`.
+The environment operation contract test must cover a null repository override.
+Installed-app acceptance is performed by the user following the README.

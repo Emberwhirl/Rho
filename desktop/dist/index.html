@@ -687,27 +687,10 @@ plot(
           </div>
           <div id="environmentSummary" class="environment-summary">
             <div class="environment-card">
-              <strong>Project Environment</strong>
+              <strong>Overview</strong>
               <div id="environmentContract" class="environment-contract surface-status-row">Environment snapshot unavailable.</div>
-              <div class="environment-action-group">
-                <button id="environmentInitButton" type="button" class="environment-action">Initialize renv</button>
-                <button id="environmentRestoreButton" type="button" class="environment-action">Restore lockfile</button>
-                <button id="environmentSnapshotButton" type="button" class="environment-action">Snapshot lockfile</button>
-                <button id="environmentManagePackageButton" type="button" class="environment-action">Manage package</button>
-              </div>
-              <div id="environmentOperationCard" class="environment-op-card hidden">
-                <div class="environment-op-header">
-                  <strong id="environmentOperationTitle">Environment Operation</strong>
-                  <span id="environmentOperationState" class="revision-badge">idle</span>
-                </div>
-                <p id="environmentOperationSummary" class="environment-contract">No environment operation has been requested yet.</p>
-                <div id="environmentOperationMeta" class="environment-hint"></div>
-                <div class="environment-op-actions">
-                  <button id="environmentOperationReviewButton" type="button">Review</button>
-                </div>
-              </div>
             </div>
-            <div class="environment-card">
+            <div class="environment-card environment-render-card">
               <strong>Render</strong>
               <div id="renderCapability" class="environment-contract surface-status-row">Render tooling not checked yet.</div>
               <div id="renderDocumentHint" class="environment-hint">Open an `.Rmd` or `.qmd` document to render.</div>
@@ -728,7 +711,34 @@ plot(
               </div>
             </div>
           </div>
-          <div class="package-list-section">
+          <details id="reproducibilitySection" class="environment-card reproducibility-card">
+            <summary class="section-heading-row reproducibility-summary">
+              <strong id="reproducibilityHeading">Reproducibility</strong>
+              <span id="reproducibilitySummary" class="environment-hint">renv status not checked</span>
+            </summary>
+            <div id="reproducibilityStatus" class="environment-contract">Project package environment status is unavailable.</div>
+            <div class="reproducibility-inventory-actions">
+              <button id="viewInstalledPackages" type="button" class="environment-action">View Installed</button>
+              <button id="viewLockfilePackages" type="button" class="environment-action">View Lockfile</button>
+            </div>
+            <div class="environment-action-group">
+              <button id="environmentInitButton" type="button" class="environment-action">Initialize renv</button>
+              <button id="environmentRestoreButton" type="button" class="environment-action">Restore lockfile</button>
+              <button id="environmentSnapshotButton" type="button" class="environment-action">Snapshot lockfile</button>
+              <button id="environmentManagePackageButton" type="button" class="environment-action">Manage package</button>
+            </div>
+            <div id="environmentOperationCard" class="environment-op-card hidden">
+              <div class="environment-op-header"><strong id="environmentOperationTitle">Environment Operation</strong><span id="environmentOperationState" class="revision-badge">idle</span></div>
+              <p id="environmentOperationSummary" class="environment-contract">No environment operation has been requested yet.</p>
+              <div id="environmentOperationMeta" class="environment-hint"></div>
+              <div class="environment-op-actions"><button id="environmentOperationReviewButton" type="button">Review</button></div>
+            </div>
+          </details>
+          <div id="packageInventoryDialog" class="product-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="packageInventoryDialogTitle">
+            <div class="product-dialog-scrim" data-package-inventory-close="true"></div>
+            <section class="product-dialog-surface package-inventory-surface">
+              <header class="product-dialog-header"><strong id="packageInventoryDialogTitle">Package inventory</strong><button id="packageInventoryClose" type="button" aria-label="Close package inventory">&times;</button></header>
+              <div class="package-list-section">
             <div class="package-list-header">
               <strong>Packages</strong>
               <span id="packageListMeta" class="environment-hint"></span>
@@ -742,7 +752,10 @@ plot(
             <div id="packageList" class="package-list">
               <div class="empty-state compact-empty"><strong>Loading packages…</strong></div>
             </div>
+              </div>
+            </section>
           </div>
+          <div class="section-heading-row variables-heading"><strong id="variablesHeading">Variables</strong><span id="objectCountLabel" class="environment-hint">0 objects</span></div>
           <div class="environment-head"><span>Name</span><span>Type</span><span>Size</span></div>
           <div id="environmentList" class="environment-list">
             <div class="empty-state compact-empty"><strong>Workspace is empty</strong></div>

@@ -17,9 +17,18 @@ for (const id of [
   assert.match(html, new RegExp(`id="${id}"`), `Missing package UI control ${id}`);
 }
 
+for (const id of ["reproducibilityHeading", "reproducibilityStatus", "viewInstalledPackages", "viewLockfilePackages", "packageInventoryDialog", "packageInventoryClose", "variablesHeading"]) {
+  assert.match(html, new RegExp(`id="${id}"`), `Missing Environment hierarchy control ${id}`);
+}
+
 assert.match(html, /value="install_package"/);
 assert.match(html, /value="update_package"/);
 assert.match(html, /value="remove_package"/);
+assert.match(html, /<details id="reproducibilitySection" class="environment-card reproducibility-card">/);
+assert.match(html, /id="packageInventoryDialog" class="product-dialog hidden"/);
+assert.match(html, /id="variablesHeading">Variables/);
+assert.match(html, /class="environment-card environment-render-card"/);
+assert.match(css, /\.environment-render-card\s*\{\s*display:\s*none/);
 assert.match(css, /\.package-management-fields\s*\{/);
 assert.match(css, /\.package-manage-action\s*\{/);
 assert.match(css, /grid-template-columns:\s*minmax\(112px, 1fr\)[^;]*58px/);
@@ -27,6 +36,11 @@ assert.match(css, /grid-template-columns:\s*minmax\(112px, 1fr\)[^;]*58px/);
 assert.match(js, /function packageManagementInputValid/);
 assert.match(js, /\^\[A-Za-z\]\[A-Za-z0-9\.\]\{0,127\}\$/);
 assert.match(js, /function openPackageManagementDialog/);
+assert.match(js, /function openPackageInventoryDialog/);
+assert.match(js, /function closePackageInventoryDialog/);
+assert.match(js, /state\.packageInventoryDialog\.open/);
+assert.match(js, /function startEnvironmentOperationPolling/);
+assert.match(js, /environmentOperationPollTimer/);
 assert.match(js, /async function submitPackageManagement/);
 assert.match(js, /package:\s*options\.package \?\? null/);
 assert.match(js, /"environment\.package_install": "Install package"/);

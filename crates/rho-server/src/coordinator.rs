@@ -3998,6 +3998,7 @@ fn bridge_expression(request_type: &str, arguments: &Value) -> Result<(Operation
             };
             let repositories = arguments
                 .get("repositories")
+                .filter(|value| !value.is_null())
                 .cloned()
                 .map(serde_json::from_value)
                 .transpose()
@@ -5397,6 +5398,21 @@ mod tests {
         .unwrap();
         assert!(matches!(class, OperationClass::StateCapable));
         assert!(remove_expression.contains("operation = \"remove_package\""));
+    }
+
+    #[test]
+    fn environment_initialize_accepts_null_repositories() {
+        let (class, expression) = bridge_expression(
+            "environment.initialize",
+            &json!({
+                "project_root": "C:/projects/environment-demo",
+                "repositories": null
+            }),
+        )
+        .unwrap();
+        assert!(matches!(class, OperationClass::ProjectMutation));
+        assert!(expression.contains("operation = \"initialize\""));
+        assert!(expression.contains("repositories = NULL"));
     }
 
     #[test]
