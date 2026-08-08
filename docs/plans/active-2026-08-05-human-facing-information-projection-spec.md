@@ -13,6 +13,13 @@ The UX1 interaction inventory remains the terminology source; existing Agent,
 Environment, Evidence, Run, Artifact, Audit, approval, and startup contracts
 retain their behavioral authority.
 
+CRED-UX2, authorized on 2026-08-07 in the active system-credential and simple
+LLM settings specification, owns the Model settings provider-card, guided-flow,
+per-provider disclosure, management-separation, and operation-state layout. It
+retains this document's friendly status/error, raw-detail exclusion, and
+credential-redaction rules. The historical WP4 evidence below describes the
+pre-CRED-UX2 layout and is not the current layout acceptance contract.
+
 Mandatory stop: implement, test, review, document, and commit each work package
 before starting the next package.
 

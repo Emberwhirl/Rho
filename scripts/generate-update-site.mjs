@@ -1,17 +1,27 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { CANDIDATE_PLATFORMS, validateAggregateEvidence, validatePlatformEvidence } from "./candidate-release.mjs";
 
 const WEBSITE = "https://yulab-smu.top/Rho/";
 const REPOSITORY = "https://github.com/YuLab-SMU/Rho";
+const PRERELEASE_IDENTIFIER = "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
+const VERSION_PATTERN = new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-(${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*))?$`);
 
 function parseArgs(argv) {
   const result = {};
-  for (let index = 0; index < argv.length; index += 2) result[argv[index]?.replace(/^--/, "")] = argv[index + 1];
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = argv[index];
+    if (!key?.startsWith("--") || argv[index + 1] == null) throw new Error(`Invalid argument at ${key || "end of input"}`);
+    result[key.slice(2)] = argv[index + 1];
+  }
   return result;
 }
 
 function parseVersion(value) {
-  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/.exec(value);
+  const match = VERSION_PATTERN.exec(value);
   if (!match) throw new Error(`Invalid SemVer: ${value}`);
   return { raw: value, core: match.slice(1, 4).map(Number), pre: match[4]?.split(".") || [] };
 }
@@ -40,30 +50,99 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function assertArtifactHash(hash, version) {
+  if (!/^[0-9a-f]{64}$/.test(hash)) throw new Error(`Artifact SHA-256 is invalid for ${version}`);
+}
+
+function releaseAsset(record, name, size, version) {
+  if (!Number.isSafeInteger(size) || size <= 0) throw new Error(`Artifact size is invalid for ${version}`);
+  const asset = record.assets?.find((item) => item.name === name);
+  if (!asset || asset.size !== size) throw new Error(`Release asset ${name} does not match evidence for ${version}`);
+  const expectedUrl = `${REPOSITORY}/releases/download/v${version}/${name}`;
+  if (asset.browser_download_url !== expectedUrl) throw new Error(`Release asset URL is not allowlisted for ${version}`);
+  return asset;
+}
+
+function validatedLegacyArtifacts(record, evidence, version) {
+  const artifact = evidence.artifact;
+  if (!artifact?.installer_name || !artifact?.sha256 || !artifact?.size_bytes) {
+    throw new Error(`Artifact evidence is incomplete for ${version}`);
+  }
+  assertArtifactHash(artifact.sha256, version);
+  const asset = releaseAsset(record, artifact.installer_name, artifact.size_bytes, version);
+  return {
+    windows_x86_64: { url: asset.browser_download_url, sha256: artifact.sha256, size: artifact.size_bytes },
+  };
+}
+
+function validatedCandidateArtifacts(record, evidence, version) {
+  validateAggregateEvidence(evidence);
+  if (evidence.version !== version || evidence.release_tag !== `v${version}`) {
+    throw new Error(`Candidate evidence identity mismatch for ${version}`);
+  }
+  if (record.target_commitish !== evidence.commit) throw new Error(`Candidate commit mismatch for ${version}`);
+  const suppliedPlatformEvidence = record.platform_evidence;
+  if (!suppliedPlatformEvidence || JSON.stringify(Object.keys(suppliedPlatformEvidence).sort()) !== JSON.stringify([...CANDIDATE_PLATFORMS].sort())) {
+    throw new Error(`Complete platform evidence is missing for ${version}`);
+  }
+  const artifacts = {};
+  for (const platform of CANDIDATE_PLATFORMS) {
+    const platformEvidence = evidence.platforms[platform];
+    const supplied = suppliedPlatformEvidence[platform];
+    if (
+      !supplied
+      || supplied.size_bytes !== platformEvidence.evidence.size_bytes
+      || supplied.sha256 !== platformEvidence.evidence.sha256
+    ) throw new Error(`Platform evidence content mismatch for ${platform}`);
+    validatePlatformEvidence(supplied.content, {
+      version: evidence.version,
+      release_tag: evidence.release_tag,
+      commit: evidence.commit,
+      platform,
+    });
+    for (const value of Object.values(platformEvidence)) releaseAsset(record, value.name, value.size_bytes, version);
+    const artifact = platformEvidence.artifact;
+    assertArtifactHash(artifact.sha256, version);
+    const asset = releaseAsset(record, artifact.name, artifact.size_bytes, version);
+    artifacts[platform] = { url: asset.browser_download_url, sha256: artifact.sha256, size: artifact.size_bytes };
+  }
+  return artifacts;
+}
+
 function validatedRelease(record) {
   if (record.draft) throw new Error(`Draft release is not publishable: ${record.tag_name}`);
-  const version = String(record.tag_name || "").replace(/^v/, "");
+  if (!String(record.tag_name || "").startsWith("v")) throw new Error(`Release tag must start with v: ${record.tag_name}`);
+  const version = record.tag_name.slice(1);
   const parsed = parseVersion(version);
+  if (record.tag_name !== `v${version}`) throw new Error(`Release tag is invalid for ${version}`);
   if (Boolean(record.prerelease) !== (parsed.pre.length > 0)) throw new Error(`Release channel metadata mismatch for ${version}`);
   if (record.html_url !== `${REPOSITORY}/releases/tag/v${version}`) throw new Error(`Release URL is not allowlisted for ${version}`);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(record.published_at) || !Number.isFinite(Date.parse(record.published_at))) {
+    throw new Error(`Release publication time is invalid for ${version}`);
+  }
   const evidence = record.evidence;
   if (!evidence || evidence.status !== "passed") throw new Error(`Passed release evidence is missing for ${version}`);
   if (evidence.version !== version || evidence.release_tag !== `v${version}`) throw new Error(`Evidence identity mismatch for ${version}`);
-  const artifact = evidence.artifact;
-  if (!artifact?.installer_name || !artifact?.sha256 || !artifact?.size_bytes) throw new Error(`Artifact evidence is incomplete for ${version}`);
-  if (!/^[0-9a-f]{64}$/.test(artifact.sha256)) throw new Error(`Artifact SHA-256 is invalid for ${version}`);
-  const asset = record.assets?.find((item) => item.name === artifact.installer_name);
-  if (!asset || asset.size !== artifact.size_bytes) throw new Error(`Installer asset does not match evidence for ${version}`);
-  const expectedDownloadPrefix = `${REPOSITORY}/releases/download/v${version}/`;
-  if (!asset.browser_download_url.startsWith(expectedDownloadPrefix)) throw new Error(`Installer URL is not allowlisted for ${version}`);
+  let artifacts;
+  if (evidence.type === "rho_candidate_evidence") {
+    artifacts = validatedCandidateArtifacts(record, evidence, version);
+  } else if ((!evidence.type || evidence.type === "rho_0_2_release_evidence") && evidence.artifact) {
+    artifacts = validatedLegacyArtifacts(record, evidence, version);
+  } else {
+    throw new Error(`Unsupported release evidence type for ${version}`);
+  }
+  const summary = [...String(record.summary || `Rho ${version} is available.`)].slice(0, 500).join("");
+  if ([...summary].some((character) => /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(character))) {
+    throw new Error(`Release summary contains control characters for ${version}`);
+  }
   return {
     parsed,
     version,
     prerelease: parsed.pre.length > 0,
     published_at: record.published_at,
-    summary: String(record.summary || `Rho ${version} is available.`).slice(0, 500),
+    summary,
     github_release_url: record.html_url,
-    installer: { url: asset.browser_download_url, sha256: artifact.sha256, size: artifact.size_bytes },
+    artifacts,
   };
 }
 
@@ -76,7 +155,7 @@ function manifest(release, channel) {
     summary: release.summary,
     release_page_url: WEBSITE,
     github_release_url: release.github_release_url,
-    artifacts: { windows_x86_64: release.installer },
+    artifacts: release.artifacts,
   };
 }
 
@@ -84,13 +163,19 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
 
+function artifactDownload(platform, artifact) {
+  const label = platform === "windows_x86_64" ? "Download for Windows x64" : "Download for macOS (Apple Silicon)";
+  return `<div class="artifact"><a class="download" href="${escapeHtml(artifact.url)}">${label}</a><details><summary>Verify download</summary><code>SHA-256 ${escapeHtml(artifact.sha256)}</code></details></div>`;
+}
+
 function releaseBlock(title, release) {
   if (!release) return `<section><h2>${title}</h2><p>Not available yet.</p></section>`;
-  return `<section><h2>${title}</h2><p class="version">Rho ${escapeHtml(release.version)}</p><p>${escapeHtml(release.summary)}</p><p>Published ${escapeHtml(release.published_at.slice(0, 10))}</p><a class="download" href="${escapeHtml(release.installer.url)}">Download for Windows x64</a><details><summary>Verify download</summary><code>SHA-256 ${escapeHtml(release.installer.sha256)}</code></details></section>`;
+  const downloads = Object.entries(release.artifacts).map(([platform, artifact]) => artifactDownload(platform, artifact)).join("");
+  return `<section><h2>${title}</h2><p class="version">Rho ${escapeHtml(release.version)}</p><p>${escapeHtml(release.summary)}</p><p>Published ${escapeHtml(release.published_at.slice(0, 10))}</p>${downloads}</section>`;
 }
 
 function page(stable, development) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rho Downloads</title><style>body{margin:0;color:#203033;background:#f5f7f7;font:15px/1.55 system-ui,sans-serif}header,main,footer{max-width:760px;margin:auto;padding:28px 22px}header{padding-top:64px}h1{margin:0;font:700 42px Georgia,serif}header p{color:#526568}section{padding:24px 0;border-top:1px solid #cbd4d5}h2{font-size:18px}.version{font-size:24px;font-weight:700}.download{display:inline-block;padding:9px 13px;border-radius:5px;color:white;background:#167568;text-decoration:none}details{margin-top:16px;color:#526568}code{display:block;margin-top:8px;overflow-wrap:anywhere}footer{color:#657679;font-size:13px}a{color:#126b61}</style></head><body><header><h1>Rho</h1><p>An agent-native scientific workbench for R.</p></header><main>${releaseBlock("Stable", stable)}${releaseBlock("Development", development)}<p>Installers are currently hosted by GitHub Releases. In some networks the download may be unavailable even when this page is reachable.</p></main><footer><a href="${REPOSITORY}">Source repository</a> · Rho installers are not yet code signed.</footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rho Downloads</title><style>body{margin:0;color:#203033;background:#f5f7f7;font:15px/1.55 system-ui,sans-serif}header,main,footer{max-width:760px;margin:auto;padding:28px 22px}header{padding-top:64px}h1{margin:0;font:700 42px Georgia,serif}header p{color:#526568}section{padding:24px 0;border-top:1px solid #cbd4d5}h2{font-size:18px}.version{font-size:24px;font-weight:700}.artifact{margin:16px 0}.download{display:inline-block;padding:9px 13px;border-radius:5px;color:white;background:#167568;text-decoration:none}details{margin-top:8px;color:#526568}code{display:block;margin-top:8px;overflow-wrap:anywhere}footer{color:#657679;font-size:13px}a{color:#126b61}</style></head><body><header><h1>Rho</h1><p>An agent-native scientific workbench for R.</p></header><main>${releaseBlock("Stable", stable)}${releaseBlock("Development", development)}<p>Installers are hosted by GitHub Releases. In some networks a download may be unavailable even when this page is reachable.</p></main><footer><a href="${REPOSITORY}">Source repository</a> · Listed macOS builds are Developer ID signed and notarized; verify every download with its SHA-256 checksum.</footer></body></html>`;
 }
 
 export function generate(records, outputDirectory) {
@@ -98,30 +183,124 @@ export function generate(records, outputDirectory) {
   const stable = releases.find((release) => !release.prerelease) || null;
   const development = releases[0] || null;
   if (!development) throw new Error("At least one validated release is required");
-  const root = outputDirectory;
-  fs.mkdirSync(path.join(root, "updates"), { recursive: true });
-  fs.writeFileSync(path.join(root, "index.html"), page(stable, development));
-  fs.writeFileSync(path.join(root, "updates", "development.json"), `${JSON.stringify(manifest(development, "development"), null, 2)}\n`);
-  if (stable) fs.writeFileSync(path.join(root, "updates", "stable.json"), `${JSON.stringify(manifest(stable, "stable"), null, 2)}\n`);
+  fs.mkdirSync(path.join(outputDirectory, "updates"), { recursive: true });
+  fs.writeFileSync(path.join(outputDirectory, "index.html"), page(stable, development));
+  fs.writeFileSync(path.join(outputDirectory, "updates", "development.json"), `${JSON.stringify(manifest(development, "development"), null, 2)}\n`);
+  const stablePath = path.join(outputDirectory, "updates", "stable.json");
+  if (stable) fs.writeFileSync(stablePath, `${JSON.stringify(manifest(stable, "stable"), null, 2)}\n`);
+  else if (fs.existsSync(stablePath)) fs.unlinkSync(stablePath);
   return { stable: stable?.version || null, development: development.version };
 }
 
-function selfTest() {
-  const temp = fs.mkdtempSync(path.join(process.env.TEMP || process.cwd(), "rho-update-site-"));
-  const make = (version, prerelease = true) => ({
-    tag_name: `v${version}`, draft: false, prerelease, published_at: "2026-07-25T00:00:00Z",
-    html_url: `${REPOSITORY}/releases/tag/v${version}`, summary: `Release ${version}`,
+function fakeRecord(version, prerelease = true) {
+  return {
+    tag_name: `v${version}`,
+    target_commitish: "a".repeat(40),
+    draft: false,
+    prerelease,
+    published_at: "2026-07-25T00:00:00Z",
+    html_url: `${REPOSITORY}/releases/tag/v${version}`,
+    summary: `Release ${version}`,
     assets: [{ name: `Rho_${version}_x64-setup.exe`, size: 100, browser_download_url: `${REPOSITORY}/releases/download/v${version}/Rho_${version}_x64-setup.exe` }],
-    evidence: { status: "passed", version, release_tag: `v${version}`, artifact: { installer_name: `Rho_${version}_x64-setup.exe`, size_bytes: 100, sha256: "a".repeat(64) } },
-  });
-  const result = generate([make("0.2.0-dev.9"), make("0.2.0-dev.12")], temp);
-  if (result.development !== "0.2.0-dev.12") throw new Error("Prerelease ordering failed");
-  const promoted = generate([make("0.2.0-dev.12"), make("0.2.0", false)], temp);
-  if (promoted.stable !== "0.2.0" || promoted.development !== "0.2.0") throw new Error("Stable promotion failed");
-  let rejected = false;
-  try { generate([{ ...make("0.3.0"), draft: true }], temp); } catch { rejected = true; }
-  if (!rejected) throw new Error("Draft release was not rejected");
-  fs.rmSync(temp, { recursive: true, force: true });
+    evidence: { type: "rho_0_2_release_evidence", status: "passed", version, release_tag: `v${version}`, artifact: { installer_name: `Rho_${version}_x64-setup.exe`, size_bytes: 100, sha256: "a".repeat(64) } },
+  };
+}
+
+function fakeCandidateRecord(version) {
+  const record = fakeRecord(version);
+  const platforms = {};
+  const details = {
+    windows_x86_64: [`Rho_${version}_x64-setup.exe`, `rho-${version}-windows-x86_64-evidence.json`],
+    macos_aarch64: [`Rho_${version}_aarch64.dmg`, `rho-${version}-macos-aarch64-evidence.json`],
+  };
+  record.assets = [];
+  for (const platform of CANDIDATE_PLATFORMS) {
+    const [artifactName, evidenceName] = details[platform];
+    const entries = {
+      artifact: { name: artifactName, size_bytes: 100, sha256: platform === "windows_x86_64" ? "a".repeat(64) : "b".repeat(64) },
+      checksum: { name: `${artifactName}.sha256`, size_bytes: 80, sha256: "c".repeat(64) },
+      evidence: { name: evidenceName, size_bytes: 200, sha256: "d".repeat(64) },
+    };
+    platforms[platform] = entries;
+    for (const entry of Object.values(entries)) {
+      record.assets.push({ name: entry.name, size: entry.size_bytes, browser_download_url: `${REPOSITORY}/releases/download/v${version}/${entry.name}` });
+    }
+  }
+  record.evidence = {
+    schema_version: 1,
+    type: "rho_candidate_evidence",
+    status: "passed",
+    version,
+    release_tag: `v${version}`,
+    commit: record.target_commitish,
+    platforms,
+  };
+  const checks = {
+    windows_x86_64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke"],
+    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "notary_binding", "staple", "gatekeeper"],
+  };
+  record.platform_evidence = Object.fromEntries(CANDIDATE_PLATFORMS.map((platform) => [platform, {
+    size_bytes: platforms[platform].evidence.size_bytes,
+    sha256: platforms[platform].evidence.sha256,
+    content: {
+      schema_version: 1,
+      type: "rho_platform_candidate_evidence",
+      status: "passed",
+      version,
+      release_tag: `v${version}`,
+      commit: record.target_commitish,
+      platform,
+      artifact: {
+        name: platforms[platform].artifact.name,
+        hash_name: platforms[platform].checksum.name,
+        size_bytes: platforms[platform].artifact.size_bytes,
+        sha256: platforms[platform].artifact.sha256,
+      },
+      checks: checks[platform].map((name) => ({ name, status: "passed" })),
+    },
+  }]));
+  return record;
+}
+
+function expectFailure(action, pattern) {
+  let error;
+  try { action(); } catch (caught) { error = caught; }
+  if (!error || !pattern.test(error.message)) throw new Error(`Expected failure matching ${pattern}`);
+}
+
+function selfTest() {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "rho-update-site-"));
+  try {
+    const result = generate([fakeRecord("0.2.0-dev.9"), fakeRecord("0.2.0-dev.12")], temp);
+    if (result.development !== "0.2.0-dev.12") throw new Error("Prerelease ordering failed");
+    const promoted = generate([fakeRecord("0.2.0-dev.12"), fakeRecord("0.2.0", false)], temp);
+    if (promoted.stable !== "0.2.0" || promoted.development !== "0.2.0") throw new Error("Stable promotion failed");
+    const candidate = fakeCandidateRecord("0.4.0-dev.1");
+    generate([candidate], temp);
+    if (fs.existsSync(path.join(temp, "updates", "stable.json"))) throw new Error("Stale stable manifest was retained");
+    const candidateManifest = JSON.parse(fs.readFileSync(path.join(temp, "updates", "development.json"), "utf8"));
+    if (!candidateManifest.artifacts.windows_x86_64 || !candidateManifest.artifacts.macos_aarch64) throw new Error("Candidate manifest omitted a platform");
+    if (!fs.readFileSync(path.join(temp, "index.html"), "utf8").includes("Download for macOS (Apple Silicon)")) throw new Error("Candidate page omitted macOS");
+    expectFailure(() => generate([{ ...fakeRecord("0.3.0"), draft: true }], temp), /Draft release/);
+    const missingMac = fakeCandidateRecord("0.4.0-dev.1");
+    delete missingMac.evidence.platforms.macos_aarch64;
+    expectFailure(() => generate([missingMac], temp), /candidate platforms keys/);
+    const unknownPlatform = fakeCandidateRecord("0.4.0-dev.1");
+    unknownPlatform.evidence.platforms.linux_x86_64 = unknownPlatform.evidence.platforms.windows_x86_64;
+    expectFailure(() => generate([unknownPlatform], temp), /candidate platforms keys/);
+    const wrongSize = fakeCandidateRecord("0.4.0-dev.1");
+    wrongSize.assets.find((asset) => asset.name.endsWith("aarch64.dmg")).size = 99;
+    expectFailure(() => generate([wrongSize], temp), /does not match evidence/);
+    const wrongHash = fakeCandidateRecord("0.4.0-dev.1");
+    wrongHash.evidence.platforms.macos_aarch64.artifact.sha256 = "ABC";
+    expectFailure(() => generate([wrongHash], temp), /invalid/);
+    const missingNotaryBinding = fakeCandidateRecord("0.4.0-dev.1");
+    missingNotaryBinding.platform_evidence.macos_aarch64.content.checks =
+      missingNotaryBinding.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "notary_binding");
+    expectFailure(() => generate([missingNotaryBinding], temp), /missing required check notary_binding/);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
   process.stdout.write("Rho update site generator tests passed.\n");
 }
 
@@ -130,6 +309,6 @@ if (args.test === "true") selfTest();
 else if (args.input && args.output) {
   const result = generate(JSON.parse(fs.readFileSync(args.input, "utf8")), args.output);
   process.stdout.write(`${JSON.stringify(result)}\n`);
-} else {
+} else if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   throw new Error("Usage: node scripts/generate-update-site.mjs --input releases.json --output site, or --test true");
 }

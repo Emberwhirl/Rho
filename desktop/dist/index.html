@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rho</title>
-  <link rel="stylesheet" href="styles.css?v=0.4.0-dev.15&rev=m3-scientific-review-v3&agent=output-review-v3" />
+    <link rel="stylesheet" href="styles.css?v=0.4.0-dev.19&rev=m3-scientific-review-v3&agent=output-review-v3&issue4=provider-first-v1" />
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -820,108 +820,303 @@ plot(
           </div>
           <button id="agentLlmClose" type="button" aria-label="Close model settings">✕</button>
         </div>
-        <div id="agentLlmValidation" class="agent-llm-banner hidden"></div>
-        <div class="agent-llm-layout">
-          <section class="agent-llm-column agent-llm-primary">
-            <div class="agent-llm-section-heading">
-              <div><strong>Choose a model</strong><p>Select the provider and model Rho should use for the next Agent turn.</p></div>
-              <span id="agentLlmCurrentStatus" class="agent-llm-current-status">No model selected</span>
+        <div id="agentLlmValidation" class="agent-llm-banner agent-llm-recovery-banner hidden" role="alert">
+          <span id="agentLlmValidationMessage"></span>
+          <button id="agentLlmRetrySettings" type="button">Retry settings</button>
+        </div>
+        <div id="agentLlmOperationStatus" class="agent-llm-operation-status hidden" role="status" aria-live="polite"></div>
+        <div class="agent-llm-tabs" role="tablist" aria-label="Model settings sections">
+          <button id="agentLlmConnectionsTab" type="button" role="tab" aria-controls="agentLlmShell" aria-selected="true" data-agent-llm-view="connections">Connections</button>
+          <button id="agentLlmRoutingTab" type="button" role="tab" aria-controls="agentLlmRoutingPanel" aria-selected="false" data-agent-llm-view="routing">Model routing</button>
+          <button id="agentLlmLibraryTab" type="button" role="tab" aria-controls="agentLlmLibraryPanel" aria-selected="false" data-agent-llm-view="library">Model library</button>
+        </div>
+        <div id="agentLlmShell" class="agent-llm-view-panel agent-llm-shell" role="tabpanel" aria-labelledby="agentLlmConnectionsTab">
+          <aside class="agent-llm-provider-rail" aria-label="Model providers">
+            <div class="agent-llm-toolbar">
+              <div><strong>Connections</strong><p>Choose a Provider first</p></div>
+              <button id="agentLlmAddProvider" type="button">Add provider</button>
             </div>
-            <div id="agentLlmCurrentSelection" class="agent-llm-current-selection">No model selected.</div>
-            <div class="agent-llm-overview-grid">
-              <section class="agent-llm-overview-card">
-                <div class="agent-llm-toolbar"><strong>Providers</strong><span class="agent-llm-hint">Connection</span></div>
-                <div id="agentLlmProviderList" class="agent-llm-list" role="listbox" aria-label="Providers"></div>
-              </section>
-              <section class="agent-llm-overview-card">
-                <div class="agent-llm-toolbar"><strong>Models</strong><span class="agent-llm-hint">Availability</span></div>
-                <div id="agentLlmModelList" class="agent-llm-list" role="listbox" aria-label="Models"></div>
-              </section>
-            </div>
-            <div id="agentLlmCredentialField" class="agent-llm-credential-field">
-              <label>API key
-                <input id="agentLlmCredential" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter a new API key" />
-              </label>
-              <div class="agent-llm-credential-meta">
-                <span id="agentLlmCredentialStatus" class="agent-llm-credential-status">Not set</span>
-                <button id="agentLlmDeleteCredential" class="agent-llm-link-button hidden" type="button">Remove stored key</button>
-              </div>
-            </div>
-            <div id="agentLlmTestResult" class="agent-llm-test-result hidden"></div>
-            <div class="agent-llm-actions agent-llm-primary-actions">
-              <button id="agentLlmSaveConfiguration" class="primary" type="button">Save</button>
-              <button id="agentLlmTestModel" type="button">Test connection</button>
-              <button id="agentLlmCancelTest" class="hidden" type="button">Cancel test</button>
-              <button id="agentLlmSelectDefault" type="button">Use this model</button>
-            </div>
-          </section>
-          <details id="agentLlmAdvanced" class="agent-llm-advanced agent-llm-management-details">
-            <summary>Advanced settings</summary>
-            <p class="agent-llm-advanced-note">Add providers and models or adjust less common connection and capability settings.</p>
-            <div class="agent-llm-form agent-llm-management-form">
-              <div class="agent-llm-toolbar">
-                <strong>Configuration</strong>
-                <div class="agent-llm-toolbar-actions">
-                  <button id="agentLlmAddProvider" type="button">Add provider</button>
-                  <button id="agentLlmAddModel" type="button">Add model</button>
-                  <button id="agentLlmLoadCatalog" type="button">Load catalog</button>
+            <div id="agentLlmProviderList" class="agent-llm-provider-list" role="listbox" aria-label="Providers"></div>
+          </aside>
+          <section id="agentLlmProviderDetail" class="agent-llm-provider-detail" aria-label="Selected provider">
+            <div id="agentLlmProviderEmpty" class="agent-llm-empty hidden">Add a provider to configure an Agent model.</div>
+            <div id="agentLlmProviderContent" class="agent-llm-provider-content">
+              <div class="agent-llm-provider-heading">
+                <div>
+                  <strong id="agentLlmSelectedProviderName" tabindex="-1">Provider</strong>
+                  <p id="agentLlmSelectedProviderKind">Connection</p>
                 </div>
+                <span id="agentLlmSelectedProviderStatus" class="agent-llm-status-badge">Needs attention</span>
               </div>
-              <div class="agent-llm-simple-fields">
-                <label>Provider name<input id="agentLlmProviderDisplayName" type="text" /></label>
-                <label>Provider type
-                  <select id="agentLlmProviderKind">
-                    <option value="registered">R provider</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="gemini">Gemini</option>
-                    <option value="openai_compatible">OpenAI-compatible</option>
-                    <option value="local_openai_compatible">Local OpenAI-compatible</option>
-                  </select>
-                </label>
-                <label class="agent-llm-checkbox"><input id="agentLlmProviderApiKeyRequired" type="checkbox" checked /> API key required</label>
-                <label>Model ID<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
-                <label>Model name<input id="agentLlmModelDisplayName" type="text" /></label>
-                <label>Provider
-                  <select id="agentLlmModelProvider"></select>
-                </label>
-                <label>Model catalog<select id="agentLlmCatalogModel"><option value="">Choose a catalog model...</option></select></label>
-                <label class="agent-llm-checkbox"><input id="agentLlmModelEnabled" type="checkbox" checked /> Enabled</label>
+              <div class="agent-llm-current-row">
+                <div>
+                  <span class="agent-llm-eyebrow">Chat route</span>
+                  <div id="agentLlmCurrentSelection" class="agent-llm-current-selection">No model selected.</div>
+                </div>
+                <span id="agentLlmCurrentStatus" class="agent-llm-current-status">No model selected</span>
               </div>
-              <details class="agent-llm-advanced">
-                <summary>More connection and capability settings</summary>
-                <div class="agent-llm-advanced-fields">
-                  <label id="agentLlmBaseUrlField">Base URL<input id="agentLlmProviderBaseUrl" type="url" placeholder="http://127.0.0.1:11434/v1" /></label>
-                  <label>Provider ID<input id="agentLlmRegisteredProviderId" type="text" placeholder="deepseek" /></label>
-                  <label>API key environment<input id="agentLlmProviderApiKeyEnv" type="text" placeholder="OPENAI_API_KEY" /></label>
-                  <label>Base URL environment<input id="agentLlmProviderBaseUrlEnv" type="text" placeholder="OPENAI_BASE_URL" /></label>
-                  <label>Wire API
-                    <select id="agentLlmProviderWireApi">
-                      <option value="">Default</option><option value="chat_completions">chat_completions</option><option value="responses">responses</option><option value="anthropic_messages">anthropic_messages</option>
-                    </select>
+              <section class="agent-llm-section agent-llm-connection-section">
+                <div class="agent-llm-section-heading">
+                  <div><strong>API connection</strong><p>Keys are stored by the operating system and are never shown again.</p></div>
+                </div>
+                <label class="agent-llm-endpoint-field">Base URL (optional)
+                  <input id="agentLlmProviderBaseUrl" type="url" placeholder="Use this Provider's default endpoint" />
+                  <span id="agentLlmProviderBaseUrlHint">Leave blank to use the reviewed Provider default.</span>
+                </label>
+                <div id="agentLlmCredentialField" class="agent-llm-credential-field">
+                  <label>API key
+                    <input id="agentLlmCredential" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter a new API key" />
                   </label>
-                  <label class="agent-llm-checkbox"><input id="agentLlmProviderDisableStreamOptions" type="checkbox" /> Disable stream options</label>
-                  <label>Tool calling
-                    <select id="agentLlmModelToolCalling"><option value="yes">Yes</option><option value="no">No</option><option value="unknown">Not specified</option></select>
-                  </label>
-                  <label>Reasoning
-                    <select id="agentLlmModelReasoning"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
-                  </label>
-                  <label>Image input
-                    <select id="agentLlmModelVisionInput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
-                  </label>
-                  <label>Capability source
-                    <select id="agentLlmModelCapabilitySource"><option value="declared">Manually set</option><option value="catalog">Model catalog</option><option value="probe">Connection test</option><option value="unknown">Not specified</option></select>
-                  </label>
+                  <div class="agent-llm-credential-meta">
+                    <span id="agentLlmCredentialStatus" class="agent-llm-credential-status">Not set</span>
+                    <button id="agentLlmDeleteCredential" class="agent-llm-link-button hidden" type="button">Remove stored key</button>
+                  </div>
+                </div>
+                <p class="agent-llm-network-note">Testing sends a small real request to the selected provider and may incur a small charge.</p>
+                <div id="agentLlmTestResult" class="agent-llm-test-result hidden"></div>
+                <div class="agent-llm-actions agent-llm-connection-actions">
+                  <button id="agentLlmSaveProvider" type="button">Save connection</button>
+                  <button id="agentLlmSaveCredential" class="primary" type="button">Save API key</button>
+                  <button id="agentLlmTestModel" type="button">Test connection</button>
+                  <button id="agentLlmCancelTest" class="hidden" type="button">Cancel test</button>
+                </div>
+              </section>
+              <section class="agent-llm-section agent-llm-model-section">
+                <div class="agent-llm-toolbar">
+                  <div><strong>Imported models</strong><p>Review default capabilities, then assign explicit uses.</p></div>
+                  <button id="agentLlmAddModel" type="button">Add model</button>
+                </div>
+                <div id="agentLlmModelList" class="agent-llm-model-list" role="listbox" aria-label="Models for selected provider"></div>
+                <div class="agent-llm-actions agent-llm-model-actions">
+                  <button id="agentLlmEditModel" type="button">Review model</button>
+                  <button id="agentLlmSelectDefault" class="primary" type="button">Assign to Chat</button>
+                </div>
+              </section>
+              <details id="agentLlmProviderAdvanced" class="agent-llm-advanced agent-llm-provider-advanced">
+                <summary>Provider Advanced</summary>
+                <p class="agent-llm-advanced-note">Edit low-frequency connection fields for this provider only.</p>
+                <div class="agent-llm-form agent-llm-provider-form">
+                  <div class="agent-llm-simple-fields">
+                    <label>Provider name<input id="agentLlmProviderDisplayName" type="text" /></label>
+                    <label>Provider type
+                      <select id="agentLlmProviderKind">
+                        <option value="registered">R provider</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="openai_compatible">OpenAI-compatible</option>
+                        <option value="local_openai_compatible">Local OpenAI-compatible</option>
+                      </select>
+                    </label>
+                    <label>Provider ID<input id="agentLlmRegisteredProviderId" type="text" placeholder="deepseek" /></label>
+                    <label>API key environment<input id="agentLlmProviderApiKeyEnv" type="text" placeholder="OPENAI_API_KEY" /></label>
+                    <label>Base URL environment<input id="agentLlmProviderBaseUrlEnv" type="text" placeholder="OPENAI_BASE_URL" /></label>
+                    <label>Wire API
+                      <select id="agentLlmProviderWireApi">
+                        <option value="">Provider default</option><option value="chat_completions">OpenAI chat completions</option><option value="responses">OpenAI responses</option><option value="anthropic_messages">Anthropic messages</option>
+                      </select>
+                    </label>
+                    <label class="agent-llm-checkbox"><input id="agentLlmProviderApiKeyRequired" type="checkbox" checked /> API key required</label>
+                    <label class="agent-llm-checkbox"><input id="agentLlmProviderDisableStreamOptions" type="checkbox" /> Disable stream options</label>
+                  </div>
+                  <details id="agentLlmProviderDanger" class="agent-llm-danger-zone">
+                    <summary>Danger zone</summary>
+                    <p>Remove this provider only after its models have been removed. The stored key is deleted first.</p>
+                    <button id="agentLlmDeleteProvider" class="danger" type="button">Delete provider</button>
+                  </details>
                 </div>
               </details>
-              <div class="agent-llm-actions">
-                <button id="agentLlmSaveProvider" type="button">Save provider</button>
-                <button id="agentLlmSaveModel" type="button">Save model</button>
-                <button id="agentLlmDeleteProvider" class="danger" type="button">Delete provider</button>
-                <button id="agentLlmDeleteModel" class="danger" type="button">Delete model</button>
-              </div>
             </div>
+          </section>
+        </div>
+        <section id="agentLlmRoutingPanel" class="agent-llm-view-panel agent-llm-routing-panel hidden" role="tabpanel" aria-labelledby="agentLlmRoutingTab">
+          <div class="agent-llm-routing-heading">
+            <div><strong>Assign models by capability</strong><p>Rho resolves a named route for each typed task. Provider failures never switch routes silently. Media and embedding routes show “Consumer not installed” until their typed workers are added.</p></div>
+            <span id="agentLlmRoutingRevision" class="agent-llm-revision">Revision —</span>
+          </div>
+          <div id="agentLlmRoutingContext" class="agent-llm-routing-context hidden" role="status"></div>
+          <div id="agentLlmRouteList" class="agent-llm-route-list"></div>
+          <details id="agentLlmCustomRoute" class="agent-llm-advanced agent-llm-custom-route">
+            <summary>Add a custom route</summary>
+            <p class="agent-llm-advanced-note">A custom route remains unavailable until a typed consumer requests its exact name.</p>
+            <div class="agent-llm-custom-route-fields">
+              <label>Route name<input id="agentLlmCustomRouteName" type="text" placeholder="analysis.special" /></label>
+              <label>Model type<select id="agentLlmCustomRouteType"><option value="language">Language</option><option value="image">Image</option><option value="embedding">Embedding</option></select></label>
+              <label>Required capabilities<input id="agentLlmCustomRouteRequired" type="text" placeholder="vision_input, reasoning" /></label>
+              <label>Model<select id="agentLlmCustomRouteModel"></select></label>
+            </div>
+            <div class="agent-llm-actions"><button id="agentLlmSaveCustomRoute" type="button">Save custom route</button></div>
+          </details>
+        </section>
+        <section id="agentLlmLibraryPanel" class="agent-llm-view-panel agent-llm-library-panel hidden" role="tabpanel" aria-labelledby="agentLlmLibraryTab">
+          <div class="agent-llm-toolbar">
+            <div><strong>Model library</strong><p>Availability, type, capabilities and evidence are independent from route assignment.</p></div>
+            <button id="agentLlmLibraryAddModel" type="button">Add model</button>
+          </div>
+          <div id="agentLlmLibraryList" class="agent-llm-library-list" role="listbox" aria-label="All configured models"></div>
+          <div class="agent-llm-actions">
+            <button id="agentLlmLibraryEditModel" type="button">Review model</button>
+            <button id="agentLlmLibraryTestModel" type="button">Test language connection</button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div id="agentLlmProviderWizard" class="agent-llm-dialog agent-llm-subdialog hidden">
+      <div class="agent-llm-scrim" data-agent-llm-wizard-close="true"></div>
+      <div class="agent-llm-subdialog-surface">
+        <div class="agent-llm-header">
+          <div><strong id="agentLlmWizardTitle">Add provider</strong><p>Create a connection first, then add its initial model.</p></div>
+          <button id="agentLlmWizardClose" type="button" aria-label="Close Add provider">✕</button>
+        </div>
+        <ol class="agent-llm-stepper" aria-label="Add provider progress">
+          <li id="agentLlmWizardConnectionIndicator" class="active"><span>1</span>Connection</li>
+          <li id="agentLlmWizardModelIndicator"><span>2</span>Model</li>
+        </ol>
+        <div id="agentLlmWizardStatus" class="agent-llm-operation-status hidden" role="status" aria-live="polite"></div>
+        <section id="agentLlmWizardStepConnection" class="agent-llm-wizard-step">
+          <div class="agent-llm-form">
+            <fieldset class="agent-llm-provider-choice">
+              <legend>Choose a Provider</legend>
+              <div id="agentLlmWizardProviderGrid" class="agent-llm-provider-preset-grid" role="radiogroup" aria-label="Provider presets"></div>
+            </fieldset>
+            <label>Provider name<input id="agentLlmWizardProviderName" type="text" placeholder="Example AI" /></label>
+            <label class="agent-llm-sr-only">Provider type
+              <select id="agentLlmWizardProviderKind" tabindex="-1" aria-hidden="true">
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Gemini</option>
+                <option value="moonshot">Moonshot</option>
+                <option value="kimi">Kimi</option>
+                <option value="stepfun">Stepfun</option>
+                <option value="volcengine">Volcengine</option>
+                <option value="aihubmix">AiHubMix</option>
+                <option value="xai">xAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="bailian">Bailian</option>
+                <option value="nvidia">NVIDIA</option>
+                <option value="openai_compatible">OpenAI-compatible</option>
+                <option value="local_openai_compatible">Local OpenAI-compatible</option>
+              </select>
+            </label>
+            <label id="agentLlmWizardBaseUrlField">Base URL (optional)
+              <input id="agentLlmWizardBaseUrl" type="url" placeholder="Use this Provider's default endpoint" />
+              <span id="agentLlmWizardBaseUrlHint">Leave blank to use the reviewed Provider default.</span>
+            </label>
+            <label>API format
+              <select id="agentLlmWizardApiFormat">
+                <option value="">Provider default</option>
+                <option value="chat_completions">OpenAI chat completions</option>
+                <option value="responses">OpenAI responses</option>
+                <option value="anthropic_messages">Anthropic messages</option>
+              </select>
+            </label>
+            <label class="agent-llm-checkbox"><input id="agentLlmWizardApiKeyRequired" type="checkbox" checked /> API key required</label>
+            <label id="agentLlmWizardCredentialField">API key
+              <input id="agentLlmWizardCredential" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter an API key" />
+            </label>
+          </div>
+          <div class="agent-llm-actions agent-llm-dialog-actions">
+            <button id="agentLlmWizardCancel" type="button">Cancel</button>
+            <button id="agentLlmWizardContinue" class="primary" type="button">Continue to model</button>
+          </div>
+        </section>
+        <section id="agentLlmWizardStepModel" class="agent-llm-wizard-step hidden">
+          <div class="agent-llm-form">
+            <div class="agent-llm-discovery-panel">
+              <div class="agent-llm-discovery-heading">
+                <div><strong>Available models</strong><p>Rho uses the stored Provider key to fetch this list. No prompt is sent.</p></div>
+                <button id="agentLlmWizardRefreshModels" type="button">Refresh models</button>
+              </div>
+              <label class="agent-llm-sr-only">Choose a model<select id="agentLlmWizardDiscoveredModel" tabindex="-1" aria-hidden="true"><option value="">Fetching available models...</option></select></label>
+              <div id="agentLlmWizardDiscoveredModelCards" class="agent-llm-discovered-model-grid" role="radiogroup" aria-label="Available Provider models"></div>
+              <p id="agentLlmWizardDiscoveryStatus" class="agent-llm-discovery-status" role="status" aria-live="polite" tabindex="-1">Waiting to fetch models.</p>
+            </div>
+            <details id="agentLlmWizardManualModel" class="agent-llm-advanced agent-llm-manual-model">
+              <summary>Enter a model ID manually</summary>
+              <div class="agent-llm-advanced-fields">
+                <label>Model ID<input id="agentLlmWizardModelId" type="text" placeholder="model-id" /></label>
+                <label>Model name<input id="agentLlmWizardModelName" type="text" placeholder="Model display name" /></label>
+              </div>
+            </details>
+            <label class="agent-llm-checkbox"><input id="agentLlmWizardModelEnabled" type="checkbox" checked /> Enabled</label>
+            <label>Model type<select id="agentLlmWizardModelType"><option value="language">Language</option><option value="image">Image</option><option value="embedding">Embedding</option><option value="unknown">Needs review</option></select></label>
+            <details class="agent-llm-advanced" open>
+              <summary>Model capabilities</summary>
+              <div id="agentLlmWizardCapabilityGrid" class="agent-llm-capability-grid"></div>
+              <div class="agent-llm-sr-only" aria-hidden="true">
+                <select id="agentLlmWizardModelToolCalling"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelReasoning"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelVisionInput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelImageOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelImageEdit"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelAudioInput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelAudioOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelStructuredOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+                <select id="agentLlmWizardModelWebSearch"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              </div>
+            </details>
+          </div>
+          <div class="agent-llm-actions agent-llm-dialog-actions">
+            <button id="agentLlmWizardBack" type="button">Back</button>
+            <button id="agentLlmWizardFinishLater" type="button">Finish later</button>
+            <button id="agentLlmWizardFinish" class="primary" type="button">Save model</button>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div id="agentLlmModelDialog" class="agent-llm-dialog agent-llm-subdialog hidden">
+      <div class="agent-llm-scrim" data-agent-llm-model-close="true"></div>
+      <div class="agent-llm-subdialog-surface agent-llm-model-dialog-surface">
+        <div class="agent-llm-header">
+          <div><strong id="agentLlmModelDialogTitle">Edit model</strong><p>Model changes do not affect existing Agent history.</p></div>
+          <button id="agentLlmModelClose" type="button" aria-label="Close model editor">✕</button>
+        </div>
+        <div id="agentLlmModelStatus" class="agent-llm-operation-status hidden" role="status" aria-live="polite"></div>
+        <div class="agent-llm-form">
+          <label>Provider<select id="agentLlmModelProvider"></select></label>
+          <div class="agent-llm-discovery-panel">
+            <div class="agent-llm-discovery-heading">
+              <div><strong>Available models</strong><p>Fetched from this Provider with its stored key. No prompt is sent.</p></div>
+              <button id="agentLlmRefreshModels" type="button">Refresh models</button>
+            </div>
+            <label class="agent-llm-sr-only">Choose a model<select id="agentLlmModelDiscoveredModel" tabindex="-1" aria-hidden="true"><option value="">Choose a Provider to fetch models...</option></select></label>
+            <div id="agentLlmModelDiscoveredModelCards" class="agent-llm-discovered-model-grid" role="radiogroup" aria-label="Available Provider models"></div>
+            <p id="agentLlmModelDiscoveryStatus" class="agent-llm-discovery-status" role="status" aria-live="polite" tabindex="-1">Waiting to fetch models.</p>
+          </div>
+          <details id="agentLlmModelManualFields" class="agent-llm-advanced agent-llm-manual-model">
+            <summary>Enter or edit a model ID manually</summary>
+            <div class="agent-llm-advanced-fields">
+              <label>Model name<input id="agentLlmModelDisplayName" type="text" /></label>
+              <label>Model ID<input id="agentLlmModelId" type="text" placeholder="gpt-4.1-mini" /></label>
+            </div>
+          </details>
+          <label>Model type<select id="agentLlmModelType"><option value="unknown">Needs review</option><option value="language">Language</option><option value="image">Image</option><option value="embedding">Embedding</option></select></label>
+          <label class="agent-llm-checkbox"><input id="agentLlmModelEnabled" type="checkbox" checked /> Enabled</label>
+          <details id="agentLlmModelCapabilities" class="agent-llm-advanced" open>
+            <summary>Model capabilities and evidence</summary>
+            <div id="agentLlmModelCapabilityGrid" class="agent-llm-capability-grid"></div>
+            <div class="agent-llm-sr-only" aria-hidden="true">
+              <select id="agentLlmModelToolCalling"><option value="yes">Yes</option><option value="no">No</option><option value="unknown">Not specified</option></select>
+              <select id="agentLlmModelReasoning"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelVisionInput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelImageOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelImageEdit"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelAudioInput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelAudioOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelStructuredOutput"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+              <select id="agentLlmModelWebSearch"><option value="unknown">Not specified</option><option value="yes">Yes</option><option value="no">No</option></select>
+            </div>
+            <p id="agentLlmModelEvidence" class="agent-llm-evidence-note">Unknown values must be reviewed before assigning a route that requires them.</p>
+          </details>
+          <div class="agent-llm-actions agent-llm-dialog-actions">
+            <button id="agentLlmModelCancel" type="button">Cancel</button>
+            <button id="agentLlmSaveModel" class="primary" type="button">Save model</button>
+          </div>
+          <details id="agentLlmModelDanger" class="agent-llm-danger-zone">
+            <summary>Danger zone</summary>
+            <p>Removing a model does not rewrite earlier Agent turns.</p>
+            <button id="agentLlmDeleteModel" class="danger" type="button">Delete model</button>
           </details>
         </div>
       </div>
@@ -1092,6 +1287,6 @@ plot(
     <script src="vendor/viewer/katex.min.js"></script>
     <script src="vendor/viewer/katex-auto-render.min.js"></script>
     <script src="vendor/viewer/papaparse.min.js"></script>
-    <script src="app.js?v=0.4.0-dev.15&rev=m3-scientific-review-v3&projection=wp4&help=console-v3&afo=act-output-v1"></script>
+    <script src="app.js?v=0.4.0-dev.19&rev=m3-scientific-review-v3&projection=wp4&help=console-v3&afo=act-output-v1&issue4=provider-first-v1"></script>
   </body>
 </html>

@@ -322,6 +322,229 @@ test_that("aisdk session is marked as a Rho desktop session", {
   expect_true(session$get_metadata("rho_desktop"))
 })
 
+test_that("desktop aisdk sessions preserve typed capability routes", {
+  skip_if_not_installed("aisdk")
+  routes <- list(
+    agent.chat = list(
+      model = "deepseek:deepseek-v4-flash",
+      type = "language",
+      required_model_capabilities = character()
+    )
+  )
+  session <- rho_create_aisdk_session(
+    model = NULL,
+    tools = list(),
+    capability_models = routes
+  )
+
+  effective <- session$get_metadata("capability_models")
+  expect_identical(names(effective), "agent.chat")
+  expect_identical(effective[[1L]]$model, "deepseek:deepseek-v4-flash")
+  expect_identical(effective[[1L]]$type, "language")
+})
+
+test_that("runtime profile admits exactly one matching non-secret route", {
+  skip_if_not_installed("aisdk")
+  profile <- list(
+    settings_revision = 9L,
+    route_capability = "agent.act",
+    profile_id = "model-act",
+    provider_kind = "registered",
+    runtime_provider_id = "rho_profile_provider_act",
+    registered_provider_id = "deepseek",
+    model_id = "deepseek-v4-flash",
+    api_key_env = "DEEPSEEK_API_KEY",
+    api_key_required = TRUE,
+    base_url = NULL,
+    base_url_env = NULL,
+    wire_api = NULL,
+    disable_stream_options = FALSE,
+    tool_calling = "yes",
+    capability_routes = list(list(
+      capability = "agent.act",
+      model = "deepseek:deepseek-v4-flash",
+      model_type = "language",
+      required_model_capabilities = list("function_call")
+    ))
+  )
+
+  routes <- rho.agent:::rho_runtime_profile_capability_models(
+    profile,
+    "deepseek:deepseek-v4-flash"
+  )
+  expect_identical(names(routes), "agent.act")
+  expect_identical(routes[[1L]]$required_model_capabilities, "function_call")
+
+  profile$capability_routes[[1L]]$capability <- "image.generate"
+  expect_error(
+    rho.agent:::rho_runtime_profile_capability_models(profile),
+    "does not match"
+  )
+  profile$capability_routes <- c(profile$capability_routes, profile$capability_routes)
+  expect_error(
+    rho.agent:::rho_runtime_profile_capability_models(profile),
+    "exactly one"
+  )
+})
+
+test_that("reviewed aisdk.providers adapters are explicit and bounded", {
+  expect_identical(
+    rho.agent:::rho_registered_provider_ids(),
+    c(
+      "deepseek", "moonshot", "kimi", "stepfun", "volcengine",
+      "aihubmix", "xai", "openrouter", "bailian", "nvidia"
+    )
+  )
+  skip_if_not_installed("aisdk.providers")
+
+  provider_classes <- c(
+    deepseek = "DeepSeekProvider",
+    moonshot = "MoonshotProvider",
+    kimi = "KimiCodeAnthropicProvider",
+    stepfun = "StepfunProvider",
+    volcengine = "VolcengineProvider",
+    aihubmix = "AiHubMixProvider",
+    xai = "XAIProvider",
+    openrouter = "OpenRouterProvider",
+    bailian = "BailianProvider",
+    nvidia = "NvidiaProvider"
+  )
+  default_base_urls <- c(
+    deepseek = "https://api.deepseek.com",
+    moonshot = "https://api.moonshot.cn/v1",
+    kimi = "https://api.kimi.com/coding/v1",
+    stepfun = "https://api.stepfun.com/v1",
+    volcengine = "https://ark.cn-beijing.volces.com/api/v3",
+    aihubmix = "https://aihubmix.com/v1",
+    xai = "https://api.x.ai/v1",
+    openrouter = "https://openrouter.ai/api/v1",
+    bailian = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    nvidia = "https://integrate.api.nvidia.com/v1"
+  )
+  ambient_names <- c(
+    "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URLS",
+    "MOONSHOT_API_KEY", "MOONSHOT_BASE_URL", "MOONSHOT_BASE_URLS",
+    "KIMI_API_KEY", "KIMI_CODE_API_KEY", "KIMI_BASE_URL",
+    "KIMI_CODE_BASE_URL", "KIMI_ANTHROPIC_BASE_URL", "KIMI_BASE_URLS",
+    "KIMI_CODE_BASE_URLS", "KIMI_PROMPT_CACHE_KEY",
+    "KIMI_CODE_PROMPT_CACHE_KEY", "STEPFUN_API_KEY", "STEPFUN_BASE_URL",
+    "STEPFUN_BASE_URLS", "ARK_API_KEY", "ARK_BASE_URL", "ARK_BASE_URLS",
+    "AIHUBMIX_API_KEY", "AIHUBMIX_BASE_URL", "AIHUBMIX_BASE_URLS",
+    "XAI_API_KEY", "XAI_BASE_URL", "XAI_BASE_URLS", "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL", "OPENROUTER_BASE_URLS", "DASHSCOPE_API_KEY",
+    "DASHSCOPE_BASE_URL", "DASHSCOPE_BASE_URLS", "NVIDIA_API_KEY",
+    "NVIDIA_BASE_URL", "NVIDIA_BASE_URLS"
+  )
+  previous <- Sys.getenv(ambient_names, unset = NA_character_)
+  on.exit({
+    for (index in seq_along(ambient_names)) {
+      name <- ambient_names[[index]]
+      value <- previous[[index]]
+      if (is.na(value)) {
+        Sys.unsetenv(name)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(value), name))
+      }
+    }
+  }, add = TRUE)
+  for (name in ambient_names) {
+    value <- if (grepl("KEY", name, fixed = TRUE)) {
+      "ambient-secret-must-not-be-used"
+    } else {
+      "https://ambient.example.test/v1"
+    }
+    do.call(Sys.setenv, stats::setNames(list(value), name))
+  }
+  for (provider_id in names(provider_classes)) {
+    profile <- list(
+      registered_provider_id = provider_id,
+      wire_api = if (identical(provider_id, "kimi")) "anthropic_messages" else "chat_completions"
+    )
+    provider <- suppressWarnings(rho.agent:::rho_make_registered_runtime_provider(
+      profile,
+      "dummy-key",
+      NULL
+    ))
+    expect_s3_class(provider, provider_classes[[provider_id]])
+    config <- provider$language_model(
+      if (identical(provider_id, "kimi")) "kimi-for-coding" else "test-model"
+    )$get_config()
+    expect_identical(config$base_url, unname(default_base_urls[[provider_id]]))
+    expect_identical(config$base_urls, unname(default_base_urls[[provider_id]]))
+    expect_identical(config$api_key, "dummy-key")
+  }
+
+  profile <- list(
+    registered_provider_id = "deepseek",
+    runtime_provider_id = "rho_profile_provider_test",
+    wire_api = "chat_completions"
+  )
+  provider <- suppressWarnings(rho.agent:::rho_make_registered_runtime_provider(
+    profile,
+    "dummy-key",
+    "https://gateway.example.test/deepseek/v1"
+  ))
+  model <- provider$language_model("deepseek-chat")
+  expect_s3_class(model, "DeepSeekLanguageModel")
+  expect_identical(model$get_config()$base_url, "https://gateway.example.test/deepseek/v1")
+
+  profile$registered_provider_id <- "unlisted"
+  expect_null(rho.agent:::rho_make_registered_runtime_provider(profile, "", NULL))
+  expect_error(
+    rho.agent:::rho_make_registered_runtime_provider(
+      profile,
+      "dummy-key",
+      "https://gateway.example.test/v1"
+    ),
+    "does not support a Rho Base URL override"
+  )
+})
+
+test_that("runtime provider defaults ignore undeclared ambient credentials and endpoints", {
+  old_key <- Sys.getenv("OPENAI_API_KEY", unset = NA_character_)
+  old_url <- Sys.getenv("OPENAI_BASE_URL", unset = NA_character_)
+  old_urls <- Sys.getenv("OPENAI_BASE_URLS", unset = NA_character_)
+  on.exit({
+    values <- c(OPENAI_API_KEY = old_key, OPENAI_BASE_URL = old_url, OPENAI_BASE_URLS = old_urls)
+    for (name in names(values)) {
+      if (is.na(values[[name]])) {
+        Sys.unsetenv(name)
+      } else {
+        do.call(Sys.setenv, stats::setNames(list(values[[name]]), name))
+      }
+    }
+  }, add = TRUE)
+  Sys.setenv(
+    OPENAI_API_KEY = "ambient-secret-must-not-be-used",
+    OPENAI_BASE_URL = "https://ambient.example.test/v1",
+    OPENAI_BASE_URLS = "https://ambient-backup.example.test/v1"
+  )
+  profile <- list(
+    provider_kind = "openai",
+    runtime_provider_id = "rho_profile_provider_ambient_test",
+    api_key_env = "OPENAI_API_KEY",
+    api_key_required = FALSE,
+    base_url = NULL,
+    base_url_env = NULL,
+    wire_api = "chat_completions",
+    disable_stream_options = FALSE,
+    tool_calling = "yes"
+  )
+  provider <- suppressWarnings(rho.agent:::rho_make_runtime_provider(profile))
+  config <- provider$language_model("test-model")$get_config()
+  expect_identical(config$api_key, "")
+  expect_identical(config$base_url, "https://api.openai.com/v1")
+  expect_identical(config$base_urls, "https://api.openai.com/v1")
+
+  profile$api_key_required <- TRUE
+  profile$api_key_env <- "RHO_MISSING_SYSTEM_CREDENTIAL"
+  Sys.unsetenv("RHO_MISSING_SYSTEM_CREDENTIAL")
+  expect_error(
+    rho.agent:::rho_make_runtime_provider(profile),
+    "system credential store"
+  )
+})
+
 test_that("desktop aisdk sessions allow long multi-step analyses", {
   expect_identical(eval(formals(rho_create_aisdk_session)$max_steps), 512L)
 })

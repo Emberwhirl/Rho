@@ -14,7 +14,7 @@ members = [
 exclude = ["vendor/jet"]
 
 [workspace.package]
-version = "0.4.0-dev.15"
+version = "0.4.0-dev.19"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/YuLab-SMU/Rho"
@@ -24,6 +24,7 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 jet_core = { path = "vendor/jet/crates/core" }
+libc = "0.2"
 rand = "0.9"
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1.0", features = ["derive"] }

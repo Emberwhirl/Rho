@@ -16,8 +16,9 @@ work with the same live Workspace R session.
   plots, Problems, and durable run history with provenance.
 - **Ask, Plan, and Act modes** for explanation, planning, and reviewed actions
   against the current project and R session.
-- **Configurable LLMs** with provider/model selection, tool-capability checks,
-  and credentials read from the effective user `.Renviron`.
+- **Provider-first model settings** with model discovery, visible capability
+  evidence, explicit capability routing, optional Base URL overrides, and API
+  keys kept in the operating system credential store.
 - **Reviewable file changes** so Agent-proposed project edits can be inspected
   before they are applied.
 - **Resizable, persistent workspace layout** for Files, editor, Agent,
@@ -27,15 +28,21 @@ work with the same live Workspace R session.
 
 ## Installation
 
-Rho is currently an unsigned Windows x64 development prototype. It requires:
+Rho currently has development builds for Windows x64 and Apple Silicon macOS.
+It requires:
 
-- Windows 10 or Windows 11 with Microsoft Edge WebView2 Runtime;
+- Windows 10/11 with Microsoft Edge WebView2 Runtime, or Apple Silicon macOS
+  14 or later;
 - R 4.4 or later;
-- `aisdk` and a configured model only for Agent features.
+- `aisdk` and a configured model only for Agent features; the pinned
+  `aisdk.providers` package is additionally required when using DeepSeek,
+  Moonshot, Kimi Code, Stepfun, Volcengine, AiHubMix, xAI, OpenRouter, Bailian,
+  or NVIDIA.
 
-Windows SmartScreen may display an unrecognized-publisher warning. See the
-[Windows prototype guide](docs/implementation/implemented-windows-prototype.md) for prerequisites and
-installation details.
+Unsigned local builds are for development review only. See the
+[Windows prototype guide](docs/implementation/implemented-windows-prototype.md)
+and the [macOS support specification](docs/plans/active-2026-08-05-macos-arm64-support-spec.md)
+for platform-specific status and prerequisites.
 
 ## Quick Start
 
@@ -43,8 +50,8 @@ installation details.
 2. Open or create an `.R` file, then run a selection, the current line, or the
    complete file in Workspace R.
 3. Inspect results in Console, Environment, Plots, Problems, and Runs.
-4. Open **Manage LLMs...** to configure an Agent provider and model when AI
-   assistance is needed.
+4. Open **Model settings**, create a Provider connection, import or add a
+   model, then assign that model to the routes you intend to use.
 5. Use Ask or Plan for read-only help, or Act for actions that require review
    and approval.
 
@@ -59,6 +66,7 @@ implementation, project, bug-fix, and release documents.
 
 ## Project Status
 
-Rho `0.2.x` is under active development as a Windows daily-use prototype.
-Windows packaging and the core project workflow are implemented; release
-hardening, signing, and macOS/Linux packaging remain in progress.
+Rho is under active development. Windows packaging, Apple Silicon macOS
+packaging, and the core project workflow are implemented; installed-candidate
+acceptance, release signing/publication, macOS x64, and Linux packaging remain
+in progress.

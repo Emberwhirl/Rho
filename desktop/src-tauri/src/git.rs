@@ -1,11 +1,31 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::{OnceLock, RwLock};
 
 const MAX_GIT_STDOUT_BYTES: usize = 8 * 1024 * 1024;
 const MAX_GIT_STDERR_BYTES: usize = 64 * 1024;
+
+static PROCESS_PATH: OnceLock<RwLock<Option<OsString>>> = OnceLock::new();
+
+pub fn set_process_path(path: OsString) {
+    let mut configured = PROCESS_PATH
+        .get_or_init(|| RwLock::new(None))
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *configured = Some(path);
+}
+
+fn configured_process_path() -> Option<OsString> {
+    PROCESS_PATH.get().and_then(|path| {
+        path.read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    })
+}
 
 pub struct GitCommandOutput {
     pub stdout: Vec<u8>,
@@ -136,6 +156,15 @@ pub fn run_git_bounded(
 }
 
 fn git_command(project_root: &Path, args: &[&str]) -> Command {
+    let process_path = configured_process_path();
+    git_command_with_path(project_root, args, process_path.as_deref())
+}
+
+fn git_command_with_path(
+    project_root: &Path,
+    args: &[&str],
+    process_path: Option<&OsStr>,
+) -> Command {
     let mut command = Command::new("git");
     hide_console_window(&mut command);
     command
@@ -143,14 +172,17 @@ fn git_command(project_root: &Path, args: &[&str]) -> Command {
         .current_dir(project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(process_path) = process_path {
+        command.env("PATH", process_path);
+    }
     command
 }
 
-fn hide_console_window(command: &mut Command) {
+fn hide_console_window(_command: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
+        _command.creation_flags(0x0800_0000);
     }
 }
 
@@ -481,12 +513,23 @@ mod tests {
 
     #[test]
     fn git_commands_use_the_centralized_bounded_builder() {
-        let command = git_command(Path::new("C:/project"), &["status", "--porcelain"]);
+        let command = git_command_with_path(
+            Path::new("C:/project"),
+            &["status", "--porcelain"],
+            Some(OsStr::new("/opt/homebrew/bin:/usr/bin")),
+        );
         assert_eq!(command.get_program(), "git");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
             vec!["status", "--porcelain"]
         );
         assert_eq!(command.get_current_dir(), Some(Path::new("C:/project")));
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(name, _)| *name == "PATH")
+                .and_then(|(_, value)| value),
+            Some(OsStr::new("/opt/homebrew/bin:/usr/bin"))
+        );
     }
 }

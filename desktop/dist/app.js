@@ -2,6 +2,21 @@ const tauriInvoke = window.__TAURI__?.core?.invoke;
 const isDesktop = typeof tauriInvoke === "function";
 const tauriEvent = window.__TAURI__?.event;
 const previewParams = new URLSearchParams(window.location.search);
+const mockPlatformFixture = previewParams.get("platform") === "macos-aarch64"
+  ? {
+      platform: "macos-aarch64",
+      rscript: "/Library/Frameworks/R.framework/Resources/bin/Rscript",
+      logPath: "/Users/researcher/Library/Logs/Rho/startup.log",
+      projectRoot: "/Users/researcher/Documents/Rho Mac 研究",
+      alternateProjectRoot: "/Users/researcher/Documents/Rho Demo",
+    }
+  : {
+      platform: "windows-x86_64",
+      rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+      logPath: "C:/Users/example/AppData/Local/Rho/logs/startup.log",
+      projectRoot: "D:/Rho",
+      alternateProjectRoot: "D:/Rho-demo",
+    };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -36,6 +51,11 @@ const state = {
   projectRefreshSequence: 0,
   agentLlm: {
     settings: null,
+    activeView: "connections",
+    selectedRouteCapability: "agent.chat",
+    routingFocusModelId: null,
+    routingExpandedCapability: null,
+    settingsLoading: false,
     selectedModelId: null,
     selectorOpen: false,
     settingsOpen: false,
@@ -45,8 +65,20 @@ const state = {
     editingModelId: null,
     lastTestResult: null,
     testInFlight: false,
-    catalog: [],
-    catalogLoaded: false,
+    discoverySequence: 0,
+    wizardDiscovery: { requestId: 0, providerId: null, status: "idle", models: [], truncated: false, message: "" },
+    modelDiscovery: { requestId: 0, providerId: null, status: "idle", models: [], truncated: false, message: "" },
+    operation: { state: "idle", message: "" },
+    wizardOperation: { state: "idle", message: "" },
+    modelOperation: { state: "idle", message: "" },
+    wizardOpen: false,
+    wizardStep: "connection",
+    wizardProviderId: null,
+    wizardModelId: null,
+    modelDialogOpen: false,
+    returnFocusElement: null,
+    wizardReturnFocusElement: null,
+    modelReturnFocusElement: null,
   },
   objects: [],
   plots: [],
@@ -193,7 +225,7 @@ function stringValues(value) {
 }
 
 const mockProjects = {
-  "D:/Rho": {
+  [mockPlatformFixture.projectRoot]: {
     files: [
       { path: "analysis.R", name: "analysis.R", kind: "source", size_bytes: 120 },
       { path: "examples/editor-intelligence.R", name: "editor-intelligence.R", kind: "source", size_bytes: 420 },
@@ -217,7 +249,7 @@ const mockProjects = {
       "scratch.R": "# Live analysis in Workspace R\nset.seed(42)\nqc <- data.frame(sample = paste0(\"S\", 1:12), reads = round(rlnorm(12, 11.2, 0.35)), detected = round(rnorm(12, 3200, 420)))\nsummary(qc)\nplot(qc$reads, qc$detected)\n",
     },
   },
-  "D:/Rho-demo": {
+  [mockPlatformFixture.alternateProjectRoot]: {
     files: [
       { path: "demo.R", name: "demo.R", kind: "source", size_bytes: 64 },
     ],
@@ -376,7 +408,7 @@ async function confirmAction({ title, message, confirmLabel, cancelLabel, destru
   return result === true;
 }
 
-let mockLastProject = "D:/Rho";
+let mockLastProject = mockPlatformFixture.projectRoot;
 const mockProjectSessions = {};
 let mockRunSequence = 0;
 const mockRuns = [];
@@ -397,7 +429,8 @@ let mockGitRevisionSequence = 1;
 const mockGitReview = { working: [], staged: [] };
 let mockGitFailureCommand = null;
 let mockEvidenceClaimCreateFailure = null;
-let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+let mockAgentLlmFailure = previewParams.get("failure") || null;
+let mockAgentLlmLoadFailureConsumed = false;
 
 function seedMockEvidenceClaims() {
   const currentProject = mockLastProject;
@@ -646,13 +679,142 @@ function mockEffectiveModelRef(provider, model) {
 
 function mockSelectorStatus(model, provider) {
   if (!model.enabled) return "Disabled";
-  if (provider?.credential_status === "not_detected" && provider.api_key_required) return "Key missing";
+  if (["not_detected", "unavailable"].includes(provider?.credential_status) && provider.api_key_required) return "Key missing";
   if (model.last_test?.status === "ready") return "Ready";
   if (model.last_test?.status === "error") return "Error";
   return "Untested";
 }
 
+const AGENT_MODEL_CAPABILITIES = [
+  "function_call",
+  "reasoning",
+  "vision_input",
+  "image_output",
+  "image_edit",
+  "audio_input",
+  "audio_output",
+  "structured_output",
+  "web_search",
+];
+
+const AGENT_CAPABILITY_LABELS = {
+  function_call: "Tool calling",
+  reasoning: "Reasoning",
+  vision_input: "Vision input",
+  image_output: "Image output",
+  image_edit: "Image editing",
+  audio_input: "Audio input",
+  audio_output: "Audio output",
+  structured_output: "Structured output",
+  web_search: "Web search",
+};
+
+const AGENT_PROVIDER_PRESETS = {
+  deepseek: { displayName: "DeepSeek", description: "Reasoning and chat models", kind: "registered", registeredProviderId: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY", defaultBaseUrl: "https://api.deepseek.com", wireApi: "chat_completions", keyRequired: true },
+  openai: { displayName: "OpenAI", description: "GPT, reasoning and image models", kind: "openai", registeredProviderId: null, apiKeyEnv: "OPENAI_API_KEY", defaultBaseUrl: "https://api.openai.com/v1", wireApi: null, keyRequired: true },
+  anthropic: { displayName: "Anthropic", description: "Claude language and vision models", kind: "anthropic", registeredProviderId: null, apiKeyEnv: "ANTHROPIC_API_KEY", defaultBaseUrl: "https://api.anthropic.com/v1", wireApi: null, keyRequired: true },
+  gemini: { displayName: "Gemini", description: "Google multimodal models", kind: "gemini", registeredProviderId: null, apiKeyEnv: "GEMINI_API_KEY", defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/models", wireApi: null, keyRequired: true },
+  moonshot: { displayName: "Moonshot", description: "Kimi Open Platform models", kind: "registered", registeredProviderId: "moonshot", apiKeyEnv: "MOONSHOT_API_KEY", defaultBaseUrl: "https://api.moonshot.cn/v1", wireApi: "chat_completions", keyRequired: true },
+  kimi: { displayName: "Kimi Code", description: "Kimi coding membership endpoint", kind: "registered", registeredProviderId: "kimi", apiKeyEnv: "KIMI_API_KEY", defaultBaseUrl: "https://api.kimi.com/coding/v1", wireApi: "anthropic_messages", keyRequired: true },
+  stepfun: { displayName: "Stepfun", description: "Language and image models", kind: "registered", registeredProviderId: "stepfun", apiKeyEnv: "STEPFUN_API_KEY", defaultBaseUrl: "https://api.stepfun.com/v1", wireApi: "chat_completions", keyRequired: true },
+  volcengine: { displayName: "Volcengine", description: "ByteDance Ark model endpoints", kind: "registered", registeredProviderId: "volcengine", apiKeyEnv: "ARK_API_KEY", defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3", wireApi: "chat_completions", keyRequired: true },
+  aihubmix: { displayName: "AiHubMix", description: "Unified multi-provider gateway", kind: "registered", registeredProviderId: "aihubmix", apiKeyEnv: "AIHUBMIX_API_KEY", defaultBaseUrl: "https://aihubmix.com/v1", wireApi: "chat_completions", keyRequired: true },
+  xai: { displayName: "xAI", description: "Grok language and image models", kind: "registered", registeredProviderId: "xai", apiKeyEnv: "XAI_API_KEY", defaultBaseUrl: "https://api.x.ai/v1", wireApi: "chat_completions", keyRequired: true },
+  openrouter: { displayName: "OpenRouter", description: "One API for many model vendors", kind: "registered", registeredProviderId: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", defaultBaseUrl: "https://openrouter.ai/api/v1", wireApi: "chat_completions", keyRequired: true },
+  bailian: { displayName: "Bailian", description: "Alibaba Cloud DashScope models", kind: "registered", registeredProviderId: "bailian", apiKeyEnv: "DASHSCOPE_API_KEY", defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", wireApi: "chat_completions", keyRequired: true },
+  nvidia: { displayName: "NVIDIA", description: "NVIDIA NIM model endpoints", kind: "registered", registeredProviderId: "nvidia", apiKeyEnv: "NVIDIA_API_KEY", defaultBaseUrl: "https://integrate.api.nvidia.com/v1", wireApi: "chat_completions", keyRequired: true },
+  openai_compatible: { displayName: "Custom compatible", description: "OpenAI or Anthropic-compatible API", kind: "openai_compatible", registeredProviderId: null, apiKeyEnv: null, defaultBaseUrl: null, wireApi: "chat_completions", keyRequired: true },
+  local_openai_compatible: { displayName: "Local compatible", description: "Local OpenAI-compatible service", kind: "local_openai_compatible", registeredProviderId: null, apiKeyEnv: null, defaultBaseUrl: null, wireApi: "chat_completions", keyRequired: false },
+};
+
+const STANDARD_AGENT_ROUTES = [
+  { capability: "agent.chat", label: "Chat", description: "Ask and Plan turns", modelType: "language", required: [], consumer: "available" },
+  { capability: "agent.act", label: "Act", description: "Tool-enabled Act turns", modelType: "language", required: ["function_call"], consumer: "available" },
+  { capability: "vision.inspect", label: "Inspect images", description: "Consumer not installed", modelType: "language", required: ["vision_input"], consumer: "not_installed" },
+  { capability: "image.generate", label: "Generate images", description: "Consumer not installed", modelType: "image", required: ["image_output"], consumer: "not_installed" },
+  { capability: "image.edit", label: "Edit images", description: "Consumer not installed", modelType: "image", required: ["image_edit"], consumer: "not_installed" },
+  { capability: "embedding.default", label: "Embeddings", description: "Consumer not installed", modelType: "embedding", required: [], consumer: "not_installed" },
+];
+
+function agentCapability(value = "unknown", source = "unknown") {
+  return { value, source };
+}
+
+function emptyAgentCapabilities() {
+  return Object.fromEntries(AGENT_MODEL_CAPABILITIES.map((name) => [name, agentCapability()]));
+}
+
+function agentModelCapability(model, name) {
+  return model?.capabilities?.[name]?.value || "unknown";
+}
+
+function agentModelCapabilitySource(model, name) {
+  return model?.capabilities?.[name]?.source || "unknown";
+}
+
+function agentModelType(model) {
+  return model?.model_type?.value || "unknown";
+}
+
+function agentRouteCompatibility(model, route) {
+  if (!model) return "unassigned";
+  if (!model.enabled) return "incompatible";
+  const type = agentModelType(model);
+  if (type !== "unknown" && type !== route.model_type) return "incompatible";
+  if ((route.required_model_capabilities || []).some((name) => agentModelCapability(model, name) === "no")) return "incompatible";
+  if (type === "unknown" || (route.required_model_capabilities || []).some((name) => agentModelCapability(model, name) === "unknown")) return "needs_review";
+  return "compatible";
+}
+
+function mockCapabilityRouteViews(settings) {
+  const persistedRoutes = settings.persisted_capability_routes || [];
+  const providers = new Map((settings.providers || []).map((provider) => [provider.id, provider]));
+  const models = new Map((settings.models || []).map((model) => [model.id, model]));
+  const chat = persistedRoutes.find((route) => route.capability === "agent.chat") || null;
+  const definitions = [
+    ...STANDARD_AGENT_ROUTES,
+    ...persistedRoutes
+      .filter((route) => !STANDARD_AGENT_ROUTES.some((standard) => standard.capability === route.capability))
+      .map((route) => ({
+        capability: route.capability,
+        label: route.capability,
+        description: "Custom route; unavailable until a typed consumer is registered",
+        modelType: route.model_type,
+        required: route.required_model_capabilities || [],
+        consumer: "not_installed",
+      })),
+  ];
+  return definitions.map((definition) => {
+    const configured = persistedRoutes.find((route) => route.capability === definition.capability) || null;
+    const inherited = !configured && definition.capability === "agent.act" ? chat : null;
+    const effective = configured || inherited;
+    const model = models.get(effective?.model_id) || null;
+    const provider = providers.get(model?.provider_id) || null;
+    const routeContract = {
+      model_type: definition.modelType,
+      required_model_capabilities: definition.required,
+    };
+    return {
+      capability: definition.capability,
+      label: definition.label,
+      description: definition.description,
+      model_id: model?.id || null,
+      model_display_name: model?.display_name || null,
+      provider_display_name: provider?.display_name || null,
+      model_type: definition.modelType,
+      required_model_capabilities: definition.required,
+      configured: Boolean(configured),
+      inherited_from: inherited ? "agent.chat" : null,
+      compatibility: agentRouteCompatibility(model, routeContract),
+      credential_status: provider?.credential_status || "unavailable",
+      consumer_status: definition.consumer,
+    };
+  });
+}
+
 function rebuildMockAgentLlmSettings(settings = mockAgentLlmSettings) {
+  const chatRoute = (settings.persisted_capability_routes || []).find((route) => route.capability === "agent.chat") || null;
+  settings.selected_model_id = chatRoute?.model_id || null;
   const providerMap = new Map((settings.providers || []).map((provider) => [provider.id, provider]));
   settings.providers = (settings.providers || []).map((provider) => ({
     ...provider,
@@ -667,7 +829,7 @@ function rebuildMockAgentLlmSettings(settings = mockAgentLlmSettings) {
       provider_display_name: provider?.display_name || "Provider",
       selected: model.id === settings.selected_model_id,
       selector_status: selectorStatus,
-      act_enabled: Boolean(model.enabled && model.capabilities?.tool_calling === "yes"),
+      act_enabled: Boolean(model.enabled && agentModelCapability(model, "function_call") === "yes"),
     };
   });
   const selected = settings.models.find((model) => model.id === settings.selected_model_id) || null;
@@ -677,17 +839,46 @@ function rebuildMockAgentLlmSettings(settings = mockAgentLlmSettings) {
       display_name: selected.display_name,
       provider_display_name: selected.provider_display_name,
       selector_status: selected.selector_status,
-      tool_calling: selected.capabilities?.tool_calling || "unknown",
+      tool_calling: agentModelCapability(selected, "function_call"),
       act_enabled: selected.act_enabled,
     }
     : null;
+  settings.capability_routes = mockCapabilityRouteViews(settings);
   return settings;
 }
 
+function maybeFailMockAgentLlm(failure) {
+  if (mockAgentLlmFailure !== failure) return;
+  mockAgentLlmFailure = null;
+  const messages = {
+    "save-provider": "Mock provider save failed.",
+    "set-credential": "Mock credential storage failed.",
+    "save-model": "Mock model save failed.",
+    "discover-models": "Mock provider discovery failed.",
+    "test-model": "Mock connection test failed.",
+    "select-model": "Mock model selection failed.",
+  };
+  throw new Error(messages[failure] || "Mock model settings operation failed.");
+}
+
 function defaultMockAgentLlmSettingsView() {
+  const deepseekCapabilities = emptyAgentCapabilities();
+  Object.assign(deepseekCapabilities, {
+    function_call: agentCapability("yes", "aisdk_catalog"),
+    reasoning: agentCapability("yes", "aisdk_catalog"),
+    vision_input: agentCapability("no", "aisdk_catalog"),
+    image_output: agentCapability("no", "aisdk_catalog"),
+    image_edit: agentCapability("no", "aisdk_catalog"),
+    structured_output: agentCapability("yes", "aisdk_catalog"),
+  });
+  const chatOnlyCapabilities = emptyAgentCapabilities();
+  Object.assign(chatOnlyCapabilities, {
+    function_call: agentCapability("no", "user_declared"),
+    vision_input: agentCapability("no", "user_declared"),
+  });
   const settings = {
-    schema_version: 1,
-    selected_model_id: "model-deepseek-v4-flash",
+    schema_version: 2,
+    revision: 1,
     providers: [
       {
         id: "provider-deepseek-existing",
@@ -711,12 +902,8 @@ function defaultMockAgentLlmSettingsView() {
         display_name: "DeepSeek V4 Flash",
         model_id: "deepseek-v4-flash",
         enabled: true,
-        capabilities: {
-          tool_calling: "yes",
-          reasoning: "yes",
-          vision_input: "no",
-          source: "catalog",
-        },
+        model_type: agentCapability("language", "aisdk_catalog"),
+        capabilities: deepseekCapabilities,
         last_test: {
           status: "ready",
           checked_at: new Date().toISOString(),
@@ -735,17 +922,21 @@ function defaultMockAgentLlmSettingsView() {
         display_name: "Chat-only Demo",
         model_id: "deepseek-chat-demo",
         enabled: true,
-        capabilities: {
-          tool_calling: "no",
-          reasoning: "unknown",
-          vision_input: "no",
-          source: "declared",
-        },
+        model_type: agentCapability("language", "user_declared"),
+        capabilities: chatOnlyCapabilities,
         last_test: null,
         provider_display_name: "DeepSeek",
         selected: false,
         selector_status: "Untested",
         act_enabled: false,
+      },
+    ],
+    persisted_capability_routes: [
+      {
+        capability: "agent.chat",
+        model_id: "model-deepseek-v4-flash",
+        model_type: "language",
+        required_model_capabilities: [],
       },
     ],
     selected_model: null,
@@ -757,6 +948,44 @@ function defaultMockAgentLlmSettingsView() {
   };
   return rebuildMockAgentLlmSettings(settings);
 }
+
+function mockAisdkCatalogEntries() {
+  const rows = [
+    ["anthropic", "claude-sonnet-4-5", "Claude Sonnet 4.5", true, true, true],
+    ["deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash", true, true, false],
+    ["deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro", true, true, false],
+    ["openai", "gpt-5-mini", "GPT-5 mini", true, true, true],
+  ];
+  return rows.map(([provider, id, displayName, functionCall, reasoning, visionInput]) => {
+    const capabilities = emptyAgentCapabilities();
+    for (const [name, value] of Object.entries({
+      function_call: functionCall,
+      reasoning,
+      vision_input: visionInput,
+      image_output: false,
+      image_edit: false,
+      audio_input: false,
+      audio_output: false,
+      structured_output: true,
+      web_search: false,
+    })) capabilities[name] = agentCapability(value ? "yes" : "no", "aisdk_catalog");
+    return {
+      provider,
+      id,
+      display_name: displayName,
+      description: `${provider} catalog entry`,
+      model_type: agentCapability("language", "aisdk_catalog"),
+      capabilities,
+    };
+  });
+}
+
+let mockAgentLlmSettings = defaultMockAgentLlmSettingsView();
+const mockAgentLlmSystemCredentials = new Set(
+  mockAgentLlmSettings.providers
+    .filter((provider) => provider.credential_source === "system")
+    .map((provider) => provider.id),
+);
 
 function nextMockRunId() {
   mockRunSequence += 1;
@@ -1057,7 +1286,7 @@ function mockOutputAbsolutePath(projectRoot, outputPath) {
 }
 
 function mockFileAvailable(projectRoot, outputPath) {
-  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
   return Object.prototype.hasOwnProperty.call(project.contents || {}, outputPath);
 }
 
@@ -1072,7 +1301,7 @@ function mockFileStatus(record) {
 function mockUpsertProjectFile(projectRoot, path, content, options = {}) {
   const { trackInTree = true, kind = "source" } = options;
   const normalized = validateProjectRelativePath(path);
-  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+  const project = mockProjects[projectRoot] || mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
   project.contents[normalized] = content;
   if (!trackInTree) return normalized;
   const size = typeof content === "string" ? content.length : 0;
@@ -1203,7 +1432,7 @@ function mockProblemList() {
 }
 
 function mockProjectState(root = mockLastProject) {
-  const project = mockProjects[root] || mockProjects["D:/Rho"];
+  const project = mockProjects[root] || mockProjects[mockPlatformFixture.projectRoot];
   return { root, files: project.files.map((file) => ({ ...file })), truncated: false };
 }
 
@@ -1623,14 +1852,14 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.2",
+      version: "0.4.0-dev.19",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
-      platform: "windows-x86_64",
+      platform: mockPlatformFixture.platform,
       website_url: "https://yulab-smu.top/Rho/",
       source_url: "https://github.com/YuLab-SMU/Rho",
       runtime: {
-        rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+        rscript: mockPlatformFixture.rscript,
         r_version: "R version 4.6.0",
         agent_available: true,
         aisdk_version: "1.5.0",
@@ -1641,8 +1870,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.2",
-      available_version: "0.4.0-dev.2",
+      installed_version: "0.4.0-dev.19",
+      available_version: "0.4.0-dev.19",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -1654,7 +1883,7 @@ async function mockInvoke(command, args) {
       phase: "runtime_ready",
       busy: false,
       runtime: {
-        rscript: "C:/Program Files/R/R-4.6.0/bin/Rscript.exe",
+        rscript: mockPlatformFixture.rscript,
         r_version: "R version 4.6.0",
         agent_runtime: { available: true, aisdk_version: "1.5.0", error: null },
       },
@@ -1662,7 +1891,7 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "startup_diagnostics") return "Rho mock startup diagnostics";
-  if (command === "startup_open_log_directory") return { path: "C:/Users/example/AppData/Local/Rho/logs/startup.log" };
+  if (command === "startup_open_log_directory") return { path: mockPlatformFixture.logPath };
   if (command === "agent_runtime_retry") return { available: true, aisdk_version: "1.5.0", error: null };
   if (command === "workspace_start") {
     return {
@@ -1710,7 +1939,7 @@ async function mockInvoke(command, args) {
     return structuredClone(state.revision);
   }
   if (command === "project_read_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     return { path: args.path, content: project.contents[args.path] || "" };
   }
   if (command === "viewer_read_file") {
@@ -1730,14 +1959,14 @@ async function mockInvoke(command, args) {
     return { contract: "rho.viewer_file.v1", project_root: mockLastProject, path, media_type: { md: "text/markdown", html: "text/html", r: "text/x-r", rmd: "text/x-r-markdown", txt: "text/plain", json: "application/json", csv: "text/csv", tsv: "text/tab-separated-values" }[extension], content_encoding: "utf-8", content: samples[extension], size_bytes: samples[extension].length };
   }
   if (command === "project_write_file" || command === "project_create_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     mockUpsertProjectFile(mockLastProject, args.path, args.content || "", { trackInTree: true, kind: "source" });
     state.revision.project_revision += 1;
     updateIdentity(state.revision);
     return mockInvoke("project_state", {});
   }
   if (command === "project_delete_file") {
-    const project = mockProjects[mockLastProject] || mockProjects["D:/Rho"];
+    const project = mockProjects[mockLastProject] || mockProjects[mockPlatformFixture.projectRoot];
     delete project.contents[args.path];
     project.files = project.files.filter((file) => file.path !== args.path);
     state.revision.project_revision += 1;
@@ -2366,14 +2595,20 @@ async function mockInvoke(command, args) {
     return { status: "interrupt_requested", run_id: active?.run_id || null };
   }
   if (command === "agent_llm_settings" || command === "agent_llm_refresh_credentials") {
+    if (command === "agent_llm_settings" && mockAgentLlmFailure === "load-settings" && !mockAgentLlmLoadFailureConsumed) {
+      mockAgentLlmLoadFailureConsumed = true;
+      throw new Error("Injected one-shot Agent model settings read failure");
+    }
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_set_credential") {
+    maybeFailMockAgentLlm("set-credential");
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
     if (!provider.api_key_required) throw new Error("This provider does not require an API key.");
     if (!String(args.credential || "")) throw new Error("Enter an API key before saving.");
+    mockAgentLlmSystemCredentials.add(providerId);
     provider.credential_status = "detected";
     provider.credential_source = "system";
     return structuredClone(rebuildMockAgentLlmSettings());
@@ -2382,40 +2617,87 @@ async function mockInvoke(command, args) {
     const providerId = args.providerId ?? args.provider_id;
     const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
     if (!provider) throw new Error("The selected provider is no longer available.");
+    mockAgentLlmSystemCredentials.delete(providerId);
     provider.credential_status = "not_detected";
     provider.credential_source = "none";
     return structuredClone(rebuildMockAgentLlmSettings());
   }
+  if (command === "agent_llm_discover_models") {
+    maybeFailMockAgentLlm("discover-models");
+    const providerId = args.providerId ?? args.provider_id;
+    const provider = mockAgentLlmSettings.providers.find((item) => item.id === providerId);
+    if (!provider) throw new Error("The selected provider is no longer available.");
+    const discoveryState = previewParams.get("discovery") || "ready";
+    if (discoveryState === "slow") await new Promise((resolve) => window.setTimeout(resolve, 80));
+    if (provider.api_key_required && !mockAgentLlmSystemCredentials.has(providerId)) {
+      return {
+        status: "error", provider_id: providerId, models: [], truncated: false,
+        message: "No API key is stored for this provider. Save a key or enter a model ID manually.",
+        error_class: "credential",
+      };
+    }
+    if (discoveryState === "unsupported") {
+      return {
+        status: "unsupported", provider_id: providerId, models: [], truncated: false,
+        message: "This provider does not expose a supported model list. Enter a model ID manually.",
+        error_class: "unsupported",
+      };
+    }
+    if (discoveryState === "auth-error") {
+      return {
+        status: "error", provider_id: providerId, models: [], truncated: false,
+        message: "The provider rejected the stored API key. Replace the key or enter a model ID manually.",
+        error_class: "auth",
+      };
+    }
+    if (discoveryState === "malformed") {
+      return { status: "ready", provider_id: providerId, models: "invalid", truncated: false, message: "Invalid mock response.", error_class: null };
+    }
+    if (discoveryState === "empty") {
+      return {
+        status: "ready", provider_id: providerId, models: [], truncated: false,
+        message: "The provider returned no usable generation models. Enter a model ID manually.",
+        error_class: null,
+      };
+    }
+    const providerKey = provider.registered_provider_id || provider.kind;
+    const choices = {
+      deepseek: [["deepseek-v4-flash", "DeepSeek V4 Flash"], ["deepseek-v4-pro", "DeepSeek V4 Pro"]],
+      openai: [["gpt-5-mini", "GPT-5 mini"], ["gpt-5.2", "GPT-5.2"]],
+      anthropic: [["claude-sonnet-4-5", "Claude Sonnet 4.5"], ["claude-opus-4-1", "Claude Opus 4.1"]],
+      gemini: [["gemini-3.5-flash", "Gemini 3.5 Flash"], ["gemini-3.1-pro", "Gemini 3.1 Pro"]],
+    }[providerKey] || [["provider-model-small", "Provider Model Small"], ["provider-model-large", "Provider Model Large"]];
+    const catalog = mockAisdkCatalogEntries();
+    return {
+      status: "ready",
+      provider_id: providerId,
+      models: choices.map(([id, displayName]) => {
+        const exact = catalog.find((entry) => entry.provider === providerKey && entry.id === id);
+        return exact
+          ? { id, display_name: displayName, model_type: structuredClone(exact.model_type), capabilities: structuredClone(exact.capabilities) }
+          : { id, display_name: displayName, model_type: agentCapability("unknown", "unknown"), capabilities: emptyAgentCapabilities() };
+      }),
+      truncated: discoveryState === "truncated",
+      message: discoveryState === "truncated" ? "Loaded the first 2 models. The provider reported additional models." : "Loaded 2 available models.",
+      error_class: null,
+    };
+  }
   if (command === "agent_llm_catalog") {
-    return [
-      {
-        provider: "openai",
-        id: "gpt-4.1-mini",
-        display_name: "GPT-4.1 Mini",
-        description: "OpenAI catalog entry",
-        capabilities: { tool_calling: "yes", reasoning: "yes", vision_input: "no", source: "catalog" },
-      },
-      {
-        provider: "anthropic",
-        id: "claude-sonnet-4",
-        display_name: "Claude Sonnet 4",
-        description: "Anthropic catalog entry",
-        capabilities: { tool_calling: "yes", reasoning: "yes", vision_input: "yes", source: "catalog" },
-      },
-    ];
+    return structuredClone(mockAisdkCatalogEntries());
   }
   if (command === "agent_llm_save_provider") {
+    maybeFailMockAgentLlm("save-provider");
     const provider = structuredClone(args.provider || {});
     const index = mockAgentLlmSettings.providers.findIndex((item) => item.id === provider.id);
-    const existing = index >= 0 ? mockAgentLlmSettings.providers[index] : null;
     provider.credential_status = provider.api_key_required
-      ? (existing?.credential_status || "not_detected")
+      ? (mockAgentLlmSystemCredentials.has(provider.id) ? "detected" : "not_detected")
       : "not_required";
     provider.credential_source = provider.api_key_required
-      ? (existing?.credential_source || "none")
+      ? (mockAgentLlmSystemCredentials.has(provider.id) ? "system" : "none")
       : "not_required";
     if (index >= 0) mockAgentLlmSettings.providers[index] = provider;
     else mockAgentLlmSettings.providers.push(provider);
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_delete_provider") {
@@ -2423,37 +2705,115 @@ async function mockInvoke(command, args) {
     if (mockAgentLlmSettings.models.some((model) => model.provider_id === providerId)) {
       throw new Error("Delete the provider's models before removing the provider.");
     }
+    mockAgentLlmSystemCredentials.delete(providerId);
     mockAgentLlmSettings.providers = mockAgentLlmSettings.providers.filter((provider) => provider.id !== providerId);
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_save_model") {
+    maybeFailMockAgentLlm("save-model");
     const model = structuredClone(args.model || {});
+    const existing = mockAgentLlmSettings.models.find((item) => item.id === model.id);
+    if (existing && (
+      JSON.stringify(existing.model_type) !== JSON.stringify(model.model_type)
+      || JSON.stringify(existing.capabilities) !== JSON.stringify(model.capabilities)
+    )) {
+      throw new Error("Use the capability declaration operation to change existing model evidence.");
+    }
+    if (existing?.enabled && !model.enabled && mockAgentLlmSettings.persisted_capability_routes.some((route) => route.model_id === model.id)) {
+      throw new Error("Reassign this model's capability routes before disabling it.");
+    }
     const index = mockAgentLlmSettings.models.findIndex((item) => item.id === model.id);
     if (index >= 0) mockAgentLlmSettings.models[index] = model;
     else mockAgentLlmSettings.models.push(model);
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_delete_model") {
     const request = args.request || {};
     const modelId = request.modelId ?? request.model_id;
-    const replacementModelId = request.replacementModelId ?? request.replacement_model_id;
-    if (mockAgentLlmSettings.selected_model_id === modelId) {
-      if (!replacementModelId) throw new Error("Select another enabled model before deleting the current default.");
-      mockAgentLlmSettings.selected_model_id = replacementModelId;
+    if (mockAgentLlmSettings.persisted_capability_routes.some((route) => route.model_id === modelId)) {
+      throw new Error("Reassign or remove this model's capability routes before deleting it.");
     }
     mockAgentLlmSettings.models = mockAgentLlmSettings.models.filter((model) => model.id !== modelId);
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_select_model") {
+    maybeFailMockAgentLlm("select-model");
     const request = args.request || {};
-    const modelId = request.modelId ?? request.model_id;
-    mockAgentLlmSettings.selected_model_id = modelId;
+    const modelId = request.modelId;
+    const expectedRevision = request.expectedRevision;
+    if (expectedRevision !== mockAgentLlmSettings.revision) throw new Error("Model settings changed while this route editor was open. Reload and try again.");
+    const route = mockAgentLlmSettings.persisted_capability_routes.find((item) => item.capability === "agent.chat");
+    route.model_id = modelId;
+    mockAgentLlmSettings.revision += 1;
+    return structuredClone(rebuildMockAgentLlmSettings());
+  }
+  if (command === "agent_llm_save_capability_route") {
+    const expectedRevision = args.expectedRevision;
+    if (expectedRevision !== mockAgentLlmSettings.revision) throw new Error("Model settings changed while this route editor was open. Reload and try again.");
+    const route = structuredClone(args.route || {});
+    const model = mockAgentLlmSettings.models.find((item) => item.id === route.model_id);
+    const compatibility = agentRouteCompatibility(model, route);
+    if (compatibility === "incompatible") throw new Error("The selected model is incompatible with this route.");
+    if (compatibility === "needs_review") throw new Error("Declare this model's type and required capabilities before assigning the route.");
+    const index = mockAgentLlmSettings.persisted_capability_routes.findIndex((item) => item.capability === route.capability);
+    if (index >= 0) mockAgentLlmSettings.persisted_capability_routes[index] = route;
+    else mockAgentLlmSettings.persisted_capability_routes.push(route);
+    mockAgentLlmSettings.revision += 1;
+    return structuredClone(rebuildMockAgentLlmSettings());
+  }
+  if (command === "agent_llm_delete_capability_route") {
+    const expectedRevision = args.expectedRevision;
+    const capability = args.capability;
+    if (expectedRevision !== mockAgentLlmSettings.revision) throw new Error("Model settings changed while this route editor was open. Reload and try again.");
+    if (capability === "agent.chat") throw new Error("The required agent.chat route cannot be removed.");
+    mockAgentLlmSettings.persisted_capability_routes = mockAgentLlmSettings.persisted_capability_routes.filter((route) => route.capability !== capability);
+    mockAgentLlmSettings.revision += 1;
+    return structuredClone(rebuildMockAgentLlmSettings());
+  }
+  if (command === "agent_llm_declare_model_capabilities") {
+    const expectedRevision = args.expectedRevision;
+    const modelId = args.modelId ?? args.model_id;
+    if (expectedRevision !== mockAgentLlmSettings.revision) throw new Error("Model settings changed while this capability editor was open. Reload and try again.");
+    const model = mockAgentLlmSettings.models.find((item) => item.id === modelId);
+    if (!model) throw new Error(`Unknown model: ${modelId}`);
+    const candidate = structuredClone(model);
+    const patch = args.patch || {};
+    if (patch.model_type) candidate.model_type = agentCapability(patch.model_type, "user_declared");
+    for (const [name, value] of Object.entries(patch.capabilities || {})) {
+      candidate.capabilities[name] = agentCapability(value, "user_declared");
+    }
+    for (const route of mockAgentLlmSettings.persisted_capability_routes.filter((item) => item.model_id === modelId)) {
+      if (agentRouteCompatibility(candidate, route) !== "compatible") {
+        throw new Error(`The capability change would make ${route.capability} incompatible. Reassign or remove that route first.`);
+      }
+    }
+    Object.assign(model, candidate);
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_test_model") {
+    maybeFailMockAgentLlm("test-model");
     const modelId = args.modelId ?? args.model_id;
     const model = mockAgentLlmSettings.models.find((item) => item.id === modelId);
     if (!model) throw new Error(`Unknown model: ${modelId}`);
+    if (!model.enabled) throw new Error("Selected Agent model is disabled.");
+    if (agentModelType(model) !== "language") throw new Error("Connection probes are available only for language models.");
+    const provider = mockAgentLlmSettings.providers.find((item) => item.id === model.provider_id);
+    if (!provider) throw new Error(`Missing provider for Agent model ${model.display_name}`);
+    if (provider.api_key_required && provider.credential_status !== "detected") {
+      model.last_test = {
+        status: "error",
+        checked_at: new Date().toISOString(),
+        latency_ms: null,
+        error_class: "credential",
+        message: "No API key is available for this provider.",
+      };
+      mockAgentLlmSettings.revision += 1;
+      return structuredClone(rebuildMockAgentLlmSettings());
+    }
     model.last_test = {
       status: "ready",
       checked_at: new Date().toISOString(),
@@ -2461,22 +2821,39 @@ async function mockInvoke(command, args) {
       error_class: null,
       message: "Connection succeeded.",
     };
+    mockAgentLlmSettings.revision += 1;
     return structuredClone(rebuildMockAgentLlmSettings());
+  }
+  if (command === "agent_llm_cancel_test") {
+    return { status: "cancel_requested" };
   }
   if (command === "list_project_skills") {
     return structuredClone(mockProjectSkillsView(mockLastProject));
   }
   if (command === "run_agent") {
-    const selectedModelId = args.modelId ?? args.model_id ?? mockAgentLlmSettings.selected_model_id;
+    const mode = args.mode || "ask";
+    const persistedRoutes = mockAgentLlmSettings.persisted_capability_routes || [];
+    const effectiveRoute = mode === "act"
+      ? (persistedRoutes.find((route) => route.capability === "agent.act")
+        || persistedRoutes.find((route) => route.capability === "agent.chat"))
+      : persistedRoutes.find((route) => route.capability === "agent.chat");
+    const requestedModelId = args.modelId ?? args.model_id ?? null;
+    if (requestedModelId && requestedModelId !== effectiveRoute?.model_id) {
+      throw new Error("Per-turn model overrides are unavailable. Assign the model to the effective capability route first.");
+    }
+    const selectedModelId = effectiveRoute?.model_id;
     const modelProfile = mockAgentLlmSettings.models.find((item) => item.id === selectedModelId)
       || mockAgentLlmSettings.models.find((item) => item.id === mockAgentLlmSettings.selected_model_id)
       || null;
+    if (mode === "act" && agentModelCapability(modelProfile, "function_call") !== "yes") {
+      throw new Error("Act is unavailable because its effective model does not declare function_call=yes.");
+    }
     const providerProfile = modelProfile
       ? mockAgentLlmSettings.providers.find((item) => item.id === modelProfile.provider_id)
       : null;
     const turn = createMockAgentTurn({
       prompt: args.prompt || "",
-      mode: args.mode || "ask",
+      mode,
       model: modelProfile ? mockEffectiveModelRef(providerProfile, modelProfile) : "deepseek:deepseek-v4-flash",
       editorContext: args.editorContext || null,
       autoApprove: Boolean(args.autoApprove ?? args.auto_approve),
@@ -3982,9 +4359,9 @@ async function initializeEditor() {
       contextMenuGroupId: "1_modification",
       run: () => requestFormatDocument(),
     });
-    // Ctrl+Click on a word
+    // Ctrl+Click on Windows/Linux or Command+Click on macOS.
     state.editor.editor.onMouseDown((e) => {
-      if (e.event.ctrlKey && e.target.type === 6 /* CONTENT_WORD */) {
+      if ((e.event.ctrlKey || e.event.metaKey) && e.target.type === 6 /* CONTENT_WORD */) {
         gotoDefinitionAtCursor();
       }
     });
@@ -5732,11 +6109,13 @@ function isStaleInformationError(error) {
 
 function emptyAgentLlmSettings(message) {
   return {
-    schema_version: 1,
+    schema_version: 2,
+    revision: 0,
     selected_model_id: null,
     providers: [],
     models: [],
     selected_model: null,
+    capability_routes: [],
     user_environ: { path: "", source: "system" },
     validation_error: message,
   };
@@ -5746,17 +6125,25 @@ function selectedAgentModel() {
   return state.agentLlm.settings?.selected_model || null;
 }
 
+function agentCapabilityRouteView(capability) {
+  return (state.agentLlm.settings?.capability_routes || []).find((route) => route.capability === capability) || null;
+}
+
 function ensureAgentLlmSelectionState() {
   const settings = state.agentLlm.settings;
   if (!settings) return;
   if (!settings.providers.some((provider) => provider.id === state.agentLlm.selectedProviderId)) {
-    state.agentLlm.selectedProviderId = settings.providers[0]?.id || null;
-    state.agentLlm.editingProviderId = settings.providers[0]?.id || null;
+    const selectedModel = settings.models.find((model) => model.id === settings.selected_model_id) || null;
+    state.agentLlm.selectedProviderId = selectedModel?.provider_id || settings.providers[0]?.id || null;
   }
-  if (!settings.models.some((model) => model.id === state.agentLlm.selectedModelEditorId)) {
-    state.agentLlm.selectedModelEditorId = settings.selected_model_id || settings.models[0]?.id || null;
-    state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+  state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
+  const providerModels = settings.models.filter((model) => model.provider_id === state.agentLlm.selectedProviderId);
+  if (!providerModels.some((model) => model.id === state.agentLlm.selectedModelEditorId)) {
+    state.agentLlm.selectedModelEditorId = providerModels.find((model) => model.id === settings.selected_model_id)?.id
+      || providerModels[0]?.id
+      || null;
   }
+  if (!state.agentLlm.modelDialogOpen) state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
 }
 
 function prettyToolCalling(value) {
@@ -5777,7 +6164,9 @@ function agentSendDisabledReason() {
 function syncAgentComposerState() {
   const selected = selectedAgentModel();
   const reason = agentSendDisabledReason();
-  const actBlocked = !selected?.act_enabled;
+  const actRoute = agentCapabilityRouteView("agent.act");
+  const actBlocked = actRoute?.compatibility !== "compatible"
+    || ["not_detected", "unavailable"].includes(actRoute?.credential_status);
   const selectorLocked = state.pendingApprovals.length > 0
     || state.agentTurns.some((turn) => ["running", "waiting"].includes(turn.status));
   if (state.agentMode === "act" && actBlocked) {
@@ -5792,7 +6181,7 @@ function syncAgentComposerState() {
     button.classList.toggle("active", button.dataset.agentMode === state.agentMode);
   });
   $("#actAutoApprove").disabled = state.agentBusy || state.agentMode !== "act" || actBlocked;
-  $("#agentModelSelector").disabled = selectorLocked || !(state.agentLlm.settings?.models || []).length;
+  $("#agentModelSelector").disabled = selectorLocked;
   const note = $("#agentCapabilityNote");
   if (reason && !state.agentBusy) {
     note.textContent = reason;
@@ -5800,14 +6189,10 @@ function syncAgentComposerState() {
     note.classList.remove("hidden");
     return;
   }
-  if (selected && selected.tool_calling === "no") {
-    note.textContent = "This model runs Ask and Plan as chat-only turns. It cannot inspect or modify the workspace.";
-    note.className = "agent-capability-note warn";
-    note.classList.remove("hidden");
-    return;
-  }
-  if (selected && selected.tool_calling === "unknown") {
-    note.textContent = "Test or declare tool support to use Act with this model.";
+  if (actRoute && actBlocked) {
+    note.textContent = actRoute.compatibility === "needs_review"
+      ? "Review the effective Act model's type and function-call capability before using Act."
+      : "Act needs a compatible function-calling route and a ready Provider connection.";
     note.className = "agent-capability-note warn";
     note.classList.remove("hidden");
     return;
@@ -5854,6 +6239,38 @@ async function loadAgentLlmSettings() {
   renderAgentModelSelector();
   renderAgentLlmDialog();
   syncAgentComposerState();
+}
+
+async function retryAgentLlmSettings() {
+  if (state.agentLlm.settingsLoading) return;
+  state.agentLlm.settingsLoading = true;
+  setAgentLlmOperationState("working", "Reloading model settings…");
+  renderAgentLlmDialog();
+  try {
+    const settings = await invoke("agent_llm_settings");
+    state.agentLlm.settings = settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
+    state.agentLlm.selectedModelId = state.agentLlm.settings.selected_model_id || null;
+    state.agentLlm.lastTestResult = null;
+    ensureAgentLlmSelectionState();
+    updateAgentModelLabel();
+    renderAgentModelSelector();
+    setAgentLlmOperationState("success", "Model settings reloaded.");
+  } catch (error) {
+    state.agentLlm.settings = emptyAgentLlmSettings(String(error));
+    state.agentLlm.selectedModelId = null;
+    setAgentLlmOperationState("error", reportUiFailure(
+      "reload Agent model settings",
+      error,
+      "Model settings could not be reloaded. Your saved connections were not changed; retry or copy diagnostics.",
+    ));
+  } finally {
+    state.agentLlm.settingsLoading = false;
+    ensureAgentLlmSelectionState();
+    updateAgentModelLabel();
+    renderAgentModelSelector();
+    renderAgentLlmDialog();
+    syncAgentComposerState();
+  }
 }
 
 function setAgentInputBusy(busy) {
@@ -5980,7 +6397,6 @@ function positionAgentModelMenu() {
 }
 
 function openAgentModelSelector(focusPosition = null) {
-  if (!state.agentLlm.settings?.models?.length) return;
   state.agentLlm.selectorOpen = true;
   $("#agentModelSelector").setAttribute("aria-expanded", "true");
   $("#agentModelSelectorMenu").classList.remove("hidden");
@@ -6014,12 +6430,14 @@ function renderAgentModelSelector() {
       meta.textContent = model.selected ? "Selected" : model.selector_status;
       title.append(strong, meta);
       const info = document.createElement("p");
-      info.textContent = `${model.provider_display_name} · ${prettyToolCalling(model.capabilities?.tool_calling || "unknown")}`;
+      info.textContent = `${model.provider_display_name} · ${prettyToolCalling(agentModelCapability(model, "function_call"))}`;
       button.append(title, info);
       button.addEventListener("click", async () => {
         closeAgentModelSelector();
         try {
-          const view = await invoke("agent_llm_select_model", { request: { model_id: model.id } });
+          const view = await invoke("agent_llm_select_model", {
+            request: { modelId: model.id, expectedRevision: settings.revision },
+          });
           state.agentLlm.settings = view;
           state.agentLlm.selectedModelId = view.selected_model_id;
           ensureAgentLlmSelectionState();
@@ -6045,30 +6463,77 @@ function renderAgentModelSelector() {
 }
 
 function currentProviderRecord() {
-  return state.agentLlm.settings?.providers?.find((provider) => provider.id === state.agentLlm.editingProviderId) || null;
+  return state.agentLlm.settings?.providers?.find((provider) => provider.id === state.agentLlm.selectedProviderId) || null;
 }
 
 function currentModelRecord() {
-  return state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.editingModelId) || null;
+  return state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
 }
 
-function createAgentLlmListRow(titleText, metaText, active) {
+function createAgentLlmListRow(titleText, metaText, active, className = "agent-llm-row") {
   const row = document.createElement("button");
   row.type = "button";
-  row.className = `agent-llm-row${active ? " active" : ""}`;
+  row.className = `${className}${active ? " active" : ""}`;
+  row.setAttribute("role", "option");
+  row.setAttribute("aria-selected", String(Boolean(active)));
   const title = document.createElement("strong");
   title.textContent = titleText;
-  const meta = document.createElement("p");
+  const meta = document.createElement("span");
   meta.textContent = metaText;
   row.append(title, meta);
   return row;
 }
 
-function catalogProviderId(provider) {
-  if (!provider) return null;
-  if (provider.kind === "registered") return provider.registered_provider_id || null;
-  if (["openai", "anthropic", "gemini"].includes(provider.kind)) return provider.kind;
-  return null;
+function createAgentConnectionModelCard(model, settings, active) {
+  const card = document.createElement("article");
+  card.className = `agent-llm-connection-model-card${active ? " active" : ""}`;
+  card.setAttribute("role", "option");
+  card.setAttribute("aria-selected", String(Boolean(active)));
+  const summary = document.createElement("button");
+  summary.type = "button";
+  summary.className = "agent-llm-connection-model-summary";
+  const heading = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = model.display_name;
+  const meta = document.createElement("span");
+  meta.textContent = modelConnectionLabel(model);
+  heading.append(title, meta);
+  summary.append(heading);
+  appendModelCapabilityChips(summary, model);
+  const provenance = document.createElement("small");
+  const automatic = [model.model_type, ...Object.values(model.capabilities || {})]
+    .filter(Boolean)
+    .filter((value) => value.value !== "unknown" && value.source === "aisdk_catalog").length;
+  provenance.textContent = automatic
+    ? `${automatic} default capability facts from aisdk`
+    : "Capability facts need review";
+  summary.append(provenance);
+  summary.addEventListener("click", () => {
+    state.agentLlm.selectedModelEditorId = model.id;
+    state.agentLlm.editingModelId = model.id;
+    state.agentLlm.lastTestResult = model.last_test || null;
+    renderAgentLlmDialog();
+  });
+  const routes = (settings.capability_routes || [])
+    .filter((route) => route.configured && route.model_id === model.id)
+    .map((route) => route.label || route.capability);
+  const assignment = document.createElement("p");
+  assignment.textContent = routes.length ? `Used for: ${routes.join(", ")}` : "Not assigned to a route";
+  const actions = document.createElement("div");
+  actions.className = "agent-llm-connection-model-actions";
+  const assign = document.createElement("button");
+  assign.type = "button";
+  assign.className = "primary";
+  assign.textContent = "Assign uses";
+  assign.disabled = !model.enabled;
+  assign.addEventListener("click", () => focusAgentModelRouting(model.id));
+  const review = document.createElement("button");
+  review.type = "button";
+  review.textContent = "Model options";
+  review.addEventListener("click", () => reviewAgentRouteModel(model.id));
+  actions.append(assign, review);
+  card.append(summary, assignment, actions);
+  return card;
 }
 
 function providerConnectionLabel(provider) {
@@ -6076,8 +6541,10 @@ function providerConnectionLabel(provider) {
 }
 
 function clearAgentLlmCredentialInput() {
-  const input = $("#agentLlmCredential");
-  if (input) input.value = "";
+  for (const selector of ["#agentLlmCredential", "#agentLlmWizardCredential"]) {
+    const input = $(selector);
+    if (input) input.value = "";
+  }
 }
 
 function agentProviderKindLabel(kind) {
@@ -6098,12 +6565,101 @@ function credentialStatusLabel(provider) {
   return "Not set";
 }
 
+function providerReadiness(provider, settings = state.agentLlm.settings) {
+  if (!provider) return { state: "error", label: "Unavailable", detail: "Provider unavailable" };
+  if (provider.credential_status === "unavailable") {
+    return { state: "error", label: "Storage unavailable", detail: "Credential storage unavailable" };
+  }
+  if (provider.api_key_required && provider.credential_status !== "detected") {
+    return { state: "warning", label: "Needs API key", detail: "API key not set" };
+  }
+  const models = (settings?.models || []).filter((model) => model.provider_id === provider.id);
+  if (!models.length) return { state: "warning", label: "No models", detail: "Add a model" };
+  const enabledModels = models.filter((model) => model.enabled);
+  if (!enabledModels.length) {
+    return { state: "warning", label: "Models disabled", detail: "Enable a model" };
+  }
+  if (enabledModels.some((model) => model.last_test?.status === "ready")) {
+    return { state: "ready", label: "Ready", detail: `${enabledModels.length} enabled` };
+  }
+  if (enabledModels.some((model) => model.last_test?.status === "error")) {
+    return { state: "error", label: "Connection error", detail: "Review the latest test" };
+  }
+  return { state: "warning", label: "Ready to test", detail: `${enabledModels.length} enabled` };
+}
+
+function agentLlmOperationRecord(scope) {
+  if (scope === "wizard") return state.agentLlm.wizardOperation;
+  if (scope === "model") return state.agentLlm.modelOperation;
+  return state.agentLlm.operation;
+}
+
+function syncAgentLlmOperationSubmissionState(scope, working) {
+  if (scope === "main") {
+    const provider = currentProviderRecord();
+    const model = currentModelRecord();
+    const missingCredential = provider?.api_key_required && provider.credential_status !== "detected";
+    const baseDisabled = new Map([
+      ["#agentLlmAddProvider", false],
+      ["#agentLlmAddModel", !provider],
+      ["#agentLlmEditModel", !model],
+      ["#agentLlmSaveCredential", !provider?.api_key_required || provider?.credential_status === "unavailable"],
+      ["#agentLlmTestModel", !model || !model.enabled || state.agentLlm.testInFlight || missingCredential],
+      ["#agentLlmSelectDefault", !model || !model.enabled],
+      ["#agentLlmSaveProvider", !provider],
+      ["#agentLlmDeleteProvider", !provider],
+      ["#agentLlmDeleteCredential", provider?.credential_source !== "system"],
+    ]);
+    for (const [selector, disabled] of baseDisabled) {
+      const button = $(selector);
+      if (button) button.disabled = working || disabled;
+    }
+    return;
+  }
+  const selectors = scope === "wizard"
+    ? ["#agentLlmWizardCancel", "#agentLlmWizardContinue", "#agentLlmWizardBack", "#agentLlmWizardRefreshModels", "#agentLlmWizardFinishLater", "#agentLlmWizardFinish"]
+    : ["#agentLlmRefreshModels", "#agentLlmModelCancel", "#agentLlmSaveModel", "#agentLlmDeleteModel"];
+  for (const selector of selectors) {
+    const button = $(selector);
+    if (button) button.disabled = working;
+  }
+}
+
+function renderAgentLlmOperationStatus(scope = "main") {
+  const target = scope === "wizard"
+    ? $("#agentLlmWizardStatus")
+    : scope === "model"
+      ? $("#agentLlmModelStatus")
+      : $("#agentLlmOperationStatus");
+  if (!target) return;
+  const operation = agentLlmOperationRecord(scope);
+  target.className = `agent-llm-operation-status${operation.state === "idle" ? " hidden" : ` ${operation.state}`}`;
+  target.textContent = operation.message || "";
+  syncAgentLlmOperationSubmissionState(scope, operation.state === "working");
+}
+
+function setAgentLlmOperationState(operationState, message = "", scope = "main") {
+  const operation = agentLlmOperationRecord(scope);
+  operation.state = operationState;
+  operation.message = message;
+  renderAgentLlmOperationStatus(scope);
+}
+
 function renderAgentCredentialFields() {
   const provider = currentProviderRecord();
   const kind = $("#agentLlmProviderKind").value;
   const compatible = ["openai_compatible", "local_openai_compatible"].includes(kind);
   const keyRequired = Boolean($("#agentLlmProviderApiKeyRequired").checked);
-  $("#agentLlmBaseUrlField").classList.toggle("hidden", !compatible);
+  const preset = Object.values(AGENT_PROVIDER_PRESETS).find((item) => (
+    item.kind === kind
+    && (kind !== "registered" || item.registeredProviderId === $("#agentLlmRegisteredProviderId").value.trim().toLowerCase())
+  )) || null;
+  $("#agentLlmProviderBaseUrl").placeholder = preset?.defaultBaseUrl || "https://api.example.com/v1";
+  $("#agentLlmProviderBaseUrlHint").textContent = compatible
+    ? "Required unless Advanced supplies a Base URL environment variable."
+    : preset?.defaultBaseUrl
+      ? `Optional. Leave blank to use ${preset.defaultBaseUrl}.`
+      : "Optional for reviewed registered Providers; otherwise leave blank.";
   $("#agentLlmCredentialField").classList.toggle("hidden", !keyRequired);
   $("#agentLlmCredentialStatus").textContent = keyRequired ? credentialStatusLabel(provider) : "Not required";
   $("#agentLlmDeleteCredential").classList.toggle(
@@ -6112,36 +6668,329 @@ function renderAgentCredentialFields() {
   );
 }
 
+function modelSelectorStatusLabel(model) {
+  return ({
+    selected: "Selected",
+    available: "Available",
+    ready: "Ready",
+    disabled: "Disabled",
+    unavailable: "Unavailable",
+    invalid: "Needs attention",
+    untested: "Ready to test",
+    "key missing": "Needs API key",
+    error: "Connection error",
+  })[String(model?.selector_status || "").toLowerCase()] || (model?.enabled ? "Available" : "Disabled");
+}
+
 function modelConnectionLabel(model) {
-  return `${model?.provider_display_name || "Provider"} · ${({
-    selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled",
-    unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested",
-  })[String(model?.selector_status || "").toLowerCase()] || (model?.enabled ? "Available" : "Disabled")}`;
+  const status = modelSelectorStatusLabel(model);
+  return `${model?.provider_display_name || "Provider"} · ${model?.selected ? `Current · ${status}` : status}`;
 }
 
-function catalogProviderLabel(provider) {
-  return ({ openai: "OpenAI", anthropic: "Anthropic", gemini: "Gemini" })[provider] || "Compatible service";
+function agentLlmDiscoveryRecord(scope) {
+  return scope === "wizard" ? state.agentLlm.wizardDiscovery : state.agentLlm.modelDiscovery;
 }
 
-function renderAgentLlmCatalogOptions() {
-  const select = $("#agentLlmCatalogModel");
-  select.replaceChildren();
+function agentLlmDiscoveryElements(scope) {
+  return scope === "wizard"
+    ? {
+      select: $("#agentLlmWizardDiscoveredModel"),
+      cards: $("#agentLlmWizardDiscoveredModelCards"),
+      capabilityGrid: $("#agentLlmWizardCapabilityGrid"),
+      status: $("#agentLlmWizardDiscoveryStatus"),
+      refresh: $("#agentLlmWizardRefreshModels"),
+      manual: $("#agentLlmWizardManualModel"),
+      modelId: $("#agentLlmWizardModelId"),
+      displayName: $("#agentLlmWizardModelName"),
+      toolCalling: $("#agentLlmWizardModelToolCalling"),
+      reasoning: $("#agentLlmWizardModelReasoning"),
+      visionInput: $("#agentLlmWizardModelVisionInput"),
+      imageOutput: $("#agentLlmWizardModelImageOutput"),
+      imageEdit: $("#agentLlmWizardModelImageEdit"),
+      audioInput: $("#agentLlmWizardModelAudioInput"),
+      audioOutput: $("#agentLlmWizardModelAudioOutput"),
+      structuredOutput: $("#agentLlmWizardModelStructuredOutput"),
+      webSearch: $("#agentLlmWizardModelWebSearch"),
+      modelType: $("#agentLlmWizardModelType"),
+    }
+    : {
+      select: $("#agentLlmModelDiscoveredModel"),
+      cards: $("#agentLlmModelDiscoveredModelCards"),
+      capabilityGrid: $("#agentLlmModelCapabilityGrid"),
+      status: $("#agentLlmModelDiscoveryStatus"),
+      refresh: $("#agentLlmRefreshModels"),
+      manual: $("#agentLlmModelManualFields"),
+      modelId: $("#agentLlmModelId"),
+      displayName: $("#agentLlmModelDisplayName"),
+      toolCalling: $("#agentLlmModelToolCalling"),
+      reasoning: $("#agentLlmModelReasoning"),
+      visionInput: $("#agentLlmModelVisionInput"),
+      imageOutput: $("#agentLlmModelImageOutput"),
+      imageEdit: $("#agentLlmModelImageEdit"),
+      audioInput: $("#agentLlmModelAudioInput"),
+      audioOutput: $("#agentLlmModelAudioOutput"),
+      structuredOutput: $("#agentLlmModelStructuredOutput"),
+      webSearch: $("#agentLlmModelWebSearch"),
+      modelType: $("#agentLlmModelType"),
+    };
+}
+
+function agentCapabilityInputMap(elements) {
+  return {
+    function_call: elements.toolCalling,
+    reasoning: elements.reasoning,
+    vision_input: elements.visionInput,
+    image_output: elements.imageOutput,
+    image_edit: elements.imageEdit,
+    audio_input: elements.audioInput,
+    audio_output: elements.audioOutput,
+    structured_output: elements.structuredOutput,
+    web_search: elements.webSearch,
+  };
+}
+
+function modelCapabilitySummary(model, { includeUnknown = false } = {}) {
+  const chips = [{ label: agentModelType(model), state: agentModelType(model) === "unknown" ? "unknown" : "type" }];
+  for (const name of AGENT_MODEL_CAPABILITIES) {
+    const value = agentModelCapability(model, name);
+    if (value === "yes" || (includeUnknown && value === "unknown")) {
+      chips.push({ label: AGENT_CAPABILITY_LABELS[name], state: value });
+    }
+  }
+  return chips;
+}
+
+function appendModelCapabilityChips(container, model, options = {}) {
+  const row = document.createElement("div");
+  row.className = "agent-llm-model-capabilities";
+  for (const item of modelCapabilitySummary(model, options)) {
+    const chip = document.createElement("span");
+    chip.dataset.state = item.state;
+    chip.textContent = item.label;
+    row.append(chip);
+  }
+  container.append(row);
+}
+
+function renderAgentLlmDiscoveredModelCards(scope) {
+  const record = agentLlmDiscoveryRecord(scope);
+  const elements = agentLlmDiscoveryElements(scope);
+  if (!elements.cards) return;
+  elements.cards.replaceChildren();
+  const selectedId = elements.select.value;
+  for (const model of record.models) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-llm-discovered-model-card${model.id === selectedId ? " active" : ""}`;
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(model.id === selectedId));
+    const title = document.createElement("strong");
+    title.textContent = model.display_name || model.id;
+    const id = document.createElement("code");
+    id.textContent = model.id;
+    button.append(title, id);
+    appendModelCapabilityChips(button, model);
+    const source = document.createElement("small");
+    source.textContent = model.model_type?.source === "aisdk_catalog"
+      ? "Default capabilities from aisdk catalog"
+      : "Capability details need review";
+    button.append(source);
+    button.addEventListener("click", () => {
+      elements.select.value = model.id;
+      applyAgentLlmDiscoveredModel(scope);
+      renderAgentLlmDiscoveredModelCards(scope);
+    });
+    elements.cards.append(button);
+  }
+  if (!record.models.length && record.status !== "loading") {
+    const empty = document.createElement("div");
+    empty.className = "agent-llm-empty";
+    empty.textContent = record.status === "idle" ? "Fetch models to review their default capabilities." : "No Provider models are available here; use manual entry.";
+    elements.cards.append(empty);
+  }
+}
+
+function renderAgentCapabilityPanel(scope, sourceModel = null) {
+  const elements = agentLlmDiscoveryElements(scope);
+  if (!elements.capabilityGrid) return;
+  const inputs = agentCapabilityInputMap(elements);
+  const discovered = agentLlmDiscoveryRecord(scope).models.find((item) => item.id === elements.select.value) || null;
+  const existing = scope === "model"
+    ? state.agentLlm.settings?.models?.find((item) => item.id === state.agentLlm.editingModelId) || null
+    : null;
+  const evidenceModel = sourceModel || discovered || existing;
+  elements.capabilityGrid.replaceChildren();
+  for (const name of AGENT_MODEL_CAPABILITIES) {
+    const input = inputs[name];
+    const value = input?.value || "unknown";
+    const evidence = evidenceModel?.capabilities?.[name];
+    const source = evidence?.value === value ? evidence.source : "user_declared";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "agent-llm-capability-toggle";
+    button.dataset.value = value;
+    button.dataset.source = source;
+    button.setAttribute("role", "switch");
+    button.setAttribute("aria-checked", String(value === "yes"));
+    button.setAttribute("aria-label", `${AGENT_CAPABILITY_LABELS[name]}: ${value}`);
+    const label = document.createElement("span");
+    label.textContent = AGENT_CAPABILITY_LABELS[name];
+    const status = document.createElement("small");
+    const sourceLabel = source === "aisdk_catalog" ? "auto" : source === "provider_response" ? "provider" : source === "user_declared" ? "declared" : "unknown";
+    status.textContent = `${value === "yes" ? "On" : value === "no" ? "Off" : "Unknown"} · ${sourceLabel}`;
+    const track = document.createElement("i");
+    track.setAttribute("aria-hidden", "true");
+    button.append(label, status, track);
+    button.addEventListener("click", () => {
+      input.value = value === "yes" ? "no" : "yes";
+      renderAgentCapabilityPanel(scope, evidenceModel);
+    });
+    elements.capabilityGrid.append(button);
+  }
+}
+
+function resetAgentLlmDiscovery(scope, providerId = null) {
+  state.agentLlm.discoverySequence += 1;
+  const replacement = {
+    requestId: state.agentLlm.discoverySequence,
+    providerId,
+    status: "idle",
+    models: [],
+    truncated: false,
+    message: providerId ? "Ready to fetch available models." : "Choose a Provider to fetch models.",
+  };
+  if (scope === "wizard") state.agentLlm.wizardDiscovery = replacement;
+  else state.agentLlm.modelDiscovery = replacement;
+  renderAgentLlmDiscovery(scope);
+}
+
+function renderAgentLlmDiscovery(scope) {
+  const record = agentLlmDiscoveryRecord(scope);
+  const elements = agentLlmDiscoveryElements(scope);
+  if (!elements.select || !elements.status) return;
+  const currentModelId = elements.modelId?.value || "";
+  elements.select.replaceChildren();
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = state.agentLlm.catalogLoaded
-    ? "Choose a catalog model..."
-    : "Load the model catalog first...";
-  select.append(placeholder);
-  const provider = (state.agentLlm.settings?.providers || [])
-    .find((item) => item.id === $("#agentLlmModelProvider").value);
-  const providerId = catalogProviderId(provider);
-  for (const entry of state.agentLlm.catalog.filter((item) => !providerId || item.provider === providerId)) {
+  placeholder.textContent = ({
+    idle: record.providerId ? "Fetch available models..." : "Choose a Provider first...",
+    loading: "Fetching available models...",
+    ready: record.models.length ? "Choose a model..." : "No available models returned",
+    unsupported: "Provider model list unavailable",
+    error: "Could not fetch models",
+  })[record.status] || "Choose a model...";
+  elements.select.append(placeholder);
+  for (const model of record.models) {
     const option = document.createElement("option");
-    option.value = `${entry.provider}:${entry.id}`;
-    option.textContent = `${entry.display_name || "Catalog model"} (${catalogProviderLabel(entry.provider)})`;
-    select.append(option);
+    option.value = model.id;
+    option.textContent = model.display_name && model.display_name !== model.id
+      ? `${model.display_name} · ${model.id}`
+      : model.id;
+    elements.select.append(option);
   }
-  select.disabled = !state.agentLlm.catalog.length;
+  if (record.models.some((model) => model.id === currentModelId)) elements.select.value = currentModelId;
+  const operationWorking = agentLlmOperationRecord(scope).state === "working";
+  elements.select.disabled = operationWorking || record.status !== "ready" || !record.models.length;
+  elements.refresh.disabled = operationWorking || record.status === "loading" || !record.providerId;
+  elements.status.textContent = record.message || "";
+  elements.status.dataset.state = record.status === "ready" && record.models.length
+    ? "ready"
+    : record.status === "loading" || record.status === "idle" ? record.status : "warning";
+  if (["unsupported", "error"].includes(record.status) || (record.status === "ready" && !record.models.length)) {
+    elements.manual.open = true;
+  }
+  renderAgentLlmDiscoveredModelCards(scope);
+  renderAgentCapabilityPanel(scope);
+}
+
+function applyAgentLlmDiscoveredModel(scope) {
+  const record = agentLlmDiscoveryRecord(scope);
+  const elements = agentLlmDiscoveryElements(scope);
+  const model = record.models.find((item) => item.id === elements.select.value);
+  if (!model) return;
+  elements.modelId.value = model.id;
+  elements.displayName.value = model.display_name || model.id;
+  elements.modelType.value = model.model_type?.value || "unknown";
+  elements.toolCalling.value = model.capabilities?.function_call?.value || "unknown";
+  elements.reasoning.value = model.capabilities?.reasoning?.value || "unknown";
+  elements.visionInput.value = model.capabilities?.vision_input?.value || "unknown";
+  elements.imageOutput.value = model.capabilities?.image_output?.value || "unknown";
+  elements.imageEdit.value = model.capabilities?.image_edit?.value || "unknown";
+  elements.audioInput.value = model.capabilities?.audio_input?.value || "unknown";
+  elements.audioOutput.value = model.capabilities?.audio_output?.value || "unknown";
+  elements.structuredOutput.value = model.capabilities?.structured_output?.value || "unknown";
+  elements.webSearch.value = model.capabilities?.web_search?.value || "unknown";
+  renderAgentCapabilityPanel(scope, model);
+}
+
+function agentLlmDiscoveryContextIsCurrent(scope, providerId, requestId) {
+  const record = agentLlmDiscoveryRecord(scope);
+  if (record.requestId !== requestId || record.providerId !== providerId) return false;
+  if (scope === "wizard") {
+    return state.agentLlm.wizardOpen
+      && state.agentLlm.wizardStep === "model"
+      && state.agentLlm.wizardProviderId === providerId;
+  }
+  return state.agentLlm.modelDialogOpen && $("#agentLlmModelProvider").value === providerId;
+}
+
+async function discoverAgentLlmModels(providerId, scope) {
+  if (!providerId) {
+    resetAgentLlmDiscovery(scope, null);
+    return;
+  }
+  state.agentLlm.discoverySequence += 1;
+  const requestId = state.agentLlm.discoverySequence;
+  const record = {
+    requestId,
+    providerId,
+    status: "loading",
+    models: [],
+    truncated: false,
+    message: "Fetching available models from the Provider. No prompt is sent...",
+  };
+  if (scope === "wizard") state.agentLlm.wizardDiscovery = record;
+  else state.agentLlm.modelDiscovery = record;
+  renderAgentLlmDiscovery(scope);
+  try {
+    const response = await invoke("agent_llm_discover_models", { providerId });
+    if (!agentLlmDiscoveryContextIsCurrent(scope, providerId, requestId)) return;
+    const validStatus = ["ready", "unsupported", "error"].includes(response?.status);
+    const validModels = Array.isArray(response?.models)
+      && response.models.every((model) => model && typeof model.id === "string" && typeof model.display_name === "string");
+    if (!validStatus || !validModels || response.provider_id !== providerId) {
+      record.status = "error";
+      record.models = [];
+      record.message = "The Provider returned an invalid model list. Enter a model ID manually.";
+      record.truncated = false;
+    } else {
+      record.status = response.status;
+      record.models = response.models;
+      record.truncated = Boolean(response.truncated);
+      record.message = response.message || (response.models.length
+        ? `Loaded ${response.models.length} available models.`
+        : "No available models were returned. Enter a model ID manually.");
+    }
+  } catch (error) {
+    if (!agentLlmDiscoveryContextIsCurrent(scope, providerId, requestId)) return;
+    record.status = "error";
+    record.models = [];
+    record.truncated = false;
+    record.message = reportUiFailure("discover provider models", error,
+      "Rho could not fetch this Provider's models. Enter a model ID manually or retry.",
+    );
+  }
+  if (!agentLlmDiscoveryContextIsCurrent(scope, providerId, requestId)) return;
+  const elements = agentLlmDiscoveryElements(scope);
+  const focusWasOnStatus = document.activeElement === elements.status;
+  renderAgentLlmDiscovery(scope);
+  if (focusWasOnStatus) {
+    if (record.status === "ready" && record.models.length) elements.cards.querySelector("button")?.focus();
+    else {
+      elements.manual.open = true;
+      elements.modelId.focus();
+    }
+  }
 }
 
 function renderAgentProviderForm() {
@@ -6159,7 +7008,7 @@ function renderAgentProviderForm() {
 }
 
 function renderAgentModelForm() {
-  const model = currentModelRecord();
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === state.agentLlm.editingModelId) || null;
   const providerSelect = $("#agentLlmModelProvider");
   providerSelect.replaceChildren();
   for (const provider of state.agentLlm.settings?.providers || []) {
@@ -6169,14 +7018,31 @@ function renderAgentModelForm() {
     providerSelect.append(option);
   }
   $("#agentLlmModelDisplayName").value = model?.display_name || "";
-  $("#agentLlmModelProvider").value = model?.provider_id || state.agentLlm.settings?.providers?.[0]?.id || "";
-  renderAgentLlmCatalogOptions();
+  $("#agentLlmModelProvider").value = model?.provider_id || state.agentLlm.selectedProviderId || state.agentLlm.settings?.providers?.[0]?.id || "";
   $("#agentLlmModelId").value = model?.model_id || "";
-  $("#agentLlmModelToolCalling").value = model?.capabilities?.tool_calling || "unknown";
-  $("#agentLlmModelReasoning").value = model?.capabilities?.reasoning || "unknown";
-  $("#agentLlmModelVisionInput").value = model?.capabilities?.vision_input || "unknown";
-  $("#agentLlmModelCapabilitySource").value = model?.capabilities?.source || "declared";
+  $("#agentLlmModelType").value = agentModelType(model) === "unknown" && !model ? "language" : agentModelType(model);
+  const capabilityFields = {
+    function_call: "#agentLlmModelToolCalling",
+    reasoning: "#agentLlmModelReasoning",
+    vision_input: "#agentLlmModelVisionInput",
+    image_output: "#agentLlmModelImageOutput",
+    image_edit: "#agentLlmModelImageEdit",
+    audio_input: "#agentLlmModelAudioInput",
+    audio_output: "#agentLlmModelAudioOutput",
+    structured_output: "#agentLlmModelStructuredOutput",
+    web_search: "#agentLlmModelWebSearch",
+  };
+  for (const [name, selector] of Object.entries(capabilityFields)) {
+    $(selector).value = agentModelCapability(model, name);
+  }
+  const evidence = model
+    ? [`type: ${model.model_type?.source || "unknown"}`, ...AGENT_MODEL_CAPABILITIES.map((name) => `${name}: ${agentModelCapabilitySource(model, name)}`)]
+    : ["New manual values are recorded as user-declared evidence."];
+  $("#agentLlmModelEvidence").textContent = evidence.join(" · ");
   $("#agentLlmModelEnabled").checked = model ? Boolean(model.enabled) : true;
+  $("#agentLlmModelManualFields").open = Boolean(model);
+  $("#agentLlmModelCapabilities").open = true;
+  renderAgentLlmDiscovery("model");
 }
 
 function renderAgentLlmCurrentSelection(settings) {
@@ -6186,24 +7052,382 @@ function renderAgentLlmCurrentSelection(settings) {
   const provider = model
     ? (settings.providers || []).find((item) => item.id === model.provider_id)
     : null;
-  const status = model
-    ? ({ selected: "Selected", available: "Available", ready: "Ready", disabled: "Disabled", unavailable: "Unavailable", invalid: "Needs attention", untested: "Not tested" }[String(model.selector_status || "").toLowerCase()] || (model.enabled ? "Available" : "Disabled"))
-    : "No model selected";
+  const status = model ? modelSelectorStatusLabel(model) : "No model selected";
   $("#agentLlmCurrentStatus").textContent = status;
+  const selectorStatus = String(model?.selector_status || "").toLowerCase();
+  const tone = ["error", "key missing", "unavailable", "invalid"].includes(selectorStatus)
+    ? " error"
+    : ["selected", "available", "ready"].includes(selectorStatus) ? " ready" : "";
+  $("#agentLlmCurrentStatus").className = `agent-llm-current-status${tone}`;
   $("#agentLlmCurrentSelection").textContent = model
-    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"} · ${status}`
+    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"}`
     : "No model selected. Choose or add a model below.";
+}
+
+function switchAgentLlmView(view, { focus = false } = {}) {
+  const next = ["routing", "connections", "library"].includes(view) ? view : "connections";
+  state.agentLlm.activeView = next;
+  const definitions = [
+    ["connections", "#agentLlmConnectionsTab", "#agentLlmShell"],
+    ["routing", "#agentLlmRoutingTab", "#agentLlmRoutingPanel"],
+    ["library", "#agentLlmLibraryTab", "#agentLlmLibraryPanel"],
+  ];
+  for (const [name, tabSelector, panelSelector] of definitions) {
+    const active = name === next;
+    $(tabSelector).setAttribute("aria-selected", String(active));
+    $(tabSelector).tabIndex = active ? 0 : -1;
+    $(panelSelector).classList.toggle("hidden", !active);
+  }
+  if (focus) {
+    const activeDefinition = definitions.find(([name]) => name === next);
+    if (activeDefinition) $(activeDefinition[1]).focus();
+  }
+}
+
+function routeModelOptions(select, route, settings, selectedModelId = null) {
+  select.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = route.inherited_from
+    ? `Use ${route.inherited_from} (${route.model_display_name || "unavailable"})`
+    : "Choose a model…";
+  select.append(placeholder);
+  const payload = {
+    model_type: route.model_type,
+    required_model_capabilities: route.required_model_capabilities || [],
+  };
+  const groups = {
+    compatible: document.createElement("optgroup"),
+    needs_review: document.createElement("optgroup"),
+    incompatible: document.createElement("optgroup"),
+  };
+  groups.compatible.label = "Compatible";
+  groups.needs_review.label = "Needs review";
+  groups.incompatible.label = "Incompatible";
+  for (const model of (settings.models || []).filter((item) => item.enabled)) {
+    const compatibility = agentRouteCompatibility(model, payload);
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = `${model.display_name} · ${model.provider_display_name || "Provider"}`;
+    option.dataset.compatibility = compatibility;
+    option.disabled = compatibility === "incompatible";
+    groups[compatibility].append(option);
+  }
+  for (const group of Object.values(groups)) if (group.children.length) select.append(group);
+  select.value = selectedModelId || "";
+}
+
+function routeStatusCopy(route, model) {
+  const details = [];
+  if (route.inherited_from) details.push(`Uses ${route.inherited_from}`);
+  details.push(route.compatibility === "compatible" ? "Compatible" : route.compatibility === "needs_review" ? "Needs review" : route.compatibility === "incompatible" ? "Incompatible" : "Not assigned");
+  if (model) details.push(agentModelType(model));
+  if (route.credential_status === "detected" || route.credential_status === "not_required") details.push("Connection ready");
+  else if (model) details.push("Key missing");
+  if (route.consumer_status !== "available") details.push("Consumer not installed");
+  return details.join(" · ");
+}
+
+async function persistAgentCapabilityRoute(route, modelId) {
+  const settings = state.agentLlm.settings;
+  if (!settings) return;
+  setAgentLlmOperationState("working", `Saving ${route.capability}…`);
+  try {
+    const view = await invoke("agent_llm_save_capability_route", {
+      expectedRevision: settings.revision,
+      route: {
+        capability: route.capability,
+        model_id: modelId,
+        model_type: route.model_type,
+        required_model_capabilities: route.required_model_capabilities || [],
+      },
+    });
+    applyAgentLlmView(view);
+    setAgentLlmOperationState("success", `${route.label || route.capability} now uses ${view.models.find((model) => model.id === modelId)?.display_name || modelId}.`);
+  } catch (error) {
+    if (isStaleInformationError(error)) {
+      await loadAgentLlmSettings();
+      setAgentLlmOperationState("warning", "Model settings changed in another window. The latest revision was loaded; review the route and try again.");
+    } else {
+      setAgentLlmOperationState("error", reportUiFailure("save capability route", error, "The route was not changed. Review model compatibility and try again."));
+    }
+  }
+}
+
+async function removeAgentCapabilityRoute(route) {
+  const settings = state.agentLlm.settings;
+  if (!settings || route.capability === "agent.chat") return;
+  setAgentLlmOperationState("working", `Removing ${route.capability}…`);
+  try {
+    const view = await invoke("agent_llm_delete_capability_route", {
+      expectedRevision: settings.revision,
+      capability: route.capability,
+    });
+    applyAgentLlmView(view);
+    setAgentLlmOperationState("success", `${route.label || route.capability} route removed. Its model and credential were kept.`);
+  } catch (error) {
+    if (isStaleInformationError(error)) {
+      await loadAgentLlmSettings();
+      setAgentLlmOperationState("warning", "Model settings changed. The latest revision was loaded.");
+    } else {
+      setAgentLlmOperationState("error", reportUiFailure("remove capability route", error, "The route could not be removed."));
+    }
+  }
+}
+
+function reviewAgentRouteModel(modelId) {
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId);
+  if (!model) return;
+  state.agentLlm.selectedProviderId = model.provider_id;
+  state.agentLlm.selectedModelEditorId = model.id;
+  state.agentLlm.editingModelId = model.id;
+  openAgentLlmModelDialog(model.id);
+}
+
+function openAgentConnectionForModel(modelId) {
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId);
+  if (!model) return;
+  state.agentLlm.selectedProviderId = model.provider_id;
+  state.agentLlm.selectedModelEditorId = model.id;
+  state.agentLlm.editingProviderId = model.provider_id;
+  state.agentLlm.editingModelId = model.id;
+  switchAgentLlmView("connections");
+  renderAgentLlmDialog();
+  requestAnimationFrame(() => $("#agentLlmSelectedProviderName")?.focus());
+}
+
+function focusAgentModelRouting(modelId) {
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId);
+  if (!model) return;
+  state.agentLlm.routingFocusModelId = model.id;
+  state.agentLlm.routingExpandedCapability = null;
+  switchAgentLlmView("routing");
+  renderAgentLlmDialog();
+  requestAnimationFrame(() => $("#agentLlmRoutingContext")?.focus());
+}
+
+function createAgentRouteModelCard(model, route, settings) {
+  const compatibility = agentRouteCompatibility(model, route);
+  const provider = settings.providers.find((item) => item.id === model.provider_id) || null;
+  const assigned = route.configured && route.model_id === model.id;
+  const card = document.createElement("article");
+  card.className = `agent-llm-route-model-card${state.agentLlm.routingFocusModelId === model.id ? " highlighted" : ""}`;
+  card.dataset.compatibility = compatibility;
+  const heading = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = model.display_name;
+  const meta = document.createElement("span");
+  meta.textContent = `${provider?.display_name || model.provider_display_name || "Provider"} · ${modelSelectorStatusLabel(model)}`;
+  heading.append(title, meta);
+  card.append(heading);
+  appendModelCapabilityChips(card, model, { includeUnknown: compatibility === "needs_review" });
+  const explanation = document.createElement("p");
+  explanation.textContent = compatibility === "compatible"
+    ? "Matches this route's type and required capabilities."
+    : compatibility === "needs_review"
+      ? "One or more required capabilities are unknown. Review them before assignment."
+      : "This model has an incompatible type or an explicitly unsupported capability.";
+  card.append(explanation);
+  const actions = document.createElement("div");
+  actions.className = "agent-llm-route-model-actions";
+  const use = document.createElement("button");
+  use.type = "button";
+  use.className = "primary";
+  use.textContent = assigned ? "Assigned" : "Use for this route";
+  use.disabled = assigned || compatibility !== "compatible";
+  use.addEventListener("click", () => persistAgentCapabilityRoute(route, model.id));
+  const review = document.createElement("button");
+  review.type = "button";
+  review.textContent = compatibility === "needs_review" ? "Review capabilities" : "Review model";
+  review.addEventListener("click", () => reviewAgentRouteModel(model.id));
+  const connection = document.createElement("button");
+  connection.type = "button";
+  connection.textContent = "Open connection";
+  connection.addEventListener("click", () => openAgentConnectionForModel(model.id));
+  actions.append(use, review, connection);
+  card.append(actions);
+  return card;
+}
+
+function renderAgentLlmRouting(settings) {
+  $("#agentLlmRoutingRevision").textContent = `Revision ${settings.revision ?? "—"}`;
+  const focusedModel = settings.models.find((item) => item.id === state.agentLlm.routingFocusModelId) || null;
+  const context = $("#agentLlmRoutingContext");
+  context.replaceChildren();
+  context.classList.toggle("hidden", !focusedModel);
+  context.tabIndex = focusedModel ? -1 : 0;
+  if (focusedModel) {
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = `Assign uses for ${focusedModel.display_name}`;
+    const note = document.createElement("span");
+    note.textContent = "Choose an explicit compatible route below. Importing a model never assigns it automatically.";
+    copy.append(title, note);
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Show all models";
+    clear.addEventListener("click", () => {
+      state.agentLlm.routingFocusModelId = null;
+      renderAgentLlmDialog();
+    });
+    context.append(copy, clear);
+  }
+  const list = $("#agentLlmRouteList");
+  list.replaceChildren();
+  for (const route of settings.capability_routes || []) {
+    const model = settings.models.find((item) => item.id === route.model_id) || null;
+    const card = document.createElement("article");
+    card.className = "agent-llm-route-card";
+    card.dataset.route = route.capability;
+    card.dataset.state = route.compatibility;
+    const title = document.createElement("div");
+    title.className = "agent-llm-route-title";
+    const strong = document.createElement("strong");
+    strong.textContent = route.label || route.capability;
+    const description = document.createElement("span");
+    description.textContent = `${route.capability} · ${route.description || "Typed capability route"}`;
+    title.append(strong, description);
+    const meta = document.createElement("div");
+    meta.className = "agent-llm-route-meta";
+    meta.textContent = routeStatusCopy(route, model);
+    const actions = document.createElement("div");
+    actions.className = "agent-llm-route-actions";
+    const choose = document.createElement("button");
+    choose.type = "button";
+    choose.className = "primary";
+    const expanded = Boolean(focusedModel) || state.agentLlm.routingExpandedCapability === route.capability;
+    choose.textContent = expanded ? "Hide models" : route.configured ? "Change model" : "Choose model";
+    choose.setAttribute("aria-expanded", String(Boolean(expanded)));
+    choose.addEventListener("click", () => {
+      if (focusedModel) state.agentLlm.routingFocusModelId = null;
+      state.agentLlm.routingExpandedCapability = expanded ? null : route.capability;
+      renderAgentLlmDialog();
+    });
+    const connection = document.createElement("button");
+    connection.type = "button";
+    connection.textContent = "Open connection";
+    connection.disabled = !model;
+    connection.addEventListener("click", () => openAgentConnectionForModel(model?.id));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = route.capability === "agent.chat" ? "Required" : "Remove";
+    remove.disabled = route.capability === "agent.chat" || !route.configured;
+    remove.addEventListener("click", () => removeAgentCapabilityRoute(route));
+    actions.append(choose, connection, remove);
+    const modelPanel = document.createElement("div");
+    modelPanel.className = `agent-llm-route-model-grid${expanded ? "" : " hidden"}`;
+    if (expanded) {
+      const candidates = (focusedModel ? [focusedModel] : settings.models.filter((item) => item.enabled));
+      for (const candidate of candidates) modelPanel.append(createAgentRouteModelCard(candidate, route, settings));
+      if (!candidates.length) {
+        const empty = document.createElement("div");
+        empty.className = "agent-llm-empty";
+        empty.textContent = "No enabled models are available. Add a Provider connection and import a model first.";
+        const add = document.createElement("button");
+        add.type = "button";
+        add.textContent = "Add a connection";
+        add.addEventListener("click", () => switchAgentLlmView("connections", { focus: true }));
+        modelPanel.append(empty, add);
+      }
+    }
+    card.append(title, meta, actions, modelPanel);
+    list.append(card);
+  }
+  renderAgentLlmCustomRouteModels(settings);
+}
+
+function renderAgentLlmCustomRouteModels(settings = state.agentLlm.settings) {
+  const select = $("#agentLlmCustomRouteModel");
+  if (!select || !settings) return;
+  const modelType = $("#agentLlmCustomRouteType").value;
+  const required = $("#agentLlmCustomRouteRequired").value.split(",").map((value) => value.trim()).filter(Boolean);
+  routeModelOptions(select, {
+    model_type: modelType,
+    required_model_capabilities: required,
+    inherited_from: null,
+  }, settings, select.value);
+}
+
+async function saveAgentLlmCustomRoute() {
+  const capability = $("#agentLlmCustomRouteName").value.trim().toLowerCase();
+  const modelType = $("#agentLlmCustomRouteType").value;
+  const required = [...new Set($("#agentLlmCustomRouteRequired").value.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean))];
+  const modelId = $("#agentLlmCustomRouteModel").value;
+  if (!/^[a-z][a-z0-9._-]{0,79}$/.test(capability) || !modelId) {
+    setAgentLlmOperationState("warning", "Enter a canonical route name and choose a compatible model.");
+    return;
+  }
+  if (required.length > 16 || required.some((name) => !AGENT_MODEL_CAPABILITIES.includes(name))) {
+    setAgentLlmOperationState("warning", "Required capabilities must use the supported vocabulary (up to 16 unique names).");
+    return;
+  }
+  await persistAgentCapabilityRoute({
+    capability,
+    label: capability,
+    model_type: modelType,
+    required_model_capabilities: required,
+  }, modelId);
+  if (state.agentLlm.settings?.capability_routes?.some((route) => route.capability === capability)) {
+    $("#agentLlmCustomRouteName").value = "";
+    $("#agentLlmCustomRouteRequired").value = "";
+    $("#agentLlmCustomRoute").open = false;
+  }
+}
+
+function renderAgentLlmLibrary(settings) {
+  const list = $("#agentLlmLibraryList");
+  list.replaceChildren();
+  for (const model of settings.models || []) {
+    const assignments = (settings.capability_routes || [])
+      .filter((route) => route.configured && route.model_id === model.id)
+      .map((route) => route.capability);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-llm-library-card${model.id === state.agentLlm.selectedModelEditorId ? " active" : ""}`;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", String(model.id === state.agentLlm.selectedModelEditorId));
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = model.display_name;
+    const meta = document.createElement("p");
+    meta.textContent = `${model.provider_display_name} · ${agentModelType(model)} · ${assignments.length ? assignments.join(", ") : "Unassigned"}`;
+    copy.append(title, meta);
+    const status = document.createElement("span");
+    status.textContent = model.selector_status;
+    button.append(copy, status);
+    button.addEventListener("click", () => {
+      state.agentLlm.selectedProviderId = model.provider_id;
+      state.agentLlm.selectedModelEditorId = model.id;
+      state.agentLlm.editingModelId = model.id;
+      state.agentLlm.lastTestResult = model.last_test || null;
+      renderAgentLlmDialog();
+    });
+    list.append(button);
+  }
+  if (!settings.models?.length) {
+    const empty = document.createElement("div");
+    empty.className = "agent-llm-empty";
+    empty.textContent = "No models imported yet. Add a Connection, then import a model.";
+    list.append(empty);
+  }
+  const selected = currentModelRecord();
+  $("#agentLlmLibraryEditModel").disabled = !selected;
+  $("#agentLlmLibraryTestModel").disabled = !selected || agentModelType(selected) !== "language" || state.agentLlm.testInFlight;
 }
 
 function renderAgentLlmDialog() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   ensureAgentLlmSelectionState();
+  const selectedProvider = settings.providers.find((provider) => provider.id === state.agentLlm.selectedProviderId) || null;
+  const providerModels = settings.models.filter((model) => model.provider_id === selectedProvider?.id);
+  const selectedModel = providerModels.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
   renderAgentLlmCurrentSelection(settings);
-  $("#agentLlmUserEnviron").textContent = "Choose the model Rho should use. API keys are kept in the system credential store.";
-  $("#agentLlmValidation").textContent = settings.validation_error
+  $("#agentLlmUserEnviron").textContent = "Connections store keys; the model library stores evidence; capability routes choose each typed use.";
+  $("#agentLlmValidationMessage").textContent = settings.validation_error
     ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
     : "";
   $("#agentLlmValidation").classList.toggle("hidden", !settings.validation_error);
+  $("#agentLlmRetrySettings").disabled = state.agentLlm.settingsLoading;
   const providerList = $("#agentLlmProviderList");
   providerList.replaceChildren();
   if (!settings.providers.length) {
@@ -6213,46 +7437,56 @@ function renderAgentLlmDialog() {
     providerList.append(empty);
   } else {
     for (const provider of settings.providers) {
+      const readiness = providerReadiness(provider, settings);
+      const providerModelCount = settings.models.filter((model) => model.provider_id === provider.id).length;
       const row = createAgentLlmListRow(
         provider.display_name,
-        providerConnectionLabel(provider),
-        provider.id === state.agentLlm.selectedProviderId
+        `${readiness.label} · ${providerModelCount} ${providerModelCount === 1 ? "model" : "models"} · ${agentProviderKindLabel(provider.kind)}`,
+        provider.id === state.agentLlm.selectedProviderId,
+        "agent-llm-provider-card",
       );
       row.addEventListener("click", () => {
         clearAgentLlmCredentialInput();
         state.agentLlm.selectedProviderId = provider.id;
         state.agentLlm.editingProviderId = provider.id;
+        state.agentLlm.selectedModelEditorId = settings.models.find((model) => model.provider_id === provider.id && model.id === settings.selected_model_id)?.id
+          || settings.models.find((model) => model.provider_id === provider.id)?.id
+          || null;
+        state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+        state.agentLlm.lastTestResult = null;
+        setAgentLlmOperationState("idle");
+        $("#agentLlmProviderAdvanced").open = false;
         renderAgentLlmDialog();
       });
       providerList.append(row);
     }
   }
+  $("#agentLlmProviderEmpty").classList.toggle("hidden", Boolean(selectedProvider));
+  $("#agentLlmProviderContent").classList.toggle("hidden", !selectedProvider);
+  if (selectedProvider) {
+    const readiness = providerReadiness(selectedProvider, settings);
+    $("#agentLlmSelectedProviderName").textContent = selectedProvider.display_name;
+    $("#agentLlmSelectedProviderKind").textContent = agentProviderKindLabel(selectedProvider.kind);
+    $("#agentLlmSelectedProviderStatus").textContent = readiness.label;
+    $("#agentLlmSelectedProviderStatus").className = `agent-llm-status-badge ${readiness.state}`;
+    renderAgentProviderForm();
+  }
   const modelList = $("#agentLlmModelList");
   modelList.replaceChildren();
-  if (!settings.models.length) {
+  if (!providerModels.length) {
     const empty = document.createElement("div");
     empty.className = "agent-llm-empty";
-    empty.textContent = "No models yet.";
+    empty.textContent = selectedProvider ? "No models for this provider yet." : "Choose a provider first.";
     modelList.append(empty);
   } else {
-    for (const model of settings.models) {
-      const row = createAgentLlmListRow(
-        model.display_name,
-        modelConnectionLabel(model),
-        model.id === state.agentLlm.selectedModelEditorId
-      );
-      row.addEventListener("click", () => {
-        clearAgentLlmCredentialInput();
-        state.agentLlm.selectedModelEditorId = model.id;
-        state.agentLlm.editingModelId = model.id;
-        state.agentLlm.lastTestResult = model.last_test || null;
-        renderAgentLlmDialog();
-      });
-      modelList.append(row);
+    for (const model of providerModels) {
+      modelList.append(createAgentConnectionModelCard(
+        model,
+        settings,
+        model.id === state.agentLlm.selectedModelEditorId,
+      ));
     }
   }
-  renderAgentProviderForm();
-  renderAgentModelForm();
   const result = state.agentLlm.lastTestResult;
   $("#agentLlmTestResult").className = `agent-llm-test-result${result ? ` ${result.status}` : " hidden"}`;
   $("#agentLlmTestResult").textContent = result
@@ -6260,22 +7494,55 @@ function renderAgentLlmDialog() {
       ? `Connection ready${result.latency_ms ? ` · ${result.latency_ms} ms` : ""}`
       : userFacingError(result.message, "The connection could not be verified. Review the provider settings and try again."))
     : "";
-  $("#agentLlmTestModel").disabled = state.agentLlm.testInFlight;
+  $("#agentLlmAddModel").disabled = !selectedProvider;
+  $("#agentLlmEditModel").disabled = !selectedModel;
+  $("#agentLlmSelectDefault").disabled = !selectedModel || !selectedModel.enabled;
+  $("#agentLlmSaveCredential").disabled = !selectedProvider?.api_key_required
+    || selectedProvider?.credential_status === "unavailable";
+  $("#agentLlmTestModel").disabled = !selectedModel || agentModelType(selectedModel) !== "language" || state.agentLlm.testInFlight;
   $("#agentLlmCancelTest").disabled = !state.agentLlm.testInFlight;
   $("#agentLlmCancelTest").classList.toggle("hidden", !state.agentLlm.testInFlight);
+  renderAgentLlmRouting(settings);
+  renderAgentLlmLibrary(settings);
+  switchAgentLlmView(state.agentLlm.activeView);
+  renderAgentLlmOperationStatus();
 }
 
 function openAgentLlmDialog() {
+  if (!state.agentLlm.settingsOpen) {
+    state.agentLlm.returnFocusElement = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  }
   state.agentLlm.settingsOpen = true;
-  $("#agentLlmAdvanced").open = false;
+  const retryFailedRead = Boolean(state.agentLlm.settings?.validation_error);
+  if (retryFailedRead || !(state.agentLlm.settings?.providers || []).length) {
+    state.agentLlm.activeView = "connections";
+  }
+  clearAgentLlmCredentialInput();
+  setAgentLlmMainDialogInert(false);
+  labelAgentLlmModal();
+  $("#agentLlmProviderAdvanced").open = false;
+  setAgentLlmOperationState("idle");
   renderAgentLlmDialog();
   $("#agentLlmDialog").classList.remove("hidden");
+  requestAnimationFrame(() => $("#agentLlmClose").focus());
+  if (retryFailedRead) void retryAgentLlmSettings();
 }
 
 function closeAgentLlmDialog() {
+  if (!state.agentLlm.settingsOpen && $("#agentLlmDialog").classList.contains("hidden")) return;
+  const returnFocus = state.agentLlm.returnFocusElement;
   state.agentLlm.settingsOpen = false;
+  state.agentLlm.returnFocusElement = null;
   clearAgentLlmCredentialInput();
+  closeAgentLlmProviderWizard();
+  closeAgentLlmModelDialog();
   $("#agentLlmDialog").classList.add("hidden");
+  requestAnimationFrame(() => {
+    if (returnFocus?.isConnected && !returnFocus.closest("[inert]")) returnFocus.focus();
+    else $("#agentModelSelector").focus();
+  });
 }
 
 function applyAgentLlmView(view) {
@@ -6307,10 +7574,18 @@ function clearAgentModelForm() {
   $("#agentLlmModelDisplayName").value = "";
   $("#agentLlmModelProvider").value = state.agentLlm.settings?.providers?.[0]?.id || "";
   $("#agentLlmModelId").value = "";
+  $("#agentLlmModelType").value = "language";
   $("#agentLlmModelToolCalling").value = "unknown";
   $("#agentLlmModelReasoning").value = "unknown";
   $("#agentLlmModelVisionInput").value = "unknown";
-  $("#agentLlmModelCapabilitySource").value = "declared";
+  for (const selector of [
+    "#agentLlmModelImageOutput",
+    "#agentLlmModelImageEdit",
+    "#agentLlmModelAudioInput",
+    "#agentLlmModelAudioOutput",
+    "#agentLlmModelStructuredOutput",
+    "#agentLlmModelWebSearch",
+  ]) $(selector).value = "unknown";
   $("#agentLlmModelEnabled").checked = true;
   state.agentLlm.lastTestResult = null;
   $("#agentLlmTestResult").className = "agent-llm-test-result hidden";
@@ -6321,6 +7596,7 @@ function readAgentProviderForm() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   const displayName = $("#agentLlmProviderDisplayName").value.trim();
   const ids = settings.providers.map((provider) => provider.id);
+  const literalBaseUrl = $("#agentLlmProviderBaseUrl").value.trim() || null;
   return {
     id: state.agentLlm.editingProviderId || uniqueAgentId("provider", displayName || "provider", ids),
     display_name: displayName,
@@ -6328,8 +7604,8 @@ function readAgentProviderForm() {
     registered_provider_id: $("#agentLlmRegisteredProviderId").value.trim() || null,
     api_key_env: $("#agentLlmProviderApiKeyEnv").value.trim() || null,
     api_key_required: $("#agentLlmProviderApiKeyRequired").checked,
-    base_url: $("#agentLlmProviderBaseUrl").value.trim() || null,
-    base_url_env: $("#agentLlmProviderBaseUrlEnv").value.trim() || null,
+    base_url: literalBaseUrl,
+    base_url_env: literalBaseUrl ? null : ($("#agentLlmProviderBaseUrlEnv").value.trim() || null),
     wire_api: $("#agentLlmProviderWireApi").value || null,
     disable_stream_options: $("#agentLlmProviderDisableStreamOptions").checked ? true : null,
   };
@@ -6339,20 +7615,437 @@ function readAgentModelForm() {
   const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
   const displayName = $("#agentLlmModelDisplayName").value.trim();
   const ids = settings.models.map((model) => model.id);
+  const existing = settings.models.find((model) => model.id === state.agentLlm.editingModelId) || null;
+  const discovery = state.agentLlm.modelDiscovery.models.find((model) => model.id === $("#agentLlmModelId").value.trim()) || null;
+  const sourceModel = existing || discovery;
+  const evidenceValue = (name, value) => {
+    const source = sourceModel?.capabilities?.[name];
+    return source?.value === value ? structuredClone(source) : agentCapability(value, "user_declared");
+  };
+  const capabilities = {
+    function_call: evidenceValue("function_call", $("#agentLlmModelToolCalling").value),
+    reasoning: evidenceValue("reasoning", $("#agentLlmModelReasoning").value),
+    vision_input: evidenceValue("vision_input", $("#agentLlmModelVisionInput").value),
+    image_output: evidenceValue("image_output", $("#agentLlmModelImageOutput").value),
+    image_edit: evidenceValue("image_edit", $("#agentLlmModelImageEdit").value),
+    audio_input: evidenceValue("audio_input", $("#agentLlmModelAudioInput").value),
+    audio_output: evidenceValue("audio_output", $("#agentLlmModelAudioOutput").value),
+    structured_output: evidenceValue("structured_output", $("#agentLlmModelStructuredOutput").value),
+    web_search: evidenceValue("web_search", $("#agentLlmModelWebSearch").value),
+  };
+  const modelType = $("#agentLlmModelType").value;
   return {
     id: state.agentLlm.editingModelId || uniqueAgentId("model", displayName || "model", ids),
     provider_id: $("#agentLlmModelProvider").value,
     display_name: displayName,
     model_id: $("#agentLlmModelId").value.trim(),
     enabled: $("#agentLlmModelEnabled").checked,
-    capabilities: {
-      tool_calling: $("#agentLlmModelToolCalling").value,
-      reasoning: $("#agentLlmModelReasoning").value,
-      vision_input: $("#agentLlmModelVisionInput").value,
-      source: $("#agentLlmModelCapabilitySource").value,
-    },
-    last_test: currentModelRecord()?.last_test || null,
+    model_type: sourceModel?.model_type?.value === modelType
+      ? structuredClone(sourceModel.model_type)
+      : agentCapability(modelType, "user_declared"),
+    capabilities,
+    last_test: state.agentLlm.settings?.models?.find((model) => model.id === state.agentLlm.editingModelId)?.last_test || null,
   };
+}
+
+function wizardProviderPreset(kind) {
+  return AGENT_PROVIDER_PRESETS[kind] || AGENT_PROVIDER_PRESETS.openai_compatible;
+}
+
+function wizardApiKeyEnvironment(displayName, preset) {
+  if (preset.apiKeyEnv) return preset.apiKeyEnv;
+  const stem = String(displayName || "CUSTOM")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "CUSTOM";
+  return `RHO_${stem}_API_KEY`;
+}
+
+function renderAgentProviderPresetGrid() {
+  const grid = $("#agentLlmWizardProviderGrid");
+  if (!grid) return;
+  const selected = $("#agentLlmWizardProviderKind").value;
+  grid.replaceChildren();
+  for (const [id, preset] of Object.entries(AGENT_PROVIDER_PRESETS)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `agent-llm-provider-preset${id === selected ? " active" : ""}`;
+    button.dataset.providerPreset = id;
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(id === selected));
+    const title = document.createElement("strong");
+    title.textContent = preset.displayName;
+    const description = document.createElement("span");
+    description.textContent = preset.description;
+    const endpoint = document.createElement("small");
+    endpoint.textContent = preset.defaultBaseUrl ? "Managed default endpoint" : "Custom endpoint required";
+    button.append(title, description, endpoint);
+    grid.append(button);
+  }
+}
+
+function syncAgentLlmWizardProviderFields({ resetName = false } = {}) {
+  const kind = $("#agentLlmWizardProviderKind").value;
+  const preset = wizardProviderPreset(kind);
+  const compatible = ["openai_compatible", "local_openai_compatible"].includes(kind);
+  if (resetName || !$("#agentLlmWizardProviderName").value.trim()) {
+    $("#agentLlmWizardProviderName").value = preset.displayName;
+  }
+  if (resetName) $("#agentLlmWizardApiKeyRequired").checked = preset.keyRequired;
+  $("#agentLlmWizardBaseUrlField").classList.remove("hidden");
+  $("#agentLlmWizardBaseUrl").placeholder = preset.defaultBaseUrl || "https://api.example.com/v1";
+  $("#agentLlmWizardBaseUrlHint").textContent = compatible
+    ? "Required for a custom Provider because it has no managed default."
+    : `Optional. Leave blank to use ${preset.defaultBaseUrl}.`;
+  $("#agentLlmWizardCredentialField").classList.toggle("hidden", !$("#agentLlmWizardApiKeyRequired").checked);
+  if (resetName || !$("#agentLlmWizardApiFormat").value) $("#agentLlmWizardApiFormat").value = preset.wireApi || "";
+  renderAgentProviderPresetGrid();
+}
+
+function refreshAgentLlmWizardAccessibility(step) {
+  if (!step || $("#agentLlmProviderWizard").classList.contains("hidden")) return;
+  const surface = $("#agentLlmProviderWizard").querySelector(":scope > .agent-llm-subdialog-surface");
+  const fieldState = new Map(Array.from(surface.querySelectorAll("input[id], select[id]")).map((field) => [
+    field.id,
+    { value: field.value, checked: field instanceof HTMLInputElement ? field.checked : null },
+  ]));
+  const replacement = surface.cloneNode(true);
+  surface.replaceWith(replacement);
+  for (const [id, value] of fieldState) {
+    const field = replacement.querySelector(`#${CSS.escape(id)}`);
+    if (!field) continue;
+    field.value = value.value;
+    if (field instanceof HTMLInputElement && value.checked !== null) field.checked = value.checked;
+  }
+}
+
+function renderAgentLlmWizardStep() {
+  const connection = state.agentLlm.wizardStep === "connection";
+  const connectionStep = $("#agentLlmWizardStepConnection");
+  const modelStep = $("#agentLlmWizardStepModel");
+  connectionStep.classList.toggle("hidden", !connection);
+  modelStep.classList.toggle("hidden", connection);
+  $("#agentLlmWizardConnectionIndicator").classList.toggle("active", connection);
+  $("#agentLlmWizardModelIndicator").classList.toggle("active", !connection);
+  $("#agentLlmWizardConnectionIndicator").setAttribute("aria-current", connection ? "step" : "false");
+  $("#agentLlmWizardModelIndicator").setAttribute("aria-current", connection ? "false" : "step");
+  renderAgentLlmOperationStatus("wizard");
+  refreshAgentLlmWizardAccessibility(connection ? connectionStep : modelStep);
+}
+
+function setAgentLlmMainDialogInert(inert) {
+  const root = $("#agentLlmDialog");
+  root.classList.toggle("agent-llm-parent-suspended", inert);
+  root.removeAttribute("aria-hidden");
+}
+
+function labelAgentLlmModal(titleId = "agentLlmDialogTitle") {
+  const root = $("#agentLlmDialog");
+  const children = [
+    [$("#agentLlmProviderWizard"), "agentLlmWizardTitle"],
+    [$("#agentLlmModelDialog"), "agentLlmModelDialogTitle"],
+  ];
+  for (const [child] of children) {
+    child.removeAttribute("role");
+    child.removeAttribute("aria-modal");
+    child.removeAttribute("aria-labelledby");
+  }
+  if (titleId === "agentLlmDialogTitle") {
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", titleId);
+    return;
+  }
+  const active = children.find(([, childTitleId]) => childTitleId === titleId)?.[0];
+  active?.setAttribute("role", "dialog");
+  active?.setAttribute("aria-modal", "true");
+  active?.setAttribute("aria-labelledby", titleId);
+}
+
+function trapAgentLlmDialogFocus(event, dialog, closeDialog) {
+  if (dialog.classList.contains("hidden")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeDialog();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(dialog.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), details > summary, [tabindex]:not([tabindex="-1"])'
+  )).filter((element) => {
+    const style = window.getComputedStyle(element);
+    return element.getClientRects().length > 0
+      && style.display !== "none"
+      && style.visibility !== "hidden"
+      && !element.closest("[inert]");
+  });
+  if (!focusable.length) return;
+  const activeIndex = focusable.indexOf(document.activeElement);
+  const nextIndex = activeIndex < 0
+    ? (event.shiftKey ? focusable.length - 1 : 0)
+    : (activeIndex + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+  event.preventDefault();
+  focusable[nextIndex].focus();
+}
+
+function readAgentLlmWizardProvider() {
+  const settings = state.agentLlm.settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
+  const choice = $("#agentLlmWizardProviderKind").value;
+  const preset = wizardProviderPreset(choice);
+  const displayName = $("#agentLlmWizardProviderName").value.trim();
+  const ids = settings.providers.map((provider) => provider.id);
+  return {
+    id: state.agentLlm.wizardProviderId || uniqueAgentId("provider", displayName || choice, ids),
+    display_name: displayName,
+    kind: preset.kind,
+    registered_provider_id: preset.registeredProviderId,
+    api_key_env: $("#agentLlmWizardApiKeyRequired").checked ? wizardApiKeyEnvironment(displayName, preset) : null,
+    api_key_required: $("#agentLlmWizardApiKeyRequired").checked,
+    base_url: $("#agentLlmWizardBaseUrl").value.trim() || null,
+    base_url_env: null,
+    wire_api: $("#agentLlmWizardApiFormat").value || preset.wireApi || null,
+    disable_stream_options: null,
+  };
+}
+
+function openAgentLlmProviderWizard() {
+  state.agentLlm.wizardReturnFocusElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  state.agentLlm.wizardOpen = true;
+  state.agentLlm.wizardStep = "connection";
+  state.agentLlm.wizardProviderId = null;
+  state.agentLlm.wizardModelId = null;
+  state.agentLlm.wizardOperation = { state: "idle", message: "" };
+  $("#agentLlmWizardProviderKind").value = "deepseek";
+  $("#agentLlmWizardProviderName").value = "";
+  $("#agentLlmWizardBaseUrl").value = "";
+  $("#agentLlmWizardApiFormat").value = "";
+  $("#agentLlmWizardApiKeyRequired").checked = true;
+  $("#agentLlmWizardModelId").value = "";
+  $("#agentLlmWizardModelName").value = "";
+  $("#agentLlmWizardModelEnabled").checked = true;
+  $("#agentLlmWizardModelType").value = "language";
+  $("#agentLlmWizardModelToolCalling").value = "unknown";
+  $("#agentLlmWizardModelReasoning").value = "unknown";
+  $("#agentLlmWizardModelVisionInput").value = "unknown";
+  for (const selector of [
+    "#agentLlmWizardModelImageOutput",
+    "#agentLlmWizardModelImageEdit",
+    "#agentLlmWizardModelAudioInput",
+    "#agentLlmWizardModelAudioOutput",
+    "#agentLlmWizardModelStructuredOutput",
+    "#agentLlmWizardModelWebSearch",
+  ]) $(selector).value = "unknown";
+  $("#agentLlmWizardManualModel").open = false;
+  resetAgentLlmDiscovery("wizard", null);
+  clearAgentLlmCredentialInput();
+  syncAgentLlmWizardProviderFields({ resetName: true });
+  setAgentLlmMainDialogInert(true);
+  $("#agentLlmProviderWizard").classList.remove("hidden");
+  renderAgentLlmWizardStep();
+  labelAgentLlmModal("agentLlmWizardTitle");
+  $("#agentLlmWizardProviderGrid [aria-checked=\"true\"]")?.focus();
+}
+
+function closeAgentLlmProviderWizard() {
+  const returnFocus = state.agentLlm.wizardReturnFocusElement;
+  state.agentLlm.wizardReturnFocusElement = null;
+  state.agentLlm.wizardOpen = false;
+  resetAgentLlmDiscovery("wizard", null);
+  clearAgentLlmCredentialInput();
+  $("#agentLlmProviderWizard").classList.add("hidden");
+  if (!state.agentLlm.modelDialogOpen) {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  requestAnimationFrame(() => {
+    if (!state.agentLlm.settingsOpen) return;
+    if (returnFocus?.isConnected && returnFocus.getClientRects().length && !returnFocus.closest("[inert], .hidden")) {
+      returnFocus.focus();
+    } else {
+      $(`[data-agent-llm-view="${state.agentLlm.activeView}"]`)?.focus();
+    }
+  });
+}
+
+async function advanceAgentLlmProviderWizard() {
+  const provider = readAgentLlmWizardProvider();
+  const credential = $("#agentLlmWizardCredential").value;
+  const savedProvider = state.agentLlm.settings?.providers?.find((item) => item.id === state.agentLlm.wizardProviderId) || null;
+  const hasStoredCredential = savedProvider?.credential_status === "detected" && savedProvider?.credential_source === "system";
+  if (!provider.display_name) {
+    clearAgentLlmCredentialInput();
+    setAgentLlmOperationState("warning", "Enter a provider name before continuing.", "wizard");
+    $("#agentLlmWizardProviderName").focus();
+    return;
+  }
+  if (["openai_compatible", "local_openai_compatible"].includes(provider.kind) && !provider.base_url) {
+    clearAgentLlmCredentialInput();
+    setAgentLlmOperationState("warning", "Enter the provider Base URL before continuing.", "wizard");
+    $("#agentLlmWizardBaseUrl").focus();
+    return;
+  }
+  if (provider.api_key_required && !credential && !hasStoredCredential) {
+    setAgentLlmOperationState("warning", "Enter an API key, or turn off API key required, before continuing.", "wizard");
+    $("#agentLlmWizardCredential").focus();
+    return;
+  }
+  setAgentLlmOperationState("working", "Saving provider connection…", "wizard");
+  try {
+    let view = await invoke("agent_llm_save_provider", { provider });
+    state.agentLlm.wizardProviderId = provider.id;
+    state.agentLlm.selectedProviderId = provider.id;
+    state.agentLlm.editingProviderId = provider.id;
+    applyAgentLlmView(view);
+    if (provider.api_key_required && credential) {
+      try {
+        view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
+        applyAgentLlmView(view);
+      } catch (error) {
+        clearAgentLlmCredentialInput();
+        setAgentLlmOperationState("warning", `Provider saved; API key not stored. ${userFacingError(error, "Try storing the key again.")}`, "wizard");
+        return;
+      }
+    }
+    state.agentLlm.wizardStep = "model";
+    resetAgentLlmDiscovery("wizard", provider.id);
+    setAgentLlmOperationState("success", "Connection saved. Fetching this Provider's available models...", "wizard");
+    renderAgentLlmWizardStep();
+    $("#agentLlmWizardDiscoveryStatus").focus();
+    void discoverAgentLlmModels(provider.id, "wizard");
+  } catch (error) {
+    setAgentLlmOperationState("error", reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection fields and try again."), "wizard");
+  } finally {
+    clearAgentLlmCredentialInput();
+  }
+}
+
+async function finishAgentLlmProviderWizard() {
+  const providerId = state.agentLlm.wizardProviderId;
+  const modelId = $("#agentLlmWizardModelId").value.trim();
+  const displayName = $("#agentLlmWizardModelName").value.trim() || modelId;
+  if (!providerId) {
+    setAgentLlmOperationState("error", "Save the provider connection before adding a model.", "wizard");
+    return;
+  }
+  if (!modelId) {
+    const discovery = state.agentLlm.wizardDiscovery;
+    setAgentLlmOperationState("warning", "Choose an available model, or enter a model ID manually, before finishing.", "wizard");
+    if (discovery.status === "ready" && discovery.models.length) {
+      $("#agentLlmWizardDiscoveredModelCards button")?.focus();
+    } else {
+      $("#agentLlmWizardManualModel").open = true;
+      $("#agentLlmWizardModelId").focus();
+    }
+    return;
+  }
+  if (!state.agentLlm.wizardModelId) {
+    state.agentLlm.wizardModelId = uniqueAgentId(
+      "model",
+      displayName || modelId,
+      (state.agentLlm.settings?.models || []).map((model) => model.id),
+    );
+  }
+  const discovered = state.agentLlm.wizardDiscovery.models.find(
+    (item) => item.id === $("#agentLlmWizardDiscoveredModel").value && item.id === modelId,
+  );
+  const wizardCapability = (name, value) => {
+    const evidence = discovered?.capabilities?.[name];
+    return evidence?.value === value ? structuredClone(evidence) : agentCapability(value, "user_declared");
+  };
+  const capabilities = emptyAgentCapabilities();
+  capabilities.function_call = wizardCapability("function_call", $("#agentLlmWizardModelToolCalling").value);
+  capabilities.reasoning = wizardCapability("reasoning", $("#agentLlmWizardModelReasoning").value);
+  capabilities.vision_input = wizardCapability("vision_input", $("#agentLlmWizardModelVisionInput").value);
+  capabilities.image_output = wizardCapability("image_output", $("#agentLlmWizardModelImageOutput").value);
+  capabilities.image_edit = wizardCapability("image_edit", $("#agentLlmWizardModelImageEdit").value);
+  capabilities.audio_input = wizardCapability("audio_input", $("#agentLlmWizardModelAudioInput").value);
+  capabilities.audio_output = wizardCapability("audio_output", $("#agentLlmWizardModelAudioOutput").value);
+  capabilities.structured_output = wizardCapability("structured_output", $("#agentLlmWizardModelStructuredOutput").value);
+  capabilities.web_search = wizardCapability("web_search", $("#agentLlmWizardModelWebSearch").value);
+  const modelType = $("#agentLlmWizardModelType").value;
+  const model = {
+    id: state.agentLlm.wizardModelId,
+    provider_id: providerId,
+    display_name: displayName,
+    model_id: modelId,
+    enabled: $("#agentLlmWizardModelEnabled").checked,
+    model_type: discovered?.model_type?.value === modelType
+      ? structuredClone(discovered.model_type)
+      : agentCapability(modelType, "user_declared"),
+    capabilities,
+    last_test: null,
+  };
+  setAgentLlmOperationState("working", "Saving model…", "wizard");
+  let savedView;
+  try {
+    savedView = await invoke("agent_llm_save_model", { model });
+    state.agentLlm.selectedModelEditorId = model.id;
+    applyAgentLlmView(savedView);
+  } catch (error) {
+    setAgentLlmOperationState("warning", `Provider saved; model not saved. ${userFacingError(error, "Review the model fields and try again.")}`, "wizard");
+    return;
+  }
+  closeAgentLlmProviderWizard();
+  state.agentLlm.activeView = "routing";
+  setAgentLlmOperationState("success", `${displayName} is saved. Assign it to a capability route when needed.`);
+  renderAgentLlmDialog();
+}
+
+function finishAgentLlmProviderWizardLater() {
+  const provider = currentProviderRecord();
+  closeAgentLlmProviderWizard();
+  setAgentLlmOperationState("warning", `${provider?.display_name || "Provider"} was saved without a model. Add a model when you are ready.`);
+  renderAgentLlmDialog();
+}
+
+function openAgentLlmModelDialog(modelId = null) {
+  state.agentLlm.modelReturnFocusElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  clearAgentLlmCredentialInput();
+  state.agentLlm.modelDialogOpen = true;
+  state.agentLlm.editingModelId = modelId;
+  state.agentLlm.modelOperation = { state: "idle", message: "" };
+  const model = state.agentLlm.settings?.models?.find((item) => item.id === modelId) || null;
+  const providerId = model?.provider_id || state.agentLlm.selectedProviderId || state.agentLlm.settings?.providers?.[0]?.id || null;
+  resetAgentLlmDiscovery("model", providerId);
+  renderAgentModelForm();
+  $("#agentLlmModelDialogTitle").textContent = modelId ? "Edit model" : "Add model";
+  $("#agentLlmModelDanger").classList.toggle("hidden", !modelId);
+  renderAgentLlmOperationStatus("model");
+  setAgentLlmMainDialogInert(true);
+  $("#agentLlmModelDialog").classList.remove("hidden");
+  labelAgentLlmModal("agentLlmModelDialogTitle");
+  if (modelId) {
+    $("#agentLlmModelId").focus();
+  } else {
+    $("#agentLlmModelDiscoveryStatus").focus();
+    void discoverAgentLlmModels(providerId, "model");
+  }
+}
+
+function closeAgentLlmModelDialog() {
+  const returnFocus = state.agentLlm.modelReturnFocusElement;
+  state.agentLlm.modelReturnFocusElement = null;
+  state.agentLlm.modelDialogOpen = false;
+  resetAgentLlmDiscovery("model", null);
+  state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+  $("#agentLlmModelDialog").classList.add("hidden");
+  if (!state.agentLlm.wizardOpen) {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  requestAnimationFrame(() => {
+    if (!state.agentLlm.settingsOpen) return;
+    if (returnFocus?.isConnected && returnFocus.getClientRects().length && !returnFocus.closest("[inert], .hidden")) {
+      returnFocus.focus();
+    } else {
+      $(`[data-agent-llm-view="${state.agentLlm.activeView}"]`)?.focus();
+    }
+  });
 }
 
 async function copyText(text) {
@@ -6369,19 +8062,24 @@ async function copyText(text) {
 }
 
 async function saveAgentProvider() {
+  const provider = readAgentProviderForm();
+  provider.display_name = provider.display_name || agentProviderKindLabel(provider.kind);
+  setAgentLlmOperationState("working", "Saving provider details…");
   try {
-    const provider = readAgentProviderForm();
     const view = await invoke("agent_llm_save_provider", { provider });
     state.agentLlm.selectedProviderId = provider.id;
     state.agentLlm.editingProviderId = provider.id;
     applyAgentLlmView(view);
-    toast(`Saved provider ${provider.display_name || provider.id}.`);
+    setAgentLlmOperationState("success", `Saved provider ${provider.display_name || provider.id}.`);
   } catch (error) {
-    toast(reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save model provider", error, "The provider could not be saved. Review the connection settings and try again."));
+  } finally {
+    clearAgentLlmCredentialInput();
   }
 }
 
 async function deleteAgentProvider() {
+  clearAgentLlmCredentialInput();
   const provider = currentProviderRecord();
   if (!provider) {
     toast("Select a provider to delete.", true);
@@ -6389,68 +8087,110 @@ async function deleteAgentProvider() {
   }
   if (!await confirmAction({
     title: "Delete provider",
-    message: `Delete provider ${provider.display_name}? This will also remove all its models.`,
+    message: `Delete provider ${provider.display_name}? Its models must be removed first.`,
     confirmLabel: "Delete provider",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Deleting ${provider.display_name}…`);
   try {
     const view = await invoke("agent_llm_delete_provider", { providerId: provider.id });
     state.agentLlm.selectedProviderId = view.providers[0]?.id || null;
     state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
     applyAgentLlmView(view);
-    renderAgentProviderForm();
-    toast(`Deleted provider ${provider.display_name}.`);
+    setAgentLlmOperationState("success", `Deleted provider ${provider.display_name}.`);
   } catch (error) {
-    toast(reportUiFailure("delete model provider", error, "The provider could not be deleted. Refresh model settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("delete model provider", error, "The provider could not be deleted. Remove its models first, then try again."));
   }
 }
 
 async function saveAgentModel() {
+  const model = readAgentModelForm();
+  const existing = state.agentLlm.settings?.models?.find((item) => item.id === model.id) || null;
+  model.display_name = model.display_name || model.model_id;
+  if (!model.provider_id || !model.model_id) {
+    setAgentLlmOperationState("warning", "Choose an available model, or enter a model ID manually, before saving.", "model");
+    if (state.agentLlm.modelDiscovery.status === "ready" && state.agentLlm.modelDiscovery.models.length) {
+      $("#agentLlmModelDiscoveredModelCards button")?.focus();
+    } else {
+      $("#agentLlmModelManualFields").open = true;
+      $("#agentLlmModelId").focus();
+    }
+    return;
+  }
+  setAgentLlmOperationState("working", "Saving model…", "model");
   try {
-    const model = readAgentModelForm();
-    const view = await invoke("agent_llm_save_model", { model });
+    let view = state.agentLlm.settings;
+    if (!existing) {
+      view = await invoke("agent_llm_save_model", { model });
+    } else {
+      const metadataModel = {
+        ...model,
+        model_type: structuredClone(existing.model_type),
+        capabilities: structuredClone(existing.capabilities),
+        last_test: existing.last_test || null,
+      };
+      const metadataChanged = ["provider_id", "display_name", "model_id", "enabled"]
+        .some((name) => metadataModel[name] !== existing[name]);
+      if (metadataChanged) view = await invoke("agent_llm_save_model", { model: metadataModel });
+      const patch = {
+        model_type: model.model_type.value !== existing.model_type.value ? model.model_type.value : null,
+        capabilities: Object.fromEntries(AGENT_MODEL_CAPABILITIES
+          .filter((name) => model.capabilities[name].value !== existing.capabilities[name].value)
+          .map((name) => [name, model.capabilities[name].value])),
+      };
+      if (patch.model_type || Object.keys(patch.capabilities).length) {
+        try {
+          view = await invoke("agent_llm_declare_model_capabilities", {
+            expectedRevision: view.revision,
+            modelId: model.id,
+            patch,
+          });
+        } catch (error) {
+          applyAgentLlmView(view);
+          setAgentLlmOperationState("warning", `Model details were saved, but capability evidence was not changed. ${userFacingError(error, "Reload and review the model again.")}`, "model");
+          return;
+        }
+      }
+    }
+    state.agentLlm.selectedProviderId = model.provider_id;
     state.agentLlm.selectedModelEditorId = model.id;
     state.agentLlm.editingModelId = model.id;
     applyAgentLlmView(view);
-    toast(`Saved model ${model.display_name || model.id}.`);
+    closeAgentLlmModelDialog();
+    setAgentLlmOperationState("success", `Saved model ${model.display_name || model.id}.`);
+    renderAgentLlmDialog();
   } catch (error) {
-    toast(reportUiFailure("save model", error, "The model could not be saved. Review its provider and settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save model", error, "The model could not be saved. Review its provider and settings and try again."), "model");
   }
 }
 
-async function saveAgentLlmConfiguration() {
+async function saveAgentLlmCredential() {
+  const provider = currentProviderRecord();
   const credential = $("#agentLlmCredential").value;
+  if (!provider?.api_key_required) {
+    setAgentLlmOperationState("warning", "The selected provider does not require an API key.");
+    clearAgentLlmCredentialInput();
+    return;
+  }
+  if (!credential) {
+    setAgentLlmOperationState("warning", "Enter a new API key before saving. The existing stored key was not changed.");
+    return;
+  }
+  setAgentLlmOperationState("working", `Saving the API key for ${provider.display_name}…`);
   try {
-    const provider = readAgentProviderForm();
-    const model = readAgentModelForm();
-    provider.display_name = provider.display_name || agentProviderKindLabel(provider.kind);
-    model.provider_id = provider.id;
-    model.display_name = model.display_name || model.model_id;
-    if (!model.model_id) throw new Error("Enter a model before saving.");
-
-    let view = await invoke("agent_llm_save_provider", { provider });
-    state.agentLlm.selectedProviderId = provider.id;
-    state.agentLlm.editingProviderId = provider.id;
-    view = await invoke("agent_llm_save_model", { model });
-    if (credential) {
-      view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
-    }
-    state.agentLlm.selectedModelEditorId = model.id;
-    state.agentLlm.editingModelId = model.id;
+    const view = await invoke("agent_llm_set_credential", { providerId: provider.id, credential });
     applyAgentLlmView(view);
-    const savedProvider = view.providers.find((item) => item.id === provider.id);
-    toast(savedProvider?.api_key_required && savedProvider.credential_status !== "detected"
-      ? "Settings saved. Add an API key before using this model."
-      : "Model settings saved.");
+    setAgentLlmOperationState("success", `API key stored securely for ${provider.display_name}.`);
   } catch (error) {
-    toast(reportUiFailure("save model settings", error,
-      "The settings could not be fully saved. Review the required fields and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("save API key", error,
+      "The API key could not be stored. The provider and model settings were not changed."));
   } finally {
     clearAgentLlmCredentialInput();
   }
 }
 
 async function deleteAgentLlmCredential() {
+  clearAgentLlmCredentialInput();
   const provider = currentProviderRecord();
   if (!provider || provider.credential_source !== "system") return;
   if (!await confirmAction({
@@ -6459,12 +8199,13 @@ async function deleteAgentLlmCredential() {
     confirmLabel: "Remove key",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Removing the stored API key for ${provider.display_name}…`);
   try {
     applyAgentLlmView(await invoke("agent_llm_delete_credential", { providerId: provider.id }));
-    toast("Stored API key removed.");
+    setAgentLlmOperationState("success", "Stored API key removed.");
   } catch (error) {
-    toast(reportUiFailure("remove stored API key", error,
-      "The stored API key could not be removed. Try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("remove stored API key", error,
+      "The stored API key could not be removed. Try again."));
   } finally {
     clearAgentLlmCredentialInput();
   }
@@ -6482,60 +8223,68 @@ async function deleteAgentModel() {
     confirmLabel: "Delete model",
     destructive: true,
   })) return;
+  setAgentLlmOperationState("working", `Deleting ${model.display_name}…`, "model");
   try {
-    let replacementModelId = null;
-    if (state.agentLlm.settings?.selected_model_id === model.id) {
-      replacementModelId = (state.agentLlm.settings.models || []).find((item) => item.enabled && item.id !== model.id)?.id || null;
-      if (!replacementModelId) {
-        toast("Select another enabled model before deleting the current default.", true);
-        return;
-      }
-    }
     const view = await invoke("agent_llm_delete_model", {
       request: {
         model_id: model.id,
-        replacement_model_id: replacementModelId,
+        replacement_model_id: null,
       },
     });
     state.agentLlm.selectedModelEditorId = view.selected_model_id || view.models[0]?.id || null;
     state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
     state.agentLlm.lastTestResult = null;
     applyAgentLlmView(view);
-    toast(`Deleted model ${model.display_name}.`);
+    closeAgentLlmModelDialog();
+    setAgentLlmOperationState("success", `Deleted model ${model.display_name}.`);
+    renderAgentLlmDialog();
   } catch (error) {
-    toast(reportUiFailure("delete model", error, "The model could not be deleted. Refresh model settings and try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("delete model", error, "The model could not be deleted. Reassign or remove every route that uses it, then try again."), "model");
   }
 }
 
 async function selectAgentDefaultModel() {
+  clearAgentLlmCredentialInput();
   const model = currentModelRecord();
   if (!model) {
-    toast("Select a model to use as default.", true);
+    setAgentLlmOperationState("warning", "Select a model to use for the next Agent turn.");
     return;
   }
+  setAgentLlmOperationState("working", `Selecting ${model.display_name}…`);
   try {
-    const view = await invoke("agent_llm_select_model", { request: { model_id: model.id } });
+    const view = await invoke("agent_llm_select_model", {
+      request: { modelId: model.id, expectedRevision: state.agentLlm.settings.revision },
+    });
     applyAgentLlmView(view);
-    toast(`Selected ${model.display_name} for the next Agent turns.`);
+    setAgentLlmOperationState("success", `${model.display_name} is assigned to Chat.`);
   } catch (error) {
-    toast(reportUiFailure("select model", error, "The model could not be selected. Refresh model settings and try again."), true);
+    if (isStaleInformationError(error)) {
+      await loadAgentLlmSettings();
+      setAgentLlmOperationState("warning", "Model settings changed. The latest revision was loaded; review Chat and try again.");
+    } else {
+      setAgentLlmOperationState("error", reportUiFailure("assign Chat route", error, "Chat was not changed. Review model compatibility and try again."));
+    }
   }
 }
 
 async function testAgentModelConnection() {
+  clearAgentLlmCredentialInput();
   const model = currentModelRecord();
   if (!model) {
-    toast("Select a model to test.", true);
+    setAgentLlmOperationState("warning", "Select a model to test.");
     return;
   }
   try {
     state.agentLlm.testInFlight = true;
+    setAgentLlmOperationState("working", `Testing ${model.display_name}. This sends a small real provider request…`);
     renderAgentLlmDialog();
     $("#agentLlmTestResult").className = "agent-llm-test-result";
     $("#agentLlmTestResult").textContent = "Testing connection...";
     const view = await invoke("agent_llm_test_model", { modelId: model.id });
     state.agentLlm.lastTestResult = view.models.find((item) => item.id === model.id)?.last_test || null;
     applyAgentLlmView(view);
+    const latency = state.agentLlm.lastTestResult?.latency_ms;
+    setAgentLlmOperationState("success", `Connection ready${latency ? ` · ${latency} ms` : ""}.`);
   } catch (error) {
     const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
     state.agentLlm.lastTestResult = {
@@ -6543,51 +8292,23 @@ async function testAgentModelConnection() {
       latency_ms: null,
       message: message.includes("cancelled") ? "Connection test cancelled." : message,
     };
+    setAgentLlmOperationState(message.includes("cancelled") ? "warning" : "error", state.agentLlm.lastTestResult.message);
     renderAgentLlmDialog();
-    if (!message.includes("cancelled")) toast(message, true);
   } finally {
     state.agentLlm.testInFlight = false;
     renderAgentLlmDialog();
   }
 }
 
-async function loadAgentLlmCatalog() {
-  const button = $("#agentLlmLoadCatalog");
-  button.disabled = true;
-  try {
-    const catalog = await invoke("agent_llm_catalog");
-    state.agentLlm.catalog = Array.isArray(catalog) ? catalog : [];
-    state.agentLlm.catalogLoaded = true;
-    renderAgentLlmCatalogOptions();
-    toast(`Loaded ${state.agentLlm.catalog.length} catalog models.`);
-  } catch (error) {
-    toast(reportUiFailure("load model catalog", error, "The model catalog could not be loaded. Check the connection and try again."), true);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function applySelectedCatalogModel() {
-  const value = $("#agentLlmCatalogModel").value;
-  if (!value) return;
-  const entry = state.agentLlm.catalog.find((item) => `${item.provider}:${item.id}` === value);
-  if (!entry) return;
-  $("#agentLlmModelId").value = entry.id;
-  $("#agentLlmModelDisplayName").value = entry.display_name || entry.id;
-  $("#agentLlmModelToolCalling").value = entry.capabilities?.tool_calling || "unknown";
-  $("#agentLlmModelReasoning").value = entry.capabilities?.reasoning || "unknown";
-  $("#agentLlmModelVisionInput").value = entry.capabilities?.vision_input || "unknown";
-  $("#agentLlmModelCapabilitySource").value = entry.capabilities?.source || "catalog";
-}
-
 async function cancelAgentModelTest() {
   if (!state.agentLlm.testInFlight) return;
+  setAgentLlmOperationState("working", "Cancelling connection test…");
   try {
     await invoke("agent_llm_cancel_test");
     $("#agentLlmTestResult").className = "agent-llm-test-result";
     $("#agentLlmTestResult").textContent = "Cancelling connection test...";
   } catch (error) {
-    toast(reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."), true);
+    setAgentLlmOperationState("error", reportUiFailure("cancel model test", error, "The connection test could not be stopped. Wait for it to finish, then try again."));
   }
 }
 
@@ -10209,8 +11930,76 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "usability-save", "model-settings"].includes(scenario)) return;
   state.previewScenarioApplied = true;
+  if (scenario === "model-settings") {
+    const modelSettingsPreviewState = previewParams.get("state") || "default";
+    if (modelSettingsPreviewState === "empty") {
+      mockAgentLlmSystemCredentials.clear();
+      mockAgentLlmSettings = rebuildMockAgentLlmSettings({
+        schema_version: 2,
+        revision: 1,
+        providers: [],
+        models: [],
+        persisted_capability_routes: [],
+        capability_routes: [],
+        selected_model: null,
+        user_environ: { path: "", source: "system" },
+        validation_error: null,
+      });
+    } else if (modelSettingsPreviewState === "key-missing") {
+      mockAgentLlmSystemCredentials.delete(mockAgentLlmSettings.providers[0].id);
+      mockAgentLlmSettings.providers[0].credential_status = "not_detected";
+      mockAgentLlmSettings.providers[0].credential_source = "none";
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "storage-unavailable") {
+      mockAgentLlmSettings.providers[0].credential_status = "unavailable";
+      mockAgentLlmSettings.providers[0].credential_source = "unavailable";
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "disabled-models") {
+      mockAgentLlmSettings.models = mockAgentLlmSettings.models.map((model) => ({ ...model, enabled: false }));
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "no-models") {
+      mockAgentLlmSettings.models = [];
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "ready-to-test") {
+      mockAgentLlmSettings.models = mockAgentLlmSettings.models.map((model) => ({ ...model, last_test: null }));
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "connection-error") {
+      mockAgentLlmSettings.models[0].last_test = {
+        status: "error",
+        checked_at: new Date().toISOString(),
+        latency_ms: null,
+        error_class: "network",
+        message: "Preview connection failure.",
+      };
+      rebuildMockAgentLlmSettings();
+    } else if (modelSettingsPreviewState === "long-name") {
+      mockAgentLlmSettings.providers[0].display_name = "DeepSeek Research Gateway With A Deliberately Long Provider Name";
+      mockAgentLlmSettings.models[0].display_name = "DeepSeek V4 Flash With Extended Reasoning And A Deliberately Long Model Name";
+      rebuildMockAgentLlmSettings();
+    }
+    await loadAgentLlmSettings();
+    openAgentLlmDialog();
+    if (previewParams.get("state") === "wizard") openAgentLlmProviderWizard();
+    if (previewParams.get("state") === "model") openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId);
+    if (previewParams.get("state") === "add-model") openAgentLlmModelDialog(null);
+    if (previewParams.get("state") === "advanced") {
+      switchAgentLlmView("connections");
+      $("#agentLlmProviderAdvanced").open = true;
+    }
+    if (previewParams.get("state") === "routing") {
+      state.agentLlm.routingExpandedCapability = "agent.chat";
+      switchAgentLlmView("routing");
+      renderAgentLlmDialog();
+    }
+    if (previewParams.get("state") === "add-model") {
+      window.setTimeout(() => recordPreviewLayoutEvidence(), 140);
+    } else {
+      requestAnimationFrame(() => recordPreviewLayoutEvidence());
+    }
+    return;
+  }
   if (scenario === "interface-shell") {
     state.posture = "human";
     applyPostureLayout();
@@ -10802,7 +12591,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "model-settings"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -10838,6 +12627,43 @@ function recordPreviewLayoutEvidence() {
       rects: { transcript, prompt, tabs },
     };
     target.textContent = JSON.stringify(evidence);
+    return;
+  }
+  if (scenario === "model-settings") {
+    const dialog = rectEvidence($("#agentLlmDialog .agent-llm-surface"));
+    const shell = rectEvidence($("#agentLlmShell"));
+    const rail = rectEvidence($(".agent-llm-provider-rail"));
+    const detail = rectEvidence($("#agentLlmProviderDetail"));
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      state: previewParams.get("state") || "default",
+      counts: {
+        providers: $$(".agent-llm-provider-card").length,
+        visible_models: $$(".agent-llm-connection-model-card").length,
+      },
+      disclosures: {
+        provider_advanced_open: $("#agentLlmProviderAdvanced").open,
+        provider_danger_open: $("#agentLlmProviderDanger").open,
+        wizard_open: !$("#agentLlmProviderWizard").classList.contains("hidden"),
+        model_editor_open: !$("#agentLlmModelDialog").classList.contains("hidden"),
+        model_manual_open: $("#agentLlmModelManualFields").open,
+        wizard_manual_open: $("#agentLlmWizardManualModel").open,
+      },
+      discovery: {
+        model_status: state.agentLlm.modelDiscovery.status,
+        wizard_status: state.agentLlm.wizardDiscovery.status,
+        model_options: $("#agentLlmModelDiscoveredModel").options.length - 1,
+        wizard_options: $("#agentLlmWizardDiscoveredModel").options.length - 1,
+      },
+      credential_inputs_empty: [$("#agentLlmCredential"), $("#agentLlmWizardCredential")]
+        .every((input) => !input.value),
+      overflow: {
+        document_x: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        dialog_x: Boolean(dialog && dialog.width > window.innerWidth),
+      },
+      overlap: { rail_with_detail: rectsOverlap(rail, detail) },
+      rects: { dialog, shell, rail, detail },
+    });
     return;
   }
   if (scenario === "interface-shell") {
@@ -12878,7 +14704,6 @@ async function sendAgentPrompt() {
     const response = await invoke("run_agent", {
       prompt,
       mode: state.agentMode,
-      modelId: selectedModelId,
       autoApprove: authorizeChanges,
       editorContext,
     });
@@ -14474,6 +16299,7 @@ async function openAboutDialog() {
 
 function updateFailureMessage(error) {
   const message = String(error);
+  if (message.includes("UPDATE_PLATFORM_UNAVAILABLE")) return "This release does not include an installer for this Mac yet.";
   if (message.includes("UPDATE_HTTP")) return "The update service returned an unexpected response.";
   if (message.includes("UPDATE_INVALID")) return "The update service returned invalid release information.";
   return "Rho could not reach the update service. Check your connection or proxy and try again.";
@@ -14959,6 +16785,9 @@ async function handleExternalDocumentChange(path) {
 async function hydrateProject(response) {
   state.projectRefreshSequence += 1;
   clearAgentLlmCredentialInput();
+  state.agentLlm.operation = { state: "idle", message: "" };
+  state.agentLlm.wizardOperation = { state: "idle", message: "" };
+  state.agentLlm.modelOperation = { state: "idle", message: "" };
   closeAgentContextMenu();
   hideAgentFileMentions();
   clearAgentEditHighlight();
@@ -15309,12 +17138,12 @@ window.addEventListener("beforeunload", () => {
   flushSessionSnapshot().catch(() => {});
 });
 $("#editor").addEventListener("keydown", (event) => {
-  if (event.ctrlKey && event.shiftKey && event.key === "Enter") {
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "Enter") {
     event.preventDefault();
     runActiveFile();
     return;
   }
-  if (event.ctrlKey && event.key === "Enter") {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     runSelectionOrCurrentLine();
     return;
@@ -15401,8 +17230,13 @@ $("#agentModelSelectorMenu").addEventListener("keydown", (event) => {
   }
 });
 $("#agentLlmClose").addEventListener("click", closeAgentLlmDialog);
+$("#agentLlmRetrySettings").addEventListener("click", () => void retryAgentLlmSettings());
 $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
+});
+$("#agentLlmDialog").addEventListener("keydown", (event) => {
+  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen) return;
+  trapAgentLlmDialogFocus(event, $("#agentLlmDialog"), closeAgentLlmDialog);
 });
 $("#environmentOperationClose").addEventListener("click", closeEnvironmentOperationDialog);
 $("#environmentOperationDialog").addEventListener("click", (event) => {
@@ -15429,35 +17263,136 @@ $("#updateView").addEventListener("click", async () => {
   localStorage.setItem("rho.update.dismissed", result.available_version);
   await invoke("open_rho_website", { url: result.release_page_url });
 });
-$("#agentLlmAddProvider").addEventListener("click", () => {
-  clearAgentProviderForm();
-  $("#agentLlmAdvanced").open = true;
-  $("#agentLlmProviderDisplayName").focus();
+$("#agentLlmAddProvider").addEventListener("click", openAgentLlmProviderWizard);
+$$('[data-agent-llm-view]').forEach((tab) => {
+  tab.addEventListener("click", () => switchAgentLlmView(tab.dataset.agentLlmView, { focus: true }));
+  tab.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = Array.from($$('[data-agent-llm-view]'));
+    const current = tabs.indexOf(event.currentTarget);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? tabs.length - 1
+        : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    switchAgentLlmView(tabs[next].dataset.agentLlmView, { focus: true });
+  });
 });
+$("#agentLlmCustomRouteType").addEventListener("change", () => renderAgentLlmCustomRouteModels());
+$("#agentLlmCustomRouteRequired").addEventListener("input", () => renderAgentLlmCustomRouteModels());
+$("#agentLlmSaveCustomRoute").addEventListener("click", saveAgentLlmCustomRoute);
+$("#agentLlmLibraryAddModel").addEventListener("click", () => {
+  if (state.agentLlm.settings?.providers?.length) openAgentLlmModelDialog(null);
+  else openAgentLlmProviderWizard();
+});
+$("#agentLlmLibraryEditModel").addEventListener("click", () => openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId));
+$("#agentLlmLibraryTestModel").addEventListener("click", testAgentModelConnection);
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
 $("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
-$("#agentLlmAddModel").addEventListener("click", () => {
-  clearAgentModelForm();
-  $("#agentLlmAdvanced").open = true;
-  $("#agentLlmModelId").focus();
+$("#agentLlmAddModel").addEventListener("click", () => openAgentLlmModelDialog(null));
+$("#agentLlmEditModel").addEventListener("click", () => openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId));
+$("#agentLlmRefreshModels").addEventListener("click", () => {
+  void discoverAgentLlmModels($("#agentLlmModelProvider").value, "model");
 });
-$("#agentLlmLoadCatalog").addEventListener("click", loadAgentLlmCatalog);
-$("#agentLlmCatalogModel").addEventListener("change", applySelectedCatalogModel);
+$("#agentLlmModelDiscoveredModel").addEventListener("change", () => applyAgentLlmDiscoveredModel("model"));
 $("#agentLlmModelProvider").addEventListener("change", () => {
   clearAgentLlmCredentialInput();
-  renderAgentLlmCatalogOptions();
+  const providerId = $("#agentLlmModelProvider").value;
+  if (!state.agentLlm.editingModelId) {
+    $("#agentLlmModelDisplayName").value = "";
+    $("#agentLlmModelId").value = "";
+    $("#agentLlmModelType").value = "language";
+    $("#agentLlmModelToolCalling").value = "unknown";
+    $("#agentLlmModelReasoning").value = "unknown";
+    $("#agentLlmModelVisionInput").value = "unknown";
+    for (const selector of [
+      "#agentLlmModelImageOutput", "#agentLlmModelImageEdit", "#agentLlmModelAudioInput",
+      "#agentLlmModelAudioOutput", "#agentLlmModelStructuredOutput", "#agentLlmModelWebSearch",
+    ]) $(selector).value = "unknown";
+    $("#agentLlmModelManualFields").open = false;
+  }
+  resetAgentLlmDiscovery("model", providerId);
+  void discoverAgentLlmModels(providerId, "model");
+});
+$("#agentLlmModelId").addEventListener("input", () => {
+  $("#agentLlmModelDiscoveredModel").value = "";
 });
 $("#agentLlmSaveModel").addEventListener("click", saveAgentModel);
 $("#agentLlmDeleteModel").addEventListener("click", deleteAgentModel);
+$("#agentLlmModelClose").addEventListener("click", closeAgentLlmModelDialog);
+$("#agentLlmModelCancel").addEventListener("click", closeAgentLlmModelDialog);
+$("#agentLlmModelDialog").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmModelClose === "true") closeAgentLlmModelDialog();
+});
+$("#agentLlmModelDialog").addEventListener("keydown", (event) => {
+  trapAgentLlmDialogFocus(event, $("#agentLlmModelDialog"), closeAgentLlmModelDialog);
+});
 $("#agentLlmTestModel").addEventListener("click", testAgentModelConnection);
 $("#agentLlmCancelTest").addEventListener("click", cancelAgentModelTest);
 $("#agentLlmSelectDefault").addEventListener("click", selectAgentDefaultModel);
-$("#agentLlmSaveConfiguration").addEventListener("click", saveAgentLlmConfiguration);
+$("#agentLlmSaveCredential").addEventListener("click", saveAgentLlmCredential);
 $("#agentLlmDeleteCredential").addEventListener("click", deleteAgentLlmCredential);
+$("#agentLlmProviderWizard").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmWizardClose === "true") {
+    closeAgentLlmProviderWizard();
+    return;
+  }
+  const button = event.target.closest?.("button");
+  if (!button || !$("#agentLlmProviderWizard").contains(button)) return;
+  if (button.dataset.providerPreset) {
+    clearAgentLlmCredentialInput();
+    $("#agentLlmWizardProviderKind").value = button.dataset.providerPreset;
+    $("#agentLlmWizardBaseUrl").value = "";
+    syncAgentLlmWizardProviderFields({ resetName: true });
+    $("#agentLlmWizardProviderGrid [aria-checked=\"true\"]")?.focus();
+  } else if (["agentLlmWizardClose", "agentLlmWizardCancel"].includes(button.id)) closeAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardContinue") void advanceAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardBack") {
+    state.agentLlm.wizardStep = "connection";
+    resetAgentLlmDiscovery("wizard", null);
+    setAgentLlmOperationState("idle", "", "wizard");
+    renderAgentLlmWizardStep();
+    $("#agentLlmWizardProviderName").focus();
+  } else if (button.id === "agentLlmWizardRefreshModels") {
+    void discoverAgentLlmModels(state.agentLlm.wizardProviderId, "wizard");
+  } else if (button.id === "agentLlmWizardFinish") void finishAgentLlmProviderWizard();
+  else if (button.id === "agentLlmWizardFinishLater") finishAgentLlmProviderWizardLater();
+});
+$("#agentLlmProviderWizard").addEventListener("change", (event) => {
+  if (event.target.id === "agentLlmWizardProviderKind") {
+    clearAgentLlmCredentialInput();
+    syncAgentLlmWizardProviderFields({ resetName: true });
+  } else if (event.target.id === "agentLlmWizardApiKeyRequired") {
+    clearAgentLlmCredentialInput();
+    syncAgentLlmWizardProviderFields();
+  } else if (event.target.id === "agentLlmWizardDiscoveredModel") {
+    applyAgentLlmDiscoveredModel("wizard");
+  }
+});
+$("#agentLlmProviderWizard").addEventListener("input", (event) => {
+  if (event.target.id === "agentLlmWizardModelId") $("#agentLlmWizardDiscoveredModel").value = "";
+});
+$("#agentLlmProviderWizard").addEventListener("keydown", (event) => {
+  const preset = event.target.closest?.("[data-provider-preset]");
+  if (preset && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const choices = Array.from($("#agentLlmWizardProviderGrid").querySelectorAll("[data-provider-preset]"));
+    const current = choices.indexOf(preset);
+    const next = event.key === "Home" ? 0
+      : event.key === "End" ? choices.length - 1
+        : (current + (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1) + choices.length) % choices.length;
+    choices[next]?.click();
+    return;
+  }
+  trapAgentLlmDialogFocus(event, $("#agentLlmProviderWizard"), closeAgentLlmProviderWizard);
+});
 $("#agentLlmProviderKind").addEventListener("change", () => {
   clearAgentLlmCredentialInput();
   const local = $("#agentLlmProviderKind").value === "local_openai_compatible";
   $("#agentLlmProviderApiKeyRequired").checked = !local;
+  renderAgentCredentialFields();
+});
+$("#agentLlmProviderApiKeyRequired").addEventListener("change", () => {
+  clearAgentLlmCredentialInput();
   renderAgentCredentialFields();
 });
 $$("[data-layout]").forEach((button) => button.addEventListener("click", () => {
