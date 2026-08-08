@@ -15,3 +15,4 @@
 /desktop/src-tauri/binaries/ark-*
 .worktrees/
 /test/generated-manual-fixtures/
+test/environment-demo/renv

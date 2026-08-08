@@ -1063,7 +1063,7 @@ pub async fn dispatch_workspace_request_with_execution_id(
     broker.complete(&request);
     store.save_identity(broker.identity())?;
     let after = broker.identity().clone();
-    let failed = !result["ok"].as_bool().unwrap_or(false);
+    let failed = workspace_result_failed(&result);
     let generated_output_after = (!failed && request_type == "workspace.execute")
         .then(|| capture_generated_output_snapshot(Path::new(&project_root)));
     let generated_output_deltas = generated_output_before
@@ -4474,6 +4474,15 @@ fn json_string(value: &Value, key: &str) -> Option<String> {
         .map(redact_sensitive_text)
 }
 
+// Probe-shaped bridge results do not need an `ok` field. Only an explicit
+// `ok: false` represents an R-level failure; missing status is successful.
+fn workspace_result_failed(value: &Value) -> bool {
+    value
+        .get("ok")
+        .and_then(Value::as_bool)
+        .is_some_and(|ok| !ok)
+}
+
 fn json_string_list(value: &Value, key: &str) -> Vec<String> {
     value
         .get(key)
@@ -4790,6 +4799,19 @@ mod tests {
 
         let error = ensure_no_kernel_errors(&events).unwrap_err();
         assert!(error.to_string().contains("no package called 'jsonlite'"));
+    }
+
+    #[test]
+    fn probe_results_without_ok_are_successful() {
+        assert!(!workspace_result_failed(&json!({
+            "packages": [],
+            "total_count": 0
+        })));
+        assert!(!workspace_result_failed(&json!({ "ok": true })));
+        assert!(workspace_result_failed(&json!({
+            "ok": false,
+            "error": { "message": "inventory unavailable" }
+        })));
     }
 
     #[test]

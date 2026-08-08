@@ -24,6 +24,9 @@ Work package: ENVIRONMENT-DEMO-1
   reporting zero installed packages.
 - Installed inventory falls back to existing site and base R library paths when
   an uncreated renv project library is the only active path.
+- Installed inventory also includes existing directories named by `R_LIBS`,
+  `R_LIBS_USER`, or `R_LIBS_SITE`, because some R startup combinations expose
+  those paths without merging them into `.libPaths()`.
 - The Environment context surface remains vertically scrollable when its
   summary, package inventory, and object preview exceed the viewport.
 - Environment operation requests with no repository override serialize

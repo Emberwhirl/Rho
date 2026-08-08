@@ -125,6 +125,57 @@ test_that("environment evidence remains structured and bounded", {
   expect_true(is.character(encoded))
 })
 
+test_that("installed inventory includes explicit non-standard R library paths", {
+  library_dir <- file.path(tempdir(), paste0("rho-custom-library-", Sys.getpid()))
+  source_package_name <- "jsonlite"
+  skip_if_not_installed(source_package_name)
+  package_source <- find.package(source_package_name)
+  package_dir <- file.path(library_dir, "rhoCustomInventoryPackage")
+  dir.create(file.path(package_dir, "Meta"), recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(library_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  writeLines(
+    c(
+      "Package: rhoCustomInventoryPackage",
+      "Version: 0.0.1",
+      "Title: Rho inventory test package",
+      "Description: Temporary package used by the Rho inventory regression test.",
+      "Author: Rho",
+      "Maintainer: Rho <rho@example.org>",
+      "License: MIT"
+    ),
+    file.path(package_dir, "DESCRIPTION")
+  )
+  expect_true(file.copy(
+    file.path(package_source, "Meta", "package.rds"),
+    file.path(package_dir, "Meta", "package.rds")
+  ))
+  previous <- Sys.getenv("R_LIBS", unset = NA_character_)
+  previous_paths <- .libPaths()
+  on.exit(
+    if (is.na(previous)) Sys.unsetenv("R_LIBS") else Sys.setenv(R_LIBS = previous),
+    add = TRUE
+  )
+  on.exit(.libPaths(previous_paths), add = TRUE)
+  .libPaths(setdiff(previous_paths, dirname(package_source)))
+  Sys.setenv(R_LIBS = library_dir)
+
+  result <- rho_list_installed_packages(limit = 500L)
+  matches <- vapply(
+    result$packages,
+    function(item) {
+      identical(item$name, "rhoCustomInventoryPackage") &&
+        identical(item$library, normalizePath(library_dir, winslash = "/", mustWork = TRUE))
+    },
+    logical(1)
+  )
+
+  expect_true(any(matches))
+  expect_equal(
+    result$packages[[which(matches)[[1L]]]]$library,
+    normalizePath(library_dir, winslash = "/", mustWork = TRUE)
+  )
+})
+
 test_that("environment status preview reports bounded diff", {
   project <- file.path(tempdir(), paste0("rho-bridge-preview-", Sys.getpid()))
   dir.create(project, recursive = TRUE, showWarnings = FALSE)

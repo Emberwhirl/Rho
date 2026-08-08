@@ -33,6 +33,23 @@ test_that("lintr response is normalized, version-bound, and non-mutating", {
   expect_true(is.character(jsonlite::toJSON(result, auto_unbox = TRUE, null = "null")))
 })
 
+test_that("lintr parse failures remain visible as error diagnostics", {
+  skip_if_not_installed("lintr")
+  path <- tempfile(fileext = ".R")
+  writeLines("broken <- (", path, useBytes = TRUE)
+  relative <- basename(path)
+  old <- setwd(dirname(path))
+  on.exit(setwd(old), add = TRUE)
+
+  result <- rho_lint_file(relative, 3L)
+
+  expect_true(result$provider$available)
+  expect_false(result$incomplete)
+  expect_length(result$diagnostics, 1L)
+  expect_identical(result$diagnostics[[1L]]$severity, "error")
+  expect_match(result$diagnostics[[1L]]$message, "(parse|unexpected|incomplete|end of input)", ignore.case = TRUE)
+})
+
 test_that("supported mechanical fixes replace one exact source line", {
   make_lint <- function(rule, line, range, type = "style") list(
     filename = "analysis.R", line_number = 3L, column_number = range[[1L]],

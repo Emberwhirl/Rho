@@ -49,6 +49,9 @@ the dialog is rendered again and isolates post-approval refresh failures from
 the approval result. Stale reasons remain visible, and unreconciled failures
 reload the project-scoped request list instead of leaving a request falsely at
 `Requested`. The implementation preserved the dedicated environment-operation
-request lane and existing project/revision/snapshot guards. Focused frontend
-contracts, affected Rust tests, JavaScript syntax, and `git diff --check` were
-verified with the 0.4.0-dev.15 candidate; installed acceptance remains open.
+request lane and existing project/revision/snapshot guards. Polling now also
+clears the dialog busy phase and rerenders the action card immediately when a
+terminal status is observed, so `Completed` cannot leave the controls disabled
+until another UI interaction. Focused frontend contracts, affected Rust tests,
+JavaScript syntax, and `git diff --check` were verified with the 0.4.0-dev.15
+candidate; installed acceptance remains open.

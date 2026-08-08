@@ -10923,7 +10923,7 @@ async function refreshEnvironment({ quiet = false } = {}) {
 async function loadInstalledPackages() {
   try {
     const result = await invoke("list_installed_packages", { limit: 500 });
-    state.installedPackages = result;
+    state.installedPackages = result?.execution || result;
     renderReproducibilityInventorySummary();
     renderPackageList();
   } catch (error) {
@@ -10937,7 +10937,8 @@ async function loadInstalledPackages() {
 
 async function loadLockfilePackages() {
   try {
-    state.lockfilePackages = await invoke("list_lockfile_packages", { limit: 500 });
+    const result = await invoke("list_lockfile_packages", { limit: 500 });
+    state.lockfilePackages = result?.execution || result;
   } catch (error) {
     state.lockfilePackages = { error: String(error) };
   }
@@ -13224,6 +13225,12 @@ function startEnvironmentOperationPolling(requestId) {
     const current = state.environmentOperations.find((item) => item.request_id === requestId);
     if (current && !["requested", "approved", "running"].includes(current.status)) {
       stopEnvironmentOperationPolling();
+      if (state.environmentOperationDialog.requestId === requestId) {
+        state.environmentOperationDialog.busy = false;
+        state.environmentOperationDialog.phase = "";
+        renderEnvironmentOperationCard();
+        renderEnvironmentOperationDialog();
+      }
     }
   }, 1000);
 }
@@ -13869,7 +13876,7 @@ async function openEnvironmentObject(name) {
 
 function renderEnvironment() {
   renderEnvironmentSummary();
-  const query = $("#environmentSearch").value.trim().toLowerCase();
+  const query = ($("#variablesSearch")?.value || $("#environmentSearch").value).trim().toLowerCase();
   const objects = state.objects.filter((object) => object.name.toLowerCase().includes(query));
   $("#environmentList").replaceChildren();
   if (!objects.length) {
@@ -15824,6 +15831,25 @@ async function lintCurrentFile() {
   if (!doc || !doc.path) return;
   syncDocumentFromEditor({ render: false, persist: false });
   if (documentIsDirty(doc)) {
+    state.problems = state.problems.filter((problem) => problem.origin !== "lintr");
+    state.lint = {
+      status: "error",
+      response: null,
+      proposal: null,
+      projectRoot: state.project.root,
+      error: "Save the active file before checking code so diagnostics match the saved source.",
+    };
+    addProblem(state.lint.error, "", {
+      origin: "lintr",
+      runId: `lintr:unsaved:${doc.path}`,
+      diagnosticId: `lintr:unsaved:${doc.path}`,
+      sourcePath: doc.path,
+      documentVersion: doc.versionId,
+      severity: "error",
+      rule: "saved_source_required",
+      producer: "lintr",
+      projectRoot: state.project.root,
+    });
     toast("Save the active file before checking code so diagnostics match the saved source.", true);
     return;
   }
@@ -15865,10 +15891,36 @@ async function lintCurrentFile() {
         projectRoot: state.project.root,
       });
     }
+    if (result.error) {
+      addProblem(result.error, "", {
+        origin: "lintr",
+        runId: `lintr:error:${doc.path}:${doc.versionId ?? 0}`,
+        diagnosticId: `lintr:error:${doc.path}:${doc.versionId ?? 0}`,
+        sourcePath: result.source_path || doc.path,
+        documentVersion: result.document_version ?? doc.versionId,
+        severity: "error",
+        rule: result.notices?.includes("provider_unavailable") ? "provider_unavailable" : "provider_error",
+        producer: result.provider?.name || "lintr",
+        producerVersion: result.provider?.version || null,
+        scanScope: result.scan_scope || "file",
+        projectRoot: state.project.root,
+      });
+    }
     renderProblems();
   } catch (e) {
     state.problems = state.problems.filter((p) => p.origin !== "lintr");
     state.lint = { status: "error", response: null, proposal: null, projectRoot: state.project.root, error: String(e) };
+    addProblem(state.lint.error, "", {
+      origin: "lintr",
+      runId: `lintr:exception:${doc.path}:${doc.versionId ?? 0}`,
+      diagnosticId: `lintr:exception:${doc.path}:${doc.versionId ?? 0}`,
+      sourcePath: doc.path,
+      documentVersion: doc.versionId,
+      severity: "error",
+      rule: "provider_exception",
+      producer: "lintr",
+      projectRoot: state.project.root,
+    });
     renderProblems();
   } finally {
     button.removeAttribute("aria-busy");
@@ -17547,6 +17599,7 @@ $("#viewLockfilePackages").addEventListener("click", (event) => openPackageInven
 $("#packageInventoryClose").addEventListener("click", closePackageInventoryDialog);
 $("[data-package-inventory-close]").addEventListener("click", closePackageInventoryDialog);
 $("#environmentSearch").addEventListener("input", renderEnvironment);
+$("#variablesSearch").addEventListener("input", renderEnvironment);
 initEvidencePanel();
 initChunkPanel();
 window.addEventListener("beforeunload", stopRenderPoll);

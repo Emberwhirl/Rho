@@ -3,6 +3,10 @@
 
 data(iris)
 
+x <- 1
+
+x + 2
+
 cat("Rows:", nrow(iris), "\n")
 cat("Columns:", ncol(iris), "\n")
 
@@ -13,6 +17,9 @@ species_summary <- aggregate(
 )
 
 print(species_summary)
+
+require(ggplot2)
+ggplot(iris, aes(Sepal.Length, Petal.Length)) + geom_point()
 
 plot(
   iris$Sepal.Length,

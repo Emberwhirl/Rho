@@ -17,7 +17,7 @@ for (const id of [
   assert.match(html, new RegExp(`id="${id}"`), `Missing package UI control ${id}`);
 }
 
-for (const id of ["reproducibilityHeading", "reproducibilityStatus", "viewInstalledPackages", "viewLockfilePackages", "packageInventoryDialog", "packageInventoryClose", "variablesHeading"]) {
+for (const id of ["reproducibilityHeading", "reproducibilityStatus", "viewInstalledPackages", "viewLockfilePackages", "packageInventoryDialog", "packageInventoryClose", "variablesHeading", "variablesSearch"]) {
   assert.match(html, new RegExp(`id="${id}"`), `Missing Environment hierarchy control ${id}`);
 }
 
@@ -37,10 +37,15 @@ assert.match(js, /function packageManagementInputValid/);
 assert.match(js, /\^\[A-Za-z\]\[A-Za-z0-9\.\]\{0,127\}\$/);
 assert.match(js, /function openPackageManagementDialog/);
 assert.match(js, /function openPackageInventoryDialog/);
+assert.match(js, /state\.installedPackages = result\?\.execution \|\| result/);
+assert.match(js, /state\.lockfilePackages = result\?\.execution \|\| result/);
+assert.match(js, /variablesSearch/);
+assert.match(js, /\$\("#variablesSearch"\)\.addEventListener\("input", renderEnvironment\)/);
 assert.match(js, /function closePackageInventoryDialog/);
 assert.match(js, /state\.packageInventoryDialog\.open/);
 assert.match(js, /function startEnvironmentOperationPolling/);
 assert.match(js, /environmentOperationPollTimer/);
+assert.match(js, /current && !\["requested", "approved", "running"\]\.includes\(current\.status\)[\s\S]*environmentOperationDialog\.busy = false[\s\S]*renderEnvironmentOperationCard\(\)/);
 assert.match(js, /async function submitPackageManagement/);
 assert.match(js, /package:\s*options\.package \?\? null/);
 assert.match(js, /"environment\.package_install": "Install package"/);

@@ -8,6 +8,14 @@ this file records behavior that is already available in a released build.
 
 ### Fixed
 
+- Check code now reports unsaved-file, lintr provider, and syntax-parse failures
+  directly in Problems instead of appearing to do nothing; existing Run
+  problems remain visible alongside these transient diagnostics.
+- Environment operation controls now release immediately when polling observes
+  a terminal result, instead of remaining disabled until another UI refresh.
+- Environment package inventory now includes existing custom library paths
+  carried by `R_LIBS`, `R_LIBS_USER`, or `R_LIBS_SITE`, even when R's startup
+  sequence has not merged them into `.libPaths()`.
 - Model settings remains reachable when its first settings read fails or no
   models exist. The composer model button stays available, opening settings
   performs one safe read-only retry, an explicit Retry action remains visible,

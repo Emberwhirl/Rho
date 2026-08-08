@@ -18,7 +18,9 @@ Work package: ENVIRONMENT-UX-1
   Reproducibility summary. Installed and Lockfile open in a modal inventory
   surface that preserves search, package states, counts, and tab switching.
 - Keep Variables as the primary persistent Environment content, with the
-  existing object list and object/data preview behavior unchanged.
+  existing object list and object/data preview behavior unchanged. Provide a
+  local variable-name search that filters the list immediately and preserves
+  the full object count.
 - Preserve project/environment operation approval, stale guards, package
   inventory commands, and R object inspection authority.
 - The Environment surface must remain usable in narrow windows and support
@@ -41,6 +43,8 @@ Work package: ENVIRONMENT-UX-1
   operation is in progress.
 - Existing object list, selection, data viewer, and double-click source opening
   remain available from Variables.
+- Variable-name search updates the list as the user types and shows a truthful
+  no-match state without changing the underlying object count.
 - Focus returns to the opening control after the inventory modal closes.
 
 ## Verification

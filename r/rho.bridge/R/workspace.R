@@ -250,10 +250,30 @@ rho_runtime_state <- function() {
 }
 
 # renv can temporarily expose a project library before it has been created or
-# restored. Keep inventory useful by including the valid site and base R
-# libraries as fallbacks for the current session.
+# restored. Keep inventory useful by including valid site/base libraries and
+# explicit R library variables. Rho transports the effective user-profile
+# paths through R_LIBS, but some R startup combinations do not merge R_LIBS
+# into .libPaths() automatically.
+rho_environment_variable_library_paths <- function() {
+  values <- unlist(lapply(
+    c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE"),
+    function(name) Sys.getenv(name, unset = "")
+  ), use.names = FALSE)
+  values <- values[nzchar(values)]
+  if (!length(values)) return(character())
+  values <- unlist(strsplit(values, split = .Platform$path.sep, fixed = TRUE), use.names = FALSE)
+  values <- path.expand(values)
+  values <- values[nzchar(values) & dir.exists(values)]
+  normalizePath(unique(values), winslash = "/", mustWork = FALSE)
+}
+
 rho_effective_library_paths <- function() {
-  paths <- unique(c(.libPaths(), .Library.site, .Library))
+  paths <- unique(c(
+    .libPaths(),
+    rho_environment_variable_library_paths(),
+    .Library.site,
+    .Library
+  ))
   paths <- paths[nzchar(paths) & dir.exists(paths)]
   normalizePath(paths, winslash = "/", mustWork = FALSE)
 }
@@ -868,7 +888,7 @@ rho_environment_snapshot <- function() {
   list(
     project_dir = normalizePath(getwd(), winslash = "/", mustWork = FALSE),
     runtime = rho_runtime_state(),
-    library_paths = normalize_paths(.libPaths()),
+    library_paths = rho_effective_library_paths(),
     renv = rho_detect_renv_state(),
     bioconductor = rho_detect_bioc_state(),
     attached_packages = rho_attached_packages(),
@@ -883,7 +903,7 @@ rho_environment_evidence <- function(project_dir = getwd(), package_limit = 1000
   list(
     project_dir = project_dir,
     runtime = rho_runtime_state(),
-    library_paths = normalize_paths(.libPaths()),
+    library_paths = rho_effective_library_paths(),
     installed_packages = rho_installed_packages(limit = package_limit),
     renv = rho_detect_renv_state(project_dir = project_dir),
     bioconductor = rho_detect_bioc_state()

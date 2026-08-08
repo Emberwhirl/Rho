@@ -2478,6 +2478,8 @@ body.resizing-vertical { cursor: col-resize; }
 .reproducibility-inventory-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .variables-heading { padding: 9px 11px 5px; border-top: 1px solid var(--border); background: #fbfcfc; }
 .variables-heading strong { font-size: 12px; }
+.variables-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.variables-heading-actions input { width: min(160px, 42vw); min-width: 90px; height: 26px; padding: 0 7px; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text); }
 .variables-section { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 320px; }
 .environment-contract { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .environment-hint { color: var(--subtle); font-size: 10.5px; line-height: 1.4; }
