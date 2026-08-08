@@ -1631,6 +1631,42 @@ async fn render_job_status(
             })
     });
     if let Some(id) = job_id {
+        let job_project_root = jobs
+            .get(&id)
+            .filter(|job| job.project_root == project_root)
+            .map(|job| job.project_root.clone())
+            .context("Render job not found")
+            .map_err(display_error)?;
+        drop(jobs);
+
+        // The worker updates the in-memory projection after the durable Run
+        // is finished. Reconcile from the store here as well so a completed
+        // render cannot leave the UI polling forever if that update is late.
+        let durable = read_store(&state).ok().and_then(|store| {
+            let run = store.get_run_detail(&job_project_root, &id).ok().flatten();
+            let artifact = store
+                .get_artifact_record_for_run(&job_project_root, &id, "render_output")
+                .ok()
+                .flatten();
+            Some((run, artifact))
+        });
+        if let Some((run, artifact)) = durable {
+            let mut jobs = state.render_jobs.lock().await;
+            if let Some(job) = jobs.get_mut(&id) {
+                if let Some(artifact) = artifact.as_ref() {
+                    attach_render_artifact(job, artifact);
+                }
+                if let Some(run) = run.as_ref() {
+                    reconcile_render_job(
+                        job,
+                        Some(run.status.as_str()),
+                        run.error_message.clone(),
+                        run.terminal_reason.as_deref(),
+                    );
+                }
+            }
+        }
+        let jobs = state.render_jobs.lock().await;
         let job = jobs
             .get(&id)
             .filter(|job| job.project_root == project_root)

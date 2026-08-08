@@ -163,6 +163,20 @@ and committed independently without claiming installed acceptance.
 
 ## Implementation And Evidence
 
+### Render status synchronization repair
+
+The first implementation relied on the in-memory job projection alone. That
+allowed a render whose output and durable Run had already completed to remain
+visible as `Rendering` when the worker-to-projection update was delayed. The
+`render_job_status` command now reconciles the requested current-project job
+from its durable Run and render artifact before returning the status. This is
+read-only recovery of the existing execution truth; it does not create a new
+execution or change cancellation authority.
+
+Regression coverage asserts the durable Run and render-artifact lookup remain
+part of the status path, alongside the existing terminal-state and mock UI
+checks.
+
 Implementation completed on 2026-08-03 without contract deviations:
 
 - UUID-based background `job_id` is also the coordinator `run_id`; status and
