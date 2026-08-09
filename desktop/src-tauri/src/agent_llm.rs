@@ -1694,6 +1694,48 @@ pub fn resolve_model_and_credential_for_turn(
     )
 }
 
+pub fn resolve_model_and_credential_for_task(
+    data_dir: &Path,
+    requested_model_id: Option<&str>,
+    mode: &str,
+    task_kind: &str,
+) -> Result<(ResolvedAgentModel, Option<(String, String)>)> {
+    let _guard = settings_mutation_guard();
+    let settings = load_settings(data_dir)?;
+    resolve_model_and_credential_for_task_with_store(
+        &settings,
+        requested_model_id,
+        mode,
+        task_kind,
+        &SystemCredentialStore,
+    )
+}
+
+fn resolve_model_and_credential_for_task_with_store(
+    settings: &AgentLlmSettings,
+    requested_model_id: Option<&str>,
+    mode: &str,
+    task_kind: &str,
+    credential_store: &impl CredentialStore,
+) -> Result<(ResolvedAgentModel, Option<(String, String)>)> {
+    ensure!(
+        task_kind == "problem_repair",
+        "Unsupported typed Agent task."
+    );
+    ensure!(mode == "ask", "Problem repair must use read-only Ask mode.");
+    let resolved = resolve_model_for_turn_with_settings(settings, requested_model_id, "act")
+        .context(
+            "Problem repair requires a compatible function-calling model on the effective agent.act route.",
+        )?;
+    let credential =
+        credential_override_with_store(settings, &resolved.provider_id, credential_store)?;
+    ensure!(
+        !resolved.runtime_profile.api_key_required || credential.is_some(),
+        "Problem repair is unavailable because the effective agent.act Provider credential is missing."
+    );
+    Ok((resolved, credential))
+}
+
 fn resolve_model_and_credential_for_turn_with_store(
     settings: &AgentLlmSettings,
     requested_model_id: Option<&str>,
@@ -3376,6 +3418,133 @@ mod tests {
             .is_err()
         );
         assert!(!serde_json::to_string(&settings).unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn problem_repair_uses_only_the_tool_route_credential_in_read_only_mode() {
+        let mut settings = default_settings();
+        let mut provider = settings.providers[0].clone();
+        provider.id = "provider-repair".to_string();
+        provider.display_name = "Repair Provider".to_string();
+        provider.registered_provider_id = Some("openai".to_string());
+        provider.api_key_env = Some("OPENAI_API_KEY".to_string());
+        settings.providers.push(provider);
+        let mut model = settings.models[0].clone();
+        model.id = "model-repair".to_string();
+        model.provider_id = "provider-repair".to_string();
+        model.display_name = "Repair Model".to_string();
+        model.model_id = "repair-model".to_string();
+        settings.models.push(model);
+        settings.capability_routes.push(AgentCapabilityRoute {
+            capability: "agent.act".to_string(),
+            model_id: "model-repair".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: vec!["function_call".to_string()],
+        });
+        let store = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([
+                (
+                    "provider-deepseek-existing".to_string(),
+                    "chat-secret".to_string(),
+                ),
+                ("provider-repair".to_string(), "repair-secret".to_string()),
+            ])),
+            fail_set: false,
+            fail_delete: false,
+        };
+
+        let (resolved, credential) = resolve_model_and_credential_for_task_with_store(
+            &settings,
+            None,
+            "ask",
+            "problem_repair",
+            &store,
+        )
+        .unwrap();
+        assert_eq!(resolved.route_capability, "agent.act");
+        assert_eq!(resolved.provider_id, "provider-repair");
+        assert_eq!(credential.unwrap().1, "repair-secret");
+        assert!(
+            resolve_model_and_credential_for_task_with_store(
+                &settings,
+                None,
+                "act",
+                "problem_repair",
+                &store,
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_model_and_credential_for_task_with_store(
+                &settings,
+                Some("model-deepseek-v4-flash"),
+                "ask",
+                "problem_repair",
+                &store,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn problem_repair_blocks_chat_only_unknown_and_missing_credential_routes() {
+        let mut settings = default_settings();
+        settings.models[0].capabilities.insert(
+            "function_call".to_string(),
+            capability_value("no", "user_declared"),
+        );
+        let store = MemoryCredentialStore::default();
+        assert!(
+            resolve_model_and_credential_for_task_with_store(
+                &settings,
+                None,
+                "ask",
+                "problem_repair",
+                &store,
+            )
+            .is_err()
+        );
+
+        settings.models[0].capabilities.insert(
+            "function_call".to_string(),
+            capability_value("unknown", "unknown"),
+        );
+        assert!(
+            resolve_model_and_credential_for_task_with_store(
+                &settings,
+                None,
+                "ask",
+                "problem_repair",
+                &store,
+            )
+            .is_err()
+        );
+
+        settings.models[0].capabilities.insert(
+            "function_call".to_string(),
+            capability_value("yes", "user_declared"),
+        );
+        let error = resolve_model_and_credential_for_task_with_store(
+            &settings,
+            None,
+            "ask",
+            "problem_repair",
+            &store,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("credential is missing"));
+
+        settings.providers[0].api_key_required = false;
+        let (resolved, credential) = resolve_model_and_credential_for_task_with_store(
+            &settings,
+            None,
+            "ask",
+            "problem_repair",
+            &store,
+        )
+        .unwrap();
+        assert_eq!(resolved.route_capability, "agent.chat");
+        assert!(credential.is_none());
     }
 
     #[test]

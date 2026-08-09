@@ -4,6 +4,31 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.20 - 2026-08-08
+
+### Fixed
+
+- Problems now carries the exact failed R expression, traceback, executed code,
+  and bounded run output into `Fix with Agent`. File-backed errors select the
+  recorded range automatically and can create one reviewable file proposal
+  without asking the user to find or select the same code again.
+- Repair tasks always run under read-only Ask policy with auto-approval off,
+  while resolving the effective function-calling Act route and only that
+  Provider credential. Missing capabilities or credentials now open the exact
+  Model routing card instead of starting an explanation-only turn.
+- A project switch, changed source, missing run/file, failed Agent request, or
+  foreign-project Problem creates no repair turn. Older and parse-error records
+  without a trusted range offer an explicit select-code recovery path rather
+  than guessing a replacement or claiming that rerunning always finds one.
+
+### Improved
+
+- Runtime error ranges are durable and project-isolated in store schema v10.
+  The v9 migration uses a recoverable same-directory backup and leaves older
+  records unlocated instead of deriving positions from error text.
+- Console Problems attach the exact failed-run context for diagnosis while
+  clearly avoiding a file-edit promise when no project file range is known.
+
 ## 0.4.0-dev.19 - 2026-08-07
 
 ### Fixed

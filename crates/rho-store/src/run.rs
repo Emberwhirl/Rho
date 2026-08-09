@@ -66,6 +66,15 @@ pub struct RunSummary {
     pub error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RunErrorRange {
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub range_kind: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProblemSummary {
     pub run_id: String,
@@ -79,6 +88,11 @@ pub struct ProblemSummary {
     pub source_path: Option<String>,
     pub execution_mode: Option<String>,
     pub document_version: Option<i64>,
+    pub line_number: Option<u32>,
+    pub column_number: Option<u32>,
+    pub end_line_number: Option<u32>,
+    pub end_column_number: Option<u32>,
+    pub range_kind: Option<String>,
     pub workspace_id: Option<String>,
     pub started_at: String,
     pub finished_at: Option<String>,

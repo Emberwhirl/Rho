@@ -38,8 +38,9 @@ full independently verified review-only rehearsal with 12 minutes 10 seconds
 of macOS-runner use; the refreshed MAC4-R3 mandatory stop is reached; Issue #4
 CRED-UX2 subsequently advanced the live development identity to
 `0.4.0-dev.17`; CRED-UX3/CRED-UX4A advanced it to the installed-and-rejected
-`0.4.0-dev.18`; CRED-UX4A-R1 advances the replacement development identity to
-`0.4.0-dev.19`, while every earlier run remains exact-source historical
+`0.4.0-dev.18`; CRED-UX4A-R1 reached the now-historical replacement identity
+`0.4.0-dev.19`; Issue #6 advances the live development identity to
+`0.4.0-dev.20`, while every earlier run remains exact-source historical
 evidence and cannot validate the new frontend/Agent R behavior;
 authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
 
@@ -129,8 +130,9 @@ it before any authoritative candidate or draft existed. The repaired fork-only
 `0.4.0-dev.2` rehearsal passed. Because synchronized upstream source already
 advanced independently through `0.4.0-dev.15`, the integrated source first
 became `0.4.0-dev.16`; Issue #4 work advanced the development candidate
-through `0.4.0-dev.17`, the rejected `0.4.0-dev.18`, and the current
-Provider-first recovery identity `0.4.0-dev.19`. It supports macOS 14 or later,
+through `0.4.0-dev.17`, the rejected `0.4.0-dev.18`, the historical
+Provider-first recovery identity `0.4.0-dev.19`, and the current Issue #6
+identity `0.4.0-dev.20`. It supports macOS 14 or later,
 arm64 R 4.4 or later, and an arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
@@ -395,7 +397,7 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.19-candidate-checklist.md`; the historical
+  `docs/release/active-0.4.0-dev.20-candidate-checklist.md`; the historical
   `0.4.0-dev.16`, rejected `0.4.0-dev.18`, and old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
@@ -1700,3 +1702,18 @@ Developer ID, notarization, staple, or Gatekeeper candidate claim is made.
 The final credential review also verified the repair that forces reviewed
 runtime endpoint defaults and the explicitly injected system-store key rather
 than accepting undeclared ambient Provider values.
+
+## Issue #6 `dev.20` Local Packaging Handoff — 2026-08-08
+
+Issue #6 changes durable execution diagnostics and the Problems-to-Agent UI,
+so it supersedes `dev.19` artifact evidence without changing Ark discovery,
+Keychain, entitlements, signing, notarization, update schema, or MAC4/MAC5
+authority. Tauri CLI 2.11.4 produced the local unsigned arm64
+`Rho_0.4.0-dev.20_aarch64.dmg`; the final post-format build is 21,224,710
+bytes with SHA-256
+`9f011b15ab90c792ac177c3c0a87b530d8f92279fd77c1d9e362645ba11073ca`.
+`hdiutil verify` passed; the read-only mounted app and bundled Ark are exactly
+arm64; the bundle reports `0.4.0-dev.20` and macOS 14.0 minimum; and mounted
+Workspace smoke passed. The build explicitly used `--no-sign`, so it provides
+no Developer ID, notarization, staple, Gatekeeper, installed-user, MAC5, or
+publication evidence.

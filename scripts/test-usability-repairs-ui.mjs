@@ -16,11 +16,15 @@ assert.match(js, /file\.path === sourcePath/);
 assert.match(js, /sourceKind === "console" \? "Open Console" : "Go to source"/);
 assert.match(js, /async function fixProblemWithAgent\(problem\)/);
 assert.match(js, /fix\.textContent = "Fix with Agent"/);
-assert.match(js, /state\.agentDiagnostic = problemAgentDiagnostic\(problem\)/);
-assert.match(js, /await sendAgentPrompt\(\)/);
+assert.match(js, /state\.agentDiagnostic = problemAgentDiagnostic\(problem, repairRange\)/);
+assert.match(js, /await sendAgentPrompt\(\{ taskKind: "problem_repair", mode: "ask" \}\)/);
+assert.match(js, /fix\.textContent = "Select code for Agent"/);
+assert.match(js, /rangeKind: "user_selection"/);
 assert.match(js, /unavailable\.textContent = "Source unavailable"/);
 assert.match(js, /switchDockTab\("console"\);[\s\S]*consoleInput/);
 assert.match(js, /scenario === "usability-problems"/);
+assert.match(js, /previewParams\.get\("state"\) === "repair-probe"/);
+assert.match(js, /runProblemRepairMockProbe\(fileProblem, consoleProblem\)/);
 assert.match(js, /"usability-problems"(?:, "[^"]+")*\]\.includes\(scenario\)/);
 assert.match(css, /\.problem-source-unavailable/);
 

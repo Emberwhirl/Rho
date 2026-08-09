@@ -23,6 +23,31 @@ rho_execution_help_target <- function(value) {
   list(topic = topic, package = package)
 }
 
+rho_execution_srcref_range <- function(srcref,
+                                       max_line = 10000000L,
+                                       max_column = 1000000L) {
+  values <- tryCatch(as.integer(srcref), error = function(error) integer())
+  if (length(values) < 6L || anyNA(values[c(1L, 3L, 5L, 6L)])) return(NULL)
+
+  start_line <- values[[1L]]
+  end_line <- values[[3L]]
+  start_column <- values[[5L]]
+  end_column_inclusive <- values[[6L]]
+  if (start_line < 1L || end_line < start_line || end_line > max_line ||
+      start_column < 1L || start_column > max_column ||
+      end_column_inclusive < 1L || end_column_inclusive >= max_column ||
+      (start_line == end_line && end_column_inclusive < start_column)) {
+    return(NULL)
+  }
+
+  list(
+    start_line = start_line,
+    start_column = start_column,
+    end_line = end_line,
+    end_column = end_column_inclusive + 1L
+  )
+}
+
 #' Execute R Code with Structured Conditions and Bounded Output
 #' @export
 rho_execute <- function(code,
@@ -43,6 +68,7 @@ rho_execute <- function(code,
   messages <- character()
   error_info <- NULL
   call_stack <- character()
+  current_source_range <- NULL
   value <- NULL
 
   output <- capture.output({
@@ -50,8 +76,15 @@ rho_execute <- function(code,
       tryCatch(
         {
           expressions <- parse(text = code, keep.source = TRUE)
+          expression_srcrefs <- attr(expressions, "srcref", exact = TRUE)
           result <- NULL
-          for (expression in expressions) {
+          for (index in seq_along(expressions)) {
+            expression <- expressions[[index]]
+            current_source_range <- if (length(expression_srcrefs) >= index) {
+              rho_execution_srcref_range(expression_srcrefs[[index]])
+            } else {
+              NULL
+            }
             result <- eval(expression, envir = envir)
           }
           result
@@ -61,7 +94,8 @@ rho_execute <- function(code,
           error_info <<- list(
             message = conditionMessage(error),
             classes = class(error),
-            call = if (is.null(conditionCall(error))) NULL else safe_call_text(conditionCall(error))
+            call = if (is.null(conditionCall(error))) NULL else safe_call_text(conditionCall(error)),
+            source_range = current_source_range
           )
           NULL
         }

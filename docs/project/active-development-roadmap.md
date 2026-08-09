@@ -2,8 +2,8 @@
 
 Status: active
 
-Date: 2026-08-07
-Current baseline: `0.4.0-dev.19`
+Date: 2026-08-08
+Current baseline: `0.4.0-dev.20`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -191,9 +191,19 @@ capability cards/switches, and links Connections with Model routing. Its
 complete affected automation, independent security/contract review,
 deterministic browser review, and local unsigned arm64 replacement-DMG
 verification pass. Owner-installed recovery plus live Provider/Keychain
-acceptance is the next acceptance checkpoint.
+acceptance remained open when Issue #6 superseded that candidate identity.
+PROBLEMS-AGENT-REPAIR-2 advances the live baseline to `0.4.0-dev.20`: exact
+Workspace R expression ranges are persisted by project in schema v10; Problems
+binds the same failed run, traceback and source into a read-only tool-capable
+Repair task; known ranges no longer require manual selection; and no-range
+parse/history cases have an explicit user-selection fallback. The complete
+affected Rust/R/frontend matrix, deterministic browser behavior review, and
+exact local unsigned arm64 DMG verification pass; owner-installed acceptance
+remains open.
 `rho.agent` advances independently to `0.1.4` for its explicit provider-adapter
-contract. CRED-UX4B/C workers and media consumers remain unauthorized. The
+contract. `rho.bridge` independently advances to `0.1.12` for the structured
+execution-range result. CRED-UX4B/C workers and media consumers remain
+unauthorized. The
 `dev.18` artifact is rejected and cannot serve as acceptance evidence. All
 earlier runs and artifacts remain historical exact-source evidence and cannot
 validate the replacement behavior. Owner acceptance, exact

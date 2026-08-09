@@ -1,3 +1,10 @@
+# rho.bridge 0.1.12
+
+- Structured execution errors now include the exact parsed top-level R
+  expression range when evaluation fails. Ranges use bounded one-based
+  character coordinates with an exclusive end and remain absent when the
+  parser cannot establish a location.
+
 # rho.bridge 0.1.11
 
 - Added a fixed nullable Help target to structured execution results when the

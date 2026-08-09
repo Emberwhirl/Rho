@@ -19,7 +19,7 @@ use rho_store::{
     ApprovalRequestDraft, ArtifactRecordDraft, EnvironmentOperationDecisionRecord,
     EnvironmentOperationFinish, EnvironmentOperationRequestDraft,
     EnvironmentOperationRequestSummary, EnvironmentSnapshotDraft, PlotArtifactDraft, RunDraft,
-    RunFinish, Store, normalize_project_root,
+    RunErrorRange, RunFinish, Store, normalize_project_root,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -1077,33 +1077,37 @@ pub async fn dispatch_workspace_request_with_execution_id(
         } else {
             None
         };
-    store.finish_run(&RunFinish {
-        run_id: request.execution_id.clone(),
-        status: if failed { "failed" } else { "completed" }.to_string(),
-        terminal_reason: failed.then_some("r_error".to_string()),
-        workspace_id: Some(after.workspace_id.clone()),
-        state_revision_after: Some(after.state_revision as i64),
-        project_revision_after: Some(after.project_revision as i64),
-        stdout: json_string(&result, "stdout"),
-        value_text: json_string(&result, "value"),
-        messages: json_string_list(&result, "messages"),
-        warnings: json_string_list(&result, "warnings"),
-        error_message: result
-            .get("error")
-            .and_then(|value| value.get("message"))
-            .and_then(Value::as_str)
-            .map(redact_sensitive_text),
-        error_call: result
-            .get("error")
-            .and_then(|value| value.get("call"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        traceback: json_string_list(&result, "traceback")
-            .into_iter()
-            .chain(json_string_list(&result, "calls"))
-            .collect(),
-        environment_snapshot_id_after,
-    })?;
+    let error_range = translated_run_error_range(&arguments, &result);
+    store.finish_run_with_error_range(
+        &RunFinish {
+            run_id: request.execution_id.clone(),
+            status: if failed { "failed" } else { "completed" }.to_string(),
+            terminal_reason: failed.then_some("r_error".to_string()),
+            workspace_id: Some(after.workspace_id.clone()),
+            state_revision_after: Some(after.state_revision as i64),
+            project_revision_after: Some(after.project_revision as i64),
+            stdout: json_string(&result, "stdout"),
+            value_text: json_string(&result, "value"),
+            messages: json_string_list(&result, "messages"),
+            warnings: json_string_list(&result, "warnings"),
+            error_message: result
+                .get("error")
+                .and_then(|value| value.get("message"))
+                .and_then(Value::as_str)
+                .map(redact_sensitive_text),
+            error_call: result
+                .get("error")
+                .and_then(|value| value.get("call"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            traceback: json_string_list(&result, "traceback")
+                .into_iter()
+                .chain(json_string_list(&result, "calls"))
+                .collect(),
+            environment_snapshot_id_after,
+        },
+        error_range.as_ref(),
+    )?;
     if let Some(request_id) = environment_operation_request_id.as_deref() {
         let _ = store.finish_environment_operation_request(&EnvironmentOperationFinish {
             request_id: request_id.to_string(),
@@ -1657,7 +1661,7 @@ session <- rho_create_aisdk_session(
     "propose_file_edit creates a reviewable diff and never writes a file, so do not claim the edit was applied.",
     "Use replace_selection only for a non-empty selection in the same path, insert_at_cursor only for the active path, append only when requested, and create only for a new path.",
     "Treat @file references as project-relative paths. If destination or placement is ambiguous, ask instead of guessing.",
-    "When editor context includes a diagnostic, use its source path, range, message, and nearby anchors as authoritative repair context; do not require the user to restate or manually select a known error range.",
+    "When editor context includes a diagnostic and failed-run context, use their source path, range, message, traceback, exact executed code, and bounded outputs as authoritative repair evidence; do not require the user to restate or manually select a known error range.",
     "Respond in the language used by the user and keep the answer concise.",
     tool_notice,
     mode_policy
@@ -4474,6 +4478,136 @@ fn json_string(value: &Value, key: &str) -> Option<String> {
         .map(redact_sensitive_text)
 }
 
+const MAX_DIAGNOSTIC_LINE: u32 = 10_000_000;
+const MAX_DIAGNOSTIC_COLUMN: u32 = 1_000_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DiagnosticPosition {
+    line: u32,
+    column: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DiagnosticRangeInput {
+    start: DiagnosticPosition,
+    end: DiagnosticPosition,
+}
+
+fn diagnostic_position_before_or_equal(
+    left: DiagnosticPosition,
+    right: DiagnosticPosition,
+) -> bool {
+    left.line < right.line || (left.line == right.line && left.column <= right.column)
+}
+
+fn decode_diagnostic_range(value: &Value) -> Option<DiagnosticRangeInput> {
+    let integer = |name: &str| {
+        value
+            .get(name)
+            .and_then(Value::as_u64)
+            .and_then(|item| u32::try_from(item).ok())
+    };
+    let range = DiagnosticRangeInput {
+        start: DiagnosticPosition {
+            line: integer("start_line")?,
+            column: integer("start_column")?,
+        },
+        end: DiagnosticPosition {
+            line: integer("end_line")?,
+            column: integer("end_column")?,
+        },
+    };
+    let bounded = [range.start, range.end].into_iter().all(|position| {
+        position.line > 0
+            && position.line <= MAX_DIAGNOSTIC_LINE
+            && position.column > 0
+            && position.column <= MAX_DIAGNOSTIC_COLUMN
+    });
+    (bounded
+        && diagnostic_position_before_or_equal(range.start, range.end)
+        && range.start != range.end)
+        .then_some(range)
+}
+
+fn project_relative_diagnostic_source(arguments: &Value) -> bool {
+    let Some(path) = arguments.get("source_path").and_then(Value::as_str) else {
+        return false;
+    };
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || path.starts_with('<')
+        || path.as_bytes().get(1) == Some(&b':')
+    {
+        return false;
+    }
+    !path
+        .replace('\\', "/")
+        .split('/')
+        .any(|component| component.is_empty() || matches!(component, "." | ".."))
+}
+
+fn utf16_column_at_character_boundary(line: &str, one_based_column: u32) -> Option<u32> {
+    let character_offset = usize::try_from(one_based_column.checked_sub(1)?).ok()?;
+    if line.chars().count() < character_offset {
+        return None;
+    }
+    let utf16_offset = line
+        .chars()
+        .take(character_offset)
+        .map(char::len_utf16)
+        .sum::<usize>();
+    u32::try_from(utf16_offset).ok()?.checked_add(1)
+}
+
+fn translate_diagnostic_position(
+    code_lines: &[&str],
+    source_start: DiagnosticPosition,
+    relative: DiagnosticPosition,
+) -> Option<DiagnosticPosition> {
+    let line_index = usize::try_from(relative.line.checked_sub(1)?).ok()?;
+    let code_line = *code_lines.get(line_index)?;
+    let relative_utf16_column = utf16_column_at_character_boundary(code_line, relative.column)?;
+    let line = source_start
+        .line
+        .checked_add(relative.line.checked_sub(1)?)?;
+    let column = if relative.line == 1 {
+        source_start
+            .column
+            .checked_add(relative_utf16_column.checked_sub(1)?)?
+    } else {
+        relative_utf16_column
+    };
+    Some(DiagnosticPosition { line, column })
+}
+
+fn translated_run_error_range(arguments: &Value, result: &Value) -> Option<RunErrorRange> {
+    if !project_relative_diagnostic_source(arguments) {
+        return None;
+    }
+    let source_range = decode_diagnostic_range(arguments.get("source_range")?)?;
+    let relative_range = decode_diagnostic_range(result.get("error")?.get("source_range")?)?;
+    let code = arguments.get("code").and_then(Value::as_str)?;
+    let code_lines = code.split('\n').collect::<Vec<_>>();
+    let start =
+        translate_diagnostic_position(&code_lines, source_range.start, relative_range.start)?;
+    let end = translate_diagnostic_position(&code_lines, source_range.start, relative_range.end)?;
+    if !diagnostic_position_before_or_equal(source_range.start, start)
+        || !diagnostic_position_before_or_equal(start, end)
+        || start == end
+        || !diagnostic_position_before_or_equal(end, source_range.end)
+    {
+        return None;
+    }
+    Some(RunErrorRange {
+        start_line: start.line,
+        start_column: start.column,
+        end_line: end.line,
+        end_column: end.column,
+        range_kind: "r_expression".to_string(),
+    })
+}
+
 // Probe-shaped bridge results do not need an `ok` field. Only an explicit
 // `ok: false` represents an R-level failure; missing status is successful.
 fn workspace_result_failed(value: &Value) -> bool {
@@ -4655,6 +4789,127 @@ impl Drop for ResultFile {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn translates_r_expression_ranges_into_editor_coordinates() {
+        let arguments = json!({
+            "code": "value <- 1\nstop('😀')",
+            "source_path": "R/analysis.R",
+            "source_range": {
+                "start_line": 20,
+                "start_column": 7,
+                "end_line": 21,
+                "end_column": 11
+            }
+        });
+        let result = json!({
+            "ok": false,
+            "error": {
+                "message": "boom",
+                "source_range": {
+                    "start_line": 2,
+                    "start_column": 1,
+                    "end_line": 2,
+                    "end_column": 10
+                }
+            }
+        });
+
+        assert_eq!(
+            translated_run_error_range(&arguments, &result),
+            Some(RunErrorRange {
+                start_line: 21,
+                start_column: 1,
+                end_line: 21,
+                end_column: 11,
+                range_kind: "r_expression".to_string(),
+            })
+        );
+
+        let first_line_arguments = json!({
+            "code": "stop('错误')",
+            "source_path": "analysis.R",
+            "source_range": {
+                "start_line": 4,
+                "start_column": 8,
+                "end_line": 4,
+                "end_column": 18
+            }
+        });
+        let first_line_result = json!({
+            "error": {"source_range": {
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 11
+            }}
+        });
+        let range = translated_run_error_range(&first_line_arguments, &first_line_result).unwrap();
+        assert_eq!((range.start_line, range.start_column), (4, 8));
+        assert_eq!((range.end_line, range.end_column), (4, 18));
+    }
+
+    #[test]
+    fn rejects_untrusted_partial_or_out_of_scope_diagnostic_ranges() {
+        let valid_result = json!({
+            "error": {"source_range": {
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 5
+            }}
+        });
+        for arguments in [
+            json!({
+                "code": "stop('boom')",
+                "source_path": "<console>",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 13}
+            }),
+            json!({
+                "code": "stop('boom')",
+                "source_path": "../outside.R",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 13}
+            }),
+            json!({
+                "code": "stop('boom')",
+                "source_path": "analysis.R",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1}
+            }),
+            json!({
+                "code": "stop('boom')",
+                "source_path": "analysis.R",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 3}
+            }),
+        ] {
+            assert!(translated_run_error_range(&arguments, &valid_result).is_none());
+        }
+
+        let arguments = json!({
+            "code": "stop('boom')",
+            "source_path": "analysis.R",
+            "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 13}
+        });
+        assert!(
+            translated_run_error_range(
+                &arguments,
+                &json!({"error": {"source_range": {
+                    "start_line": 1,
+                    "start_column": 0,
+                    "end_line": 1,
+                    "end_column": 5
+                }}}),
+            )
+            .is_none()
+        );
+        assert!(
+            translated_run_error_range(
+                &arguments,
+                &json!({"ok": false, "error": {"message": "result unavailable"}}),
+            )
+            .is_none()
+        );
+        assert!(translated_run_error_range(&arguments, &json!({"ok": true})).is_none());
+    }
 
     #[test]
     fn reads_bounded_bridge_json() {
@@ -4955,8 +5210,20 @@ mod tests {
             "diagnostic": {
                 "source_path": "analysis.R",
                 "line_number": 12,
+                "column_number": 3,
+                "end_line_number": 12,
+                "end_column_number": 19,
+                "range_kind": "r_expression",
                 "message": "object 'counts' not found",
-                "run_id": "run_failed"
+                "run_id": "run_failed",
+                "traceback": ["summarise(counts)", "eval(ei, envir)"]
+            },
+            "run_context": {
+                "kind": "rho.problem_run_context.v1",
+                "run_id": "run_failed",
+                "code": "summarise(counts)",
+                "stdout": "",
+                "warnings": []
             }
         });
 
@@ -4964,6 +5231,10 @@ mod tests {
         assert!(prompt.contains("\"context_source\": \"problem\""));
         assert!(prompt.contains("object 'counts' not found"));
         assert!(prompt.contains("\"line_number\": 12"));
+        assert!(prompt.contains("\"range_kind\": \"r_expression\""));
+        assert!(prompt.contains("summarise(counts)"));
+        assert!(prompt.contains("eval(ei, envir)"));
+        assert!(prompt.contains("rho.problem_run_context.v1"));
     }
 
     #[test]

@@ -101,10 +101,12 @@ for (const capability of ["image_output", "image_edit", "audio_input", "audio_ou
 }
 assert.match(js, /Consumer not installed/);
 assert.doesNotMatch(
-  sliceBetween(js, "async function sendAgentPrompt()", "\nfunction switchDockTab", "Agent send path"),
+  sliceBetween(js, "async function sendAgentPrompt(options = {})", "\nfunction switchDockTab", "Agent send path"),
   /modelId:\s*selectedModelId/,
   "turn submission must let Rust resolve the named route",
 );
+assert.match(js, /const taskKind = options\.taskKind \|\| "agent_turn"/);
+assert.match(js, /taskKind === "agent_turn" && mode === "act" && state\.actAutoApprove/);
 
 assert.match(backend, /const SETTINGS_SCHEMA_VERSION:\s*u32\s*=\s*2/);
 assert.match(backend, /const MAX_SETTINGS_BYTES:\s*usize\s*=\s*256 \* 1024/);
@@ -119,6 +121,8 @@ assert.match(backend, /pub fn declare_model_capabilities\b/);
 assert.match(backend, /settings\.revision == expected_revision/);
 assert.match(backend, /Reassign or remove this model's capability routes before deleting it/);
 assert.match(backend, /resolve_model_and_credential_for_turn/);
+assert.match(backend, /resolve_model_and_credential_for_task/);
+assert.match(backend, /task_kind == "problem_repair"/);
 assert.match(backend, /mode == "act"[\s\S]*"agent\.act"/);
 assert.match(backend, /Only language models use the text connection test/);
 assert.match(backend, /enrich_discovered_models/);

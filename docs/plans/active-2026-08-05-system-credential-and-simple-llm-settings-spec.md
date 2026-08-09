@@ -599,6 +599,17 @@ advertises or declares `function_call=yes`; otherwise Act is unavailable. This
 is a visible compatibility rule, not failure fallback. A Provider error never
 causes another model to be selected silently.
 
+The authorized PROBLEMS-AGENT-REPAIR-2 package adds one closed typed use of the
+existing `agent.act` route. A `problem_repair` task resolves that route because
+the existing reviewable file-proposal tool requires `function_call=yes`, but it
+runs the Agent child in Ask mode with automatic approval disabled. This is a
+read-only tool-capable consumer, not an Act turn, prompt classifier, custom
+route, fallback, or new credential authority. The child receives exactly the
+credential for the resolved effective `agent.act` model. Ordinary Ask/Plan/Act
+resolution and persisted V2 routes remain unchanged; a non-tool-capable or
+credential-unready effective route fails before creating a repair turn and the
+UI links to the existing `agent.act` routing card.
+
 Advanced users may add a custom route with a bounded canonical name, model
 type, and required capability list. A custom route becomes executable only
 when a registered typed consumer requests that exact route. Merely naming a
@@ -1310,3 +1321,21 @@ runtime contract now imports and explicitly constructs the reviewed
 No real Provider request or credential was used. Authoritative candidate,
 installed-app/live-Provider acceptance, MAC5, and publication remain `NOT RUN`
 and unauthorized.
+
+## Issue #6 Repair Route Consumer Amendment — 2026-08-08
+
+PROBLEMS-AGENT-REPAIR-2 is an authorized consumer of the existing capability
+route contract at application identity `0.4.0-dev.20`. It adds no Provider,
+model, route, credential, or settings-schema state. The closed
+`problem_repair` task resolves the same effective `agent.act` route used by Act
+because a reviewable file proposal requires `function_call=yes`, but forces
+Ask policy and `auto_approve=false`. Only the resolved route's system-store
+credential is projected into the child; per-turn override, chat-only,
+unknown-capability, disabled, and credential-missing cases fail before a turn
+is created. Ordinary Ask/Plan/Act resolution remains unchanged.
+
+Deterministic route, compatibility, one-credential, missing-credential,
+override-rejection, and settings-deep-link tests pass without a real Provider
+request. The historical `dev.19` settings artifact cannot validate this new
+consumer. Live Provider/Keychain acceptance moves to the exact `dev.20`
+owner-installed gate; CRED-UX4B/C remain unauthorized.

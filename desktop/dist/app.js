@@ -183,6 +183,8 @@ const state = {
   agentContextSource: "editor",
   agentContextPath: null,
   agentDiagnostic: null,
+  agentProblemRunContext: null,
+  problemRepairPreviewProbe: null,
   agentPollTimer: null,
   activeRunId: null,
   agentReviewRunId: null,
@@ -431,6 +433,8 @@ let mockGitFailureCommand = null;
 let mockEvidenceClaimCreateFailure = null;
 let mockAgentLlmFailure = previewParams.get("failure") || null;
 let mockAgentLlmLoadFailureConsumed = false;
+let mockAgentRunFailureOnce = null;
+let mockProblemPreparationProjectSwitchOnce = false;
 
 function seedMockEvidenceClaims() {
   const currentProject = mockLastProject;
@@ -1029,7 +1033,15 @@ function mockTurnSummary(turn) {
   };
 }
 
-function createMockAgentTurn({ prompt, mode, model, editorContext = null, autoApprove = false }) {
+function createMockAgentTurn({
+  prompt,
+  mode,
+  model,
+  editorContext = null,
+  autoApprove = false,
+  taskKind = "agent_turn",
+  capabilityRoute = null,
+}) {
   const startedAt = new Date().toISOString();
   const waitingForApproval = mode === "act" && !autoApprove;
   const turn = {
@@ -1060,7 +1072,14 @@ function createMockAgentTurn({ prompt, mode, model, editorContext = null, autoAp
         tool: null,
         request_id: null,
         code: null,
-        details_json: JSON.stringify({ prompt, mode, auto_approve: autoApprove, editor_context: editorContext }),
+        details_json: JSON.stringify({
+          prompt,
+          mode,
+          task_kind: taskKind,
+          capability_route: capabilityRoute,
+          auto_approve: autoApprove,
+          editor_context: editorContext,
+        }),
       },
       {
         id: 2,
@@ -1232,12 +1251,16 @@ function recordMockRun({
   errorCall = null,
   traceback = [],
   parentRunId = null,
+  sourceRange = null,
+  errorRange = null,
+  projectRoot = mockLastProject,
 }) {
   const resolvedRunId = runId || nextMockRunId();
   const startedAt = new Date().toISOString();
   const entry = {
     run_id: resolvedRunId,
     parent_run_id: parentRunId,
+    project_root: projectRoot,
     origin,
     status,
     started_at: startedAt,
@@ -1262,6 +1285,7 @@ function recordMockRun({
       execution_mode: executionMode,
       document_version: documentVersion,
       parent_run_id: parentRunId,
+      source_range: sourceRange,
     }),
     stdout: "",
     value_text: errorMessage ? null : "Mock result",
@@ -1269,6 +1293,11 @@ function recordMockRun({
     warnings: [],
     error_call: errorCall,
     traceback,
+    line_number: errorRange?.start_line ?? null,
+    column_number: errorRange?.start_column ?? null,
+    end_line_number: errorRange?.end_line ?? null,
+    end_column_number: errorRange?.end_column ?? null,
+    range_kind: errorRange ? "r_expression" : null,
   };
   mockRuns.unshift(entry);
   return entry;
@@ -1413,7 +1442,7 @@ function mockRunForWorkspaceState(workspaceId, stateRevision, projectRevision) {
 
 function mockProblemList() {
   return mockRuns
-    .filter((run) => run.error_message)
+    .filter((run) => run.project_root === mockLastProject && run.error_message)
     .map((run) => ({
       run_id: run.run_id,
       parent_run_id: run.parent_run_id,
@@ -1425,10 +1454,33 @@ function mockProblemList() {
       source_path: run.source_path,
       execution_mode: run.execution_mode,
       document_version: run.document_version,
+      line_number: run.line_number,
+      column_number: run.column_number,
+      end_line_number: run.end_line_number,
+      end_column_number: run.end_column_number,
+      range_kind: run.range_kind,
       workspace_id: run.workspace_id,
       started_at: run.started_at,
       finished_at: run.finished_at,
     }));
+}
+
+function mockExecutionErrorRange(request) {
+  const sourceRange = request?.source_range ?? request?.sourceRange ?? null;
+  const code = String(request?.code || "");
+  if (!sourceRange || !code.includes("stop(")) return null;
+  const stopOffset = code.indexOf("stop(");
+  const lineStart = code.lastIndexOf("\n", Math.max(0, stopOffset - 1)) + 1;
+  const lineEnd = code.indexOf("\n", stopOffset);
+  const relativeLine = code.slice(0, lineStart).split("\n").length;
+  const lineText = code.slice(lineStart, lineEnd < 0 ? code.length : lineEnd);
+  const startLine = sourceRange.start_line + relativeLine - 1;
+  return {
+    start_line: startLine,
+    start_column: relativeLine === 1 ? sourceRange.start_column : 1,
+    end_line: startLine,
+    end_column: (relativeLine === 1 ? sourceRange.start_column : 1) + lineText.length,
+  };
 }
 
 function mockProjectState(root = mockLastProject) {
@@ -1852,7 +1904,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.19",
+      version: "0.4.0-dev.20",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1870,8 +1922,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.19",
-      available_version: "0.4.0-dev.19",
+      installed_version: "0.4.0-dev.20",
+      available_version: "0.4.0-dev.20",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2004,6 +2056,8 @@ async function mockInvoke(command, args) {
       errorCall: request.code?.includes("stop(") ? "stop(\"boom\")" : null,
       traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
       parentRunId: request.parent_run_id ?? null,
+      sourceRange: request.source_range ?? request.sourceRange ?? null,
+      errorRange: mockExecutionErrorRange(request),
     });
     if (!request.code?.includes("stop(") && !helpTarget) {
       mockPlots.unshift({
@@ -2277,7 +2331,16 @@ async function mockInvoke(command, args) {
   }
   if (command === "get_run_detail") {
     const runId = args.runId ?? args.run_id;
-    return structuredClone(mockRuns.find((run) => run.run_id === runId) || null);
+    const detail = structuredClone(mockRuns.find((run) =>
+      run.run_id === runId && run.project_root === mockLastProject
+    ) || null);
+    if (mockProblemPreparationProjectSwitchOnce) {
+      mockProblemPreparationProjectSwitchOnce = false;
+      mockLastProject = mockPlatformFixture.alternateProjectRoot;
+      state.project = mockProjectState(mockLastProject);
+      state.projectRefreshSequence += 1;
+    }
+    return detail;
   }
   if (command === "compare_runs") {
     const leftId = args.left_run_id ?? args.leftRunId;
@@ -2831,9 +2894,17 @@ async function mockInvoke(command, args) {
     return structuredClone(mockProjectSkillsView(mockLastProject));
   }
   if (command === "run_agent") {
+    if (mockAgentRunFailureOnce) {
+      const failure = mockAgentRunFailureOnce;
+      mockAgentRunFailureOnce = null;
+      throw new Error(failure);
+    }
     const mode = args.mode || "ask";
+    const taskKind = args.taskKind ?? args.task_kind ?? "agent_turn";
+    if (!["agent_turn", "problem_repair"].includes(taskKind)) throw new Error("Unsupported typed Agent task.");
+    if (taskKind === "problem_repair" && mode !== "ask") throw new Error("Problem repair must use read-only Ask mode.");
     const persistedRoutes = mockAgentLlmSettings.persisted_capability_routes || [];
-    const effectiveRoute = mode === "act"
+    const effectiveRoute = mode === "act" || taskKind === "problem_repair"
       ? (persistedRoutes.find((route) => route.capability === "agent.act")
         || persistedRoutes.find((route) => route.capability === "agent.chat"))
       : persistedRoutes.find((route) => route.capability === "agent.chat");
@@ -2845,20 +2916,28 @@ async function mockInvoke(command, args) {
     const modelProfile = mockAgentLlmSettings.models.find((item) => item.id === selectedModelId)
       || mockAgentLlmSettings.models.find((item) => item.id === mockAgentLlmSettings.selected_model_id)
       || null;
-    if (mode === "act" && agentModelCapability(modelProfile, "function_call") !== "yes") {
-      throw new Error("Act is unavailable because its effective model does not declare function_call=yes.");
+    if ((mode === "act" || taskKind === "problem_repair") && agentModelCapability(modelProfile, "function_call") !== "yes") {
+      throw new Error(taskKind === "problem_repair"
+        ? "Problem repair requires a compatible function-calling model on the effective agent.act route."
+        : "Act is unavailable because its effective model does not declare function_call=yes.");
     }
     const providerProfile = modelProfile
       ? mockAgentLlmSettings.providers.find((item) => item.id === modelProfile.provider_id)
       : null;
+    if (taskKind === "problem_repair" && providerProfile?.api_key_required
+      && providerProfile.credential_status !== "detected") {
+      throw new Error("Problem repair is unavailable because the effective agent.act Provider credential is missing.");
+    }
     const turn = createMockAgentTurn({
       prompt: args.prompt || "",
       mode,
       model: modelProfile ? mockEffectiveModelRef(providerProfile, modelProfile) : "deepseek:deepseek-v4-flash",
       editorContext: args.editorContext || null,
       autoApprove: Boolean(args.autoApprove ?? args.auto_approve),
+      taskKind,
+      capabilityRoute: effectiveRoute?.capability || null,
     });
-    return { status: "started", turn_id: turn.turn_id };
+    return { status: "started", turn_id: turn.turn_id, task_kind: taskKind };
   }
   if (command === "cancel_agent_turn") {
     const turnId = args.turnId ?? args.turn_id;
@@ -4396,6 +4475,7 @@ function selectionExecution() {
     const selection = state.editor.editor.getSelection();
     const start = model.getOffsetAt(selection.getStartPosition());
     const end = model.getOffsetAt(selection.getEndPosition());
+    const content = model.getValue();
     const text = normalizeExecutableCode(model.getValueInRange(selection));
     if (start === end || !text.trim()) return null;
     return {
@@ -4404,6 +4484,7 @@ function selectionExecution() {
       sourcePath: documentState.path,
       documentVersion: documentState.versionId ?? model.getAlternativeVersionId(),
       range: { start, end },
+      sourceRange: executableSourceRange(content, { start, end }, text),
     };
   }
   const editor = fallbackEditor();
@@ -4416,6 +4497,11 @@ function selectionExecution() {
     sourcePath: documentState.path,
     documentVersion: documentState.versionId ?? 0,
     range: { start: editor.selectionStart, end: editor.selectionEnd },
+    sourceRange: executableSourceRange(
+      editor.value,
+      { start: editor.selectionStart, end: editor.selectionEnd },
+      text,
+    ),
   };
 }
 
@@ -4426,7 +4512,7 @@ function currentLineExecution() {
     const model = state.editor.editor.getModel();
     const position = state.editor.editor.getPosition();
     const line = position?.lineNumber || 1;
-    const code = model.getLineContent(line);
+    const code = normalizeExecutableCode(model.getLineContent(line));
     if (!code.trim()) return null;
     return {
       code,
@@ -4437,6 +4523,14 @@ function currentLineExecution() {
         start: model.getOffsetAt({ lineNumber: line, column: 1 }),
         end: model.getOffsetAt({ lineNumber: line, column: model.getLineMaxColumn(line) }),
       },
+      sourceRange: executableSourceRange(
+        model.getValue(),
+        {
+          start: model.getOffsetAt({ lineNumber: line, column: 1 }),
+          end: model.getOffsetAt({ lineNumber: line, column: model.getLineMaxColumn(line) }),
+        },
+        code,
+      ),
       line,
     };
   }
@@ -4445,7 +4539,7 @@ function currentLineExecution() {
   const lineStart = value.lastIndexOf("\n", Math.max(0, caret - 1)) + 1;
   const nextBreak = value.indexOf("\n", caret);
   const lineEnd = nextBreak === -1 ? value.length : nextBreak;
-  const code = value.slice(lineStart, lineEnd);
+  const code = normalizeExecutableCode(value.slice(lineStart, lineEnd));
   if (!code.trim()) return null;
   return {
     code,
@@ -4453,6 +4547,7 @@ function currentLineExecution() {
     sourcePath: documentState.path,
     documentVersion: documentState.versionId ?? 0,
     range: { start: lineStart, end: lineEnd },
+    sourceRange: executableSourceRange(value, { start: lineStart, end: lineEnd }, code),
     line: value.slice(0, lineStart).split("\n").length,
   };
 }
@@ -4461,14 +4556,16 @@ function fileExecution() {
   const documentState = activeDocument();
   if (!documentState) return null;
   syncDocumentFromEditor({ render: false, persist: false });
-  const code = documentState.content;
+  const rawCode = documentState.content;
+  const code = normalizeExecutableCode(rawCode);
   if (!code.trim()) return null;
   return {
     code,
     type: "file",
     sourcePath: documentState.path,
     documentVersion: documentState.versionId ?? 0,
-    range: { start: 0, end: code.length },
+    range: { start: 0, end: rawCode.length },
+    sourceRange: executableSourceRange(rawCode, { start: 0, end: rawCode.length }, code),
   };
 }
 
@@ -4600,6 +4697,36 @@ function normalizeExecutableCode(code) {
   return code
     .replace(/\r\n?/g, "\n")
     .replace(/^[\uFEFF\u200B\u200C\u200D\u2060]+/, "");
+}
+
+function editorPositionAtOffset(content, offset) {
+  const bounded = Math.max(0, Math.min(String(content || "").length, Number(offset) || 0));
+  const prefix = String(content || "").slice(0, bounded);
+  const lastBreak = prefix.lastIndexOf("\n");
+  return {
+    line: prefix.split("\n").length,
+    column: bounded - lastBreak,
+  };
+}
+
+function executableSourceRange(content, offsets, code) {
+  const value = String(content || "");
+  const normalizedCode = String(code || "");
+  const start = Number(offsets?.start);
+  const end = Number(offsets?.end);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > value.length) return null;
+  const raw = value.slice(start, end);
+  const marker = raw.match(/^[\uFEFF\u200B\u200C\u200D\u2060]+/)?.[0] || "";
+  const position = editorPositionAtOffset(value, start + marker.length);
+  const lines = normalizedCode.split("\n");
+  return {
+    start_line: position.line,
+    start_column: position.column,
+    end_line: position.line + lines.length - 1,
+    end_column: lines.length === 1
+      ? position.column + lines[0].length
+      : lines.at(-1).length + 1,
+  };
 }
 
 function asMessageList(value) {
@@ -5963,6 +6090,7 @@ function setAgentContext(source, path = null) {
 function resetAgentContext() {
   setAgentContext("editor", null);
   state.agentDiagnostic = null;
+  state.agentProblemRunContext = null;
 }
 
 function validateProjectRelativePath(path) {
@@ -7551,6 +7679,7 @@ function applyAgentLlmView(view) {
   ensureAgentLlmSelectionState();
   updateAgentHeader();
   renderAgentLlmDialog();
+  renderProblems();
 }
 
 function clearAgentProviderForm() {
@@ -9064,15 +9193,162 @@ async function openProblemSource(problem, options = {}) {
   }
 }
 
-function problemAgentDiagnostic(problem) {
+function boundedProblemTextList(value, maxItems = 12, maxChars = 1000) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, maxItems)
+    .map((item) => truncateText(String(item || ""), maxChars))
+    .filter(Boolean);
+}
+
+function problemExactRange(problem) {
+  const values = [
+    problem?.line_number,
+    problem?.column_number,
+    problem?.end_line_number,
+    problem?.end_column_number,
+  ].map(Number);
+  if (values.some((value) => !Number.isInteger(value) || value < 1)) return null;
+  const [startLine, startColumn, endLine, endColumn] = values;
+  if (startLine > 10_000_000 || endLine > 10_000_000 || startColumn > 1_000_000 || endColumn > 1_000_000) return null;
+  if (endLine < startLine || (endLine === startLine && endColumn <= startColumn)) return null;
+  if (problem.origin !== "lintr" && problem.range_kind !== "r_expression") return null;
   return {
+    startLine,
+    startColumn,
+    endLine,
+    endColumn,
+    rangeKind: problem.range_kind || (problem.origin === "lintr" ? "lintr" : null),
+  };
+}
+
+function currentProblemSelectionRange(problem) {
+  const documentState = activeDocument();
+  if (!documentState || documentState.path !== problem?.source_path) return null;
+  const offsets = currentEditorOffsets();
+  const start = Math.min(offsets.start, offsets.end);
+  const end = Math.max(offsets.start, offsets.end);
+  if (end <= start) return null;
+  const content = currentEditorValue();
+  const startPosition = editorPositionAtOffset(content, start);
+  const endPosition = editorPositionAtOffset(content, end);
+  if (startPosition.line > 10_000_000 || endPosition.line > 10_000_000
+    || startPosition.column > 1_000_000 || endPosition.column > 1_000_000) return null;
+  return {
+    startLine: startPosition.line,
+    startColumn: startPosition.column,
+    endLine: endPosition.line,
+    endColumn: endPosition.column,
+    rangeKind: "user_selection",
+  };
+}
+
+function problemRunContext(detail) {
+  if (!detail) return null;
+  return {
+    kind: "rho.problem_run_context.v1",
+    run_id: truncateText(String(detail.run_id || ""), 128),
+    request_type: truncateText(String(detail.request_type || ""), 128),
+    execution_mode: truncateText(String(detail.execution_mode || ""), 64),
+    code: truncateText(String(detail.code || ""), 8000),
+    stdout: detail.stdout ? truncateText(String(detail.stdout), 4000) : null,
+    value: detail.value_text ? truncateText(String(detail.value_text), 2000) : null,
+    messages: boundedProblemTextList(detail.messages),
+    warnings: boundedProblemTextList(detail.warnings),
+  };
+}
+
+function problemExpectedSourceText(problem, detail, rangeOverride = null) {
+  const range = rangeOverride || problemExactRange(problem);
+  const argumentsValue = parseJsonObject(detail?.arguments_json);
+  const sourceRange = argumentsValue?.source_range;
+  const code = String(detail?.code || "");
+  if (!range || !sourceRange || !code) return null;
+  const base = {
+    startLine: Number(sourceRange.start_line),
+    startColumn: Number(sourceRange.start_column),
+    endLine: Number(sourceRange.end_line),
+    endColumn: Number(sourceRange.end_column),
+  };
+  if (Object.values(base).some((value) => !Number.isInteger(value) || value < 1)) return null;
+  const afterBaseStart = range.startLine > base.startLine
+    || (range.startLine === base.startLine && range.startColumn >= base.startColumn);
+  const beforeBaseEnd = range.endLine < base.endLine
+    || (range.endLine === base.endLine && range.endColumn <= base.endColumn);
+  if (!afterBaseStart || !beforeBaseEnd) return null;
+  const relativeStartLine = range.startLine - base.startLine + 1;
+  const relativeEndLine = range.endLine - base.startLine + 1;
+  const relativeStartColumn = relativeStartLine === 1
+    ? range.startColumn - base.startColumn + 1
+    : range.startColumn;
+  const relativeEndColumn = relativeEndLine === 1
+    ? range.endColumn - base.startColumn + 1
+    : range.endColumn;
+  const start = refactorOffsetAtLineColumn(code, relativeStartLine, relativeStartColumn);
+  const end = refactorOffsetAtLineColumn(code, relativeEndLine, relativeEndColumn);
+  if (start === null || end === null || end <= start) return null;
+  return code.slice(start, end);
+}
+
+function selectExactProblemRange(problem, rangeOverride = null) {
+  const range = rangeOverride || problemExactRange(problem);
+  if (!range) throw new Error("The diagnostic has no exact source range. Run the code again to capture one.");
+  const content = currentEditorValue();
+  const start = refactorOffsetAtLineColumn(content, range.startLine, range.startColumn);
+  const end = refactorOffsetAtLineColumn(content, range.endLine, range.endColumn);
+  if (start === null || end === null || end <= start) {
+    throw new Error("The recorded error range is outside the current file. Run the code again to refresh Problems.");
+  }
+  if (state.editor.mode === "monaco" && state.editor.editor) {
+    state.editor.editor.revealLineInCenter(range.startLine);
+    state.editor.editor.setSelection({
+      startLineNumber: range.startLine,
+      startColumn: range.startColumn,
+      endLineNumber: range.endLine,
+      endColumn: range.endColumn,
+    });
+    state.editor.editor.focus();
+  } else {
+    const editor = fallbackEditor();
+    editor.focus();
+    editor.setSelectionRange(start, end);
+  }
+  return content.slice(start, end);
+}
+
+function problemRepairRouteReason() {
+  const general = agentSendDisabledReason();
+  if (general) return general;
+  const route = agentCapabilityRouteView("agent.act");
+  if (!route?.model_id) return "Assign a function-calling model to the Act route before starting Agent repair.";
+  if (route.compatibility === "needs_review") return "Review the Act model's function-call capability before starting Agent repair.";
+  if (route.compatibility !== "compatible") return "Agent repair needs a compatible function-calling model on the Act route.";
+  if (!["detected", "not_required"].includes(route.credential_status)) {
+    return "The Act route Provider connection needs a valid API key before Agent repair can start.";
+  }
+  return null;
+}
+
+function openProblemRepairModelRouting() {
+  state.agentLlm.activeView = "routing";
+  state.agentLlm.routingExpandedCapability = "agent.act";
+  openAgentLlmDialog();
+  switchAgentLlmView("routing", { focus: true });
+}
+
+function problemAgentDiagnostic(problem, rangeOverride = null) {
+  const range = rangeOverride || problemExactRange(problem);
+  return {
+    kind: "rho.problem_diagnostic.v1",
+    project_root: truncateText(String(state.project.root || ""), 1000),
     source_path: problem.source_path ? truncateText(problem.source_path, 1000) : null,
-    line_number: Number.isInteger(Number(problem.line_number)) ? Number(problem.line_number) : null,
-    column_number: Number.isInteger(Number(problem.column_number)) ? Number(problem.column_number) : null,
-    end_line_number: Number.isInteger(Number(problem.end_line_number)) ? Number(problem.end_line_number) : null,
-    end_column_number: Number.isInteger(Number(problem.end_column_number)) ? Number(problem.end_column_number) : null,
+    line_number: range?.startLine ?? null,
+    column_number: range?.startColumn ?? null,
+    end_line_number: range?.endLine ?? null,
+    end_column_number: range?.endColumn ?? null,
+    range_kind: range?.rangeKind ? truncateText(range.rangeKind, 64) : null,
     message: truncateText(String(problem.message || ""), 4000),
     call: problem.call ? truncateText(problem.call, 1000) : null,
+    traceback: boundedProblemTextList(problem.traceback),
     origin: problem.origin ? truncateText(problem.origin, 128) : null,
     severity: problem.severity ? truncateText(problem.severity, 64) : (problem.status === "failed" ? "error" : "info"),
     run_id: problem.run_id ? truncateText(problem.run_id, 128) : null,
@@ -9086,21 +9362,98 @@ async function fixProblemWithAgent(problem) {
     toast("This problem has no available project file to repair. Open the source or attach the relevant file first.", true);
     return;
   }
-  try {
-    if (sourceKind === "file") {
-      await openProblemSource(problem, { selectRange: true });
-      if (state.activeDocument !== problem.source_path) throw new Error("The problem source could not be opened.");
-      setAgentContext("problem", problem.source_path);
+  const projectRoot = state.project.root;
+  const refreshSequence = state.projectRefreshSequence;
+  const assertCurrentProject = () => {
+    if (state.project.root !== projectRoot || state.projectRefreshSequence !== refreshSequence) {
+      throw new Error("The active project changed while Agent repair was being prepared. Open the Problem in the current project and try again.");
     }
-    state.agentDiagnostic = problemAgentDiagnostic(problem);
+  };
+  let repairRange = sourceKind === "file" ? problemExactRange(problem) : null;
+  if (sourceKind === "file" && !repairRange) {
+    repairRange = currentProblemSelectionRange(problem);
+    if (!repairRange) {
+      try {
+        await openDocument(problem.source_path);
+        assertCurrentProject();
+        applyWorkbenchLayout("analyze");
+        switchDockTab("problems");
+        toast("Select the failing R expression in the editor, then click Select code for Agent again.", true);
+      } catch (error) {
+        toast(reportUiFailure("prepare Agent repair selection", error, "The source could not be opened. Restore it or refresh the project, then try again."), true);
+      }
+      return;
+    }
+  }
+  const routeReason = problemRepairRouteReason();
+  if (routeReason) {
+    toast(routeReason, true);
+    openProblemRepairModelRouting();
+    return;
+  }
+  try {
+    const normalizedProjectRoot = (value) => String(value || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    if (problem.project_root && normalizedProjectRoot(problem.project_root) !== normalizedProjectRoot(projectRoot)) {
+      throw new Error("This Problem belongs to a different project. Refresh Problems before starting repair.");
+    }
+    const durableRun = problem.run_id
+      && !String(problem.run_id).startsWith("transient_")
+      && problem.origin !== "lintr";
+    const runDetail = durableRun ? await invoke("get_run_detail", { runId: problem.run_id }) : null;
+    assertCurrentProject();
+    if (durableRun && (!runDetail || runDetail.run_id !== problem.run_id
+      || normalizedProjectRoot(runDetail.project_root) !== normalizedProjectRoot(projectRoot))) {
+      throw new Error("The failed run is no longer available in this project. Refresh Problems and run the code again.");
+    }
+    if (sourceKind === "file") {
+      await openDocument(problem.source_path);
+      assertCurrentProject();
+      if (state.activeDocument !== problem.source_path) throw new Error("The problem source could not be opened.");
+      const selectedText = selectExactProblemRange(problem, repairRange);
+      if (runDetail) {
+        if (repairRange?.rangeKind !== "user_selection") {
+          const expectedText = problemExpectedSourceText(problem, runDetail, repairRange);
+          if (!expectedText || selectedText !== expectedText) {
+            throw new Error("The source changed since this error was recorded. Run the code again to create a fresh diagnostic.");
+          }
+        }
+        if (problem.execution_mode === "file" && normalizeExecutableCode(currentEditorValue()) !== String(runDetail.code || "")) {
+          throw new Error("The file changed since this error was recorded. Run the file again before starting Agent repair.");
+        }
+      } else {
+        const documentState = activeDocument();
+        if (problem.document_version !== null && problem.document_version !== undefined
+          && documentState?.versionId !== problem.document_version) {
+          throw new Error("The checked document changed. Run Check code again before starting Agent repair.");
+        }
+      }
+      setAgentContext("problem", problem.source_path);
+    } else {
+      if (!runDetail) throw new Error("The Console run details are unavailable. Run the command again, then retry Agent repair.");
+      setAgentContext("problem", null);
+    }
+    state.agentDiagnostic = problemAgentDiagnostic(problem, repairRange);
+    state.agentProblemRunContext = problemRunContext(runDetail);
+    state.agentMode = "ask";
+    syncAgentComposerState();
     applyWorkbenchLayout("agent");
     const location = problem.source_path
-      ? `${displayPath(problem.source_path)}${problem.line_number ? `:${problem.line_number}${problem.column_number ? `:${problem.column_number}` : ""}` : ""}`
+      ? `${displayPath(problem.source_path)}${repairRange ? `:${repairRange.startLine}:${repairRange.startColumn}` : ""}`
       : "the R Console";
-    const reference = sourceKind === "file" ? ` @${problem.source_path}` : "";
-    $("#agentInput").value = `Fix this R problem at ${location}${reference}. Diagnose the cause, inspect the relevant context, and generate one reviewable file edit proposal if a code change is appropriate. Do not claim the file is changed until I accept the proposal.\n\nError: ${problem.message || "(no error message)"}`;
-    await sendAgentPrompt();
+    const reference = sourceKind === "file" ? ` @"${problem.source_path}"` : "";
+    const rangeDescription = repairRange?.rangeKind === "user_selection"
+      ? "the user-selected repair range"
+      : "the exact diagnostic range";
+    $("#agentInput").value = sourceKind === "file"
+      ? `Repair this R problem at ${rangeDescription} ${location}${reference}. Diagnose the cause and generate at most one reviewable file edit proposal if a code change is appropriate. Do not run R, do not ask me to select the code again, and do not claim the file changed until I accept the proposal.\n\nError: ${problem.message || "(no error message)"}`
+      : `Diagnose this R Console problem using the attached failed-run context and give concrete recovery steps. No project file range is known, so do not claim that a file edit was prepared unless you first identify an exact project file through read-only inspection. Do not run R.\n\nError: ${problem.message || "(no error message)"}`;
+    const response = await sendAgentPrompt({ taskKind: "problem_repair", mode: "ask" });
+    if (!response) {
+      $("#agentInput").value = "";
+      resetAgentContext();
+    }
   } catch (error) {
+    resetAgentContext();
     toast(reportUiFailure("start Agent repair", error, "The Agent repair context could not be prepared. Open the source and try again."), true);
   }
 }
@@ -9205,8 +9558,23 @@ function renderProblems() {
     if (sourceKind === "file" || sourceKind === "console") {
       const fix = document.createElement("button");
       fix.type = "button";
-      fix.textContent = "Fix with Agent";
-      fix.addEventListener("click", () => fixProblemWithAgent(problem));
+      const missingRange = sourceKind === "file" && !problemExactRange(problem);
+      const routeReason = problemRepairRouteReason();
+      if (missingRange) {
+        fix.textContent = "Select code for Agent";
+        fix.title = "Open the source, select the failing expression, then use this action again. Running again may also capture an exact range.";
+        fix.addEventListener("click", () => fixProblemWithAgent(problem));
+      } else if (routeReason) {
+        fix.textContent = "Set up Agent repair";
+        fix.title = routeReason;
+        fix.addEventListener("click", () => {
+          toast(routeReason, true);
+          openProblemRepairModelRouting();
+        });
+      } else {
+        fix.textContent = "Fix with Agent";
+        fix.addEventListener("click", () => fixProblemWithAgent(problem));
+      }
       actions.append(fix);
     }
     if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
@@ -10427,6 +10795,7 @@ async function executeCode(request) {
         source_path: request.sourcePath ?? null,
         execution_mode: request.type ?? null,
         document_version: request.documentVersion ?? null,
+        source_range: request.sourceRange ?? null,
       },
     });
     const documentState = activeDocument();
@@ -11928,6 +12297,184 @@ function parseEnvironmentOperationPayload(value, fallback = null) {
   }
 }
 
+function mockProblemRepairTurnEvidence(turn) {
+  const promptEvent = turn?.events?.find((event) => event.event_type === "agent.user_prompt");
+  const proposalEvent = turn?.events?.find((event) =>
+    event.event_type === "tool.call_completed" && event.tool === "propose_file_edit"
+  );
+  const details = parseJsonObject(promptEvent?.details_json) || {};
+  const proposal = parseJsonObject(proposalEvent?.body);
+  return {
+    created: Boolean(turn),
+    mode: turn?.mode || null,
+    task_kind: details.task_kind || null,
+    capability_route: details.capability_route || null,
+    auto_approve: details.auto_approve ?? null,
+    context: details.editor_context || null,
+    proposal_created: Boolean(proposalEvent),
+    proposal_operation: proposal?.operation || null,
+    proposal_path: proposal?.path || null,
+  };
+}
+
+function setPreviewEditorSelection(start, end) {
+  const documentState = activeDocument();
+  if (!documentState) return false;
+  documentState.cursorStart = Math.max(0, Math.min(start, documentState.content.length));
+  documentState.cursorEnd = Math.max(0, Math.min(end, documentState.content.length));
+  applyDocumentSelection(documentState);
+  return documentState.cursorEnd > documentState.cursorStart;
+}
+
+async function runProblemRepairMockProbe(fileProblem, consoleProblem) {
+  const projectRoot = state.project.root;
+  const alternateProjectRoot = mockPlatformFixture.alternateProjectRoot;
+  const projectSourceBefore = mockProjects[projectRoot].contents["analysis.R"];
+  const fileTurnCountBefore = mockAgentTurns.length;
+
+  await fixProblemWithAgent(fileProblem);
+  const fileTurn = mockAgentTurns[0] || null;
+  const fileEvidence = mockProblemRepairTurnEvidence(fileTurn);
+  const fileTurnCount = mockAgentTurns.length;
+
+  await fixProblemWithAgent(consoleProblem);
+  const consoleTurn = mockAgentTurns[0] || null;
+  const consoleEvidence = mockProblemRepairTurnEvidence(consoleTurn);
+  const consoleTurnCount = mockAgentTurns.length;
+
+  await openDocument(fileProblem.source_path);
+  setPreviewEditorSelection(0, 0);
+  const noRangeProblem = {
+    ...fileProblem,
+    line_number: null,
+    column_number: null,
+    end_line_number: null,
+    end_column_number: null,
+    range_kind: null,
+  };
+  const manualBefore = mockAgentTurns.length;
+  await fixProblemWithAgent(noRangeProblem);
+  const manualFirstActionBlocked = mockAgentTurns.length === manualBefore;
+  const manualDocument = activeDocument();
+  const manualStart = manualDocument?.content.indexOf("summary(qc)") ?? -1;
+  if (manualStart >= 0) setPreviewEditorSelection(manualStart, manualStart + "summary(qc)".length);
+  await fixProblemWithAgent(noRangeProblem);
+  const manualTurn = mockAgentTurns[0] || null;
+  const manualEvidence = mockProblemRepairTurnEvidence(manualTurn);
+  const manualSecondActionCreatedTurn = mockAgentTurns.length === manualBefore + 1;
+
+  const foreignBefore = mockAgentTurns.length;
+  await fixProblemWithAgent({ ...fileProblem, project_root: alternateProjectRoot });
+  const foreignProjectBlocked = mockAgentTurns.length === foreignBefore;
+
+  await openDocument(fileProblem.source_path);
+  const documentState = activeDocument();
+  const documentSnapshot = documentState ? {
+    content: documentState.content,
+    savedContent: documentState.savedContent,
+    versionId: documentState.versionId,
+    cursorStart: documentState.cursorStart,
+    cursorEnd: documentState.cursorEnd,
+  } : null;
+  if (documentState) {
+    documentState.content = documentState.content.replace("summary(qc)", "summary(qc_stale)");
+    documentState.versionId = Number(documentState.versionId || 0) + 1;
+    documentState.cursorStart = 0;
+    documentState.cursorEnd = 0;
+    renderActiveDocument();
+  }
+  const staleBefore = mockAgentTurns.length;
+  await fixProblemWithAgent(fileProblem);
+  const staleSourceBlocked = mockAgentTurns.length === staleBefore;
+  if (documentState && documentSnapshot) {
+    Object.assign(documentState, documentSnapshot);
+    renderActiveDocument();
+  }
+
+  const failureBefore = mockAgentTurns.length;
+  mockAgentRunFailureOnce = "Mock Agent repair request failed before a turn was created.";
+  await fixProblemWithAgent(fileProblem);
+  const failedRequestRecovered = mockAgentTurns.length === failureBefore
+    && !state.agentBusy
+    && state.agentDiagnostic === null
+    && state.agentProblemRunContext === null;
+
+  const switchBefore = mockAgentTurns.length;
+  mockProblemPreparationProjectSwitchOnce = true;
+  await fixProblemWithAgent(fileProblem);
+  const switchedProjectRoot = state.project.root;
+  const projectSwitchBlocked = mockAgentTurns.length === switchBefore
+    && switchedProjectRoot === alternateProjectRoot;
+  mockLastProject = projectRoot;
+  state.project = mockProjectState(projectRoot);
+  state.projectRefreshSequence += 1;
+
+  const settingsSnapshot = structuredClone(mockAgentLlmSettings);
+  const routeModelId = (mockAgentLlmSettings.persisted_capability_routes || [])
+    .find((route) => route.capability === "agent.act")?.model_id
+    || (mockAgentLlmSettings.persisted_capability_routes || [])
+      .find((route) => route.capability === "agent.chat")?.model_id;
+  const routeModel = mockAgentLlmSettings.models.find((model) => model.id === routeModelId);
+  if (routeModel) routeModel.capabilities.function_call = agentCapability("no", "user_declared");
+  rebuildMockAgentLlmSettings();
+  state.agentLlm.settings = structuredClone(mockAgentLlmSettings);
+  syncAgentComposerState();
+  const routeBefore = mockAgentTurns.length;
+  await fixProblemWithAgent(fileProblem);
+  const routeBlocker = {
+    no_turn: mockAgentTurns.length === routeBefore,
+    dialog_open: !$("#agentLlmDialog").classList.contains("hidden"),
+    active_view: state.agentLlm.activeView,
+    expanded_capability: state.agentLlm.routingExpandedCapability,
+  };
+  closeAgentLlmDialog();
+  mockAgentLlmSettings = rebuildMockAgentLlmSettings(settingsSnapshot);
+  state.agentLlm.settings = structuredClone(mockAgentLlmSettings);
+  syncAgentComposerState();
+
+  const activeSource = state.documents["analysis.R"]?.content;
+  return {
+    file: {
+      ...fileEvidence,
+      turn_created_once: fileTurnCount === fileTurnCountBefore + 1,
+      exact_selection: fileEvidence.context?.selection_text || null,
+      diagnostic_range: fileEvidence.context?.diagnostic ? {
+        start_line: fileEvidence.context.diagnostic.line_number,
+        start_column: fileEvidence.context.diagnostic.column_number,
+        end_line: fileEvidence.context.diagnostic.end_line_number,
+        end_column: fileEvidence.context.diagnostic.end_column_number,
+        kind: fileEvidence.context.diagnostic.range_kind,
+      } : null,
+      run_id: fileEvidence.context?.run_context?.run_id || null,
+      traceback: fileEvidence.context?.diagnostic?.traceback || [],
+    },
+    console: {
+      ...consoleEvidence,
+      turn_created_once: consoleTurnCount === fileTurnCount + 1,
+      active_path: consoleEvidence.context?.active_path ?? null,
+      source_path: consoleEvidence.context?.diagnostic?.source_path || null,
+      run_id: consoleEvidence.context?.run_context?.run_id || null,
+    },
+    manual_selection: {
+      first_action_created_no_turn: manualFirstActionBlocked,
+      second_action_created_turn: manualSecondActionCreatedTurn && manualEvidence.created,
+      task_kind: manualEvidence.task_kind,
+      range_kind: manualEvidence.context?.diagnostic?.range_kind || null,
+      selection_text: manualEvidence.context?.selection_text || null,
+      proposal_created: manualEvidence.proposal_created,
+    },
+    guards: {
+      foreign_project_blocked: foreignProjectBlocked,
+      stale_source_blocked: staleSourceBlocked,
+      failed_request_recovered: failedRequestRecovered,
+      project_switch_blocked: projectSwitchBlocked,
+    },
+    route_blocker: routeBlocker,
+    source_unchanged_before_accept: projectSourceBefore === mockProjects[projectRoot].contents["analysis.R"]
+      && activeSource === projectSourceBefore,
+  };
+}
+
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
@@ -12428,38 +12975,56 @@ async function maybeApplyPreviewScenario() {
     return;
   }
   if (scenario === "usability-problems") {
-    state.problems = [
-      {
-        run_id: "run_console_problem",
-        origin: "user",
-        status: "failed",
-        message: "object 'mitochondrial_percent' not found",
-        call: "eval(ei, envir)",
-        source_path: "<console>",
-        execution_mode: "console",
-      },
-      {
-        run_id: "run_file_problem",
-        origin: "user",
-        status: "failed",
-        message: "object 'qc' not found",
-        call: "summary(qc)",
-        source_path: "analysis.R",
-        execution_mode: "file",
-        line_number: 2,
-        column_number: 1,
-      },
-      {
-        run_id: "run_missing_problem",
-        origin: "user",
-        status: "failed",
-        message: "source file was removed",
-        source_path: "deleted-analysis.R",
-        execution_mode: "file",
-      },
-    ];
+    recordMockRun({
+      runId: "run_console_problem",
+      origin: "user",
+      status: "failed",
+      code: "summary(mitochondrial_percent)",
+      sourcePath: "<console>",
+      executionMode: "console",
+      errorMessage: "object 'mitochondrial_percent' not found",
+      errorCall: "summary(mitochondrial_percent)",
+      traceback: ["summary(mitochondrial_percent)", "eval(ei, envir)"],
+    });
+    recordMockRun({
+      runId: "run_file_problem",
+      origin: "user",
+      status: "failed",
+      code: "summary(qc)",
+      sourcePath: "analysis.R",
+      executionMode: "selection",
+      documentVersion: 0,
+      errorMessage: "object 'qc' not found",
+      errorCall: "summary(qc)",
+      traceback: ["summary(qc)", "eval(ei, envir)"],
+      sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+      errorRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+    });
+    recordMockRun({
+      runId: "run_missing_problem",
+      origin: "user",
+      status: "failed",
+      code: "summary(removed_data)",
+      sourcePath: "deleted-analysis.R",
+      executionMode: "file",
+      errorMessage: "source file was removed",
+    });
+    state.problems = mockProblemList().filter((problem) =>
+      ["run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
+    );
     renderProblems();
     switchDockTab("problems");
+    if (previewParams.get("state") === "repair-probe") {
+      const fileProblem = state.problems.find((problem) => problem.run_id === "run_file_problem");
+      const consoleProblem = state.problems.find((problem) => problem.run_id === "run_console_problem");
+      state.problemRepairPreviewProbe = await runProblemRepairMockProbe(fileProblem, consoleProblem);
+      state.problems = mockProblemList().filter((problem) =>
+        ["run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
+      );
+      applyWorkbenchLayout("analyze");
+      renderProblems();
+      switchDockTab("problems");
+    }
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -12592,7 +13157,7 @@ function rectsOverlap(a, b) {
 
 function recordPreviewLayoutEvidence() {
   const scenario = previewParams.get("preview");
-  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "model-settings"].includes(scenario)) return;
+  if (!["agent-first-direct", "interface-shell", "console-logs", "git-review", "wp2-data-viewer", "wp3-artifacts", "environment-lockfile", "environment-package", "local-help", "installed-help", "console-help", "project-references", "lint-quick-fix", "agent-help-link", "editor-refactor", "editor-format", "evidence-claims", "usability-problems", "model-settings"].includes(scenario)) return;
   let target = $("#previewEvidence");
   if (!target) {
     target = document.createElement("pre");
@@ -12664,6 +13229,19 @@ function recordPreviewLayoutEvidence() {
       },
       overlap: { rail_with_detail: rectsOverlap(rail, detail) },
       rects: { dialog, shell, rail, detail },
+    });
+    return;
+  }
+  if (scenario === "usability-problems") {
+    target.textContent = JSON.stringify({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      state: previewParams.get("state") || "default",
+      active_dock_tab: document.querySelector("[data-dock-tab].active")?.dataset.dockTab || null,
+      problem_count: groupedProblems().length,
+      action_labels: $$("#problemList .problem-actions button").map((button) => button.textContent),
+      source_unavailable_count: $$("#problemList .problem-source-unavailable").length,
+      repair_probe: state.problemRepairPreviewProbe,
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
     });
     return;
   }
@@ -14153,9 +14731,12 @@ function formatBytes(bytes) {
 }
 
 function buildAgentEditorContext(options = {}) {
-  const { diagnostic = state.agentDiagnostic } = options;
+  const {
+    diagnostic = state.agentDiagnostic,
+    runContext = state.agentProblemRunContext,
+  } = options;
   syncDocumentFromEditor({ render: false, persist: false });
-  const documentState = activeDocument();
+  const documentState = diagnostic?.source_path === "<console>" ? null : activeDocument();
   const files = state.project.files.map((file) => file.path).slice(0, 500);
   if (!documentState) {
     return {
@@ -14166,6 +14747,7 @@ function buildAgentEditorContext(options = {}) {
       context_path: state.agentContextPath,
       local_help: state.agentLocalHelpContext,
       diagnostic,
+      run_context: runContext,
     };
   }
   const offsets = currentEditorOffsets();
@@ -14192,6 +14774,7 @@ function buildAgentEditorContext(options = {}) {
     context_path: state.agentContextPath,
     local_help: state.agentLocalHelpContext,
     diagnostic,
+    run_context: runContext,
   };
 }
 
@@ -14689,13 +15272,15 @@ function updateAgentFileMentions() {
   renderAgentFileMentions();
 }
 
-async function sendAgentPrompt() {
+async function sendAgentPrompt(options = {}) {
+  const taskKind = options.taskKind || "agent_turn";
+  const mode = options.mode || state.agentMode;
   const prompt = $("#agentInput").value.trim();
-  if (!prompt || state.agentBusy) return;
+  if (!prompt || state.agentBusy) return null;
   const selectedModelId = state.agentLlm.selectedModelId || state.agentLlm.settings?.selected_model_id || null;
   if (!selectedModelId) {
     toast(agentSendDisabledReason() || "No Agent model is selected.", true);
-    return;
+    return null;
   }
   hideAgentFileMentions();
   closeAgentModelSelector();
@@ -14707,10 +15292,11 @@ async function sendAgentPrompt() {
   $("#agentStateDot").className = "agent-state-dot busy";
   try {
     const editorContext = buildAgentEditorContext();
-    const authorizeChanges = state.agentMode === "act" && state.actAutoApprove;
+    const authorizeChanges = taskKind === "agent_turn" && mode === "act" && state.actAutoApprove;
     const response = await invoke("run_agent", {
       prompt,
-      mode: state.agentMode,
+      mode,
+      taskKind,
       autoApprove: authorizeChanges,
       editorContext,
     });
@@ -14721,12 +15307,14 @@ async function sendAgentPrompt() {
     state.selectedTurnId = response?.turn_id || state.selectedTurnId;
     state.selectedTurnDetail = null;
     await Promise.all([loadAgentData(), loadRunData()]);
+    return response;
   } catch (error) {
     const message = String(error);
     $("#agentState").textContent = "Failed";
     $("#agentStateDot").className = "agent-state-dot error";
     setAgentInputBusy(false);
     toast(message, true);
+    return null;
   }
 }
 

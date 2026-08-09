@@ -351,12 +351,21 @@ struct WorkspaceStatus {
     python_required: bool,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+struct ExecuteSourceRange {
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+}
+
 #[derive(Deserialize)]
 struct ExecuteRequest {
     code: String,
     source_path: Option<String>,
     execution_mode: Option<String>,
     document_version: Option<i64>,
+    source_range: Option<ExecuteSourceRange>,
 }
 
 #[derive(Deserialize)]
@@ -1165,6 +1174,9 @@ async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Resul
     if request.code.trim().is_empty() {
         return Err("R code is empty".to_string());
     }
+    validate_execute_source_range(&request, &state)
+        .await
+        .map_err(display_error)?;
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let mut context = context.lock().await;
@@ -1174,7 +1186,8 @@ async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Resul
             "code": request.code,
             "source_path": request.source_path,
             "execution_mode": request.execution_mode,
-            "document_version": request.document_version
+            "document_version": request.document_version,
+            "source_range": request.source_range
         },
         "expected_workspace": broker.identity()
     });
@@ -1188,6 +1201,72 @@ async fn execute_r(request: ExecuteRequest, state: State<'_, AppState>) -> Resul
     )
     .await
     .map_err(display_error)
+}
+
+async fn validate_execute_source_range(request: &ExecuteRequest, state: &AppState) -> Result<()> {
+    validate_execute_source_range_shape(request)?;
+    if request.source_range.is_none() {
+        return Ok(());
+    }
+    let source_path = request.source_path.as_deref().unwrap();
+    let root = state.project_root.read().await.clone();
+    project_path(&root, source_path)?;
+    Ok(())
+}
+
+fn validate_execute_source_range_shape(request: &ExecuteRequest) -> Result<()> {
+    const MAX_DIAGNOSTIC_LINE: u32 = 10_000_000;
+    const MAX_DIAGNOSTIC_COLUMN: u32 = 1_000_000;
+    let Some(range) = request.source_range else {
+        return Ok(());
+    };
+    ensure!(
+        range.start_line > 0
+            && range.start_column > 0
+            && range.end_line > 0
+            && range.end_column > 0
+            && range.start_line <= MAX_DIAGNOSTIC_LINE
+            && range.end_line <= MAX_DIAGNOSTIC_LINE
+            && range.start_column <= MAX_DIAGNOSTIC_COLUMN
+            && range.end_column <= MAX_DIAGNOSTIC_COLUMN,
+        "Execution source range is out of bounds."
+    );
+    let ordered = range.end_line > range.start_line
+        || (range.end_line == range.start_line && range.end_column > range.start_column);
+    ensure!(ordered, "Execution source range is empty or inverted.");
+    let source_path = request
+        .source_path
+        .as_deref()
+        .context("Execution source range requires a project file path.")?;
+    ensure!(
+        !source_path.starts_with('<'),
+        "Execution source range requires a real project file."
+    );
+    let code_lines = request.code.split('\n').collect::<Vec<_>>();
+    let expected_end_line = range
+        .start_line
+        .checked_add(u32::try_from(code_lines.len().saturating_sub(1))?)
+        .context("Execution source range line count overflowed.")?;
+    let last_line_width = u32::try_from(
+        code_lines
+            .last()
+            .map_or(0, |line| line.encode_utf16().count()),
+    )?;
+    let expected_end_column = if code_lines.len() == 1 {
+        range
+            .start_column
+            .checked_add(last_line_width)
+            .context("Execution source range column overflowed.")?
+    } else {
+        last_line_width
+            .checked_add(1)
+            .context("Execution source range column overflowed.")?
+    };
+    ensure!(
+        range.end_line == expected_end_line && range.end_column == expected_end_column,
+        "Execution source range does not match the submitted code."
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -2814,16 +2893,8 @@ async fn retry_run(run_id: String, state: State<'_, AppState>) -> Result<Value, 
             detail.request_type
         ));
     }
-    let mut arguments: Value =
-        serde_json::from_str(&detail.arguments_json).map_err(display_error)?;
-    let object = arguments
-        .as_object_mut()
-        .context("Stored run arguments are invalid")
-        .map_err(display_error)?;
-    object.insert(
-        "parent_run_id".to_string(),
-        Value::String(detail.run_id.clone()),
-    );
+    let arguments =
+        retry_run_arguments(&detail.arguments_json, &detail.run_id).map_err(display_error)?;
     let CoordinatorRuntime { broker, store } = &mut *context;
     let payload = json!({
         "arguments": arguments,
@@ -2841,6 +2912,18 @@ async fn retry_run(run_id: String, state: State<'_, AppState>) -> Result<Value, 
     .map_err(display_error)
 }
 
+fn retry_run_arguments(arguments_json: &str, parent_run_id: &str) -> Result<Value> {
+    let mut arguments: Value = serde_json::from_str(arguments_json)?;
+    let object = arguments
+        .as_object_mut()
+        .context("Stored run arguments are invalid")?;
+    object.insert(
+        "parent_run_id".to_string(),
+        Value::String(parent_run_id.to_string()),
+    );
+    Ok(arguments)
+}
+
 fn run_is_retryable(request_type: &str, origin: &str) -> bool {
     request_type == "workspace.execute" && matches!(origin, "user" | "agent")
 }
@@ -2849,6 +2932,7 @@ fn run_is_retryable(request_type: &str, origin: &str) -> bool {
 async fn run_agent(
     prompt: String,
     mode: String,
+    task_kind: Option<String>,
     model_id: Option<String>,
     auto_approve: Option<bool>,
     editor_context: Option<Value>,
@@ -2860,6 +2944,13 @@ async fn run_agent(
     }
     if !matches!(mode.as_str(), "ask" | "plan" | "act") {
         return Err(format!("unsupported Agent mode `{mode}`"));
+    }
+    let task_kind = task_kind.unwrap_or_else(|| "agent_turn".to_string());
+    if !matches!(task_kind.as_str(), "agent_turn" | "problem_repair") {
+        return Err(format!("unsupported Agent task kind `{task_kind}`"));
+    }
+    if task_kind == "problem_repair" && mode != "ask" {
+        return Err("Problem repair must use read-only Ask mode.".to_string());
     }
     let config = runtime_config(&state).map_err(display_error)?;
     if !config.agent_runtime.available {
@@ -2876,13 +2967,22 @@ async fn run_agent(
     let session = active_session(&state).await.map_err(display_error)?;
     let context = active_context(&state).await.map_err(display_error)?;
     let turn_id = format!("agent_turn_{}", Uuid::new_v4());
-    let (resolved_model, credential_override) = agent_llm::resolve_model_and_credential_for_turn(
-        &config.data_dir,
-        model_id.as_deref(),
-        &mode,
-    )
+    let (resolved_model, credential_override) = if task_kind == "problem_repair" {
+        agent_llm::resolve_model_and_credential_for_task(
+            &config.data_dir,
+            model_id.as_deref(),
+            &mode,
+            &task_kind,
+        )
+    } else {
+        agent_llm::resolve_model_and_credential_for_turn(
+            &config.data_dir,
+            model_id.as_deref(),
+            &mode,
+        )
+    }
     .map_err(display_error)?;
-    let auto_approve = auto_approve.unwrap_or(false) && mode == "act";
+    let auto_approve = task_kind == "agent_turn" && auto_approve.unwrap_or(false) && mode == "act";
     {
         let mut context_guard = context.lock().await;
         let identity = context_guard.broker.identity().clone();
@@ -2919,6 +3019,7 @@ async fn run_agent(
                 details_json: serde_json::to_string(&json!({
                     "prompt": prompt,
                     "mode": mode,
+                    "task_kind": task_kind,
                     "auto_approve": auto_approve,
                     "editor_context": editor_context.clone(),
                     "model_profile_id": resolved_model.runtime_profile.profile_id,
@@ -2975,7 +3076,8 @@ async fn run_agent(
     Ok(json!({
         "status": "started",
         "turn_id": turn_id,
-        "auto_approve": auto_approve
+        "auto_approve": auto_approve,
+        "task_kind": task_kind
     }))
 }
 
@@ -5257,19 +5359,20 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentModelTestControl, AgentRuntimeStatus, AppState, RUNTIME_CACHE_VERSION,
-        RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig, StartupView,
-        SwitchTestControl, SwitchTestStep, ark_candidate_paths, attach_render_artifact,
-        bounded_diagnostic, classify_startup_error, configure_user_startup, contain_audit_panic,
-        data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
-        durable_project_root, editor_format_result, ensure_artifact_export_target,
-        ensure_supported_r_architecture, ensure_supported_r_version, existing_startup_file,
-        find_executable_on_path, finish_render_job, has_png_signature, load_runtime_cache,
-        locate_ark_from_candidates, locate_rscript, lockfile_inventory_arguments,
-        parse_r_runtime_probe, project_switch_blocker, r_architecture_supported,
-        reconcile_render_job, render_job_is_terminal, run_is_retryable, runtime_file_signature,
-        safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
-        switch_project_with_watcher_factory, workspace_project_root_code, write_r_probe_script,
+        AgentModelTestControl, AgentRuntimeStatus, AppState, ExecuteRequest, ExecuteSourceRange,
+        RUNTIME_CACHE_VERSION, RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig,
+        StartupView, SwitchTestControl, SwitchTestStep, ark_candidate_paths,
+        attach_render_artifact, bounded_diagnostic, classify_startup_error, configure_user_startup,
+        contain_audit_panic, data_view_artifact_metadata, data_view_delimited_text,
+        decode_plot_png_base64, durable_project_root, editor_format_result,
+        ensure_artifact_export_target, ensure_supported_r_architecture, ensure_supported_r_version,
+        existing_startup_file, find_executable_on_path, finish_render_job, has_png_signature,
+        load_runtime_cache, locate_ark_from_candidates, locate_rscript,
+        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
+        r_architecture_supported, reconcile_render_job, render_job_is_terminal,
+        retry_run_arguments, run_is_retryable, runtime_file_signature, safe_delete_project_file,
+        save_runtime_cache, source_claim_snapshot, switch_project_with_watcher_factory,
+        validate_execute_source_range_shape, workspace_project_root_code, write_r_probe_script,
     };
     use crate::platform;
 
@@ -5291,6 +5394,97 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
     use tokio::sync::{Mutex, RwLock};
+
+    fn execute_request(code: &str, source_range: Option<ExecuteSourceRange>) -> ExecuteRequest {
+        ExecuteRequest {
+            code: code.to_string(),
+            source_path: Some("analysis.R".to_string()),
+            execution_mode: Some("selection".to_string()),
+            document_version: Some(1),
+            source_range,
+        }
+    }
+
+    #[test]
+    fn execute_source_range_matches_submitted_utf16_code_shape() {
+        let request = execute_request(
+            "value <- '😀'\nstop('错误')",
+            Some(ExecuteSourceRange {
+                start_line: 8,
+                start_column: 4,
+                end_line: 9,
+                end_column: 11,
+            }),
+        );
+        assert!(validate_execute_source_range_shape(&request).is_ok());
+
+        let single_line = execute_request(
+            "stop('错误')",
+            Some(ExecuteSourceRange {
+                start_line: 2,
+                start_column: 7,
+                end_line: 2,
+                end_column: 17,
+            }),
+        );
+        assert!(validate_execute_source_range_shape(&single_line).is_ok());
+        assert!(validate_execute_source_range_shape(&execute_request("summary(qc)", None)).is_ok());
+    }
+
+    #[test]
+    fn execute_source_range_rejects_partial_virtual_inverted_and_mismatched_input() {
+        assert!(
+            serde_json::from_value::<ExecuteRequest>(json!({
+                "code": "summary(qc)",
+                "source_path": "analysis.R",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1}
+            }))
+            .is_err()
+        );
+        let invalid = [
+            execute_request(
+                "summary(qc)",
+                Some(ExecuteSourceRange {
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 12,
+                }),
+            ),
+            execute_request(
+                "summary(qc)",
+                Some(ExecuteSourceRange {
+                    start_line: 2,
+                    start_column: 5,
+                    end_line: 2,
+                    end_column: 5,
+                }),
+            ),
+            execute_request(
+                "summary(qc)",
+                Some(ExecuteSourceRange {
+                    start_line: 2,
+                    start_column: 1,
+                    end_line: 2,
+                    end_column: 11,
+                }),
+            ),
+        ];
+        for request in invalid {
+            assert!(validate_execute_source_range_shape(&request).is_err());
+        }
+        let mut virtual_request = execute_request(
+            "summary(qc)",
+            Some(ExecuteSourceRange {
+                start_line: 2,
+                start_column: 1,
+                end_line: 2,
+                end_column: 12,
+            }),
+        );
+        virtual_request.source_path = Some("<console>".to_string());
+        assert!(validate_execute_source_range_shape(&virtual_request).is_err());
+    }
 
     fn test_runtime_cache(directory: &Path) -> RuntimeCacheFile {
         let rscript = directory.join("Rscript.exe");
@@ -5404,6 +5598,31 @@ mod tests {
         assert!(!run_is_retryable("environment.restore", "user"));
         assert!(!run_is_retryable("workspace.set_project_root", "system"));
         assert!(!run_is_retryable("workspace.bootstrap", "system"));
+    }
+
+    #[test]
+    fn retry_preserves_the_admitted_source_range_and_replaces_only_parent_identity() {
+        let original = json!({
+            "code": "stop('boom')",
+            "source_path": "analysis.R",
+            "execution_mode": "selection",
+            "document_version": 7,
+            "parent_run_id": "older_parent",
+            "source_range": {
+                "start_line": 8,
+                "start_column": 4,
+                "end_line": 8,
+                "end_column": 16
+            }
+        });
+        let retried = retry_run_arguments(&original.to_string(), "failed_run").unwrap();
+
+        assert_eq!(retried["source_range"], original["source_range"]);
+        assert_eq!(retried["code"], original["code"]);
+        assert_eq!(retried["source_path"], original["source_path"]);
+        assert_eq!(retried["document_version"], original["document_version"]);
+        assert_eq!(retried["parent_run_id"], "failed_run");
+        assert!(retry_run_arguments("[]", "failed_run").is_err());
     }
 
     #[test]

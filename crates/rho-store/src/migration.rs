@@ -86,6 +86,13 @@ pub(crate) fn v8_schema_sql() -> &'static str {
         error_message TEXT,
         error_call TEXT,
         traceback_json TEXT NOT NULL DEFAULT '[]',
+        error_start_line INTEGER,
+        error_start_column INTEGER,
+        error_end_line INTEGER,
+        error_end_column INTEGER,
+        error_range_kind TEXT CHECK (
+            error_range_kind IS NULL OR error_range_kind = 'r_expression'
+        ),
         cancel_requested INTEGER NOT NULL DEFAULT 0,
         environment_snapshot_id TEXT,
         environment_snapshot_id_after TEXT
@@ -424,6 +431,13 @@ pub(crate) fn rebuild_runs_v8(transaction: &rusqlite::Transaction<'_>) -> Result
             error_message TEXT,
             error_call TEXT,
             traceback_json TEXT NOT NULL DEFAULT '[]',
+            error_start_line INTEGER,
+            error_start_column INTEGER,
+            error_end_line INTEGER,
+            error_end_column INTEGER,
+            error_range_kind TEXT CHECK (
+                error_range_kind IS NULL OR error_range_kind = 'r_expression'
+            ),
             cancel_requested INTEGER NOT NULL DEFAULT 0,
             environment_snapshot_id TEXT,
             environment_snapshot_id_after TEXT
@@ -695,6 +709,48 @@ pub(crate) fn assert_index_exists(
                 None,
                 MigrationRecordCounts::default(),
                 "invalid_v8_schema",
+            ),
+        })
+    }
+}
+
+pub(crate) fn add_run_error_range_columns(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "ALTER TABLE runs ADD COLUMN error_start_line INTEGER;
+         ALTER TABLE runs ADD COLUMN error_start_column INTEGER;
+         ALTER TABLE runs ADD COLUMN error_end_line INTEGER;
+         ALTER TABLE runs ADD COLUMN error_end_column INTEGER;
+         ALTER TABLE runs ADD COLUMN error_range_kind TEXT CHECK (
+             error_range_kind IS NULL OR error_range_kind = 'r_expression'
+         );",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn assert_column_exists(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+) -> Result<(), StoreError> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut statement = connection.prepare(&pragma)?;
+    let exists = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .any(|name| name == column);
+    if exists {
+        Ok(())
+    } else {
+        Err(StoreError::MigrationRejected {
+            message: format!("{table}.{column} column is missing"),
+            outcome: MigrationOutcome::rejected(
+                Some(SCHEMA_VERSION),
+                None,
+                MigrationRecordCounts::default(),
+                "invalid_current_schema",
             ),
         })
     }

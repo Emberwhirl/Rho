@@ -1,6 +1,6 @@
 # Rho 0.4.0-dev.19 Cross-Platform Candidate Checklist
 
-Status: active development-candidate identity for CRED-UX4A-R1; implementation,
+Status: historical superseded development-candidate identity for CRED-UX4A-R1; implementation,
 complete affected automated verification, independent security/contract
 review, deterministic browser review, and local unsigned app/DMG verification
 are complete; authoritative candidate assets, GitHub Release draft,
@@ -151,8 +151,8 @@ GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. `0.4.0-dev.19` is the active replacement development identity.
-Implementation, the complete affected local matrix, browser review, security
-review, and unsigned artifact verification are complete. Owner installation,
-live-Provider/Keychain acceptance, authoritative candidate assets, MAC5, and
-publication are not yet complete.
+`NO-GO`. `0.4.0-dev.19` is immutable historical evidence and was superseded by
+`0.4.0-dev.20` when Issue #6 required a new user-visible repair contract and
+store schema. Its implementation, local matrix, browser review, security
+review, and unsigned artifact evidence remain valid only for this exact source
+identity; they cannot satisfy any `0.4.0-dev.20` candidate or acceptance row.

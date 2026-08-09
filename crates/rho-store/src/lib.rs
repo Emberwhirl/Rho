@@ -6,8 +6,10 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub(crate) const SCHEMA_VERSION: i64 = 9;
+pub(crate) const SCHEMA_VERSION: i64 = 10;
 const DEFAULT_LIMIT: usize = 50;
+const MAX_DIAGNOSTIC_LINE: u32 = 10_000_000;
+const MAX_DIAGNOSTIC_COLUMN: u32 = 1_000_000;
 #[cfg(test)]
 pub(crate) const LEGACY_UNSCOPED: &str = "legacy_unscoped";
 
@@ -46,7 +48,7 @@ pub use evidence::{
 pub use project::{
     PlotPayloadPruneResult, ProjectRetentionSummary, RetentionPolicy, RetentionScopeSummary,
 };
-pub use run::{ProblemSummary, RunDetail, RunDraft, RunFinish, RunSummary};
+pub use run::{ProblemSummary, RunDetail, RunDraft, RunErrorRange, RunFinish, RunSummary};
 
 pub fn normalize_project_root(root: &str) -> String {
     let normalized = root.replace('\\', "/");
@@ -59,6 +61,45 @@ pub fn normalize_project_root(root: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn validate_run_error_range(range: &RunErrorRange) -> Result<(), StoreError> {
+    let ordered = range.end_line > range.start_line
+        || (range.end_line == range.start_line && range.end_column > range.start_column);
+    if range.start_line == 0
+        || range.start_column == 0
+        || range.end_line == 0
+        || range.end_column == 0
+        || range.start_line > MAX_DIAGNOSTIC_LINE
+        || range.end_line > MAX_DIAGNOSTIC_LINE
+        || range.start_column > MAX_DIAGNOSTIC_COLUMN
+        || range.end_column > MAX_DIAGNOSTIC_COLUMN
+        || !ordered
+        || range.range_kind != "r_expression"
+    {
+        return Err(StoreError::Validation(
+            "run error range is incomplete, out of bounds, or unsupported".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn decode_problem_error_range(
+    start_line: Option<i64>,
+    start_column: Option<i64>,
+    end_line: Option<i64>,
+    end_column: Option<i64>,
+    range_kind: Option<String>,
+) -> Option<RunErrorRange> {
+    let range = RunErrorRange {
+        start_line: u32::try_from(start_line?).ok()?,
+        start_column: u32::try_from(start_column?).ok()?,
+        end_line: u32::try_from(end_line?).ok()?,
+        end_column: u32::try_from(end_column?).ok()?,
+        range_kind: range_kind?,
+    };
+    validate_run_error_range(&range).ok()?;
+    Some(range)
 }
 
 #[derive(Debug, Error)]
@@ -190,6 +231,8 @@ struct StoreOpenOptions {
     inject_v7_failure_before_commit: bool,
     #[cfg(test)]
     inject_v8_failure_before_commit: bool,
+    #[cfg(test)]
+    inject_v9_failure_before_commit: bool,
 }
 
 #[derive(Debug)]
@@ -241,6 +284,12 @@ impl Store {
                 let backup_path =
                     migration::create_pre_migration_backup(&self.connection, path, 8)?;
                 let outcome = self.migrate_v8_to_v9(backup_path, options)?;
+                self.migration_outcome = outcome;
+            }
+            Some(9) => {
+                let backup_path =
+                    migration::create_pre_migration_backup(&self.connection, path, 9)?;
+                let outcome = self.migrate_v9_to_v10(backup_path, options)?;
                 self.migration_outcome = outcome;
             }
             Some(other) => {
@@ -352,6 +401,7 @@ impl Store {
             .map(|path| path.to_string_lossy().replace('\\', "/"));
         let transaction = self.connection.transaction()?;
         migration::create_claim_review_schema(&transaction)?;
+        migration::add_run_error_range_columns(&transaction)?;
         transaction.execute(
             "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -380,6 +430,44 @@ impl Store {
         ))
     }
 
+    fn migrate_v9_to_v10(
+        &mut self,
+        backup_path: Option<PathBuf>,
+        _options: &StoreOpenOptions,
+    ) -> Result<MigrationOutcome, StoreError> {
+        let _backup_path_string = backup_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().replace('\\', "/"));
+        let transaction = self.connection.transaction()?;
+        migration::add_run_error_range_columns(&transaction)?;
+        transaction.execute(
+            "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [SCHEMA_VERSION.to_string()],
+        )?;
+        #[cfg(test)]
+        if _options.inject_v9_failure_before_commit {
+            return Err(StoreError::MigrationRejected {
+                message: "injected v9 migration failure".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(9),
+                    _backup_path_string,
+                    MigrationRecordCounts::default(),
+                    "injected_failure",
+                ),
+            });
+        }
+        transaction.commit()?;
+        self.assert_current_schema()?;
+        Ok(MigrationOutcome::migrated(
+            9,
+            backup_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+            MigrationRecordCounts::default(),
+        ))
+    }
+
     fn set_schema_version(&self, version: i64) -> Result<(), StoreError> {
         migration::set_schema_version(&self.connection, version)?;
         Ok(())
@@ -398,6 +486,15 @@ impl Store {
         migration::assert_not_null_project_identity(&self.connection, "claim_evidence_links")?;
         migration::assert_index_exists(&self.connection, "idx_evidence_claims_project")?;
         migration::assert_index_exists(&self.connection, "idx_claim_evidence_links_project")?;
+        for column in [
+            "error_start_line",
+            "error_start_column",
+            "error_end_line",
+            "error_end_column",
+            "error_range_kind",
+        ] {
+            migration::assert_column_exists(&self.connection, "runs", column)?;
+        }
         Ok(())
     }
 
@@ -494,6 +591,17 @@ impl Store {
     }
 
     pub fn finish_run(&mut self, result: &RunFinish) -> Result<(), StoreError> {
+        self.finish_run_with_error_range(result, None)
+    }
+
+    pub fn finish_run_with_error_range(
+        &mut self,
+        result: &RunFinish,
+        error_range: Option<&RunErrorRange>,
+    ) -> Result<(), StoreError> {
+        if let Some(range) = error_range {
+            validate_run_error_range(range)?;
+        }
         self.connection.execute(
             "UPDATE runs
              SET status = ?2,
@@ -510,6 +618,11 @@ impl Store {
                  error_call = ?13,
                  traceback_json = ?14,
                  environment_snapshot_id_after = COALESCE(?15, environment_snapshot_id_after),
+                 error_start_line = ?16,
+                 error_start_column = ?17,
+                 error_end_line = ?18,
+                 error_end_column = ?19,
+                 error_range_kind = ?20,
                  cancel_requested = 0
              WHERE run_id = ?1",
             params![
@@ -528,6 +641,11 @@ impl Store {
                 result.error_call,
                 serde_json::to_string(&result.traceback)?,
                 result.environment_snapshot_id_after,
+                error_range.map(|range| range.start_line),
+                error_range.map(|range| range.start_column),
+                error_range.map(|range| range.end_line),
+                error_range.map(|range| range.end_column),
+                error_range.map(|range| range.range_kind.as_str()),
             ],
         )?;
         Ok(())
@@ -630,7 +748,9 @@ impl Store {
             "SELECT
                 run_id, parent_run_id, project_root, origin, status, error_message, error_call,
                 traceback_json, source_path, execution_mode, document_version,
-                workspace_id, started_at, finished_at
+                workspace_id, started_at, finished_at,
+                error_start_line, error_start_column, error_end_line, error_end_column,
+                error_range_kind
              FROM runs
              WHERE project_root = ?1 AND error_message IS NOT NULL
              ORDER BY started_at DESC
@@ -640,6 +760,13 @@ impl Store {
             params![project_root, limit.unwrap_or(DEFAULT_LIMIT) as i64],
             |row| {
                 let traceback: String = row.get(7)?;
+                let range = decode_problem_error_range(
+                    row.get(14)?,
+                    row.get(15)?,
+                    row.get(16)?,
+                    row.get(17)?,
+                    row.get(18)?,
+                );
                 Ok(ProblemSummary {
                     run_id: row.get(0)?,
                     parent_run_id: row.get(1)?,
@@ -652,6 +779,11 @@ impl Store {
                     source_path: row.get(8)?,
                     execution_mode: row.get(9)?,
                     document_version: row.get(10)?,
+                    line_number: range.as_ref().map(|value| value.start_line),
+                    column_number: range.as_ref().map(|value| value.start_column),
+                    end_line_number: range.as_ref().map(|value| value.end_line),
+                    end_column_number: range.as_ref().map(|value| value.end_column),
+                    range_kind: range.as_ref().map(|value| value.range_kind.clone()),
                     workspace_id: row.get(11)?,
                     started_at: row.get(12)?,
                     finished_at: row.get(13)?,
@@ -2147,6 +2279,161 @@ mod tests {
     }
 
     #[test]
+    fn persists_complete_problem_ranges_and_isolates_them_by_project() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        for (run_id, project_root) in [
+            ("run_range_a", "D:/projects/A"),
+            ("run_range_b", "D:/projects/B"),
+        ] {
+            store
+                .create_run(&RunDraft {
+                    run_id: run_id.to_string(),
+                    parent_run_id: None,
+                    project_root: project_root.to_string(),
+                    origin: "user".to_string(),
+                    request_type: "workspace.execute".to_string(),
+                    operation_class: "state_capable".to_string(),
+                    code: "stop('boom')".to_string(),
+                    arguments_json: "{}".to_string(),
+                    source_path: Some("analysis.R".to_string()),
+                    execution_mode: Some("file".to_string()),
+                    document_version: Some(4),
+                    workspace_id: format!("ws_{run_id}"),
+                    state_revision_before: 1,
+                    project_revision_before: 1,
+                    environment_snapshot_id: None,
+                })
+                .unwrap();
+            store
+                .finish_run_with_error_range(
+                    &RunFinish {
+                        run_id: run_id.to_string(),
+                        status: "failed".to_string(),
+                        terminal_reason: Some("r_error".to_string()),
+                        workspace_id: None,
+                        state_revision_after: Some(2),
+                        project_revision_after: Some(1),
+                        stdout: None,
+                        value_text: None,
+                        messages: Vec::new(),
+                        warnings: Vec::new(),
+                        error_message: Some("boom".to_string()),
+                        error_call: Some("stop(\"boom\")".to_string()),
+                        traceback: vec!["stop(\"boom\")".to_string()],
+                        environment_snapshot_id_after: None,
+                    },
+                    Some(&RunErrorRange {
+                        start_line: if project_root.ends_with('A') { 7 } else { 70 },
+                        start_column: 3,
+                        end_line: if project_root.ends_with('A') { 7 } else { 70 },
+                        end_column: 15,
+                        range_kind: "r_expression".to_string(),
+                    }),
+                )
+                .unwrap();
+        }
+
+        let problems_a = store.list_problems("D:/projects/A", None).unwrap();
+        assert_eq!(problems_a.len(), 1);
+        assert_eq!(problems_a[0].run_id, "run_range_a");
+        assert_eq!(problems_a[0].line_number, Some(7));
+        assert_eq!(problems_a[0].column_number, Some(3));
+        assert_eq!(problems_a[0].end_line_number, Some(7));
+        assert_eq!(problems_a[0].end_column_number, Some(15));
+        assert_eq!(problems_a[0].range_kind.as_deref(), Some("r_expression"));
+        let problems_b = store.list_problems("D:/projects/B", None).unwrap();
+        assert_eq!(problems_b.len(), 1);
+        assert_eq!(problems_b[0].run_id, "run_range_b");
+        assert_eq!(problems_b[0].line_number, Some(70));
+    }
+
+    #[test]
+    fn rejects_invalid_problem_ranges_and_projects_partial_history_as_unknown() {
+        let directory = TempDir::new().unwrap();
+        let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
+        store
+            .create_run(&RunDraft {
+                run_id: "run_invalid_range".to_string(),
+                parent_run_id: None,
+                project_root: "D:/projects/A".to_string(),
+                origin: "user".to_string(),
+                request_type: "workspace.execute".to_string(),
+                operation_class: "state_capable".to_string(),
+                code: "stop('boom')".to_string(),
+                arguments_json: "{}".to_string(),
+                source_path: Some("analysis.R".to_string()),
+                execution_mode: Some("file".to_string()),
+                document_version: Some(1),
+                workspace_id: "ws_a".to_string(),
+                state_revision_before: 1,
+                project_revision_before: 1,
+                environment_snapshot_id: None,
+            })
+            .unwrap();
+        let finish = RunFinish {
+            run_id: "run_invalid_range".to_string(),
+            status: "failed".to_string(),
+            terminal_reason: Some("r_error".to_string()),
+            workspace_id: None,
+            state_revision_after: None,
+            project_revision_after: None,
+            stdout: None,
+            value_text: None,
+            messages: Vec::new(),
+            warnings: Vec::new(),
+            error_message: Some("boom".to_string()),
+            error_call: None,
+            traceback: Vec::new(),
+            environment_snapshot_id_after: None,
+        };
+        assert!(
+            store
+                .finish_run_with_error_range(
+                    &finish,
+                    Some(&RunErrorRange {
+                        start_line: 8,
+                        start_column: 4,
+                        end_line: 8,
+                        end_column: 4,
+                        range_kind: "r_expression".to_string(),
+                    }),
+                )
+                .is_err()
+        );
+        store
+            .finish_run_with_error_range(
+                &finish,
+                Some(&RunErrorRange {
+                    start_line: 8,
+                    start_column: 4,
+                    end_line: 8,
+                    end_column: 12,
+                    range_kind: "r_expression".to_string(),
+                }),
+            )
+            .unwrap();
+        store
+            .connection
+            .execute(
+                "UPDATE runs
+                 SET error_end_column = NULL
+                 WHERE run_id = 'run_invalid_range'",
+                [],
+            )
+            .unwrap();
+        let problem = store
+            .list_problems("D:/projects/A", None)
+            .unwrap()
+            .remove(0);
+        assert_eq!(problem.line_number, None);
+        assert_eq!(problem.column_number, None);
+        assert_eq!(problem.end_line_number, None);
+        assert_eq!(problem.end_column_number, None);
+        assert_eq!(problem.range_kind, None);
+    }
+
+    #[test]
     fn deduplicates_environment_snapshots_by_content_id() {
         let directory = TempDir::new().unwrap();
         let mut store = Store::open(directory.path().join("rho.sqlite")).unwrap();
@@ -3190,7 +3477,7 @@ mod tests {
     }
 
     #[test]
-    fn bootstraps_empty_store_to_v9_and_reopens_idempotently() {
+    fn bootstraps_empty_store_to_v10_and_reopens_idempotently() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
 
@@ -3209,7 +3496,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v7_to_v9_and_marks_legacy_unscoped_records() {
+    fn migrates_v7_to_v10_and_marks_legacy_unscoped_records() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v7_fixture(&database);
@@ -3217,7 +3504,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(7));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(9));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
         assert_eq!(store.migration_outcome().scoped_count, 4);
         assert_eq!(store.migration_outcome().legacy_unscoped_count, 4);
         assert_eq!(store.migration_outcome().rejected_count, 0);
@@ -3349,7 +3636,12 @@ mod tests {
         let connection = Connection::open(path).unwrap();
         connection
             .execute_batch(
-                "DROP TABLE claim_evidence_links;
+                "ALTER TABLE runs DROP COLUMN error_start_line;
+                 ALTER TABLE runs DROP COLUMN error_start_column;
+                 ALTER TABLE runs DROP COLUMN error_end_line;
+                 ALTER TABLE runs DROP COLUMN error_end_column;
+                 ALTER TABLE runs DROP COLUMN error_range_kind;
+                 DROP TABLE claim_evidence_links;
                  DROP TABLE evidence_claims;
                  DROP INDEX IF EXISTS idx_claim_evidence_links_project;
                  DROP INDEX IF EXISTS idx_evidence_claims_project;",
@@ -3359,7 +3651,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v8_to_v9_with_backup_and_reopens() {
+    fn migrates_v8_to_v10_with_backup_and_reopens() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v8_fixture(&database);
@@ -3367,7 +3659,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(8));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(9));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
         assert!(Path::new(store.migration_outcome().backup_path.as_deref().unwrap()).exists());
         assert_index_exists(&store.connection, "idx_evidence_claims_project").unwrap();
         drop(store);
@@ -3407,7 +3699,103 @@ mod tests {
         drop(verification);
 
         let recovered = Store::open(&database).unwrap();
-        assert_eq!(recovered.migration_outcome().to_schema_version, Some(9));
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(10));
+    }
+
+    fn create_v9_fixture(path: &Path) {
+        let store = Store::open(path).unwrap();
+        drop(store);
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "ALTER TABLE runs DROP COLUMN error_start_line;
+                 ALTER TABLE runs DROP COLUMN error_start_column;
+                 ALTER TABLE runs DROP COLUMN error_end_line;
+                 ALTER TABLE runs DROP COLUMN error_end_column;
+                 ALTER TABLE runs DROP COLUMN error_range_kind;",
+            )
+            .unwrap();
+        set_schema_version(&connection, 9).unwrap();
+    }
+
+    #[test]
+    fn migrates_v9_to_v10_without_guessing_historical_ranges_and_reopens() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v9_fixture(&database);
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute(
+                "INSERT INTO runs(
+                    run_id, project_root, origin, status, started_at, request_type,
+                    operation_class, code, arguments_json, source_path,
+                    messages_json, warnings_json, traceback_json, error_message
+                 ) VALUES(
+                    'historical_problem', 'D:/projects/A', 'user', 'failed', ?1,
+                    'workspace.execute', 'state_capable', 'stop(\"old\")', '{}',
+                    'analysis.R', '[]', '[]', '[]', 'old failure'
+                 )",
+                [Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = Store::open(&database).unwrap();
+        assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
+        assert_eq!(store.migration_outcome().from_schema_version, Some(9));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
+        assert!(
+            store
+                .migration_outcome()
+                .backup_path
+                .as_deref()
+                .unwrap()
+                .ends_with("rho.sqlite.schema-v9.bak")
+        );
+        let problem = store
+            .list_problems("D:/projects/A", None)
+            .unwrap()
+            .remove(0);
+        assert_eq!(problem.line_number, None);
+        assert_eq!(problem.range_kind, None);
+        drop(store);
+
+        let reopened = Store::open(&database).unwrap();
+        assert_eq!(
+            reopened.migration_outcome(),
+            &MigrationOutcome::opened_current()
+        );
+    }
+
+    #[test]
+    fn rolls_back_v9_migration_after_injected_failure_and_recovers() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v9_fixture(&database);
+
+        let error = Store::open_with_options(
+            &database,
+            StoreOpenOptions {
+                inject_v9_failure_before_commit: true,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(outcome.reason_code.as_deref(), Some("injected_failure"));
+        assert!(Path::new(outcome.backup_path.as_deref().unwrap()).exists());
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(9));
+        assert!(
+            verification
+                .prepare("SELECT error_start_line FROM runs")
+                .is_err()
+        );
+        drop(verification);
+
+        let recovered = Store::open(&database).unwrap();
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(10));
     }
 
     #[test]

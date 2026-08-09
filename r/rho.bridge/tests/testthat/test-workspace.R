@@ -61,6 +61,61 @@ test_that("errors and prior mutations are retained", {
   expect_equal(workspace$x, 1)
   expect_equal(result$error$message, "boom")
   expect_gt(length(result$calls), 0L)
+  expect_identical(
+    result$error$source_range,
+    list(start_line = 1L, start_column = 9L, end_line = 1L, end_column = 21L)
+  )
+})
+
+test_that("execution errors expose the exact multiline top-level expression", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute(
+    paste(
+      "value <- 1",
+      "broken <- local({",
+      "  stop('boom')",
+      "})",
+      "value <- 2",
+      sep = "\n"
+    ),
+    envir = workspace
+  )
+
+  expect_false(result$ok)
+  expect_identical(
+    result$error$source_range,
+    list(start_line = 2L, start_column = 1L, end_line = 4L, end_column = 3L)
+  )
+})
+
+test_that("parse failures never invent an expression range", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute("value <- (", envir = workspace)
+
+  expect_false(result$ok)
+  expect_null(result$error$source_range)
+})
+
+test_that("source ranges use character columns and an exclusive end", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute("变量 <- '值'\nstop('错误')", envir = workspace)
+
+  expect_false(result$ok)
+  expect_identical(
+    result$error$source_range,
+    list(start_line = 2L, start_column = 1L, end_line = 2L, end_column = 11L)
+  )
+})
+
+test_that("source range admission rejects incomplete inverted and excessive coordinates", {
+  range <- rho.bridge:::rho_execution_srcref_range
+
+  expect_null(range(c(0L, 1L, 1L, 1L, 1L, 1L)))
+  expect_null(range(c(2L, 1L, 1L, 1L, 1L, 1L)))
+  expect_null(range(c(1L, 1L, 1L, 1L, 2L, 1L)))
+  expect_null(range(c(10000001L, 1L, 10000001L, 1L, 1L, 1L)))
+  expect_null(range(c(1L, 1L, 1L, 1L, 1L, 1000000L)))
+  expect_null(range(c(1L, 1L, 1L)))
 })
 
 test_that("execution accepts a leading source marker", {
@@ -145,10 +200,10 @@ test_that("installed inventory includes explicit non-standard R library paths", 
     ),
     file.path(package_dir, "DESCRIPTION")
   )
-  expect_true(file.copy(
-    file.path(package_source, "Meta", "package.rds"),
-    file.path(package_dir, "Meta", "package.rds")
-  ))
+  package_metadata <- readRDS(file.path(package_source, "Meta", "package.rds"))
+  package_metadata$DESCRIPTION[["Package"]] <- "rhoCustomInventoryPackage"
+  package_metadata$DESCRIPTION[["Version"]] <- "0.0.1"
+  saveRDS(package_metadata, file.path(package_dir, "Meta", "package.rds"))
   previous <- Sys.getenv("R_LIBS", unset = NA_character_)
   previous_paths <- .libPaths()
   on.exit(
@@ -159,7 +214,7 @@ test_that("installed inventory includes explicit non-standard R library paths", 
   .libPaths(setdiff(previous_paths, dirname(package_source)))
   Sys.setenv(R_LIBS = library_dir)
 
-  result <- rho_list_installed_packages(limit = 500L)
+  result <- rho_list_installed_packages(limit = 10000L)
   matches <- vapply(
     result$packages,
     function(item) {
