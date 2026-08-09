@@ -5,7 +5,8 @@ Status: active
 Date: 2026-08-08
 Current source baseline: `0.4.0-dev.24`
 Active replacement identity: `0.4.0-dev.24` (Issue #9 source/browser validation
-passes; complete candidate matrix, artifact, and installed acceptance open)
+and exact review-only fork rehearsal pass; authoritative candidate/draft entry
+is authorized; installed acceptance and public publication remain open)
 Implemented successor correction: Issue #9 `TASK-RAIL-SEMANTICS-1` separates
 mode shape, status color, and risk ownership. It advances the user-visible
 source identity rather than relabelling the historical `dev.23` source.
@@ -234,7 +235,9 @@ an artifact was built, Issue #9 advanced the combined source to
 `0.4.0-dev.24`: Task Rail status remains the sole status-color slot while
 Ask/Plan/Act use independently labelled neutral shapes. Its affected frontend
 and exact `1440 x 900` / `900 x 700` browser evidence pass; complete candidate
-matrix, artifact, and owner-installed/live-Provider acceptance remain open.
+matrix, signing/notarization, and mounted-DMG smoke then pass in exact fork
+rehearsal `31294667960`. Authoritative candidate/draft entry is authorized;
+owner-installed/live-Provider acceptance and public publication remain open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter

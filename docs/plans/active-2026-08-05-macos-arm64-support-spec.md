@@ -52,8 +52,10 @@ artifact was built before Issue #9 advanced the live application identity to
 evidence and cannot validate the combined corrected behavior;
 the owner accepted the local `dev.24` development-app experience and authorized
 one exact-default-branch review-only `Rho_for_mac` rehearsal on 2026-08-09;
-that rehearsal result, authoritative candidate/draft creation, and MAC5 remain
-open, while candidate mode and publication remain unauthorized
+run `31294667960` passed with independently verified exact-source artifacts;
+the owner then integrated the same source into upstream `main` and requested
+the start of publication, authorizing authoritative candidate/draft creation;
+MAC5 installed acceptance and final publication remain open and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1780,7 +1782,7 @@ and crash recovery. The bundle has an ad-hoc signature and no Team ID. No
 Developer ID, notarization, staple, Gatekeeper, owner-installed-user,
 live-Provider/Keychain, MAC5, hosted candidate, or publication claim is made.
 
-## Issue #9 `dev.24` Hosted Rehearsal Authorization — 2026-08-09
+## Issue #9 `dev.24` Hosted Rehearsal And Candidate Entry — 2026-08-09
 
 The owner accepted the exact `0.4.0-dev.24` local development-app experience,
 requested integration of the reviewed Issue #9 branch into
@@ -1790,8 +1792,22 @@ workflow. The only macOS signing/notarization dispatch surface is the combined
 one review-only `rehearsal` dispatch against the exact post-integration default-
 branch commit, including the workflow's coupled Windows validation job.
 
-This authorization does not convert local development-app review into installed
-DMG acceptance and does not authorize `candidate` mode, a tag, GitHub
-Release/draft, update-site mutation, MAC5, or publication. The run, its final
-DMG, notarization binding, aggregate rehearsal evidence, and installed-app
-acceptance remain open until separately observed and recorded.
+Run `31294667960` completed successfully against exact commit
+`c83ddfb4563778c1bf6190bd5ce833bb0a6a2e72`. Both platform matrices passed;
+the macOS lane passed Developer ID signing, entitlements, notarization and its
+binding, staple, Gatekeeper, and mounted-DMG Workspace smoke. GitHub artifact
+`9032765026` contains the seven expected review-only files. Independent
+download validation confirmed both platform hashes and admitted the platform
+and rehearsal records against the exact repository/version/tag/commit/run.
+The macOS DMG is 20,967,642 bytes with SHA-256
+`b28b70e285e770b17836ab9c3bd3524fff23c86e153ccfd8e3138419dd9db6ce`.
+
+After the same commit was fast-forwarded to `YuLab-SMU/Rho/main`, the owner
+requested "开始发布". This activates one authoritative `candidate` build/draft
+dispatch against the exact post-amendment default-branch commit. The candidate
+workflow must rebuild and bind its own immutable files; the fork artifacts may
+not be copied or relabelled. This authorization permits draft prerelease
+creation but does not convert local development-app or rehearsal review into
+installed-DMG acceptance. MAC5 GO, the `Publish Rho Candidate` workflow,
+update-site mutation, and public publication remain blocked until the owner
+installs and accepts the exact draft candidate.
