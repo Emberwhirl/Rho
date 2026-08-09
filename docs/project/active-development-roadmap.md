@@ -4,9 +4,9 @@ Status: active
 
 Date: 2026-08-08
 Current source baseline: `0.4.0-dev.24`
-Active accepted identity: `0.4.0-dev.24` (authoritative candidate/draft,
-owner-installed acceptance, and MAC5 GO pass; public publication is authorized
-and temporarily blocked by the release-only draft lookup defect)
+Active published identity: `0.4.0-dev.24` (authoritative candidate,
+owner-installed acceptance, MAC5 GO, protected public prerelease, and live
+development update manifest pass)
 Implemented successor correction: Issue #9 `TASK-RAIL-SEMANTICS-1` separates
 mode shape, status color, and risk ownership. It advances the user-visible
 source identity rather than relabelling the historical `dev.23` source.
@@ -236,11 +236,13 @@ an artifact was built, Issue #9 advanced the combined source to
 Ask/Plan/Act use independently labelled neutral shapes. Its affected frontend
 and exact `1440 x 900` / `900 x 700` browser evidence pass; complete candidate
 matrix, signing/notarization, and mounted-DMG smoke pass in fork rehearsal
-`31294667960` and authoritative run `31295799312`. The immutable draft, exact
+`31294667960` and authoritative run `31295799312`. The immutable candidate, exact
 owner-installed acceptance, bounded MAC5 GO evidence, and public-release
 authorization pass. Protected publish run `31297205980` fails closed before
 mutation because draft-by-tag lookup returns 404; the owner authorized a
-release-only ID-based lookup repair before retry and Pages verification.
+release-only ID-based lookup repair. Correction `f30b1ae` and protected retry
+`31297462728` pass without asset replacement; automatic update run
+`31297482853` publishes and verifies the live `0.4.0-dev.24` manifest.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter
@@ -253,9 +255,8 @@ evidence. All
 earlier runs and artifacts remain historical exact-source evidence and cannot
 validate the replacement behavior. Exact `dev.24` owner acceptance and MAC5 GO
 pass; broader milestone-native accessibility and future-platform acceptance
-remain separately open. MAC4-R3 is closed, MAC5 publication admission is
-active, and accepted candidate assets remain immutable while the release-only
-lookup defect is corrected. This stream
+remain separately open. MAC4-R3 and MAC5 are complete for the published Apple
+Silicon candidate, whose accepted assets remain immutable. This stream
 delivers macOS arm64 first; macOS x64 and Linux x64 remain required before the
 full M3 acceptance gate can close.
 

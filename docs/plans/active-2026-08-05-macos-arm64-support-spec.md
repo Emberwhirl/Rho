@@ -704,7 +704,7 @@ Verification and exit gate:
   draft creation, tag/Release mutation, and Pages publication remain
   unauthorized.
 
-### MAC5: Exact-candidate acceptance and publication — active; candidate accepted
+### MAC5: Exact-candidate acceptance and publication — implemented; published
 
 - bind automated and human evidence to the exact tag, commit, assets, sizes,
   and hashes in the draft release;
@@ -736,6 +736,16 @@ discover exactly one matching draft through paginated Release listing, pass its
 numeric ID forward, retrieve subsequent snapshots by ID, and retain all exact-
 commit, eight-asset, byte/hash, one-mutation, and environment-approval gates.
 The accepted application artifacts remain immutable and are not rebuilt.
+
+The correction landed as `f30b1ae240d056ef97f670d85c8e925d89b9415d`.
+Protected publish run `31297462728` passed the exact-candidate and MAC5
+admission and published prerelease `v0.4.0-dev.24` without changing its eight
+assets. Automatic update-site run `31297482853` published `gh-pages` commit
+`dcfbdbdb5a53e4fedc2c18880a18b4145804e014`; its hosted check and an
+independent live fetch both confirmed development manifest version
+`0.4.0-dev.24` with the accepted Windows and macOS sizes and hashes. MAC5 is
+complete for this Apple Silicon development candidate; macOS x64 and Linux x64
+remain separate milestone scope.
 
 ## Verification Contract
 

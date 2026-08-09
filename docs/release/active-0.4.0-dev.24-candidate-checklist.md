@@ -1,10 +1,10 @@
 # Rho 0.4.0-dev.24 Cross-Platform Candidate Checklist
 
-Status: active accepted development-candidate identity; Issue #6 R5 and Issue
-#9 TASK-RAIL-SEMANTICS-1 source implementation, the exact review-only fork
-rehearsal, authoritative cross-platform candidate, signed/notarized draft,
-owner-installed acceptance, and MAC5 GO pass; public publication is temporarily
-blocked by the release-only draft-lookup defect recorded below
+Status: active published development-candidate record; Issue #6 R5 and Issue #9
+TASK-RAIL-SEMANTICS-1 source implementation, review-only rehearsal,
+authoritative cross-platform candidate, signed/notarized DMG, owner-installed
+acceptance, MAC5 GO, protected prerelease publication, and live development
+update-site verification pass
 
 Date: 2026-08-08
 Last updated: 2026-08-09
@@ -71,8 +71,8 @@ artifact, hash, receipt, or acceptance row can satisfy this checklist.
 | `rho.bridge` version | `0.1.13` | unchanged |
 | `rho.agent` version | `0.1.5` | unchanged |
 | Store schema | `11` | unchanged |
-| Release tag | `v0.4.0-dev.24` | draft tag name selected; public Git ref NOT CREATED |
-| Release name | `Rho 0.4.0-dev.24` | immutable draft prerelease ID `367387340` |
+| Release tag | `v0.4.0-dev.24` | public Git ref points to authoritative source commit |
+| Release name | `Rho 0.4.0-dev.24` | public prerelease ID `367387340` |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | authoritative-candidate restriction unchanged |
 | Local source commit | `c83ddfb4563778c1bf6190bd5ce833bb0a6a2e72` | reviewed rehearsal source checkpoint |
@@ -233,7 +233,8 @@ immutable draft identity`. GitHub returned 404 for
 `GET /releases/tags/v0.4.0-dev.24`: a draft whose public Git tag does not yet
 exist cannot be resolved through `getReleaseByTag`. Checkout, content
 validation, `updateRelease`, tag creation, and update-site publication did not
-run. The draft remains private and its exact eight-asset set is unchanged.
+run. At that checkpoint the draft remained private and its exact eight-asset
+set was unchanged.
 
 The authorized correction is release-only and must satisfy all of these gates:
 
@@ -265,8 +266,8 @@ before rechecking tag and commit. The regression contract rejects
 `scripts/test-*.mjs` contracts, `candidate-release.mjs --test true`,
 `generate-update-site.mjs --test true`, JavaScript syntax checks, Ruby YAML
 parsing, and `git diff --check` pass. `actionlint` is not installed locally and
-is recorded as unrun rather than passed; GitHub workflow parsing remains a
-required hosted admission gate after push.
+is recorded as unrun rather than passed; successful hosted run `31297462728`
+subsequently satisfied GitHub workflow parsing and execution admission.
 
 The separate post-verification review found no blocking authority, identity,
 asset-mutation, race, rollback, credential, or sequencing issue. A deleted or
@@ -276,11 +277,42 @@ orchestration commit cannot replace the checked-out accepted-candidate
 contract. The reviewed diff contains only the publish workflow, its regression
 contract, and the owning release/governance records.
 
+## Publication And Update-Site Evidence
+
+Release-only correction commit
+`f30b1ae240d056ef97f670d85c8e925d89b9415d` was fast-forwarded to both
+authoritative and fork `main` branches. The upstream workflow bytes matched the
+reviewed local file. Protected publish run
+[`31297462728`](https://github.com/YuLab-SMU/Rho/actions/runs/31297462728)
+then passed environment review, resolved draft ID `367387340`, checked out the
+accepted candidate commit `7c18e08d7b34dc7d976fa3685242402ccd7da2e8`,
+downloaded and re-hashed all eight assets, admitted the exact MAC5 GO record,
+and performed the sole allowed `draft: false` transition. The public
+prerelease was published at `2026-08-09T05:48:12Z`; tag
+`v0.4.0-dev.24` points to the accepted candidate commit, and every asset ID,
+name, size, and digest remains unchanged.
+
+Automatic update-site run
+[`31297482853`](https://github.com/YuLab-SMU/Rho/actions/runs/31297482853)
+validated published Release evidence, generated the development channel,
+published `gh-pages` commit `dcfbdbdb5a53e4fedc2c18880a18b4145804e014`,
+and passed its deployed-manifest verification. A separate cache-busted fetch of
+`https://yulab-smu.top/Rho/updates/development.json` confirmed schema 1,
+channel `development`, version `0.4.0-dev.24`, Windows size/hash
+18,148,181 / `114389aa675045beddb58c01dc7c4a0aec5936081b04018456694c770ae0b774`,
+and macOS size/hash 20,967,631 /
+`f24982a616b1695621cdb7f9b9c8d001083926fb77a975c6f582b339da50c34f`.
+
+Both successful hosted runs emitted a non-blocking warning that
+`actions/checkout@v4` and `actions/github-script@v7` are forced from their
+declared Node 20 runtime to Node 24. No failure, asset change, or acceptance
+deviation resulted; action-major modernization is a bounded follow-up rather
+than a reason to alter this immutable candidate.
+
 ## Current Decision
 
-`GO` for the immutable `0.4.0-dev.24` candidate. Automated candidate evidence,
-owner-installed acceptance, bounded MAC5 evidence, and explicit public-release
-authorization pass. Public publication is temporarily blocked only by the
-fail-closed draft-lookup defect above. Retrying publication is authorized after
-the release-only correction and its regression matrix pass; update-site
-publication remains sequenced after a successful public prerelease.
+`GO / RELEASED` for immutable development prerelease `0.4.0-dev.24`.
+Automated candidate evidence, owner-installed acceptance, bounded MAC5 evidence,
+protected publication, public tag/Release identity, and live development update
+manifest all pass. No accepted asset was rebuilt or replaced. Broader macOS x64
+and Linux x64 milestone work remains outside this Apple Silicon candidate.
