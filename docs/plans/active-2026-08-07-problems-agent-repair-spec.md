@@ -9,13 +9,14 @@ Change class: D3 cross-module execution diagnostics, durable schema, typed Agent
 task routing, editor identity, and reviewable repair workflow
 Risk: R3 migration/recovery, execution provenance, project isolation, Agent
 credential routing, proposal review, and browser/mock parity
-Work package: PROBLEMS-AGENT-REPAIR-4 (R1 is historical; R2/R3 are implemented
+Work package: PROBLEMS-AGENT-REPAIR-5 (R1 is historical; R2-R4 are implemented
 but their distributed candidate identities were rejected)
-Mandatory stop: expose the same durable repair action at the Console error
-site, pass the focused/complete frontend and deterministic browser matrix,
-cross-review the implementation and replacement-version impact, then stop
-before automatic Provider dispatch, automatic execution, automatic file
-mutation, fuzzy source inference, or any broader credential authority.
+Mandatory stop: admit only a strictly validated parser-token range, complete
+and recoverably migrate store schema v11, pass the focused/complete R, Rust,
+frontend, and deterministic browser matrix, cross-review the implementation
+and replacement-version impact, then stop before automatic Provider dispatch,
+automatic execution, automatic file mutation, fuzzy source inference, or any
+broader credential authority.
 
 ## Problem And Invariant
 
@@ -475,3 +476,143 @@ SHA-256
 `hdiutil verify`, bundle/version/architecture inspection, and complete mounted
 Workspace smoke passed. Owner-installed/live-Provider acceptance remains a
 separate open gate.
+
+## PROBLEMS-AGENT-REPAIR-5 Parser-Token Correction — 2026-08-08
+
+The owner rejected the exact `dev.22` artifact during workflow acceptance. A
+file-mode execution carried project source `scatter_plot_example.R`, document
+version 2, and admitted source range `1:1-39:1`. R's parser reported
+`<text>:23:46` for the full-width comma in `runif(34, 0, 10，)`, but
+`rho_execute()` returned no structured range because R2 deliberately prohibited
+all message-derived positions. The durable run therefore had null range fields;
+Console bound the correct run but showed `Select code for Agent`, and its
+`Exact failed run ready` status did not disclose that the range was missing.
+
+This fails the established invariant that a known file location must not ask
+the user to find or select the same code again. It is not a Provider, route, or
+project-binding failure. The whole file failed in `parse()` before evaluation,
+which also truthfully left the Workspace empty.
+
+The owner's 2026-08-08 approval explicitly authorizes this bounded R5 D3/R3
+correction, schema-v11 migration, replacement application/package versions,
+full affected verification, one local unsigned arm64 app/DMG, commit, and source
+push. It does not authorize automatic Provider dispatch, R execution, file
+mutation, signed/notarized or hosted candidates, MAC5, or publication.
+
+### Parser Location Admission
+
+R2's default remains: ordinary error message, call, filename substring, and
+traceback text cannot create a source range. R5 adds one closed exception at
+the component that invoked `parse(text=...)`:
+
+1. `rho_execute()` distinguishes a failure raised by that exact parse phase
+   from evaluation/runtime failures before attaching any location.
+2. It inspects at most the first 128 characters of the parse condition message
+   and accepts only the anchored ASCII grammar
+   `^<text>:([1-9][0-9]{0,7}):([1-9][0-9]{0,6}):`.
+3. Parsed coordinates must remain within 10,000,000 lines and 1,000,000
+   columns, name an existing line, and point at an actual Unicode scalar in the
+   normalized submitted code. A position after the last scalar is EOF, not a
+   token.
+4. The bridge returns the one-scalar exclusive range and closed
+   `range_kind=r_parse_token`. It does not infer a surrounding expression,
+   token length, replacement, filename, or edit.
+5. Zero, leading-zero, overflow, malformed/unanchored, wrong virtual label,
+   absent line, after-line/EOF, invalid-string, or non-parse input returns no
+   range and preserves the explicit-selection fallback.
+
+The prefix is parser-owned location metadata embedded in R's only parse-error
+condition representation. Admission is not based on localized reason text such
+as `unexpected input`. The submitted code is the independent validation source.
+
+### Coordinator And Durable Store Contract
+
+The coordinator accepts only `r_expression` and `r_parse_token` from the bridge.
+It retains the existing real project-relative source requirement, complete
+admitted execution range, coordinate bounds, R-character-to-editor-UTF-16
+translation, and containment checks. A virtual/Console source, unknown kind,
+partial range, position outside submitted code/source, or malformed result
+persists no range.
+
+Store schema v11 changes only the closed `runs.error_range_kind` constraint to
+allow `r_expression` or `r_parse_token`. All five range fields remain all-or-none
+at the Rust validation boundary. The v10-to-v11 transition:
+
+- creates a same-directory SQLite backup before mutation;
+- rebuilds `runs` and its project/start index in one transaction because SQLite
+  cannot alter the existing CHECK constraint in place;
+- copies every existing column without deriving or backfilling any historical
+  range, and preserves valid historical `r_expression` values byte-for-byte;
+- asserts the new constraint and current schema before accepting the database;
+- rolls back on injected/copy/assertion failure, leaves schema v10 reopenable,
+  and permits a later clean recovery from the untouched source plus backup;
+- keeps the existing supported v7/v8/v9 upgrade paths converging on schema v11
+  without guessing parse locations.
+
+Unknown range kinds are rejected on write and project as no range if malformed
+historical data bypasses normal constraints. Project-scoped Problems queries
+and two-project isolation remain unchanged.
+
+### Console, Problems, And Repair Behavior
+
+A complete file-backed `r_parse_token` is an exact diagnostic range for repair
+preparation. Console and Problems show `Fix with Agent`, open the recorded
+project file, select exactly the invalid scalar, validate that scalar against
+the exact stored run code and submitted source range, and start at most one
+existing typed read-only Ask `problem_repair` turn. The diagnostic preserves
+`range_kind=r_parse_token`; the prompt calls it an exact diagnostic range, not
+an R expression.
+
+When a bound file run has no exact range, the action remains `Select code for
+Agent`, but Console status must say that the failed run is ready and the source
+range is unavailable. It must not say only `Exact failed run ready`. EOF and
+ambiguous parse failures remain in this truthful fallback.
+
+No action auto-sends a Provider request before the user's click, automatically
+runs R, accepts a proposal, saves a document, performs fuzzy source matching,
+or mutates a file. Existing duplicate-click, stale-document, source-content,
+late-refresh, project-switch, route/credential, proposal Accept/Reject/Undo,
+and one-credential guards remain authoritative.
+
+### Regression And Acceptance Matrix
+
+- R bridge: the full-width-comma reproduction produces exactly the offending
+  scalar range and `r_parse_token`; ASCII and supplementary Unicode positions
+  remain character-based; evaluation errors remain `r_expression`; EOF,
+  empty-last-line, malformed/leading-zero/oversized prefix, wrong label,
+  missing line, past-line column, and non-parse errors produce no parse token.
+- Coordinator: both closed kinds translate through file and selection source
+  offsets into UTF-16; Unicode token width is exact; unknown/absent kind,
+  virtual/absolute/traversal source, partial coordinates, source underflow/
+  overflow, and result outside admitted range are rejected.
+- Store: empty schema-v11 bootstrap; v7/v8/v9/v10 upgrade; v10 backup and
+  all-column copy; existing expression-range preservation; no parse backfill;
+  valid parse-token write/read; unknown-kind rejection; injected rollback,
+  reopen/recovery, idempotency, current-schema assertion, and two-project
+  isolation.
+- Frontend/mock: parse-token Problems and direct Console actions both show
+  `Fix with Agent`, select the exact scalar, and create one typed turn with the
+  exact run/range/kind; Console does not open Problems; file remains unchanged;
+  no-range status is explicit; duplicate, stale source, failed refresh,
+  missing context, route setup, late response, and project switch remain closed.
+- Run JavaScript syntax, every frontend contract, `rho.bridge`, affected Rust
+  crate tests, the complete Rust workspace/all-target matrix, Rust formatting,
+  deterministic `1440 x 900` and `800 x 900` browser review, and the exact
+  replacement app/DMG mounted smoke before installed handoff.
+
+### Version And Release Impact
+
+The installed `dev.22` identity, artifact, hash, and acceptance ledger are
+immutable historical NO-GO evidence. R5 advances the synchronized application,
+workflow defaults, browser mock, and cache-busting identity to
+`0.4.0-dev.23`. The additive R bridge error result and parser-range contract
+advances `rho.bridge` independently from `0.1.12` to `0.1.13`; `rho.agent`
+remains `0.1.5`. Store schema advances from 10 to 11. `NEWS.md`, the active
+candidate checklist, macOS support handoff, roadmap, and cross-review matrix
+must remain synchronized.
+
+The work package stops after reviewed implementation, complete affected
+automation/browser evidence, and one exact clean-source local unsigned arm64
+artifact. Owner-installed/live-Provider acceptance remains separate. No tag,
+Release/draft, Developer ID signing, notarization, staple, Gatekeeper candidate,
+MAC5, Pages, update publication, or release GO is authorized.

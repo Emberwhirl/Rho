@@ -41,14 +41,15 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
-| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; earlier rehearsal history preserved; Issue #6 `dev.20` and `dev.21` identities rejected; replacement live identity is `0.4.0-dev.22`; exact local unsigned dev.22 artifact verification passed | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | MAC4-R3 remains closed at its review-only evidence; dev.22 complete matrix/artifact passed and owner-installed/live-Provider acceptance remains open; MAC5 remains unauthorized; full M3 retains authoritative candidate, macOS x64, and Linux x64 gates |
+| `plans/active-2026-08-05-macos-arm64-support-spec.md` | active; MAC1-MAC4 implementation/review complete; earlier rehearsal history preserved; Issue #6 `dev.20`-`dev.22` identities rejected; replacement live identity reserved as `0.4.0-dev.23`; implementation/artifact open | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, and async notarization orchestration | MAC4-R3 remains closed at its review-only evidence; dev.23 complete matrix/artifact and owner-installed/live-Provider acceptance remain open; MAC5 remains unauthorized; full M3 retains authoritative candidate, macOS x64, and Linux x64 gates |
 | `release/historical-0.4.0-dev.16-candidate-checklist.md` | historical; review-only rehearsals passed and the decision remained NO-GO before the baseline advanced | immutable `0.4.0-dev.16` rehearsal evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, MAC5, or publication row |
 | `release/historical-0.4.0-dev.17-candidate-checklist.md` | historical; CRED-UX2 local matrix, browser review, and unsigned app/DMG smoke passed before CRED-UX3 advanced the baseline | immutable `0.4.0-dev.17` local evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, installed acceptance, MAC5, or publication row |
 | `release/historical-0.4.0-dev.18-candidate-checklist.md` | historical rejected identity; CRED-UX3/CRED-UX4A local evidence passed, but owner installation exposed the settings-entry recovery deadlock | immutable `0.4.0-dev.18` source/artifact/hash, installed rejection, and NO-GO record only | cannot authorize or satisfy any `0.4.0-dev.19` candidate, acceptance, MAC5, or publication row |
 | `release/historical-0.4.0-dev.19-candidate-checklist.md` | historical superseded identity; CRED-UX4A-R1 local matrix, browser review, security review, and unsigned artifact verification passed before Issue #6 advanced the baseline | immutable `0.4.0-dev.19` source/artifact/hash and NO-GO record only | cannot authorize or satisfy any later candidate, acceptance, MAC5, or publication row |
 | `release/historical-0.4.0-dev.20-candidate-checklist.md` | historical rejected identity; local matrix/browser/unsigned artifact passed, but owner installation exposed the registered runtime-model mismatch and stale selected Data Viewer | immutable `0.4.0-dev.20` source/artifact/hash, installed rejection, and NO-GO record only | cannot authorize or satisfy any `0.4.0-dev.21` candidate, acceptance, MAC5, or publication row |
 | `release/historical-0.4.0-dev.21-candidate-checklist.md` | historical rejected identity; R3/runtime/viewer automation and local unsigned artifact passed, but owner workflow review rejected the Problems-only repair entry | immutable `0.4.0-dev.21` source/artifact/hash, workflow rejection, and NO-GO record only | cannot authorize or satisfy any `0.4.0-dev.22` candidate, acceptance, MAC5, or publication row |
-| `release/active-0.4.0-dev.22-candidate-checklist.md` | active replacement identity; PROBLEMS-AGENT-REPAIR-4 Console error-site implementation, complete affected Rust/R/frontend contracts, formatting, deterministic desktop/narrow browser review, and exact local unsigned artifact verification pass | sole live `0.4.0-dev.22` cross-platform candidate identity, future evidence binding, installed-acceptance ledger, and GO/NO-GO decision | owner-installed/live-Provider acceptance remains open; hosted candidate, MAC5, upload, and publication remain separately gated |
+| `release/historical-0.4.0-dev.22-candidate-checklist.md` | historical rejected identity; R4 automation/browser/local unsigned artifact passed, but owner workflow acceptance exposed file parse errors still requiring manual selection | immutable `0.4.0-dev.22` source/artifact/hash, workflow rejection, and NO-GO record only | cannot authorize or satisfy any `0.4.0-dev.23` candidate, acceptance, MAC5, or publication row |
+| `release/active-0.4.0-dev.23-candidate-checklist.md` | active replacement identity; PROBLEMS-AGENT-REPAIR-5 parser-token and schema-v11 implementation/validation/artifact open | sole live `0.4.0-dev.23` cross-platform candidate identity, future evidence binding, installed-acceptance ledger, and GO/NO-GO decision | complete R5 implementation, migration/recovery and affected matrix, local artifact, then owner-installed/live-Provider acceptance; hosted candidate, MAC5, upload, and publication remain separately gated |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -107,7 +108,7 @@ semantics.
 | `plans/active-2026-08-03-ws2-bounded-project-references-spec.md` | active; WS2-R1 implementation, review, and automated/browser verification complete 2026-08-03; installed acceptance open | bounded token-aware project reference discovery and editor navigation | accepted Go-to-Definition and project file containment remain authoritative; rename/refactor and persistence remain separate |
 | `plans/active-2026-08-03-ws2-installed-help-and-example-spec.md` | active; WS2-H2 complete 2026-08-03; WS2-H2-R1 implementation, review, and automated/browser verification complete 2026-08-05; installed acceptance open | bounded installed Rd/version/vignette presentation, confirmed ordinary Workspace example execution, and final-result Console Help projection | WS2-H1 location truth and existing Run/Problems/execution authority preserved; CL1 remains Console presentation authority; no package mutation, Agent citation, hidden Rd execution, frontend R parser, or general viewer dispatch |
 | `plans/active-2026-08-03-ws2-diagnostic-grouping-quick-fix-spec.md` | active; WS2-D1 implementation, review, and automated/browser verification complete 2026-08-03; installed acceptance open | bounded lintr normalization, deterministic Problems grouping, and stale-safe reviewed editor-buffer quick fixes | existing Problems and Agent persistent file-edit lanes preserved; no automatic save, multi-file edit, schema, or new write authority |
-| `plans/active-2026-08-07-problems-agent-repair-spec.md` | active; R1 historical; R2 implemented but installed `dev.20` rejected; R3 implemented but owner review rejected the `dev.21` Problems-only navigation; R4 implementation, complete affected automation/formatting, desktop/narrow browser review, and exact local unsigned artifact verification pass at `dev.22`; installed acceptance open | exact Workspace R expression diagnostics, schema-v10 project-scoped Problem ranges, bounded same-run context, canonical registered runtime identity, and one shared read-only tool-capable repair action at both Console error site and Problems history | Runs/Workspace execution own diagnostic truth; Problems owns durable history; Console owns only the direct error-site entry; BH3 owns migration; CRED-UX4 owns route/one credential; Agent file-edit owns proposal/Accept; no unsolicited Provider call, automatic execution, approval, save, fuzzy location, or file mutation authority |
+| `plans/active-2026-08-07-problems-agent-repair-spec.md` | active; R1 historical; R2-R4 implemented with rejected `dev.20`-`dev.22` identities; R5 parser-token admission and schema-v11 migration explicitly authorized, implementation open | exact Workspace R expression and strictly validated parse-token diagnostics, schema-v11 project-scoped Problem ranges, bounded same-run context, canonical registered runtime identity, and one shared read-only tool-capable repair action at both Console error site and Problems history | Runs/Workspace execution own diagnostic truth; R bridge alone may admit the bounded parser-owned prefix; store owns migration/range kinds; Problems owns durable history; Console owns only the direct error-site entry; BH3 migration semantics remain authoritative; CRED-UX4 owns route/one credential; Agent file-edit owns proposal/Accept; no unsolicited Provider call, automatic execution, approval, save, fuzzy source inference, or file mutation authority |
 | `plans/active-2026-08-03-ws2-agent-local-help-link-spec.md` | active; WS2-AH1 implementation, review, and automated/browser verification complete 2026-08-03; installed acceptance open | explicit Workspace-derived Local Help context linked to one durable Agent answer | WS2-H1/H2 retain Help truth; Agent turn/event persistence is reused; no model-derived evidence, schema, execution, or approval authority |
 | `plans/active-2026-08-03-ws2-refactor-review-spec.md` | active; WS2-R2 implementation, review, and automated/browser verification complete 2026-08-03; installed acceptance open | bounded project-token rename and same-file whole-line extract-function proposals applied only to editor buffers | WS2-R1 owns reference discovery; WS2-D1 owns single diagnostic fixes; no automatic save, Agent/Git/environment mutation, schema, or semantic scope claims |
 | `plans/active-2026-08-07-editor-rename-recovery-spec.md` | active; implementation and automated verification complete 2026-08-07; installed acceptance open | proposal-first Rename entry, retryable failure recovery, and preserved symbol/name input over the existing refactor contract | WS2-R1 owns reference discovery and WS2-R2 owns proposal/apply safety; no new command, persistence, approval, or mutation authority |
@@ -480,8 +481,9 @@ the rejected `0.4.0-dev.18`, and CRED-UX4A-R1 reached the now-historical
 `0.4.0-dev.19`. Issue #6 first produced rejected identity `0.4.0-dev.20`; its
 installed corrections produced `0.4.0-dev.21`, whose remaining Problems-only
 navigation was rejected by owner workflow review. The Console error-site
-correction now owns replacement identity `0.4.0-dev.22` under the active
-checklist. MAC4 implemented parallel candidate
+correction produced `0.4.0-dev.22`, whose installed parse-error path still
+required the user to select an already parser-located token. R5 now owns
+replacement identity `0.4.0-dev.23` under the active checklist. MAC4 implemented parallel candidate
 construction, signed/notarized macOS packaging automation, immutable draft
 assembly, and a separately gated publish workflow. The fork-only credentialed
 rehearsal passed automation but its installed DMG was rejected; no
@@ -552,12 +554,48 @@ of macOS-runner use. The draft job skipped and no tag, Release, draft, or Pages
 site exists. This closes the refreshed review-only stop without expanding
 authority.
 
-The active `0.4.0-dev.22` checklist inherits these unchanged automation gates,
-not their results. It carries the registered Agent runtime and selected
-Workspace view corrections forward while adding the Console error-site repair
-entry after the exact `dev.21` workflow rejection, so it requires a new
-exact-source validation, artifact, and installed-acceptance ledger; no earlier
-run, notarization receipt, hash, or artifact is composable with it.
+The active `0.4.0-dev.23` checklist inherits these unchanged automation gates,
+not their results. It carries the registered Agent runtime, selected Workspace
+view, and Console error-site corrections forward while adding strictly bounded
+parse-token admission and schema-v11 recovery after the exact `dev.22`
+workflow rejection. It therefore requires a new exact-source validation,
+artifact, and installed-acceptance ledger; no earlier run, notarization receipt,
+hash, or artifact is composable with it.
+
+### PROBLEMS-AGENT-REPAIR-5 parser-token cross-review
+
+R5 narrows, rather than removes, R2's prohibition on message-derived source
+locations. Only `rho.bridge`, while handling the exact `parse(text=...)` phase,
+may decode the bounded anchored `<text>:line:column:` prefix. Localized reason
+text, ordinary runtime messages/calls/tracebacks, filenames, and every other
+component remain non-authoritative. Exact submitted code independently proves
+that the coordinate names an existing Unicode scalar; failures remain
+unlocated. This resolves parser ownership without giving the frontend, store,
+Agent, or arbitrary Provider text authority to infer source.
+
+Schema v11 belongs to the existing Problems diagnostic stream, not BH3's
+broader identity ownership and not a new diagnostic store. It expands only the
+closed `error_range_kind` CHECK from `r_expression` to `r_expression` or
+`r_parse_token`. The v10-to-v11 rebuild reuses BH3's same-directory backup,
+single transaction, assertion, injected rollback, and reopen/recovery
+semantics. It copies existing values and never backfills historical parse
+messages. Thus R5 does not guess historical ownership, weaken project scoping,
+or create a competing migration policy.
+
+Runs/Workspace execution remains the diagnostic source of truth; Problems
+remains durable history; Console remains an entry projection; Agent file-edit
+remains the sole proposal/Accept mutation lane; CRED-UX4 retains route and
+one-credential authority. A parse token is diagnostic context, not execution,
+approval, edit permission, or semantic replacement. EOF and unvalidated
+locations retain explicit user-selection recovery.
+
+The `dev.22` owner rejection is immutable and cannot be repaired in place.
+Application `dev.23`, `rho.bridge 0.1.13`, and store schema 11 are synchronized
+replacement identities. The cross-review found no unresolved ownership,
+credential, approval, persistence, project, release, or sequencing conflict.
+The mandatory stop remains the complete affected matrix plus one clean-source
+local unsigned artifact; installed/live-Provider acceptance is separate, and
+MAC5/publication remain unauthorized.
 
 ### macOS arm64 platform ownership
 

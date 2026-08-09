@@ -1,11 +1,10 @@
-# Rho 0.4.0-dev.22 Cross-Platform Candidate Checklist
+# Rho 0.4.0-dev.22 Historical Candidate Checklist
 
-Status: active replacement development-candidate identity for
-PROBLEMS-AGENT-REPAIR-4; Console error-site implementation, complete affected
-Rust/R/frontend automation, formatting, and deterministic browser behavior
-review and exact local unsigned arm64 artifact verification pass;
-owner-installed/live-Provider acceptance, authoritative assets, GitHub Release
-draft, MAC5, publication, and release GO remain open
+Status: historical rejected identity; PROBLEMS-AGENT-REPAIR-4 implementation,
+complete affected automation/browser review, and exact local unsigned arm64
+artifact verification passed, but owner acceptance exposed that a file-backed
+R parse error still degraded to manual selection despite carrying a validated
+submitted file/range and parser-reported location
 
 Date: 2026-08-08
 
@@ -19,8 +18,9 @@ release action
 Owning documents: the active Problems-to-Agent specification owns exact failed
 run/range context and the shared repair action; Console owns the direct
 error-site projection while Problems owns durable history. The active macOS
-arm64 specification owns packaging and trust gates. This checklist alone owns
-the exact `0.4.0-dev.22` identity and acceptance ledger.
+arm64 specification owns packaging and trust gates. This historical checklist
+alone owns the immutable `0.4.0-dev.22` identity, artifact evidence, installed
+rejection, and NO-GO ledger.
 
 Authorization: on 2026-08-08 the project owner rejected the `dev.21`
 Problems-only navigation and explicitly directed implementation of an Agent
@@ -49,7 +49,7 @@ artifacts, hashes, and acceptance evidence cannot satisfy this checklist.
 | Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
 | macOS platform | `macos_aarch64` | exact local unsigned artifact PASS |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | owner-installed/live-Provider acceptance open |
+| Release decision | `NO-GO` | owner workflow rejected parse-error manual selection |
 
 The version/tag is single-use. Rejection advances to another version; no
 artifact, tag, draft, hash, or evidence file may be overwritten or relabelled.
@@ -116,24 +116,28 @@ fresh tag/Release non-existence check, and complete exact-source validation.
 
 ## Installed Acceptance
 
-The owner must install the exact immutable `dev.22` artifact and reproduce a
-file-backed R failure. The Console error site must immediately expose the
-truthful repair action after its durable refresh; one click must start a real
-tool-capable Ask repair turn with the exact range and reach either diagnosis or
-one existing reviewable file proposal without opening Problems or selecting the
-same code again. The file must remain unchanged before Accept.
+The owner opened the exact local `dev.22` DMG and reproduced a file-mode parse
+failure in `scatter_plot_example.R`. The request durably recorded that source,
+document version 2, and submitted range `1:1-39:1`; R reported
+`<text>:23:46` for a full-width comma inside `runif(34, 0, 10，)`. The bridge
+returned no structured error range under the R2 no-message-derived-location
+policy, so the Console correctly bound the exact failed run but exposed
+`Select code for Agent` and required the user to select the already identified
+token. The simultaneous status `Exact failed run ready` made the missing range
+insufficiently clear. Because the acceptance contract requires direct repair
+without reselecting the same code, installed workflow acceptance is `FAIL`.
 
-Route setup, no-range selection, failed/missing refresh, rerun, restart,
-duplicate click, changed source, stale acceptance, and two-project switching
-must remain truthful. Provider/Keychain use must expose no secret in UI, logs,
-evidence, or process arguments. This gate is `NOT RUN`.
+The application made no automatic Provider request, R execution, proposal
+acceptance, save, or source change. The failure therefore rejects workflow
+acceptance, not the existing authority boundaries.
 
 MAC5, candidate draft creation, update publication, Pages mutation, tag/Release
 creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. Implementation, complete affected Rust/R/frontend validation, and
-deterministic browser review, and exact local unsigned artifact verification
-pass for `0.4.0-dev.22`; owner-installed/live-Provider acceptance remains open.
-No hosted or published candidate is authorized.
+`NO-GO`, permanently. Implementation, automated/browser validation, and the
+exact local unsigned artifact remain valid evidence for their recorded source,
+but owner workflow acceptance failed on the parse-error recovery path.
+Replacement work advances to `0.4.0-dev.23`; no `dev.22` artifact, hash, tag,
+Release, acceptance row, or evidence may be rebuilt, relabelled, or reused.
