@@ -41,9 +41,11 @@ CRED-UX2 subsequently advanced the live development identity to
 `0.4.0-dev.18`; CRED-UX4A-R1 reached the now-historical replacement identity
 `0.4.0-dev.19`; Issue #6 produced installed-and-rejected identity
 `0.4.0-dev.20`; PROBLEMS-AGENT-REPAIR-3, CRED-UX4A-R2, and WS3-Q1-R1 advance
-the corrective live development identity to `0.4.0-dev.21`, while every earlier
-run remains exact-source historical evidence and cannot validate the corrected
-frontend/Agent R behavior;
+the corrective development identity to now-rejected `0.4.0-dev.21`; owner
+workflow review then authorizes PROBLEMS-AGENT-REPAIR-4 and advances the live
+replacement identity to `0.4.0-dev.22`, while every earlier run remains
+exact-source historical evidence and cannot validate the corrected Console
+entry behavior;
 authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
@@ -135,7 +137,8 @@ became `0.4.0-dev.16`; Issue #4 work advanced the development candidate
 through `0.4.0-dev.17`, the rejected `0.4.0-dev.18`, the historical
 Provider-first recovery identity `0.4.0-dev.19`, the rejected Issue #6
 identity `0.4.0-dev.20`, and the current corrective identity
-`0.4.0-dev.21`. It supports macOS 14 or later,
+`0.4.0-dev.21`, followed by the current Console-entry replacement identity
+`0.4.0-dev.22`. It supports macOS 14 or later,
 arm64 R 4.4 or later, and an arm64 Ark 0.1.252 sidecar. It is developed in
 `YuLab-SMU/Rho_for_mac`, reviewed into `YuLab-SMU/Rho`, and released only by the
 main repository through GitHub Releases and the Rho website.
@@ -400,8 +403,8 @@ Entry review:
 - This package is D4/R4 because it changes candidate identity, release
   evidence, signing/notarization, GitHub Release draft creation, and update-site
   publication inputs. The new exact-candidate checklist is
-  `docs/release/active-0.4.0-dev.21-candidate-checklist.md`; the historical
-  `0.4.0-dev.16`, rejected `0.4.0-dev.18`/`0.4.0-dev.20`, and old `0.2.0`
+  `docs/release/active-0.4.0-dev.22-candidate-checklist.md`; the historical
+  `0.4.0-dev.16`, rejected `0.4.0-dev.18`/`0.4.0-dev.20`/`0.4.0-dev.21`, and old `0.2.0`
   checklist and `rho-0.2-release.json` remain authorities for their own
   candidate and are not reused as MAC4 acceptance.
 - The accepted About/update design retains schema version 1, endpoints,

@@ -82,7 +82,7 @@ assert.match(js, /function openAgentWorkSurface\(kind\)/);
 assert.match(js, /function closeAgentWorkSurface\(\)/);
 assert.match(js, /function problemAgentDiagnostic\(problem, rangeOverride = null\)/);
 assert.match(js, /async function fixProblemWithAgent\(problem\)/);
-assert.match(js, /textContent = "Fix with Agent"/);
+assert.match(js, /label: "Fix with Agent"/);
 assert.match(js, /buildAgentEditorContext\(options = \{\}\)/);
 assert.match(js, /diagnostic = state\.agentDiagnostic,[\s\S]{0,120}runContext = state\.agentProblemRunContext/);
 assert.match(js, /selectExactProblemRange\(problem, repairRange\)/);

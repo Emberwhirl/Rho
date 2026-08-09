@@ -4,6 +4,25 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.22 - 2026-08-08
+
+### Fixed
+
+- Failed non-render R executions now show the shared `Fix with Agent` action
+  directly beside the Console error. The action waits for the exact durable
+  failed run and diagnostic range, then starts the existing read-only
+  `problem_repair` flow without requiring a visit to Problems.
+- Console repair actions reject late refreshes and become permanently disabled
+  after a project switch. Failed history refreshes offer bounded recovery, and
+  missing durable context asks for a new run instead of submitting partial
+  evidence or creating a duplicate Agent turn.
+
+### Improved
+
+- Console and Problems now derive `Fix with Agent`, `Select code for Agent`,
+  and `Set up Agent repair` from one action-state helper, so Provider routing
+  and exact-range recovery remain consistent on both surfaces.
+
 ## 0.4.0-dev.21 - 2026-08-08
 
 ### Fixed

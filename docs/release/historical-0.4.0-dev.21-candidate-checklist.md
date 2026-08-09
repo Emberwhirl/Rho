@@ -1,33 +1,34 @@
-# Rho 0.4.0-dev.21 Cross-Platform Candidate Checklist
+# Rho 0.4.0-dev.21 Historical Rejected Candidate Checklist
 
-Status: active corrective development-candidate identity for
+Status: historical rejected development-candidate identity for
 PROBLEMS-AGENT-REPAIR-3, CRED-UX4A-R2, and WS3-Q1-R1; implementation, complete
 affected automated verification, deterministic browser behavior review, and
 exact local unsigned arm64 artifact verification are complete;
-owner-installed/live-Provider acceptance, authoritative assets, GitHub Release
-draft, MAC5, publication, and release GO are NOT RUN
+owner workflow review rejected the Problems-only repair entry on 2026-08-08;
+authoritative assets, GitHub Release draft, MAC5, publication, and release GO
+were NOT RUN
 
 Date: 2026-08-08
 
-Change class: D3 Agent runtime/credential-route correction plus D2 selected
-Workspace viewer recovery and D4 replacement development identity
+Change class: historical D3 Agent runtime/credential-route correction plus D2
+selected Workspace viewer recovery and D4 single-use candidate identity
 
-Risk: R3 registered Provider identity, exact one-credential routing, and
-installed repair flow; R2 revision/project-bound read-only Data Viewer refresh;
-R4 for any later hosted candidate or release action
+Risk: closed historical record only; this identity cannot satisfy a later
+candidate, installed acceptance, hosted artifact, or release gate
 
 Owning documents: the active Problems-to-Agent specification owns the one-click
 repair flow; the active system-credential specification owns canonical
 registered runtime identity and one-credential resolution; the active WS3
 broker-data-query specification owns selected-view refresh; the active macOS
 arm64 specification owns packaging and trust gates. This checklist alone owns
-the exact `0.4.0-dev.21` identity and its acceptance ledger.
+the exact immutable `0.4.0-dev.21` identity and its rejection ledger.
 
 Authorization: the project owner supplied installed `dev.20` rejection evidence
-and requested correction of the Issue #6 flow. The existing Issue #6 authority
-covers implementation, tests, documentation, versioning, commit, and source
-push. It does not authorize a tag, Release/draft, signed/notarized candidate,
-update-site mutation, MAC5, or publication.
+and requested the corrections represented by this source. After the immutable
+`dev.21` DMG was handed off, owner review rejected the remaining requirement to
+navigate to Problems before repair. That rejection closes this identity; it
+does not authorize relabelling, rebuilding, a tag, Release/draft,
+signed/notarized candidate, update-site mutation, MAC5, or publication.
 
 `0.4.0-dev.20` is an immutable rejected predecessor. Its artifacts, hashes, and
 acceptance evidence cannot satisfy this checklist.
@@ -48,7 +49,7 @@ acceptance evidence cannot satisfy this checklist.
 | Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
 | macOS platform | `macos_aarch64` | exact local unsigned artifact PASS |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | owner-installed/live-Provider acceptance NOT RUN |
+| Release decision | `NO-GO` | owner workflow review rejected Problems-only repair entry |
 
 The version/tag is single-use. Rejection advances to another version; no
 artifact, tag, draft, hash, or evidence file may be overwritten or relabelled.
@@ -114,25 +115,27 @@ No hosted candidate action may start without separate owner authorization, a
 clean reviewed pushed default-branch commit in the authoritative repository, a
 fresh tag/Release non-existence check, and complete exact-source validation.
 
-## Installed Acceptance
+## Owner Acceptance Rejection
 
-The owner must install the exact immutable `dev.21` artifact and reproduce the
-same file failure. One Problems click must start a real tool-capable Ask repair
-turn and reach either a diagnosis or one existing reviewable file proposal
-without a second selection. The file must remain unchanged before Accept.
+The owner reviewed the exact `dev.21` behavior and rejected the requirement to
+leave the Console error site and discover the repair action under Problems.
+Problems remains useful as durable history, but it cannot be the mandatory
+entry for a just-failed execution. This is a user-visible acceptance failure,
+so the already handed-off DMG, source identity, and hash remain immutable and
+cannot be promoted.
 
-The same failed execution must leave Environment inventory and the selected
-Data Viewer on the current object revision without a stale-refresh instruction.
-Query/sort/page state, object removal, retry, restart, stale acceptance, and two
-projects remain truthful. Provider/Keychain use must expose no secret in UI,
-logs, evidence, or process arguments. This gate is `NOT RUN`.
+The registered-Provider and selected Data Viewer corrections retain their
+recorded automated/local-artifact evidence, but they do not override this
+candidate-level rejection. Live-Provider acceptance was not completed for a
+promotable `dev.21` candidate.
 
 MAC5, candidate draft creation, update publication, Pages mutation, tag/Release
 creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. Source implementation, the complete affected automated/browser
-matrix, and exact local unsigned arm64 artifact verification pass at
-`0.4.0-dev.21`. Owner-installed/live-Provider acceptance remains open; no
-hosted or published candidate is authorized.
+`NO-GO`, permanently. Source implementation, the affected automated/browser
+matrix, and exact local unsigned arm64 artifact verification passed at
+`0.4.0-dev.21`, but owner workflow review rejected the Problems-only entry.
+Replacement work advances to `0.4.0-dev.22`; no `dev.21` artifact, hash, tag,
+draft, or evidence may be overwritten or reused.

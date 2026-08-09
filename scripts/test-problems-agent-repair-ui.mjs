@@ -17,8 +17,11 @@ const contract = read("docs", "plans", "active-2026-08-07-problems-agent-repair-
 
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-2/);
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-3 Installed Acceptance Correction/);
+assert.match(contract, /PROBLEMS-AGENT-REPAIR-4 Console Error-Site Entry Correction/);
 assert.match(contract, /explicitly authorized its complete resolution on 2026-08-08/);
 assert.match(contract, /range_kind=user_selection/);
+assert.match(contract, /same action-state helper/);
+assert.match(contract, /does not navigate[\s\S]{0,40}Problems/);
 
 assert.match(bridge, /parse\(text = code, keep\.source = TRUE\)/);
 assert.match(bridge, /attr\(expressions, "srcref", exact = TRUE\)/);
@@ -77,9 +80,12 @@ assert.match(js, /selectExactProblemRange\(problem, repairRange\)/);
 assert.match(js, /problemExpectedSourceText\(problem, runDetail, repairRange\)/);
 assert.match(js, /taskKind: "problem_repair", mode: "ask"/);
 assert.match(js, /taskKind === "agent_turn" && mode === "act" && state\.actAutoApprove/);
-assert.match(js, /fix\.textContent = "Fix with Agent"/);
-assert.match(js, /fix\.textContent = "Select code for Agent"/);
-assert.match(js, /fix\.textContent = "Set up Agent repair"/);
+assert.match(js, /label: "Fix with Agent"/);
+assert.match(js, /label: "Select code for Agent"/);
+assert.match(js, /label: "Set up Agent repair"/);
+assert.match(js, /function configureProblemRepairButton\(button, problem/);
+assert.match(js, /configureProblemRepairButton\(fix, problem\)/);
+assert.match(js, /configureProblemRepairButton\(entry\.button, entry\.problem/);
 assert.match(js, /state\.agentLlm\.routingExpandedCapability = "agent\.act"/);
 
 assert.match(js, /run\.run_id === runId && run\.project_root === mockLastProject/);
@@ -95,4 +101,4 @@ for (const evidence of [
 assert.match(js, /previewParams\.get\("state"\) === "repair-probe"/);
 assert.match(js, /repair_probe: state\.problemRepairPreviewProbe/);
 
-console.log("Problems Agent repair R3 contract checks passed.");
+console.log("Problems/Console shared Agent repair R4 contract checks passed.");

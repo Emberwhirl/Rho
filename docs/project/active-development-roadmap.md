@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-08
-Current baseline: `0.4.0-dev.21`
+Current baseline: `0.4.0-dev.22`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -209,6 +209,15 @@ and preserves compatible query/sort/page state under monotonic project-bound
 guards. The complete affected automation, deterministic desktop/narrow browser
 behavior matrix, and exact clean-source local unsigned arm64 artifact
 verification pass; owner-installed/live-Provider acceptance remains open.
+Owner workflow review then rejected `dev.21` because the just-failed Console
+had no repair entry and required navigation to Problems. PROBLEMS-AGENT-
+REPAIR-4 advances the baseline to `0.4.0-dev.22`: Console waits for and binds
+the exact durable failed run, exposes the same repair/setup/selection action as
+Problems, bounds refresh recovery, rejects duplicate dispatch, and permanently
+disables an old action after project switch. The complete affected
+Rust/R/frontend matrix, formatting, and deterministic desktop/narrow browser
+review pass; exact local unsigned artifact and installed/live-Provider
+acceptance remain open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter

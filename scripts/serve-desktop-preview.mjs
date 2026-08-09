@@ -13,6 +13,10 @@ const types = {
 
 createServer((request, response) => {
   const relative = decodeURIComponent((request.url || "/").split("?")[0]);
+  if (relative === "/favicon.ico") {
+    response.writeHead(204).end();
+    return;
+  }
   const candidate = normalize(join(root, relative === "/" ? "index.html" : relative));
   if (!candidate.startsWith(root)) {
     response.writeHead(403).end("Forbidden");

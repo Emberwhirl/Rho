@@ -9,11 +9,13 @@ Change class: D3 cross-module execution diagnostics, durable schema, typed Agent
 task routing, editor identity, and reviewable repair workflow
 Risk: R3 migration/recovery, execution provenance, project isolation, Agent
 credential routing, proposal review, and browser/mock parity
-Work package: PROBLEMS-AGENT-REPAIR-2 (PROBLEMS-AGENT-REPAIR-1 is historical)
-Mandatory stop: complete one vertical diagnostic-to-proposal slice, pass the
-schema/R/runtime/frontend recovery matrix, cross-review the implementation and
-version impact, then stop before automatic execution, automatic file mutation,
-fuzzy source inference, or any broader credential authority.
+Work package: PROBLEMS-AGENT-REPAIR-4 (R1 is historical; R2/R3 are implemented
+but their distributed candidate identities were rejected)
+Mandatory stop: expose the same durable repair action at the Console error
+site, pass the focused/complete frontend and deterministic browser matrix,
+cross-review the implementation and replacement-version impact, then stop
+before automatic Provider dispatch, automatic execution, automatic file
+mutation, fuzzy source inference, or any broader credential authority.
 
 ## Problem And Invariant
 
@@ -24,8 +26,9 @@ requiring the user to retype the error or manually create a selection.
 
 ## Scope And Ownership
 
-- Problems owns the visible `Fix with Agent` entry and actionable unavailable
-  states.
+- Problems owns the durable diagnostic list; the execution Console owns the
+  visible error-site `Fix with Agent` entry. Both surfaces share one repair
+  action and actionable unavailable states.
 - The frontend owns opening/revealing the source and constructing additive
   diagnostic context inside the existing `editor_context` payload.
 - The existing Agent coordinator and `propose_file_edit` tool remain the
@@ -362,3 +365,107 @@ must not be rebuilt or relabeled. After the corrective matrix passes, the
 application advances to `0.4.0-dev.21`; `rho.agent` advances independently
 because its runtime Provider-resolution contract changes. Installed/live-
 Provider acceptance remains open on that exact replacement artifact.
+
+## PROBLEMS-AGENT-REPAIR-4 Console Error-Site Entry Correction — 2026-08-08
+
+The owner rejected the remaining navigation gap after reviewing the corrective
+flow: a newly failed R execution renders only red text at the Console error
+site, while the repair action exists exclusively under the separate Problems
+tab. Requiring the user to discover and switch to Problems is not a direct
+error-to-repair workflow even when the same durable failed run and exact source
+range already exist.
+
+The owner's 2026-08-08 direction explicitly authorizes this bounded D2/R2
+desktop correction. The previous `0.4.0-dev.21` DMG was already handed off and
+cannot be rebuilt or relabelled; the corrected distributable identity advances
+to the next unused development candidate. No R package contract changes.
+
+### Error-Site Contract
+
+- A non-render Workspace R failure with a durable execution ID renders one
+  structured Console error entry containing the error text and an adjacent
+  repair action. The user does not need to open Problems first.
+- The Console action waits for the next successful project-scoped Problems
+  refresh and resolves only the Problem whose complete run ID matches the
+  error entry. It must not start from the incomplete transient UI copy.
+- Once resolved, Console and Problems use the same action-state helper and the
+  same `fixProblemWithAgent()` path: `Fix with Agent` for a ready exact range,
+  `Select code for Agent` for the explicit no-range recovery, or `Set up Agent
+  repair` when the effective route is unavailable.
+- Clicking the ready Console action directly prepares and starts the existing
+  typed Ask `problem_repair` turn with the same exact failed run, source range,
+  project, credential route, and proposal boundaries. It does not navigate
+  through Problems and does not add a second confirmation.
+- While durable context is loading the action is visibly disabled. If refresh
+  completes without matching durable context, the entry offers a bounded retry
+  and then tells the user to rerun the code; it never submits partial context.
+- Each entry captures the active project root and project refresh generation.
+  A project switch permanently disables the old action as previous-project
+  evidence. Late refreshes and duplicate clicks cannot start a foreign or
+  second repair turn.
+- Connection/startup failures, arbitrary stderr stream events, and render-job
+  failures without an admitted durable R Problem remain plain errors; Rho must
+  not offer a misleading source repair action for them.
+- The structured row and button are keyboard reachable, have explicit
+  accessible labels/status text, wrap at the supported narrow width, and do
+  not overlap the Console prompt.
+
+### Regression And Acceptance Matrix
+
+- Static/frontend contract: `renderExecution()` creates the structured action
+  for both explicit and generic non-render execution failures; ordinary output,
+  stream stderr, render failures, and invoke failures do not gain the action.
+- Durable binding: the action is disabled before refresh, enables only after an
+  exact full run-ID match, calls the shared Problems repair helper, and passes
+  the same exact diagnostic/run context without changing source before Accept.
+- Failure/recovery: missing durable context, failed refresh, duplicate click,
+  route setup, explicit selection, and rerun recovery remain truthful.
+- Isolation: a captured project switch and a late old-project refresh leave the
+  old action disabled and create no Agent turn.
+- Browser/mock parity: desktop and narrow viewports show the action beside the
+  error, no prompt overlap or horizontal overflow, no page errors, and one
+  direct Console click creates exactly one typed repair turn.
+- Run JavaScript syntax, the focused Console/Problems contracts, all frontend
+  contract scripts, affected Rust/R regression suites, formatting, and the
+  exact replacement app/DMG smoke before installed handoff.
+
+R4 adds no command, schema, persistence, network, credential, approval,
+automatic Provider request, R execution, proposal acceptance, or file mutation
+authority. Problems remains the durable history/detail surface; Console is an
+additional direct entry into the same accepted repair workflow.
+
+### R4 Implementation And Contract Review — 2026-08-08
+
+The reviewed implementation follows the R4 contract without deviation:
+
+- `renderExecution()` projects non-render failures with execution IDs into a
+  structured Console row. Plain render, stream, startup/connection, and invoke
+  errors retain their existing non-repair presentation.
+- Each Console row captures project identity and the next Problems refresh
+  request. Only a successful, non-stale refresh with the exact complete run ID
+  can bind its durable Problem. Concurrent older responses are rejected.
+- Console and Problems call one `problemRepairActionState()` /
+  `configureProblemRepairButton()` path and one `fixProblemWithAgent()` path.
+  Missing range and route states remain truthful, and no path forces a switch
+  through Problems.
+- Busy state prevents duplicate dispatch. Refresh failure and missing context
+  have bounded recovery; project-sequence mismatch permanently disables the
+  old action. Live entries are bounded to 100 and older actions expire closed.
+
+JavaScript syntax, all 45 frontend contract scripts, `rho.agent` (120),
+`rho.bridge` (535), complete Rust workspace/all-target tests, and Rust
+formatting pass. The Rust matrix includes `rho-store` 97, `rho-server` 52, and
+`rho-desktop` 151 passed with only its existing opt-in Keychain smoke ignored.
+Deterministic Chromium review passes at `1440 x 900` and `800 x 900`: one
+Console click creates exactly one typed Ask `problem_repair` turn with matching
+run/diagnostic IDs and exact `r_expression` range; source remains unchanged;
+Problems is not opened; refresh failure recovers; missing context exhausts to
+rerun; project switch disables the old action; no layout overlap, horizontal
+overflow, or page errors occur.
+
+Because the handed-off `dev.21` identity is immutable, user-visible R4 behavior
+advances the synchronized application and workflow defaults to
+`0.4.0-dev.22`; `NEWS.md` and the active exact-candidate checklist are updated.
+No R package contract changes, so `rho.agent` remains `0.1.5` and `rho.bridge`
+remains `0.1.12`. Exact local unsigned `dev.22` artifact verification and
+owner-installed/live-Provider acceptance remain separate open gates.

@@ -170,6 +170,12 @@ const state = {
   compareRight: null,
   compareResult: null,
   problems: [],
+  problemRefreshRequestSequence: 0,
+  problemRefreshAppliedSequence: 0,
+  problemRefreshProjectRoot: "",
+  consoleRepairEntries: new Map(),
+  consoleRepairSequence: 0,
+  consoleRepairPreviewProbe: null,
   lint: { status: "idle", response: null, proposal: null, projectRoot: null, error: null },
   refactor: { status: "idle", proposal: null, undo: null, error: null, returnFocus: null },
   agentTurns: [],
@@ -440,6 +446,7 @@ let mockAgentLlmFailure = previewParams.get("failure") || null;
 let mockAgentLlmLoadFailureConsumed = false;
 let mockAgentRunFailureOnce = null;
 let mockProblemPreparationProjectSwitchOnce = false;
+let mockProblemListFailureOnce = false;
 let mockDataViewerInspectCount = 0;
 let mockDataViewerReadCount = 0;
 
@@ -1453,6 +1460,7 @@ function mockProblemList() {
     .map((run) => ({
       run_id: run.run_id,
       parent_run_id: run.parent_run_id,
+      project_root: run.project_root,
       origin: run.origin,
       status: run.status,
       message: run.error_message,
@@ -1913,7 +1921,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.21",
+      version: "0.4.0-dev.22",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1931,8 +1939,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.21",
-      available_version: "0.4.0-dev.21",
+      installed_version: "0.4.0-dev.22",
+      available_version: "0.4.0-dev.22",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2176,6 +2184,10 @@ async function mockInvoke(command, args) {
     return mockArtifactView(artifact);
   }
   if (command === "list_problems") {
+    if (mockProblemListFailureOnce) {
+      mockProblemListFailureOnce = false;
+      throw new Error("Mock durable Problems refresh failed.");
+    }
     return structuredClone(mockProblemList().slice(0, args.limit || 50));
   }
   if (command === "render_document") {
@@ -5092,6 +5104,232 @@ function addTerminalOutput(text, kind = "") {
   scrollConsoleToPrompt();
 }
 
+function normalizedProjectRootValue(value) {
+  return String(value || "").replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function consoleRepairEntryIsCurrent(entry) {
+  return entry.projectRefreshSequence === state.projectRefreshSequence
+    && normalizedProjectRootValue(entry.projectRoot) === normalizedProjectRootValue(state.project.root);
+}
+
+function setConsoleRepairEntryState(entry, {
+  label,
+  status,
+  title = "",
+  disabled = false,
+  statusKind = "",
+  activate = null,
+}) {
+  entry.button.textContent = label;
+  entry.button.title = title;
+  entry.button.disabled = disabled;
+  entry.button.onclick = disabled || !activate ? null : activate;
+  entry.status.textContent = status;
+  entry.status.className = `console-repair-status ${statusKind}`.trim();
+}
+
+function consoleRepairProblemForEntry(entry) {
+  return state.problems.find((problem) => {
+    if (problem.transient || String(problem.run_id || "") !== entry.runId) return false;
+    return !problem.project_root
+      || normalizedProjectRootValue(problem.project_root) === normalizedProjectRootValue(entry.projectRoot);
+  }) || null;
+}
+
+function consoleRepairRetryAvailable(entry) {
+  const refreshFailed = entry.lastFailedRefreshSequence >= entry.minimumRefreshRequestSequence
+    && state.problemRefreshAppliedSequence < entry.minimumRefreshRequestSequence;
+  return refreshFailed ? entry.retryCount < 2 : entry.retryCount < 1;
+}
+
+async function retryConsoleRepairContext(entry) {
+  if (!consoleRepairEntryIsCurrent(entry) || entry.busy || !consoleRepairRetryAvailable(entry)) return;
+  entry.retryCount += 1;
+  entry.busy = true;
+  entry.busyLabel = "Refreshing repair context…";
+  syncConsoleRepairEntry(entry);
+  const refreshed = await loadRunData({ quiet: true });
+  entry.busy = false;
+  entry.busyLabel = "";
+  syncConsoleRepairEntry(entry);
+  if (!consoleRepairEntryIsCurrent(entry) || entry.problem) return;
+  if (!refreshed && consoleRepairRetryAvailable(entry)) {
+    toast("Rho could not refresh this failed run yet. Retry repair context once more.", true);
+  } else {
+    toast("No durable Problem matched this failed run. Run the code again to create fresh repair context.", true);
+  }
+}
+
+async function activateConsoleRepairEntry(entry) {
+  if (!consoleRepairEntryIsCurrent(entry) || !entry.problem || entry.busy) return;
+  entry.busy = true;
+  entry.busyLabel = "Starting Agent repair…";
+  syncConsoleRepairEntry(entry);
+  try {
+    await activateProblemRepairAction(entry.problem);
+  } finally {
+    entry.busy = false;
+    entry.busyLabel = "";
+    syncConsoleRepairEntry(entry);
+  }
+}
+
+function syncConsoleRepairEntry(entry) {
+  if (!entry?.element?.isConnected) {
+    state.consoleRepairEntries.delete(entry?.id);
+    return;
+  }
+  if (entry.expired) {
+    setConsoleRepairEntryState(entry, {
+      label: "Repair expired",
+      status: "Run the code again to create current repair context.",
+      title: "Rho keeps only a bounded number of live Console repair actions.",
+      disabled: true,
+      statusKind: "unavailable",
+    });
+    return;
+  }
+  if (!consoleRepairEntryIsCurrent(entry)) {
+    entry.problem = null;
+    setConsoleRepairEntryState(entry, {
+      label: "Previous-project error",
+      status: "Repair is disabled because the active project changed.",
+      title: "Return to the original project and run the code again to create current repair context.",
+      disabled: true,
+      statusKind: "unavailable",
+    });
+    return;
+  }
+  if (entry.busy) {
+    setConsoleRepairEntryState(entry, {
+      label: entry.busyLabel || "Preparing Agent repair…",
+      status: entry.busyLabel || "Preparing the exact failed run.",
+      disabled: true,
+      statusKind: "loading",
+    });
+    return;
+  }
+  const refreshReady = state.problemRefreshAppliedSequence >= entry.minimumRefreshRequestSequence
+    && normalizedProjectRootValue(state.problemRefreshProjectRoot) === normalizedProjectRootValue(entry.projectRoot);
+  if (refreshReady) {
+    entry.problem = consoleRepairProblemForEntry(entry);
+    if (entry.problem) {
+      configureProblemRepairButton(entry.button, entry.problem, {
+        activate: () => activateConsoleRepairEntry(entry),
+      });
+      entry.status.textContent = "Exact failed run ready.";
+      entry.status.className = "console-repair-status ready";
+      return;
+    }
+    const retryAvailable = consoleRepairRetryAvailable(entry);
+    setConsoleRepairEntryState(entry, {
+      label: retryAvailable ? "Retry repair context" : "Run code again",
+      status: retryAvailable
+        ? "The failed run was not available in Problems. Retry its context once."
+        : "No matching durable Problem was recorded. Run the code again.",
+      title: retryAvailable
+        ? "Refresh the current project's durable Problems and match this complete run ID again."
+        : "A repair turn cannot start without the matching durable failed run.",
+      disabled: !retryAvailable,
+      statusKind: "unavailable",
+      activate: retryAvailable ? () => retryConsoleRepairContext(entry) : null,
+    });
+    return;
+  }
+  const refreshFailed = entry.lastFailedRefreshSequence >= entry.minimumRefreshRequestSequence;
+  if (refreshFailed) {
+    const retryAvailable = consoleRepairRetryAvailable(entry);
+    setConsoleRepairEntryState(entry, {
+      label: retryAvailable ? "Retry repair context" : "Run code again",
+      status: retryAvailable
+        ? "Rho could not refresh the durable failed run."
+        : "Repair context could not be refreshed. Run the code again.",
+      title: "Agent repair remains disabled until the exact failed run is available.",
+      disabled: !retryAvailable,
+      statusKind: "unavailable",
+      activate: retryAvailable ? () => retryConsoleRepairContext(entry) : null,
+    });
+    return;
+  }
+  setConsoleRepairEntryState(entry, {
+    label: "Preparing Agent repair…",
+    status: "Matching the durable failed run…",
+    title: "Rho is loading the exact diagnostic range for this failed run.",
+    disabled: true,
+    statusKind: "loading",
+  });
+}
+
+function syncConsoleRepairEntries() {
+  for (const entry of state.consoleRepairEntries.values()) syncConsoleRepairEntry(entry);
+}
+
+function markConsoleRepairRefreshFailed(requestSequence, projectRoot, projectRefreshSequence) {
+  for (const entry of state.consoleRepairEntries.values()) {
+    if (entry.projectRefreshSequence !== projectRefreshSequence
+      || normalizedProjectRootValue(entry.projectRoot) !== normalizedProjectRootValue(projectRoot)
+      || requestSequence < entry.minimumRefreshRequestSequence) continue;
+    entry.lastFailedRefreshSequence = Math.max(entry.lastFailedRefreshSequence, requestSequence);
+  }
+  syncConsoleRepairEntries();
+}
+
+function addConsoleExecutionError(message, { runId = null } = {}) {
+  const durableRunId = String(runId || "").trim();
+  if (!durableRunId) {
+    addTerminalOutput(message, "error");
+    return null;
+  }
+  const element = document.createElement("div");
+  element.className = "terminal-entry error console-error-entry";
+  element.setAttribute("role", "group");
+  element.setAttribute("aria-label", "R execution error and Agent repair action");
+  const copy = document.createElement("span");
+  copy.className = "console-error-message";
+  copy.textContent = String(message || "R execution failed.");
+  const repair = document.createElement("span");
+  repair.className = "console-error-repair";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "console-repair-action";
+  button.setAttribute("aria-label", "Repair this R error with Agent");
+  const status = document.createElement("span");
+  status.className = "console-repair-status loading";
+  status.setAttribute("role", "status");
+  repair.append(button, status);
+  element.append(copy, repair);
+  $("#consoleOutput").append(element);
+
+  state.consoleRepairSequence += 1;
+  const entry = {
+    id: state.consoleRepairSequence,
+    element,
+    button,
+    status,
+    runId: durableRunId,
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    minimumRefreshRequestSequence: state.problemRefreshRequestSequence + 1,
+    lastFailedRefreshSequence: 0,
+    retryCount: 0,
+    problem: null,
+    busy: false,
+    busyLabel: "",
+    expired: false,
+  };
+  state.consoleRepairEntries.set(entry.id, entry);
+  while (state.consoleRepairEntries.size > 100) {
+    const oldest = state.consoleRepairEntries.values().next().value;
+    state.consoleRepairEntries.delete(oldest.id);
+    oldest.expired = true;
+    syncConsoleRepairEntry(oldest);
+  }
+  syncConsoleRepairEntry(entry);
+  scrollConsoleToPrompt();
+  return entry;
+}
+
 function addTerminalCommand(code) {
   const value = String(code || "");
   if (!value.trim()) return;
@@ -5339,6 +5577,8 @@ function activeRunRecord() {
 }
 
 async function loadRunData({ quiet = false } = {}) {
+  state.problemRefreshRequestSequence += 1;
+  const refreshRequestSequence = state.problemRefreshRequestSequence;
   const refreshSequence = state.projectRefreshSequence;
   const projectRoot = state.project.root;
   try {
@@ -5348,10 +5588,13 @@ async function loadRunData({ quiet = false } = {}) {
       invoke("list_plot_artifacts", { limit: 50, session_only: state.plotScope === "session" }),
       invoke("list_artifact_records", { limit: 100, session_only: state.plotScope === "session" }),
     ]);
-    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return;
+    if (refreshSequence !== state.projectRefreshSequence || projectRoot !== state.project.root) return false;
+    if (refreshRequestSequence < state.problemRefreshAppliedSequence) return false;
     loadGitStatus();
     state.runs = runs || [];
     state.problems = problems || [];
+    state.problemRefreshAppliedSequence = refreshRequestSequence;
+    state.problemRefreshProjectRoot = projectRoot;
     state.plots = plots || [];
     state.artifacts = artifacts || [];
     if (!state.plots.some((plot) => plot.plot_id === state.selectedPlotId)) {
@@ -5381,8 +5624,13 @@ async function loadRunData({ quiet = false } = {}) {
     } catch (error) {
       if (!quiet) toast(reportUiFailure("sync Agent Console", error, "Agent Console history could not be synchronized. Refresh and try again."), true);
     }
+    return true;
   } catch (error) {
+    if (refreshSequence === state.projectRefreshSequence && projectRoot === state.project.root) {
+      markConsoleRepairRefreshFailed(refreshRequestSequence, projectRoot, refreshSequence);
+    }
     if (!quiet) toast(reportUiFailure("load run history", error, "Run history could not be loaded. Refresh and try again."), true);
+    return false;
   }
 }
 
@@ -6323,6 +6571,7 @@ function syncAgentComposerState() {
   });
   $("#actAutoApprove").disabled = state.agentBusy || state.agentMode !== "act" || actBlocked;
   $("#agentModelSelector").disabled = selectorLocked;
+  syncConsoleRepairEntries();
   const note = $("#agentCapabilityNote");
   if (reason && !state.agentBusy) {
     note.textContent = reason;
@@ -8986,9 +9235,10 @@ function renderCompareResult() {
 }
 
 function addProblem(message, call = "", options = {}) {
-  state.problems.unshift({
+  const problem = {
     run_id: options.runId || `transient_${Date.now()}`,
     parent_run_id: null,
+    transient: true,
     origin: options.origin || "system",
     status: options.status || "failed",
     message,
@@ -9011,9 +9261,11 @@ function addProblem(message, call = "", options = {}) {
     producer_version: options.producerVersion || null,
     scan_scope: options.scanScope || null,
     quick_fix: options.quickFix || null,
-    project_root: options.projectRoot || null,
-  });
+    project_root: options.projectRoot || state.project.root || null,
+  };
+  state.problems.unshift(problem);
   renderProblems();
+  return problem;
 }
 
 function renderProblemsLegacy() {
@@ -9348,6 +9600,81 @@ function openProblemRepairModelRouting() {
   switchAgentLlmView("routing", { focus: true });
 }
 
+function problemRepairActionState(problem) {
+  const sourceKind = problemSourceKind(problem);
+  if (sourceKind !== "file" && sourceKind !== "console") {
+    return {
+      kind: "unavailable",
+      label: "Repair unavailable",
+      title: "This problem has no available project source or Console run context.",
+      disabled: true,
+    };
+  }
+  if (sourceKind === "file" && !problemExactRange(problem)) {
+    return {
+      kind: "select",
+      label: "Select code for Agent",
+      title: "Open the source, select the failing expression, then use this action again. Running again may also capture an exact range.",
+      disabled: false,
+    };
+  }
+  const routeReason = problemRepairRouteReason();
+  if (routeReason) {
+    return {
+      kind: "setup",
+      label: "Set up Agent repair",
+      title: routeReason,
+      disabled: false,
+    };
+  }
+  return {
+    kind: "repair",
+    label: "Fix with Agent",
+    title: "Start one Agent repair turn with this exact failed run and diagnostic range.",
+    disabled: false,
+  };
+}
+
+async function activateProblemRepairAction(problem) {
+  const action = problemRepairActionState(problem);
+  if (action.disabled) {
+    toast(action.title, true);
+    return;
+  }
+  if (action.kind === "setup") {
+    toast(action.title, true);
+    openProblemRepairModelRouting();
+    return;
+  }
+  await fixProblemWithAgent(problem);
+}
+
+function configureProblemRepairButton(button, problem, { activate = null } = {}) {
+  const action = problemRepairActionState(problem);
+  button.type = "button";
+  button.textContent = action.label;
+  button.title = action.title;
+  button.disabled = action.disabled;
+  button.dataset.repairAction = action.kind;
+  button.onclick = null;
+  if (action.disabled) return;
+  if (activate) {
+    button.onclick = activate;
+    return;
+  }
+  button.onclick = async () => {
+    if (button.dataset.repairBusy === "true") return;
+    button.dataset.repairBusy = "true";
+    button.disabled = true;
+    try {
+      await activateProblemRepairAction(problem);
+    } finally {
+      delete button.dataset.repairBusy;
+      if (button.isConnected) configureProblemRepairButton(button, problem);
+    }
+  };
+}
+
 function problemAgentDiagnostic(problem, rangeOverride = null) {
   const range = rangeOverride || problemExactRange(problem);
   return {
@@ -9390,8 +9717,7 @@ async function fixProblemWithAgent(problem) {
         await openDocument(problem.source_path);
         assertCurrentProject();
         applyWorkbenchLayout("analyze");
-        switchDockTab("problems");
-        toast("Select the failing R expression in the editor, then click Select code for Agent again.", true);
+        toast("Select the failing R expression in the editor, then use this error's Agent action again.", true);
       } catch (error) {
         toast(reportUiFailure("prepare Agent repair selection", error, "The source could not be opened. Restore it or refresh the project, then try again."), true);
       }
@@ -9570,24 +9896,7 @@ function renderProblems() {
     actions.append(explain);
     if (sourceKind === "file" || sourceKind === "console") {
       const fix = document.createElement("button");
-      fix.type = "button";
-      const missingRange = sourceKind === "file" && !problemExactRange(problem);
-      const routeReason = problemRepairRouteReason();
-      if (missingRange) {
-        fix.textContent = "Select code for Agent";
-        fix.title = "Open the source, select the failing expression, then use this action again. Running again may also capture an exact range.";
-        fix.addEventListener("click", () => fixProblemWithAgent(problem));
-      } else if (routeReason) {
-        fix.textContent = "Set up Agent repair";
-        fix.title = routeReason;
-        fix.addEventListener("click", () => {
-          toast(routeReason, true);
-          openProblemRepairModelRouting();
-        });
-      } else {
-        fix.textContent = "Fix with Agent";
-        fix.addEventListener("click", () => fixProblemWithAgent(problem));
-      }
+      configureProblemRepairButton(fix, problem);
       actions.append(fix);
     }
     if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
@@ -9614,6 +9923,7 @@ function renderProblems() {
     row.append(icon, content, actions);
     list.append(row);
   }
+  syncConsoleRepairEntries();
 }
 
 function setLintQuickFixError(message = null) {
@@ -10350,8 +10660,8 @@ function renderExecution(response, request) {
   if (execution.value) addTerminalOutput(execution.value);
   if (execution.error) {
     const errorMessage = execution.error.message || "R execution failed.";
-    addTerminalOutput(errorMessage, "error");
     if (execution.kind !== "render") {
+      addConsoleExecutionError(errorMessage, { runId: response.execution_id || null });
       addProblem(errorMessage, execution.error.call || "", {
         runId: response.execution_id || null,
         origin: "user",
@@ -10361,10 +10671,14 @@ function renderExecution(response, request) {
         documentVersion: request?.documentVersion ?? null,
         traceback: execution.traceback || execution.calls || [],
       });
+    } else {
+      addTerminalOutput(errorMessage, "error");
     }
   }
   if (execution.ok === false && !execution.error && execution.kind !== "render") {
-    addProblem("R execution failed.", "", {
+    const errorMessage = "R execution failed.";
+    addConsoleExecutionError(errorMessage, { runId: response.execution_id || null });
+    addProblem(errorMessage, "", {
       runId: response.execution_id || null,
       origin: "user",
       status: "failed",
@@ -12373,6 +12687,113 @@ function setPreviewEditorSelection(start, end) {
   return documentState.cursorEnd > documentState.cursorStart;
 }
 
+async function runConsoleRepairEntryMockProbe(entry) {
+  const turnsBefore = mockAgentTurns.length;
+  const sourceBefore = mockProjects[state.project.root]?.contents?.["analysis.R"] || null;
+  const actionBefore = {
+    label: entry.button.textContent,
+    disabled: entry.button.disabled,
+    action: entry.button.dataset.repairAction || null,
+    run_id: entry.runId,
+  };
+  const clickHandler = entry.button.onclick;
+  if (typeof clickHandler === "function") {
+    await Promise.all([clickHandler(), clickHandler()]);
+  }
+  const turnsAfter = mockAgentTurns.length;
+  const turn = mockAgentTurns[0] || null;
+  const turnEvidence = mockProblemRepairTurnEvidence(turn);
+  const dockAfterClick = document.querySelector("[data-dock-tab].active")?.dataset.dockTab || null;
+
+  const retryRunId = "run_console_repair_refresh_retry";
+  const documentVersion = activeDocument()?.versionId ?? 0;
+  recordMockRun({
+    runId: retryRunId,
+    origin: "user",
+    status: "failed",
+    code: "summary(qc)",
+    sourcePath: "analysis.R",
+    executionMode: "selection",
+    documentVersion,
+    errorMessage: "object 'qc' not found",
+    errorCall: "summary(qc)",
+    sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+    errorRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+  });
+  const retryEntry = addConsoleExecutionError("Repair refresh retry probe", { runId: retryRunId });
+  mockProblemListFailureOnce = true;
+  const firstRefreshSucceeded = await loadRunData({ quiet: true });
+  const failedRefreshState = {
+    refresh_failed: firstRefreshSucceeded === false,
+    label: retryEntry.button.textContent,
+    disabled: retryEntry.button.disabled,
+  };
+  await retryConsoleRepairContext(retryEntry);
+  const refreshRecovery = {
+    matched_after_retry: retryEntry.problem?.run_id === retryRunId,
+    label: retryEntry.button.textContent,
+    disabled: retryEntry.button.disabled,
+  };
+  retryEntry.element.remove();
+  state.consoleRepairEntries.delete(retryEntry.id);
+
+  const missingEntry = addConsoleExecutionError("Missing durable repair probe", {
+    runId: "run_console_repair_missing",
+  });
+  await loadRunData({ quiet: true });
+  const missingInitial = {
+    label: missingEntry.button.textContent,
+    disabled: missingEntry.button.disabled,
+  };
+  await retryConsoleRepairContext(missingEntry);
+  const missingExhausted = {
+    label: missingEntry.button.textContent,
+    disabled: missingEntry.button.disabled,
+    no_turn_created: mockAgentTurns.length === turnsAfter,
+  };
+  missingEntry.element.remove();
+  state.consoleRepairEntries.delete(missingEntry.id);
+
+  state.projectRefreshSequence += 1;
+  syncConsoleRepairEntries();
+  const staleGuard = {
+    disabled: entry.button.disabled,
+    label: entry.button.textContent,
+    no_additional_turn: mockAgentTurns.length === turnsAfter,
+  };
+
+  return {
+    action_before: actionBefore,
+    direct_console_click: {
+      turn_delta: turnsAfter - turnsBefore,
+      task_kind: turnEvidence.task_kind,
+      mode: turnEvidence.mode,
+      run_id: turnEvidence.context?.run_context?.run_id || null,
+      diagnostic_run_id: turnEvidence.context?.diagnostic?.run_id || null,
+      diagnostic_range: turnEvidence.context?.diagnostic ? {
+        start_line: turnEvidence.context.diagnostic.line_number,
+        start_column: turnEvidence.context.diagnostic.column_number,
+        end_line: turnEvidence.context.diagnostic.end_line_number,
+        end_column: turnEvidence.context.diagnostic.end_column_number,
+        kind: turnEvidence.context.diagnostic.range_kind,
+      } : null,
+      proposal_created: turnEvidence.proposal_created,
+      did_not_navigate_problems: dockAfterClick !== "problems",
+      source_unchanged_before_accept: sourceBefore === mockProjects[state.project.root]?.contents?.["analysis.R"],
+    },
+    duplicate_click_guarded: turnsAfter - turnsBefore === 1,
+    refresh_recovery: {
+      failed: failedRefreshState,
+      recovered: refreshRecovery,
+    },
+    missing_context_recovery: {
+      initial: missingInitial,
+      exhausted: missingExhausted,
+    },
+    project_switch_guard: staleGuard,
+  };
+}
+
 async function runProblemRepairMockProbe(fileProblem, consoleProblem) {
   const projectRoot = state.project.root;
   const alternateProjectRoot = mockPlatformFixture.alternateProjectRoot;
@@ -13108,6 +13529,50 @@ async function maybeApplyPreviewScenario() {
     addTerminalOutput("[1] 5.843333");
     addLog("SYSTEM", "R version 4.6.1 · R session ready");
     addLog("AGENT", "R work completed");
+    if (previewParams.get("state") === "repair-entry") {
+      await openDocument("analysis.R");
+      const renderMockConsoleFailure = (runId) => {
+        const documentVersion = activeDocument()?.versionId ?? 0;
+        recordMockRun({
+          runId,
+          origin: "user",
+          status: "failed",
+          code: "summary(qc)",
+          sourcePath: "analysis.R",
+          executionMode: "selection",
+          documentVersion,
+          errorMessage: "object 'qc' not found",
+          errorCall: "summary(qc)",
+          traceback: ["summary(qc)", "summary.default(qc)"],
+          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+          errorRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+        });
+        renderExecution({
+          execution_id: runId,
+          execution: {
+            ok: false,
+            kind: "execute",
+            error: { message: "object 'qc' not found", call: "summary(qc)" },
+            traceback: ["summary(qc)", "summary.default(qc)"],
+          },
+        }, {
+          type: "selection",
+          sourcePath: "analysis.R",
+          documentVersion,
+          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+        });
+        return Array.from(state.consoleRepairEntries.values()).at(-1);
+      };
+
+      const probeEntry = renderMockConsoleFailure("run_console_repair_probe");
+      await loadRunData({ quiet: true });
+      state.consoleRepairPreviewProbe = await runConsoleRepairEntryMockProbe(probeEntry);
+
+      renderMockConsoleFailure("run_console_repair_visible");
+      await loadRunData({ quiet: true });
+      $("#toastRegion").replaceChildren();
+      applyWorkbenchLayout("analyze");
+    }
     switchDockTab("console");
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
@@ -13309,9 +13774,13 @@ function recordPreviewLayoutEvidence() {
   }
   if (scenario === "console-logs") {
     const lastEntry = $("#consoleOutput .terminal-entry:last-child");
+    const lastRepairEntry = $("#consoleOutput .console-error-entry:last-child");
+    const lastRepairAction = lastRepairEntry?.querySelector(".console-repair-action") || null;
     const transcript = rectEvidence($("#consoleOutput"));
     const prompt = rectEvidence($(".console-input"));
     const tabs = rectEvidence($(".dock-tabs"));
+    const repairEntry = rectEvidence(lastRepairEntry);
+    const repairAction = rectEvidence(lastRepairAction);
     const evidence = {
       viewport: {
         width: window.innerWidth,
@@ -13321,18 +13790,31 @@ function recordPreviewLayoutEvidence() {
       counts: {
         terminal_entries: $$("#consoleOutput .terminal-entry").length,
         log_entries: $$("#logsOutput .log-entry").length,
+        repair_entries: $$("#consoleOutput .console-error-entry").length,
       },
+      repair_actions: $$("#consoleOutput .console-repair-action").map((button) => ({
+        label: button.textContent,
+        disabled: button.disabled,
+        action: button.dataset.repairAction || null,
+      })),
       panels: {
         console_hidden: $("#consolePanel").classList.contains("hidden"),
         logs_hidden: $("#logsPanel").classList.contains("hidden"),
       },
       overlaps: {
         last_entry_with_prompt: rectsOverlap(rectEvidence(lastEntry), prompt),
+        repair_entry_with_prompt: rectsOverlap(repairEntry, prompt),
+        repair_message_with_action: rectsOverlap(
+          rectEvidence(lastRepairEntry?.querySelector(".console-error-message")),
+          repairAction,
+        ),
       },
       ordering: {
         prompt_after_transcript: Boolean(transcript && prompt && prompt.top >= transcript.bottom),
       },
-      rects: { transcript, prompt, tabs },
+      document_overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      repair_probe: state.consoleRepairPreviewProbe,
+      rects: { transcript, prompt, tabs, repair_entry: repairEntry, repair_action: repairAction },
     };
     target.textContent = JSON.stringify(evidence);
     return;

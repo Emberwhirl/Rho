@@ -20,6 +20,9 @@ assert.match(css, /\.console-terminal\s*\{[^}]*overflow:\s*auto/);
 assert.match(css, /\.console-input\s*\{[^}]*min-height:\s*30px/);
 assert.doesNotMatch(css, /\.console-input\s*\{[^}]*border-top/);
 assert.match(css, /\.logs-output\s*\{/);
+assert.match(css, /\.console-error-entry\s*\{[^}]*flex-wrap:\s*wrap/);
+assert.match(css, /\.console-repair-action:focus-visible/);
+assert.match(css, /\.console-repair-action:disabled/);
 
 assert.match(js, /function addTerminalCommand\(code\)/);
 assert.match(js, /function addTerminalOutput\(text, kind = ""\)/);
@@ -28,8 +31,31 @@ assert.doesNotMatch(js, /\baddConsole\(/, "Mixed Console append helper must be r
 assert.match(js, /\["console", "logs", "plots", "problems"\]/);
 assert.match(js, /addTerminalCommand\(request\.code\)/);
 assert.match(js, /addTerminalOutput\(execution\.stdout\)/);
-assert.match(js, /if \(execution\.kind !== "render"\) \{\s*addProblem\(errorMessage/);
+assert.match(js, /if \(execution\.kind !== "render"\) \{\s*addConsoleExecutionError\(errorMessage/);
+assert.match(js, /function addConsoleExecutionError\(message, \{ runId = null \} = \{\}\)/);
+assert.match(js, /className = "terminal-entry error console-error-entry"/);
+assert.match(js, /aria-label", "R execution error and Agent repair action"/);
 assert.match(js, /runId: response\.execution_id \|\| null/);
+assert.match(js, /minimumRefreshRequestSequence: state\.problemRefreshRequestSequence \+ 1/);
+assert.match(js, /String\(problem\.run_id \|\| ""\) !== entry\.runId/);
+assert.match(js, /refreshRequestSequence < state\.problemRefreshAppliedSequence/);
+assert.match(js, /function markConsoleRepairRefreshFailed/);
+assert.match(js, /function retryConsoleRepairContext/);
+assert.match(js, /mockProblemListFailureOnce/);
+assert.match(js, /entry\.projectRefreshSequence === state\.projectRefreshSequence/);
+assert.match(js, /label: "Previous-project error"/);
+assert.match(js, /function activateConsoleRepairEntry/);
+assert.match(js, /await activateProblemRepairAction\(entry\.problem\)/);
+assert.match(js, /function configureProblemRepairButton/);
+assert.match(js, /configureProblemRepairButton\(fix, problem\)/);
+assert.match(js, /label: "Fix with Agent"/);
+assert.match(js, /label: "Set up Agent repair"/);
+assert.match(js, /label: "Select code for Agent"/);
+assert.doesNotMatch(
+  js.match(/async function fixProblemWithAgent\(problem\)[\s\S]*?\n}\n\nfunction problemSourceKind/)?.[0] || "",
+  /switchDockTab\("problems"\)/,
+  "Console repair preparation must not force navigation through Problems",
+);
 assert.match(js, /consoleHistory: \[\]/);
 assert.match(js, /function rememberConsoleCommand\(code\)/);
 assert.match(js, /function browseConsoleHistory\(direction\)/);
@@ -42,5 +68,16 @@ assert.match(js, /addLog\("SYSTEM", "R session restarted and ready"/);
 assert.doesNotMatch(js, /Ark PID/);
 assert.doesNotMatch(js, /Could not display Agent run \$\{run\.run_id\}/);
 assert.match(js, /scenario === "console-logs"/);
+assert.match(js, /previewParams\.get\("state"\) === "repair-entry"/);
+assert.match(js, /function runConsoleRepairEntryMockProbe\(entry\)/);
+for (const evidence of [
+  "duplicate_click_guarded",
+  "refresh_recovery",
+  "missing_context_recovery",
+  "project_switch_guard",
+  "did_not_navigate_problems",
+  "source_unchanged_before_accept",
+]) assert.ok(js.includes(evidence), `${evidence} Console repair evidence must exist`);
+assert.match(js, /repair_probe: state\.consoleRepairPreviewProbe/);
 
-console.log("Console/Logs UI contract checks passed.");
+console.log("Console/Logs and error-site Agent repair contract checks passed.");
