@@ -26,6 +26,16 @@ user-visible candidate identity, synchronized NEWS/metadata, tests, review, and
 commit. This does not authorize a local or hosted artifact, tag, GitHub
 Release/draft, signing/notarization, update-site mutation, MAC5, or publication.
 
+Authorization amendment: on 2026-08-09 the project owner accepted the exact
+`dev.24` local development-app experience, requested that the reviewed branch
+be merged to `Rho_for_mac/main`, and explicitly authorized dispatch of the
+macOS build workflow. The repository exposes macOS signing/notarization only
+through the combined `Build Rho Candidate / Rehearsal` workflow, so this
+authorization admits one exact-default-branch `rehearsal` dispatch and its
+coupled Windows verification job. It does not admit `candidate` mode, a tag,
+Release/draft, update-site mutation, MAC5, or publication. Development-app
+acceptance is not installed-DMG acceptance.
+
 `0.4.0-dev.20` through `0.4.0-dev.22` are immutable rejected predecessors.
 `0.4.0-dev.23` is an immutable superseded predecessor whose R5 source tests
 passed but whose artifact and installed acceptance were not run. No predecessor
@@ -141,9 +151,10 @@ new behavior:
 
 This gate is `NOT RUN`.
 
-MAC5, artifact construction, candidate draft creation, update publication,
-Pages mutation, tag/Release creation, and release GO remain separately gated
-and unauthorized.
+One review-only fork rehearsal is authorized as recorded above. MAC5,
+candidate-mode artifact promotion, candidate draft creation, update
+publication, Pages mutation, tag/Release creation, and release GO remain
+separately gated and unauthorized.
 
 ## Current Decision
 

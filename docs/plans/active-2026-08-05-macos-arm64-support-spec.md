@@ -50,7 +50,10 @@ replacement identity `0.4.0-dev.23`; its source validation passed but no
 artifact was built before Issue #9 advanced the live application identity to
 `0.4.0-dev.24`, while every earlier run remains exact-source historical
 evidence and cannot validate the combined corrected behavior;
-authoritative candidate/draft creation and MAC5 remain NOT RUN and unauthorized
+the owner accepted the local `dev.24` development-app experience and authorized
+one exact-default-branch review-only `Rho_for_mac` rehearsal on 2026-08-09;
+that rehearsal result, authoritative candidate/draft creation, and MAC5 remain
+open, while candidate mode and publication remain unauthorized
 
 Change class: D3 shared platform architecture, runtime distribution,
 credential boundary, update protocol, and release automation. The exact
@@ -1776,3 +1779,19 @@ stale-token rejection, two-project and restart isolation, interrupt recovery,
 and crash recovery. The bundle has an ad-hoc signature and no Team ID. No
 Developer ID, notarization, staple, Gatekeeper, owner-installed-user,
 live-Provider/Keychain, MAC5, hosted candidate, or publication claim is made.
+
+## Issue #9 `dev.24` Hosted Rehearsal Authorization — 2026-08-09
+
+The owner accepted the exact `0.4.0-dev.24` local development-app experience,
+requested integration of the reviewed Issue #9 branch into
+`YuLab-SMU/Rho_for_mac` `main`, and explicitly authorized the macOS build
+workflow. The only macOS signing/notarization dispatch surface is the combined
+`Build Rho Candidate / Rehearsal` workflow. This amendment therefore permits
+one review-only `rehearsal` dispatch against the exact post-integration default-
+branch commit, including the workflow's coupled Windows validation job.
+
+This authorization does not convert local development-app review into installed
+DMG acceptance and does not authorize `candidate` mode, a tag, GitHub
+Release/draft, update-site mutation, MAC5, or publication. The run, its final
+DMG, notarization binding, aggregate rehearsal evidence, and installed-app
+acceptance remain open until separately observed and recorded.
