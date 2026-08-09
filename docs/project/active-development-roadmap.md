@@ -206,9 +206,9 @@ CRED-UX4A-R2, and WS3-Q1-R1 advance the corrective baseline to
 `0.4.0-dev.21`. Registered Provider sessions now keep one canonical routed
 identity, while Environment re-inspects the selected object on revision change
 and preserves compatible query/sort/page state under monotonic project-bound
-guards. The complete affected automation and deterministic desktop/narrow
-browser behavior matrix pass; exact local artifact and owner-installed/live-
-Provider acceptance remain open.
+guards. The complete affected automation, deterministic desktop/narrow browser
+behavior matrix, and exact clean-source local unsigned arm64 artifact
+verification pass; owner-installed/live-Provider acceptance remains open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter

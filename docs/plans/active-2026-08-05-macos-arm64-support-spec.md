@@ -1720,3 +1720,26 @@ arm64; the bundle reports `0.4.0-dev.20` and macOS 14.0 minimum; and mounted
 Workspace smoke passed. The build explicitly used `--no-sign`, so it provides
 no Developer ID, notarization, staple, Gatekeeper, installed-user, MAC5, or
 publication evidence.
+
+## Issue #6 `dev.21` Corrective Local Packaging Handoff — 2026-08-08
+
+The owner-installed `dev.20` rejection exposed a registered Provider runtime
+identity mismatch before the repair task could contact its admitted model and
+a selected Data Viewer that retained its old token after Workspace R changed.
+The authorized PROBLEMS-AGENT-REPAIR-3, CRED-UX4A-R2, and WS3-Q1-R1 correction
+therefore advances the replacement identity to `0.4.0-dev.21` without changing
+Ark discovery, Keychain ownership, entitlements, signing/notarization policy,
+update schema, or MAC4/MAC5 authority.
+
+From clean feature-branch source commit
+`ee96146e5c3760b38b729e78b60d596a08bd995b`, Tauri CLI `2.11.4` produced the
+local unsigned arm64 `Rho_0.4.0-dev.21_aarch64.dmg`. It is 21,234,112 bytes
+with SHA-256
+`e52a37305eea076275e4c6eb88a7bb3e9faba9db71fec1161c13d5e7c5cd657f`.
+`hdiutil verify` passed; the read-only mounted app and bundled Ark are exactly
+arm64; the bundle reports `0.4.0-dev.21` and macOS 14.0 minimum; and complete
+mounted Workspace smoke passed, including Plot, Environment, paged Data View,
+stale-token rejection, two-project and restart isolation, interrupt recovery,
+and crash recovery. The bundle has linker ad-hoc signing only. No Developer ID,
+notarization, staple, Gatekeeper, installed-user, live-Provider/Keychain, MAC5,
+hosted candidate, or publication claim is made.

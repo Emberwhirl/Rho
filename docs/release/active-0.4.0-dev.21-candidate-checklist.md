@@ -2,10 +2,10 @@
 
 Status: active corrective development-candidate identity for
 PROBLEMS-AGENT-REPAIR-3, CRED-UX4A-R2, and WS3-Q1-R1; implementation, complete
-affected automated verification, and deterministic browser behavior review are
-complete; exact local unsigned artifact, owner-installed/live-Provider
-acceptance, authoritative assets, GitHub Release draft, MAC5, publication, and
-release GO are NOT RUN
+affected automated verification, deterministic browser behavior review, and
+exact local unsigned arm64 artifact verification are complete;
+owner-installed/live-Provider acceptance, authoritative assets, GitHub Release
+draft, MAC5, publication, and release GO are NOT RUN
 
 Date: 2026-08-08
 
@@ -44,10 +44,11 @@ acceptance evidence cannot satisfy this checklist.
 | Release name | `Rho 0.4.0-dev.21` | workflow default only; Release/draft NOT CREATED |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | authoritative-candidate restriction unchanged |
-| Source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
-| macOS platform | `macos_aarch64` | exact local unsigned artifact NOT RUN |
+| Local source commit | `ee96146e5c3760b38b729e78b60d596a08bd995b` | exact clean feature-branch source used for the local unsigned artifact |
+| Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
+| macOS platform | `macos_aarch64` | exact local unsigned artifact PASS |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | artifact and installed acceptance NOT RUN |
+| Release decision | `NO-GO` | owner-installed/live-Provider acceptance NOT RUN |
 
 The version/tag is single-use. Rejection advances to another version; no
 artifact, tag, draft, hash, or evidence file may be overwritten or relabelled.
@@ -92,6 +93,10 @@ Completed corrective evidence on 2026-08-08:
   object, rejects a foreign-project late response, and reports no page errors;
 - disposable test credentials only; live Provider request and real credential
   use: NOT RUN.
+- Tauri CLI `2.11.4` built the clean-source unsigned arm64 `Rho.app` and DMG;
+  `hdiutil verify`, mounted arm64/metadata checks, and complete Workspace smoke
+  passed. The DMG is 21,234,112 bytes with SHA-256
+  `e52a37305eea076275e4c6eb88a7bb3e9faba9db71fec1161c13d5e7c5cd657f`.
 
 ## Required Candidate Assets
 
@@ -100,8 +105,8 @@ Completed corrective evidence on 2026-08-08:
 | `Rho_0.4.0-dev.21_x64-setup.exe` | Windows candidate job | NOT RUN |
 | `Rho_0.4.0-dev.21_x64-setup.exe.sha256` | Windows candidate job | NOT RUN |
 | `rho-0.4.0-dev.21-windows-x86_64-evidence.json` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.21_aarch64.dmg` | local macOS build / later finalizer | NOT RUN |
-| `Rho_0.4.0-dev.21_aarch64.dmg.sha256` | local macOS build / later finalizer | NOT RUN |
+| `Rho_0.4.0-dev.21_aarch64.dmg` | local macOS build / later finalizer | local unsigned PASS; authoritative finalizer NOT RUN |
+| `Rho_0.4.0-dev.21_aarch64.dmg.sha256` | local macOS build / later finalizer | local hash PASS; authoritative finalizer NOT RUN |
 | `rho-0.4.0-dev.21-macos-aarch64-evidence.json` | macOS finalizer | NOT RUN |
 | `rho-0.4.0-dev.21-candidate-evidence.json` | draft assembly | NOT RUN |
 
@@ -127,7 +132,7 @@ creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. Source implementation and the complete affected automated/browser
-matrix pass at `0.4.0-dev.21`. Exact local unsigned artifact verification and
-owner-installed/live-Provider acceptance remain open; no hosted or published
-candidate is authorized.
+`NO-GO`. Source implementation, the complete affected automated/browser
+matrix, and exact local unsigned arm64 artifact verification pass at
+`0.4.0-dev.21`. Owner-installed/live-Provider acceptance remains open; no
+hosted or published candidate is authorized.
