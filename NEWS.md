@@ -4,6 +4,23 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.24 - 2026-08-08
+
+### Fixed
+
+- The Agent-first Task Rail no longer presents every Act turn as an error.
+  Ask, Plan, and Act now use distinct neutral MessageCircle, ListChecks, and
+  PencilLine shapes, while the independent status dot remains the only
+  status-color slot.
+
+### Improved
+
+- Task Rail rows now expose explicit mode and status names, tooltips, a current
+  selection state, and preserved keyboard focus. Empty previews remain
+  truthful, and long or Unicode previews ellipsize without widening the rail.
+- Selected mode icons may use the Rho accent, but approval, destructive-action,
+  and review risk remain on their existing decision surfaces.
+
 ## 0.4.0-dev.23 - 2026-08-08
 
 ### Fixed

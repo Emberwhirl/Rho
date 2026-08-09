@@ -3,11 +3,12 @@
 Status: active
 
 Date: 2026-08-08
-Current source baseline: `0.4.0-dev.23`
-Active replacement identity: `0.4.0-dev.23` (R5 local artifact and installed acceptance open)
-Authorized successor correction: Issue #9 `TASK-RAIL-SEMANTICS-1` is active;
-after implementation and verification it must advance the user-visible source
-identity to `0.4.0-dev.24` rather than relabelling `dev.23`.
+Current source baseline: `0.4.0-dev.24`
+Active replacement identity: `0.4.0-dev.24` (Issue #9 source/browser validation
+passes; complete candidate matrix, artifact, and installed acceptance open)
+Implemented successor correction: Issue #9 `TASK-RAIL-SEMANTICS-1` separates
+mode shape, status color, and risk ownership. It advances the user-visible
+source identity rather than relabelling the historical `dev.23` source.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -223,13 +224,17 @@ Rust/R/frontend matrix, formatting, deterministic desktop/narrow browser
 review, and exact local unsigned arm64 artifact verification pass;
 owner workflow acceptance then rejected `dev.22` because an R parse error with
 a parser-reported file position still required manual code selection.
-PROBLEMS-AGENT-REPAIR-5 reserves `0.4.0-dev.23`: the R bridge may admit only a
+PROBLEMS-AGENT-REPAIR-5 produced `0.4.0-dev.23`: the R bridge may admit only a
 strictly bounded parser-owned `<text>:line:column:` coordinate that names an
 actual submitted Unicode scalar, the coordinator translates it through the
 admitted file range, and schema v11 durably distinguishes `r_parse_token` from
 `r_expression`. EOF/ambiguous locations remain explicit-selection fallbacks;
-implementation and complete affected automation/browser evidence pass; local
-artifact and owner-installed/live-Provider acceptance remain open.
+implementation and complete affected automation/browser evidence pass. Before
+an artifact was built, Issue #9 advanced the combined source to
+`0.4.0-dev.24`: Task Rail status remains the sole status-color slot while
+Ask/Plan/Act use independently labelled neutral shapes. Its affected frontend
+and exact `1440 x 900` / `900 x 700` browser evidence pass; complete candidate
+matrix, artifact, and owner-installed/live-Provider acceptance remain open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter

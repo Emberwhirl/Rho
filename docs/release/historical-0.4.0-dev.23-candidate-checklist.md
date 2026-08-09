@@ -1,9 +1,9 @@
-# Rho 0.4.0-dev.23 Cross-Platform Candidate Checklist
+# Rho 0.4.0-dev.23 Historical Candidate Checklist
 
-Status: active replacement development-candidate identity for
-PROBLEMS-AGENT-REPAIR-5; implementation and complete affected automated/browser
-validation pass; exact local unsigned artifact verification and
-owner-installed/live-Provider acceptance remain open
+Status: historical superseded identity; PROBLEMS-AGENT-REPAIR-5 implementation
+and complete affected automated/browser validation passed, but no exact local
+artifact or installed acceptance was run before the separately authorized
+Issue #9 user-visible correction advanced the source identity to `dev.24`
 
 Date: 2026-08-08
 
@@ -18,14 +18,21 @@ Owning documents: the active Problems-to-Agent specification owns parse-token
 admission and repair behavior; the store owns durable range validation and
 migration; Runs/Workspace execution own diagnostic truth; Console owns the
 direct error-site projection and Problems owns durable history. The active
-macOS arm64 specification owns packaging and trust gates. This checklist alone
-owns the exact `0.4.0-dev.23` identity and acceptance ledger.
+macOS arm64 specification owns packaging and trust gates. This historical
+checklist alone owns the immutable `0.4.0-dev.23` source-validation and NO-GO
+ledger.
 
 Authorization: on 2026-08-08 the project owner rejected the `dev.22` installed
 parse-error workflow and explicitly authorized PROBLEMS-AGENT-REPAIR-5,
 `dev.23`, tests, a local unsigned DMG, commit, and source push. This does not
 authorize a tag, Release/draft, signed/notarized candidate, update-site
 mutation, MAC5, or publication.
+
+On 2026-08-08 the project owner then explicitly requested implementation of
+Issue #9. Because that package changes user-visible desktop behavior before a
+`dev.23` artifact was produced, the single-use version contract advances the
+combined source to `0.4.0-dev.24`. Nothing failed in the R5 implementation;
+`dev.23` is superseded rather than rejected and may not be rebuilt or relabelled.
 
 `0.4.0-dev.20` through `0.4.0-dev.22` are immutable rejected predecessors.
 Their artifacts, hashes, receipts, and acceptance evidence cannot satisfy this
@@ -43,11 +50,11 @@ checklist.
 | Release name | `Rho 0.4.0-dev.23` | workflow default only; Release/draft NOT CREATED |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | authoritative-candidate restriction unchanged |
-| Local source commit | one reviewed feature-branch SHA | NOT COMMITTED |
+| Local source commit | `f4fbc9a510b4b19334c369d19b71db041a8dd732` | reviewed R5 source checkpoint |
 | Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
 | macOS platform | `macos_aarch64` | exact local unsigned artifact NOT RUN |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | implementation and acceptance open |
+| Release decision | `NO-GO` | permanently superseded before artifact production |
 
 The version/tag is single-use. Rejection advances to another version; no
 artifact, tag, draft, hash, or evidence file may be overwritten or relabelled.
@@ -126,23 +133,25 @@ fresh tag/Release non-existence check, and complete exact-source validation.
 
 ## Installed Acceptance
 
-The owner must install the exact immutable `dev.23` artifact and reproduce the
-full-width-comma file parse failure. After the durable refresh, the Console
-error site must show `Fix with Agent`; one click must select the exact invalid
-token and start one real tool-capable Ask repair turn without opening Problems
-or asking for a manual selection. The file must remain unchanged before Accept.
+Installed acceptance was NOT RUN because no exact `dev.23` artifact was built.
+The required full-width-comma repair workflow is carried forward unchanged to
+the exact `dev.24` installed-acceptance gate; an artifact built from a later
+source cannot be reported as `dev.23` evidence.
 
 EOF/ambiguous no-range recovery, ordinary runtime-expression repair, route
 setup, failed/missing refresh, rerun, restart, duplicate click, changed source,
 stale acceptance, schema-v10 upgrade, and two-project switching must remain
 truthful. Provider/Keychain use must expose no secret in UI, logs, evidence, or
-process arguments. This gate is `NOT RUN`.
+process arguments. This gate remains `NOT RUN` permanently for this identity.
 
 MAC5, candidate draft creation, update publication, Pages mutation, tag/Release
 creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. R5 implementation and affected automated/browser validation pass;
-exact local artifact and owner-installed/live-Provider acceptance remain open.
-No hosted or published candidate is authorized.
+`NO-GO`, permanently. R5 implementation and affected automated/browser
+validation pass for the recorded source, but artifact and installed acceptance
+were not run before Issue #9 advanced the candidate. Replacement work continues
+under `0.4.0-dev.24`; no `dev.23` artifact, hash, tag, Release, acceptance row,
+or evidence may be created, relabelled, or reused. No hosted or published
+candidate is authorized.

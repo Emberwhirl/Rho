@@ -16,7 +16,8 @@ const owner = fs.readFileSync(
   "utf8",
 );
 
-assert.match(spec, /TASK-RAIL-SEMANTICS-1 authorized/);
+assert.match(spec, /Authorization: the project owner explicitly requested continued implementation\s+of GitHub Issue #9/);
+assert.match(spec, /TASK-RAIL-SEMANTICS-1 implementation, automated validation,[\s\S]*contract review complete/);
 assert.match(spec, /Status owns status color\. Mode owns a neutral, distinct shape/);
 assert.match(owner, /Ask uses MessageCircle, Plan uses ListChecks, and Act uses\s+PencilLine/);
 

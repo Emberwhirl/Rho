@@ -1,7 +1,8 @@
 # Task Rail Mode, Status, And Risk Semantics
 
-Status: active implementation contract; TASK-RAIL-SEMANTICS-1 authorized,
-implementation open
+Status: active; TASK-RAIL-SEMANTICS-1 implementation, automated validation,
+exact browser review, version reconciliation, and contract review complete;
+installed-app acceptance open
 
 Date: 2026-08-08
 Authorization: the project owner explicitly requested continued implementation
@@ -9,9 +10,9 @@ of GitHub Issue #9 on 2026-08-08
 Change class: D1 isolated user-interface defect correction
 Risk class: R1 frontend presentation, selection, and accessibility only
 Work package: TASK-RAIL-SEMANTICS-1
-Mandatory stop: after the bounded frontend/mock implementation, affected
-automated validation, exact `1440 x 900` and `900 x 700` browser review,
-contract review, and development-candidate version reconciliation
+Mandatory stop: reached after the bounded frontend/mock implementation,
+affected automated validation, exact `1440 x 900` and `900 x 700` browser
+review, contract review, and development-candidate version reconciliation
 
 ## Problem And Reproduction
 
@@ -170,17 +171,51 @@ recorded only against an exact built candidate.
 
 ## Version And Release Impact
 
-This is user-visible desktop behavior. The current `0.4.0-dev.23` identity has
-already been reserved for the Issue #6 parser-token correction and cannot be
-silently relabelled. After TASK-RAIL-SEMANTICS-1 implementation and verification
-pass, application metadata and `NEWS.md` must advance together to
-`0.4.0-dev.24`, and `dev.23` must become an immutable superseded/no-release
-record. R package versions and store schema remain unchanged (`rho.bridge`
-`0.1.13`, `rho.agent` `0.1.5`, schema `11`).
+This is user-visible desktop behavior. At entry, `0.4.0-dev.23` had already
+been reserved for the Issue #6 parser-token correction and could not be silently
+relabelled. After TASK-RAIL-SEMANTICS-1 implementation and verification passed,
+application metadata and `NEWS.md` advanced together to `0.4.0-dev.24`, and
+`dev.23` became an immutable superseded/no-release record. R package versions
+and store schema remain unchanged (`rho.bridge 0.1.13`, `rho.agent 0.1.5`,
+schema `11`).
 
 Until an exact `dev.24` artifact and owner-installed acceptance exist, the
 release decision remains NO-GO. This contract does not authorize packaging or
 publication.
+
+## Implementation Outcome
+
+Implemented and reviewed on 2026-08-08:
+
+- the three-mode mapping is fixed to the local MessageCircle, ListChecks, and
+  PencilLine sprite symbols, with a neutral Bot fallback for unknown historical
+  values;
+- mode badges and the Act-only error background were removed; mode icons have
+  transparent backgrounds, neutral foregrounds, and only the current/focused
+  row may use the existing Rho accent;
+- each row renders status dot, mode icon, then preview; mode and status expose
+  independent names/tooltips, the decorative SVG is hidden from assistive
+  technology, and the current row exposes `aria-current`;
+- the deterministic `state=task-rail` fixture covers Ask/Plan/Act,
+  completed/running/failed, empty text, a long Unicode preview, one current
+  row, and no approval or execution side effect;
+- the focused regression, JavaScript syntax, adjacent Agent-first/foundation
+  contracts, and all 46 repository `scripts/test-*.mjs` contracts pass;
+- exact Chromium review passes at `1440 x 900` with the rail visible and at
+  `900 x 700` with the existing narrow hide rule. Both have zero page
+  exceptions and no document/list overflow. Mode backgrounds are transparent;
+  failed Act keeps a neutral mode foreground while only its status dot is red;
+- keyboard interaction confirms a visible 2 px focus outline, `aria-current`
+  transfer, and focus restoration after selecting another task;
+- application metadata and candidate defaults are synchronized to
+  `0.4.0-dev.24`; `rho.bridge 0.1.13`, `rho.agent 0.1.5`, and schema 11 remain
+  unchanged.
+
+Review found no deviation from this contract and no backend, schema,
+persistence, approval, credential, execution, project, or file-mutation
+change. Exact app/DMG production and installed-app acceptance were not run.
+Detailed source and exact-viewport evidence is recorded in
+[`../verification/task-rail-semantics/verification.md`](../verification/task-rail-semantics/verification.md).
 
 ## Acceptance Gate
 

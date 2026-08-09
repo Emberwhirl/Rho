@@ -1,6 +1,8 @@
 # Problems To Agent Repair Entry
 
-Status: active implementation contract
+Status: active; R5 implementation and complete affected automated/browser
+verification pass; `dev.23` is historical superseded before artifact
+production; exact combined `dev.24` artifact and installed acceptance open
 
 Date: 2026-08-07; amended 2026-08-08
 Authorization: user approved implementation of GitHub Issue #6 after review and
@@ -647,8 +649,17 @@ remains `0.1.5`. Store schema advances from 10 to 11. `NEWS.md`, the active
 candidate checklist, macOS support handoff, roadmap, and cross-review matrix
 must remain synchronized.
 
-The work package stops after reviewed implementation, complete affected
-automation/browser evidence, and one exact clean-source local unsigned arm64
-artifact. Owner-installed/live-Provider acceptance remains separate. No tag,
+Issue #9 was authorized after the R5 source checkpoint and before an exact
+`dev.23` artifact was produced. The single-use `dev.23` application identity is
+therefore historical superseded evidence, and the live combined application
+identity advances to `dev.24`. R5 behavior is carried forward unchanged;
+`rho.bridge 0.1.13`, `rho.agent 0.1.5`, and schema 11 do not advance. No
+`dev.23` artifact or installed-acceptance result may be created or relabelled,
+and the active `dev.24` checklist owns the remaining exact-candidate gates.
+
+The reviewed R5 implementation and complete affected automation/browser
+evidence pass. Its exact clean-source local unsigned arm64 artifact was not run
+before the successor source change and remains an open combined `dev.24`
+candidate gate. Owner-installed/live-Provider acceptance remains separate. No tag,
 Release/draft, Developer ID signing, notarization, staple, Gatekeeper candidate,
 MAC5, Pages, update publication, or release GO is authorized.
