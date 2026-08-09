@@ -31,15 +31,22 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const release = await github.rest.repos.getReleaseByTag({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag: process.env.RELEASE_TAG,
-            });
-            if (!release.data.draft || !release.data.prerelease || !/^[0-9a-f]{40}$/.test(release.data.target_commitish)) {
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const matches = (await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            })).filter((release) => release.tag_name === process.env.RELEASE_TAG);
+            if (matches.length !== 1) {
+              throw new Error("Publish admission requires exactly one Release matching the requested tag.");
+            }
+            const release = matches[0];
+            if (!release.draft || !release.prerelease || !/^[0-9a-f]{40}$/.test(release.target_commitish)) {
               throw new Error("Publish admission requires a draft prerelease bound to a full commit SHA.");
             }
-            core.setOutput("commit", release.data.target_commitish);
+            core.setOutput("release_id", String(release.id));
+            core.setOutput("commit", release.target_commitish);
 
       - name: Check out the exact draft contract
         uses: actions/checkout@v4
@@ -52,6 +59,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_ID: ${{ steps.identity.outputs.release_id }}
           EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -61,7 +69,10 @@ jobs:
             const path = require("path");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const release = await github.rest.repos.getReleaseByTag({ owner, repo, tag: process.env.RELEASE_TAG });
+            const releaseId = Number(process.env.RELEASE_ID);
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) throw new Error("Resolved draft Release ID is invalid.");
+            const release = await github.rest.repos.getRelease({ owner, repo, release_id: releaseId });
+            if (release.data.tag_name !== process.env.RELEASE_TAG) throw new Error("Draft tag changed before admission validation.");
             if (!release.data.draft || !release.data.prerelease) throw new Error("Only a draft prerelease may enter publish admission.");
             if (release.data.target_commitish !== process.env.EXPECTED_COMMIT) throw new Error("Draft commit changed before admission validation.");
             const version = process.env.RELEASE_TAG.replace(/^v/, "");

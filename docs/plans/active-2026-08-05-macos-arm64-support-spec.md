@@ -704,7 +704,7 @@ Verification and exit gate:
   draft creation, tag/Release mutation, and Pages publication remain
   unauthorized.
 
-### MAC5: Exact-candidate acceptance and publication — proposed
+### MAC5: Exact-candidate acceptance and publication — active; candidate accepted
 
 - bind automated and human evidence to the exact tag, commit, assets, sizes,
   and hashes in the draft release;
@@ -717,6 +717,25 @@ Verification and exit gate:
 
 Rollback preserves evidence: withdraw the macOS update-site entry and mark the
 prerelease withdrawn. Do not replace a same-version asset; use a new candidate.
+
+MAC5 activation and acceptance evidence on 2026-08-09: authoritative candidate
+run `31295799312` created draft prerelease ID `367387340` from exact commit
+`7c18e08d7b34dc7d976fa3685242402ccd7da2e8`; both platform records, the
+aggregate record, the signed/notarized/stapled macOS DMG, and independent local
+hash/signature checks passed. The owner installed that exact DMG, reported
+`MAC5 PASS`, and authorized public publication. Acceptance asset
+`rho-0.4.0-dev.24-acceptance.json` is 1,598 bytes with SHA-256
+`642e0b7774ff60e4a6db35956dcb65883623c510995030ddbae9ccf71faf20a3`
+and is bound to aggregate SHA-256
+`fe4a9fba56cd1b5f1d62d1ef7c6cc462f980c8c2fa4595e504d76f2d6743279d`.
+
+Protected publish run `31297205980` then failed closed before checkout or
+Release mutation because `getReleaseByTag` returned 404 for the draft's not-yet-
+created public tag. The owner authorized a bounded release-only correction:
+discover exactly one matching draft through paginated Release listing, pass its
+numeric ID forward, retrieve subsequent snapshots by ID, and retain all exact-
+commit, eight-asset, byte/hash, one-mutation, and environment-approval gates.
+The accepted application artifacts remain immutable and are not rebuilt.
 
 ## Verification Contract
 

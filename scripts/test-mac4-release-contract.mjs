@@ -234,6 +234,17 @@ assert.match(candidateTool, /"notary_binding"/);
 
 const publish = read(".github/workflows/candidate-publish.yml");
 assert.match(publish, /environment: rho-release/);
+const publishIdentity = publish.match(/- name: Resolve immutable draft identity[\s\S]*?- name: Check out the exact draft contract/)?.[0];
+assert.ok(publishIdentity, "Missing immutable draft identity step");
+assert.match(publishIdentity, /github\.paginate\(github\.rest\.repos\.listReleases/);
+assert.match(publishIdentity, /matches\.length !== 1/);
+assert.match(publishIdentity, /core\.setOutput\("release_id", String\(release\.id\)\)/);
+assert.doesNotMatch(publish, /getReleaseByTag/);
+const publishDownload = publish.match(/- name: Download draft assets and assemble publish record[\s\S]*?- name: Enforce immutable candidate and explicit MAC5 GO/)?.[0];
+assert.ok(publishDownload, "Missing immutable draft download step");
+assert.match(publishDownload, /RELEASE_ID: \$\{\{ steps\.identity\.outputs\.release_id \}\}/);
+assert.match(publishDownload, /getRelease\(\{ owner, repo, release_id: releaseId \}\)/);
+assert.match(publishDownload, /release\.data\.tag_name !== process\.env\.RELEASE_TAG/);
 assert.match(publish, /candidate-release\.mjs --mode publish/);
 assert.match(publish, /256 \* 1024/);
 assert.match(publish, /publish-release-snapshot\.json/);

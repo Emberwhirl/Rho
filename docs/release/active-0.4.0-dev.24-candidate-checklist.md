@@ -1,10 +1,10 @@
 # Rho 0.4.0-dev.24 Cross-Platform Candidate Checklist
 
-Status: active replacement development-candidate identity; Issue #6 R5 and
-Issue #9 TASK-RAIL-SEMANTICS-1 source implementation are present; affected
-frontend/static/browser validation and the exact review-only fork rehearsal
-pass; authoritative candidate/draft production and owner-installed/live-
-Provider acceptance remain open
+Status: active accepted development-candidate identity; Issue #6 R5 and Issue
+#9 TASK-RAIL-SEMANTICS-1 source implementation, the exact review-only fork
+rehearsal, authoritative cross-platform candidate, signed/notarized draft,
+owner-installed acceptance, and MAC5 GO pass; public publication is temporarily
+blocked by the release-only draft-lookup defect recorded below
 
 Date: 2026-08-08
 Last updated: 2026-08-09
@@ -48,6 +48,16 @@ and attach its bounded candidate evidence. It does not authorize the later
 Those remain blocked on exact owner-installed candidate acceptance, a bound
 MAC5 `GO` record, and a separate final publication decision.
 
+MAC5 and publication authorization: on 2026-08-09 the owner installed the exact
+draft DMG, reported `MAC5 PASS`, and explicitly authorized public publication.
+The bounded `rho-0.4.0-dev.24-acceptance.json` record is therefore permitted to
+carry `status: passed` and `decision: GO` only for the immutable candidate
+identified below. After the first protected publish attempt failed before any
+Release mutation, the owner explicitly authorized the release-only workflow
+repair. That repair may change orchestration and its regression contract on
+`main`; it may not rebuild, replace, rename, delete, or relabel any accepted
+candidate asset, change the draft target commit, or weaken MAC5 admission.
+
 `0.4.0-dev.20` through `0.4.0-dev.22` are immutable rejected predecessors.
 `0.4.0-dev.23` is an immutable superseded predecessor whose R5 source tests
 passed but whose artifact and installed acceptance were not run. No predecessor
@@ -61,15 +71,15 @@ artifact, hash, receipt, or acceptance row can satisfy this checklist.
 | `rho.bridge` version | `0.1.13` | unchanged |
 | `rho.agent` version | `0.1.5` | unchanged |
 | Store schema | `11` | unchanged |
-| Release tag | `v0.4.0-dev.24` | workflow default only; tag NOT CREATED |
-| Release name | `Rho 0.4.0-dev.24` | workflow default only; Release/draft NOT CREATED |
+| Release tag | `v0.4.0-dev.24` | draft tag name selected; public Git ref NOT CREATED |
+| Release name | `Rho 0.4.0-dev.24` | immutable draft prerelease ID `367387340` |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | authoritative-candidate restriction unchanged |
 | Local source commit | `c83ddfb4563778c1bf6190bd5ce833bb0a6a2e72` | reviewed rehearsal source checkpoint |
-| Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
-| macOS platform | `macos_aarch64` | review-only rehearsal passed; authoritative candidate NOT RUN |
+| Authoritative source commit | `7c18e08d7b34dc7d976fa3685242402ccd7da2e8` | draft target and aggregate evidence agree |
+| macOS platform | `macos_aarch64` | authoritative signed/notarized candidate passed |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | candidate matrix and acceptance open |
+| Release decision | `GO` | owner reported `MAC5 PASS` and authorized public publication |
 
 The version/tag is single-use. Rejection or a later user-visible source change
 advances to another version; no artifact, tag, draft, hash, or evidence file may
@@ -161,21 +171,32 @@ commit; these rehearsal files cannot be copied or relabelled into the draft.
 
 ## Required Candidate Assets
 
-| Asset | Evidence owner | State |
-| --- | --- | --- |
-| `Rho_0.4.0-dev.24_x64-setup.exe` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.24_x64-setup.exe.sha256` | Windows candidate job | NOT RUN |
-| `rho-0.4.0-dev.24-windows-x86_64-evidence.json` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.24_aarch64.dmg` | local macOS build / later finalizer | NOT RUN |
-| `Rho_0.4.0-dev.24_aarch64.dmg.sha256` | local macOS build / later finalizer | NOT RUN |
-| `rho-0.4.0-dev.24-macos-aarch64-evidence.json` | macOS finalizer | NOT RUN |
-| `rho-0.4.0-dev.24-candidate-evidence.json` | draft assembly | NOT RUN |
+Authoritative run
+[`31295799312`](https://github.com/YuLab-SMU/Rho/actions/runs/31295799312)
+completed on attempt 2 against exact commit
+`7c18e08d7b34dc7d976fa3685242402ccd7da2e8`. Attempt 1 failed closed while
+downloading the public pinned `aisdk` dependency for Windows; the failed jobs
+were rerun after the endpoint recovered, and the complete Windows matrix plus
+draft assembly passed. The successful macOS jobs were reused unchanged.
 
-The identically named files in the review-only rehearsal do not satisfy these
-authoritative rows. Separate owner authorization is now recorded; the hosted
-candidate action may start only after this reviewed amendment is pushed to the
-authoritative default branch, a fresh tag/Release non-existence check passes,
-and the workflow binds its complete validation to that exact commit.
+| Asset | Bytes | SHA-256 | State |
+| --- | ---: | --- | --- |
+| `Rho_0.4.0-dev.24_x64-setup.exe` | 18,148,181 | `114389aa675045beddb58c01dc7c4a0aec5936081b04018456694c770ae0b774` | PASS |
+| `Rho_0.4.0-dev.24_x64-setup.exe.sha256` | 97 | `7769103bf954837a198ae619c369fa524a2ca8d691181f9c6983f6d8322a4c9e` | PASS |
+| `rho-0.4.0-dev.24-windows-x86_64-evidence.json` | 904 | `447090dbefba67cc47fdfdd322929321a123404b5d70b1b2a6442b33f9dc5a39` | PASS |
+| `Rho_0.4.0-dev.24_aarch64.dmg` | 20,967,631 | `f24982a616b1695621cdb7f9b9c8d001083926fb77a975c6f582b339da50c34f` | PASS |
+| `Rho_0.4.0-dev.24_aarch64.dmg.sha256` | 95 | `713996c9207f04d87f221cdf5b0d36283f2e4e4a19717716abfec76a0a29e42b` | PASS |
+| `rho-0.4.0-dev.24-macos-aarch64-evidence.json` | 1,358 | `1d3d61aa7c6492f8c72aee80e18cd9fd5f62d801e6df302afc5a034c90a19185` | PASS |
+| `rho-0.4.0-dev.24-candidate-evidence.json` | 1,477 | `fe4a9fba56cd1b5f1d62d1ef7c6cc462f980c8c2fa4595e504d76f2d6743279d` | PASS |
+
+Independent download validation re-hashed all seven candidate files, validated
+both checksum payloads, admitted both platform evidence records and the
+aggregate record through `scripts/candidate-release.mjs`, verified the DMG with
+`hdiutil`, validated its stapled ticket, and verified the mounted app's strict
+Developer ID signature. CI Gatekeeper admission passed; local `spctl` reported
+`accepted` and `Notarized Developer ID`, with the local machine's security
+override explicitly visible rather than treated as independent Gatekeeper
+evidence.
 
 ## Installed Acceptance
 
@@ -194,17 +215,72 @@ new behavior:
   restart, duplicate, changed-source, stale, schema-upgrade, and project-switch
   behavior.
 
-This gate is `NOT RUN`.
+The owner installed the exact downloaded
+`Rho_0.4.0-dev.24_aarch64.dmg`, completed this checklist, and reported `MAC5
+PASS` on 2026-08-09. The accepted candidate evidence SHA-256 is
+`fe4a9fba56cd1b5f1d62d1ef7c6cc462f980c8c2fa4595e504d76f2d6743279d`.
+The bounded acceptance asset is 1,598 bytes with SHA-256
+`642e0b7774ff60e4a6db35956dcb65883623c510995030ddbae9ccf71faf20a3`;
+it matches the aggregate platform mapping exactly and is the eighth and final
+draft asset.
 
-The review-only fork rehearsal passed and authoritative candidate/draft
-construction is now authorized as recorded above. MAC5 acceptance, public
-Release publication, update publication, Pages mutation, and release GO remain
-separately gated and unauthorized until the exact draft candidate is installed
-and accepted.
+## Publish Admission Defect And Repair Contract
+
+Protected publish run
+[`31297205980`](https://github.com/YuLab-SMU/Rho/actions/runs/31297205980)
+was approved through environment `rho-release` and then failed at `Resolve
+immutable draft identity`. GitHub returned 404 for
+`GET /releases/tags/v0.4.0-dev.24`: a draft whose public Git tag does not yet
+exist cannot be resolved through `getReleaseByTag`. Checkout, content
+validation, `updateRelease`, tag creation, and update-site publication did not
+run. The draft remains private and its exact eight-asset set is unchanged.
+
+The authorized correction is release-only and must satisfy all of these gates:
+
+- enumerate repository Releases with authenticated pagination and select
+  exactly one item whose `tag_name` matches the explicit workflow input;
+- require that item to remain a draft prerelease bound to a full 40-character
+  commit, and carry its numeric Release ID as an explicit step output;
+- retrieve the second snapshot by that exact Release ID, then recheck tag,
+  draft/prerelease state, commit, byte bounds, names, sizes, and hashes;
+- keep checkout and publish validation bound to the accepted candidate commit,
+  not the later release-orchestration commit;
+- retain exactly one `updateRelease` mutation and prohibit build, upload,
+  delete, rename, replacement, or asset overwrite behavior;
+- add a deterministic regression contract that rejects `getReleaseByTag`,
+  requires paginated exact-tag draft discovery and ID-based retrieval, and
+  preserves the existing immutable-asset assertions.
+
+This is D1 behavior within an R4 release lane. Application and R package
+versions and `NEWS.md` do not change because no application/package artifact or
+user-visible product behavior changes. The mandatory checkpoint is a passing
+local release-contract matrix and reviewed release-only diff before the fix is
+pushed to `main` and the protected publish workflow is retried.
+
+Pre-commit implementation evidence: the identity step now uses authenticated
+paginated `listReleases`, rejects zero or multiple exact-tag matches, exports
+the immutable numeric Release ID, and the download step retrieves by that ID
+before rechecking tag and commit. The regression contract rejects
+`getReleaseByTag` and asserts both discovery and ID-bound retrieval. All 46
+`scripts/test-*.mjs` contracts, `candidate-release.mjs --test true`,
+`generate-update-site.mjs --test true`, JavaScript syntax checks, Ruby YAML
+parsing, and `git diff --check` pass. `actionlint` is not installed locally and
+is recorded as unrun rather than passed; GitHub workflow parsing remains a
+required hosted admission gate after push.
+
+The separate post-verification review found no blocking authority, identity,
+asset-mutation, race, rollback, credential, or sequencing issue. A deleted or
+recreated draft fails by immutable ID; a changed tag, commit, state, asset set,
+size, or hash fails before the sole `updateRelease` call; and the later
+orchestration commit cannot replace the checked-out accepted-candidate
+contract. The reviewed diff contains only the publish workflow, its regression
+contract, and the owning release/governance records.
 
 ## Current Decision
 
-`NO-GO`. TASK-RAIL-SEMANTICS-1 source validation and the review-only rehearsal
-pass, and authoritative candidate/draft construction is authorized. The exact
-authoritative candidate, owner-installed/live-Provider acceptance, MAC5 GO,
-and final publication remain open; no public Release is authorized.
+`GO` for the immutable `0.4.0-dev.24` candidate. Automated candidate evidence,
+owner-installed acceptance, bounded MAC5 evidence, and explicit public-release
+authorization pass. Public publication is temporarily blocked only by the
+fail-closed draft-lookup defect above. Retrying publication is authorized after
+the release-only correction and its regression matrix pass; update-site
+publication remains sequenced after a successful public prerelease.
