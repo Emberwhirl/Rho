@@ -124,6 +124,7 @@ const state = {
     projectRoot: "",
   },
   environment: null,
+  environmentRefreshRequestId: 0,
   installedPackages: null,
   lockfilePackages: null,
   environmentPackageTab: "installed",
@@ -140,6 +141,7 @@ const state = {
   selectedObjectDetail: null,
   selectedDataObjectDetail: null,
   selectedDataPage: null,
+  dataViewerRefreshPreviewProbe: null,
   dataViewer: {
     busy: false,
     loadingPage: false,
@@ -152,6 +154,9 @@ const state = {
     error: null,
     queryTimer: null,
     pageRequestId: 0,
+    inspectionRequestId: 0,
+    viewKind: null,
+    viewKey: null,
     sortColumn: null,
     sortDirection: null,
   },
@@ -435,6 +440,8 @@ let mockAgentLlmFailure = previewParams.get("failure") || null;
 let mockAgentLlmLoadFailureConsumed = false;
 let mockAgentRunFailureOnce = null;
 let mockProblemPreparationProjectSwitchOnce = false;
+let mockDataViewerInspectCount = 0;
+let mockDataViewerReadCount = 0;
 
 function seedMockEvidenceClaims() {
   const currentProject = mockLastProject;
@@ -1718,6 +1725,7 @@ function mockInspectObject(name) {
 }
 
 function mockInspectDataObject(name) {
+  mockDataViewerInspectCount += 1;
   if (["qc", "qc_paged", "qc_types"].includes(name)) {
     const rowCount = name === "qc_paged" ? 60 : name === "qc_types" ? 6 : 12;
     const columnCount = name === "qc_types" ? 6 : 3;
@@ -1751,6 +1759,7 @@ function mockInspectDataObject(name) {
 }
 
 function mockReadDataView(request) {
+  mockDataViewerReadCount += 1;
   const viewToken = `mock-view-${request.object_name}-${request.workspace?.state_revision ?? state.revision.state_revision}`;
   if (request.view_token !== viewToken) {
     return {
@@ -1904,7 +1913,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.20",
+      version: "0.4.0-dev.21",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1922,8 +1931,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.20",
-      available_version: "0.4.0-dev.20",
+      installed_version: "0.4.0-dev.21",
+      available_version: "0.4.0-dev.21",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2042,8 +2051,12 @@ async function mockInvoke(command, args) {
     const helpTarget = mockConsoleHelpTarget(request.code);
     const unpaddedMockPng = MOCK_PNG_BASE64.replace(/=+$/, "");
     state.revision.state_revision += 1;
+    const selectedObject = state.selectedObjectName && state.selectedObjectName !== "qc"
+      ? state.objects.find((object) => object.name === state.selectedObjectName) || null
+      : null;
     state.objects = [
       { name: "qc", classes: ["data.frame"], dimensions: [12, 3], size_bytes: 2184, typeof: "list" },
+      ...(selectedObject ? [selectedObject] : []),
     ];
     const run = recordMockRun({
       origin: "user",
@@ -10804,14 +10817,13 @@ async function executeCode(request) {
     if (executionHasRenderablePlot(response)) plotExecutionId = response.execution_id || null;
     const helpTarget = request.type === "console" ? executionHelpTarget(response) : null;
     if (helpTarget) await showLocalHelp(helpTarget.topic, helpTarget.package);
-    await refreshEnvironment();
   } catch (error) {
     const message = userFacingError(error, "The connection could not be verified. Review the provider settings and try again.");
     addTerminalOutput(message, "error");
     addProblem(message);
     toast(message, true);
   } finally {
-    await loadRunData();
+    await Promise.all([loadRunData(), refreshEnvironment()]);
     if (plotExecutionId) {
       const plot = state.plots.find((item) => item.run_id === plotExecutionId);
       if (plot) state.selectedPlotId = plot.plot_id;
@@ -11275,15 +11287,50 @@ async function runActiveFile() {
 }
 
 async function refreshEnvironment({ quiet = false } = {}) {
+  const refreshRequestId = ++state.environmentRefreshRequestId;
+  const projectRoot = state.project.root;
+  const projectRefreshSequence = state.projectRefreshSequence;
+  const selectedName = state.selectedObjectName;
+  const selectedDetail = state.selectedDataObjectDetail || state.selectedObjectDetail;
+  const selectedWorkspace = state.dataViewer.workspace || (selectedDetail ? { ...state.revision } : null);
   try {
     const response = await invoke("snapshot_workspace");
+    if (refreshRequestId !== state.environmentRefreshRequestId
+        || !viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)) return false;
     updateIdentity(response.workspace);
     state.objects = response.execution?.objects || [];
     state.environment = response.execution?.environment || null;
     renderEnvironment();
     loadPackageInventories();
+    if (selectedName && selectedDetail && state.selectedObjectName === selectedName) {
+      const selectedStillExists = state.objects.some((object) => object.name === selectedName);
+      if (!selectedStillExists) {
+        clearEnvironmentObjectSelection();
+        renderEnvironment();
+      } else if (workspaceViewerIdentityChanged(selectedWorkspace, response.workspace)
+          || Boolean(state.dataViewer.error?.error_code?.startsWith("stale_"))
+          || state.dataViewer.error?.error_code === "viewer_refresh_failed") {
+        await inspectEnvironmentObject(selectedName, {
+          force: true,
+          preserveViewerState: true,
+          expectedProjectRoot: projectRoot,
+          expectedProjectRefreshSequence: projectRefreshSequence,
+        });
+      }
+    }
     return true;
   } catch (error) {
+    if (refreshRequestId !== state.environmentRefreshRequestId) return false;
+    if (viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)
+        && state.selectedDataObjectDetail) {
+      state.selectedDataPage = null;
+      state.dataViewer.pageRequestId += 1;
+      state.dataViewer.error = {
+        message: "The current Workspace R state could not be refreshed. Retry Environment before continuing.",
+        error_code: "viewer_refresh_failed",
+      };
+      renderEnvironment();
+    }
     if (!quiet) toast(reportUiFailure("refresh R environment", error, "The R environment could not be refreshed. Check the current project and try again."), true);
     return false;
   }
@@ -12475,6 +12522,97 @@ async function runProblemRepairMockProbe(fileProblem, consoleProblem) {
   };
 }
 
+async function runDataViewerRefreshMockProbe() {
+  const projectRoot = state.project.root;
+  const alternateProjectRoot = mockPlatformFixture.alternateProjectRoot;
+  state.objects = [
+    { name: "qc_paged", classes: ["data.frame"], dimensions: [60, 3], size_bytes: 6184, typeof: "list" },
+  ];
+  await inspectEnvironmentObject("qc_paged", { force: true });
+  state.dataViewer.rowLimit = 25;
+  state.dataViewer.query = "S";
+  state.dataViewer.sortColumn = 1;
+  state.dataViewer.sortDirection = "desc";
+  $("#dataViewerFilter").value = "S";
+  await loadDataViewPage({ rowOffset: 25, columnOffset: 0 });
+  const before = {
+    token: state.selectedDataObjectDetail?.view_token || null,
+    state_revision: state.dataViewer.workspace?.state_revision ?? null,
+    row_offset: state.selectedDataPage?.row_offset ?? null,
+    query: state.selectedDataPage?.query ?? null,
+    sort_column: state.selectedDataPage?.sort_column ?? null,
+    sort_direction: state.selectedDataPage?.sort_direction ?? null,
+  };
+  const inspectCountBefore = mockDataViewerInspectCount;
+  const readCountBefore = mockDataViewerReadCount;
+
+  await executeCode({
+    code: "qc_paged <- qc_paged\nstop(\"refresh probe\")",
+    type: "console",
+    sourcePath: "<console>",
+    documentVersion: null,
+    range: null,
+  });
+  const after = {
+    token: state.selectedDataObjectDetail?.view_token || null,
+    state_revision: state.dataViewer.workspace?.state_revision ?? null,
+    row_offset: state.selectedDataPage?.row_offset ?? null,
+    query: state.selectedDataPage?.query ?? null,
+    sort_column: state.selectedDataPage?.sort_column ?? null,
+    sort_direction: state.selectedDataPage?.sort_direction ?? null,
+    error_code: state.dataViewer.error?.error_code || null,
+  };
+  const automaticRefresh = {
+    token_changed: Boolean(before.token && after.token && before.token !== after.token),
+    revision_advanced: Number(after.state_revision) > Number(before.state_revision),
+    inspect_delta: mockDataViewerInspectCount - inspectCountBefore,
+    read_delta: mockDataViewerReadCount - readCountBefore,
+    query_preserved: after.query === before.query,
+    sort_preserved: after.sort_column === before.sort_column
+      && after.sort_direction === before.sort_direction,
+    window_preserved: after.row_offset === before.row_offset,
+    no_stale_error: after.error_code === null,
+  };
+
+  state.revision.state_revision += 1;
+  state.objects = state.objects.filter((object) => object.name !== "qc_paged");
+  await refreshEnvironment({ quiet: true });
+  const disappearedObjectCleared = state.selectedObjectName === null
+    && state.selectedDataObjectDetail === null
+    && state.selectedDataPage === null;
+
+  mockLastProject = projectRoot;
+  state.project = mockProjectState(projectRoot);
+  state.objects = [
+    { name: "qc", classes: ["data.frame"], dimensions: [12, 3], size_bytes: 2184, typeof: "list" },
+  ];
+  await inspectEnvironmentObject("qc", { force: true });
+  const lateInspection = inspectEnvironmentObject("qc", {
+    force: true,
+    preserveViewerState: true,
+    expectedProjectRoot: projectRoot,
+    expectedProjectRefreshSequence: state.projectRefreshSequence,
+  });
+  mockLastProject = alternateProjectRoot;
+  state.project = mockProjectState(alternateProjectRoot);
+  state.projectRefreshSequence += 1;
+  state.objects = [];
+  clearEnvironmentObjectSelection();
+  await lateInspection;
+  const foreignResponseIgnored = state.project.root === alternateProjectRoot
+    && state.selectedObjectName === null
+    && state.selectedDataObjectDetail === null
+    && state.selectedDataPage === null;
+
+  return {
+    before,
+    after,
+    automatic_refresh: automaticRefresh,
+    disappeared_object_cleared: disappearedObjectCleared,
+    foreign_project_response_ignored: foreignResponseIgnored,
+  };
+}
+
 async function maybeApplyPreviewScenario() {
   if (state.previewScenarioApplied || isDesktop) return;
   const scenario = previewParams.get("preview");
@@ -13045,7 +13183,11 @@ async function maybeApplyPreviewScenario() {
     return;
   }
   if (scenario === "wp2-data-viewer") {
-    await inspectEnvironmentObject(previewParams.get("object") || "qc");
+    if (previewParams.get("state") === "refresh-probe") {
+      state.dataViewerRefreshPreviewProbe = await runDataViewerRefreshMockProbe();
+    } else {
+      await inspectEnvironmentObject(previewParams.get("object") || "qc");
+    }
     requestAnimationFrame(() => recordPreviewLayoutEvidence());
     return;
   }
@@ -13622,6 +13764,7 @@ function recordPreviewLayoutEvidence() {
       search_with_preview: rectsOverlap(search, preview),
       actions_with_table: rectsOverlap(actions, table),
     },
+    refresh_probe: state.dataViewerRefreshPreviewProbe,
     rects: { search, preview, viewer, actions, table },
   };
   target.textContent = JSON.stringify(evidence);
@@ -13908,6 +14051,66 @@ function previewSummary(detail) {
   return lines.filter((line) => line !== null && line !== undefined).join("\n");
 }
 
+function workspaceViewerIdentityChanged(before, after) {
+  if (!before || !after) return Boolean(before || after);
+  return ["kernel_instance_id", "state_revision", "project_revision"].some((key) =>
+    String(before[key] ?? "") !== String(after[key] ?? "")
+  );
+}
+
+function viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence) {
+  return state.project.root === projectRoot
+    && state.projectRefreshSequence === projectRefreshSequence;
+}
+
+function captureDataViewerState() {
+  const view = selectedDataView();
+  return {
+    viewKind: view?.kind || state.dataViewer.viewKind || null,
+    viewKey: view?.key || state.dataViewer.viewKey || null,
+    rowOffset: state.dataViewer.rowOffset,
+    rowLimit: state.dataViewer.rowLimit,
+    columnOffset: state.dataViewer.columnOffset,
+    columnLimit: state.dataViewer.columnLimit,
+    query: state.dataViewer.query,
+    sortColumn: state.dataViewer.sortColumn,
+    sortDirection: state.dataViewer.sortDirection,
+  };
+}
+
+function boundedViewerOffset(offset, total, limit) {
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  if (safeTotal === 0) return 0;
+  return Math.min(safeOffset, Math.floor((safeTotal - 1) / safeLimit) * safeLimit);
+}
+
+function clearEnvironmentObjectSelection({ preserveName = false, message = null } = {}) {
+  state.dataViewer.inspectionRequestId += 1;
+  state.dataViewer.pageRequestId += 1;
+  clearTimeout(state.dataViewer.queryTimer);
+  state.dataViewer.queryTimer = null;
+  state.objectInspection = null;
+  if (!preserveName) state.selectedObjectName = null;
+  state.selectedObjectDetail = null;
+  state.selectedDataObjectDetail = null;
+  state.selectedDataPage = null;
+  state.dataViewer.loadingPage = false;
+  state.dataViewer.rowOffset = 0;
+  state.dataViewer.columnOffset = 0;
+  state.dataViewer.workspace = null;
+  state.dataViewer.query = null;
+  state.dataViewer.error = message
+    ? { message, error_code: "viewer_refresh_failed" }
+    : null;
+  state.dataViewer.viewKind = null;
+  state.dataViewer.viewKey = null;
+  state.dataViewer.sortColumn = null;
+  state.dataViewer.sortDirection = null;
+  if ($("#dataViewerFilter")) $("#dataViewerFilter").value = "";
+}
+
 function currentViewerWorkspace() {
   return state.dataViewer.workspace || {
     kernel_instance_id: state.revision.kernel_instance_id ?? null,
@@ -13918,7 +14121,9 @@ function currentViewerWorkspace() {
 
 function selectedDataView(detail = state.selectedDataObjectDetail) {
   if (!detail?.views?.length) return null;
-  const selected = $("#dataViewerViewSelect")?.value || "";
+  const selected = state.dataViewer.viewKind && state.dataViewer.viewKey
+    ? `${state.dataViewer.viewKind}:${state.dataViewer.viewKey}`
+    : $("#dataViewerViewSelect")?.value || "";
   return detail.views.find((view) => `${view.kind}:${view.key}` === selected) || detail.views[0];
 }
 
@@ -14040,6 +14245,11 @@ function renderDataViewer() {
     option.textContent = `${view.label || view.key} · ${view.rows} × ${view.columns}`;
     option.selected = Boolean(selectedView && view.kind === selectedView.kind && view.key === selectedView.key);
     selector.append(option);
+  }
+  if (selectedView) {
+    state.dataViewer.viewKind = selectedView.kind;
+    state.dataViewer.viewKey = selectedView.key;
+    selector.value = `${selectedView.kind}:${selectedView.key}`;
   }
 
   $("#dataViewerStatus").textContent = state.dataViewer.error?.message
@@ -14263,6 +14473,14 @@ async function clearArtifacts(sessionOnly) {
 }
 
 async function loadDataViewPage(options = {}) {
+  const projectRoot = options.expectedProjectRoot ?? state.project.root;
+  const projectRefreshSequence = options.expectedProjectRefreshSequence
+    ?? state.projectRefreshSequence;
+  const inspectionRequestId = options.expectedInspectionRequestId
+    ?? state.dataViewer.inspectionRequestId;
+  if (!viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)
+      || inspectionRequestId !== state.dataViewer.inspectionRequestId) return null;
+
   const detail = state.selectedDataObjectDetail;
   const view = options.view || selectedDataView(detail);
   if (!detail?.ok || !view) {
@@ -14270,11 +14488,19 @@ async function loadDataViewPage(options = {}) {
     renderEnvironment();
     return null;
   }
+  state.dataViewer.viewKind = view.kind;
+  state.dataViewer.viewKey = view.key;
   const pageRequestId = ++state.dataViewer.pageRequestId;
+  const requestIsCurrent = () => pageRequestId === state.dataViewer.pageRequestId
+    && inspectionRequestId === state.dataViewer.inspectionRequestId
+    && viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)
+    && state.selectedObjectName === detail.name;
   state.dataViewer.loadingPage = true;
   state.dataViewer.error = null;
   if (typeof options.rowOffset === "number") state.dataViewer.rowOffset = Math.max(0, options.rowOffset);
   if (typeof options.columnOffset === "number") state.dataViewer.columnOffset = Math.max(0, options.columnOffset);
+  const requestedRowOffset = state.dataViewer.rowOffset;
+  const requestedColumnOffset = state.dataViewer.columnOffset;
   renderDataViewer();
   try {
     const response = await invoke("read_data_view", {
@@ -14283,9 +14509,9 @@ async function loadDataViewPage(options = {}) {
         view_token: detail.view_token,
         view_kind: view.kind,
         view_key: view.key,
-        row_offset: state.dataViewer.rowOffset,
+        row_offset: requestedRowOffset,
         row_limit: state.dataViewer.rowLimit,
-        column_offset: state.dataViewer.columnOffset,
+        column_offset: requestedColumnOffset,
         column_limit: state.dataViewer.columnLimit,
         query: state.dataViewer.query,
         sort_column: state.dataViewer.sortColumn,
@@ -14294,95 +14520,217 @@ async function loadDataViewPage(options = {}) {
       },
     });
     if (pageRequestId !== state.dataViewer.pageRequestId) return null;
+    if (!requestIsCurrent()) return null;
     updateIdentity(response.workspace);
     state.dataViewer.workspace = { ...response.workspace };
-    state.selectedDataPage = response.execution?.page || null;
     if (response.execution && !response.execution.ok) {
+      const errorCode = response.execution.error_code || "viewer_read_failed";
+      if (options.recoverIncompatibleSort === true
+          && state.dataViewer.sortColumn !== null
+          && ["invalid_sort", "unsupported_sort_column"].includes(errorCode)) {
+        state.dataViewer.sortColumn = null;
+        state.dataViewer.sortDirection = null;
+        state.dataViewer.rowOffset = 0;
+        return loadDataViewPage({
+          ...options,
+          view,
+          rowOffset: 0,
+          columnOffset: requestedColumnOffset,
+          recoverIncompatibleSort: false,
+          expectedProjectRoot: projectRoot,
+          expectedProjectRefreshSequence: projectRefreshSequence,
+          expectedInspectionRequestId: inspectionRequestId,
+        });
+      }
       state.selectedDataPage = null;
       state.dataViewer.error = {
         message: response.execution.message,
-        error_code: response.execution.error_code,
+        error_code: errorCode,
       };
-    } else if (state.selectedDataPage) {
-      state.dataViewer.query = state.selectedDataPage.query ?? null;
-      state.dataViewer.sortColumn = state.selectedDataPage.sort_column ?? null;
-      state.dataViewer.sortDirection = state.selectedDataPage.sort_direction ?? null;
+      renderEnvironment();
+      return null;
+    }
+
+    const page = response.execution?.page || null;
+    if (page) {
+      const clampedRowOffset = boundedViewerOffset(
+        requestedRowOffset,
+        page.total_rows,
+        state.dataViewer.rowLimit,
+      );
+      const clampedColumnOffset = boundedViewerOffset(
+        requestedColumnOffset,
+        page.total_columns,
+        state.dataViewer.columnLimit,
+      );
+      if ((clampedRowOffset !== requestedRowOffset
+          || clampedColumnOffset !== requestedColumnOffset)
+          && options.recoverWindow !== false) {
+        return loadDataViewPage({
+          ...options,
+          view,
+          rowOffset: clampedRowOffset,
+          columnOffset: clampedColumnOffset,
+          recoverWindow: false,
+          expectedProjectRoot: projectRoot,
+          expectedProjectRefreshSequence: projectRefreshSequence,
+          expectedInspectionRequestId: inspectionRequestId,
+        });
+      }
+    }
+
+    state.selectedDataPage = page;
+    if (page) {
+      state.dataViewer.rowOffset = page.row_offset ?? requestedRowOffset;
+      state.dataViewer.columnOffset = page.column_offset ?? requestedColumnOffset;
+      state.dataViewer.query = page.query ?? null;
+      state.dataViewer.sortColumn = page.sort_column ?? null;
+      state.dataViewer.sortDirection = page.sort_direction ?? null;
+      $("#dataViewerFilter").value = state.dataViewer.query || "";
     }
     renderEnvironment();
     return state.selectedDataPage;
   } catch (error) {
     if (pageRequestId !== state.dataViewer.pageRequestId) return null;
+    if (!requestIsCurrent()) return null;
     state.selectedDataPage = null;
     state.dataViewer.error = { message: String(error), error_code: "stale_view_revision" };
     renderEnvironment();
     return null;
   } finally {
-    if (pageRequestId === state.dataViewer.pageRequestId) {
+    if (requestIsCurrent()) {
       state.dataViewer.loadingPage = false;
       renderDataViewer();
     }
   }
 }
 
-async function inspectEnvironmentObject(name) {
+async function inspectEnvironmentObject(name, options = {}) {
+  const force = Boolean(options.force);
+  const preserveViewerState = Boolean(options.preserveViewerState);
+  const projectRoot = options.expectedProjectRoot ?? state.project.root;
+  const projectRefreshSequence = options.expectedProjectRefreshSequence
+    ?? state.projectRefreshSequence;
+  if (!viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)) return null;
+
+  const preserved = preserveViewerState ? captureDataViewerState() : null;
   state.selectedObjectName = name;
-  if (state.selectedObjectDetail?.name === name || state.selectedDataObjectDetail?.name === name) {
+  if (!force && (state.selectedObjectDetail?.name === name
+      || state.selectedDataObjectDetail?.name === name)) {
     renderEnvironment();
     return state.selectedDataObjectDetail || state.selectedObjectDetail;
   }
-  if (state.objectInspection?.name === name) return state.objectInspection.promise;
+  if (!force && state.objectInspection?.name === name) return state.objectInspection.promise;
+
+  const inspectionRequestId = ++state.dataViewer.inspectionRequestId;
+  const requestIsCurrent = () => inspectionRequestId === state.dataViewer.inspectionRequestId
+    && viewerProjectRequestIsCurrent(projectRoot, projectRefreshSequence)
+    && state.selectedObjectName === name;
   state.selectedObjectDetail = null;
   state.selectedDataObjectDetail = null;
   state.selectedDataPage = null;
   state.dataViewer.pageRequestId += 1;
   clearTimeout(state.dataViewer.queryTimer);
   state.dataViewer.queryTimer = null;
-  state.dataViewer.rowOffset = 0;
-  state.dataViewer.columnOffset = 0;
+  state.dataViewer.loadingPage = false;
   state.dataViewer.workspace = null;
-  state.dataViewer.query = null;
   state.dataViewer.error = null;
-  state.dataViewer.sortColumn = null;
-  state.dataViewer.sortDirection = null;
-  $("#dataViewerFilter").value = "";
-  const promise = invoke("inspect_data_object", { request: { object_name: name } })
-    .then((response) => {
-      updateIdentity(response.workspace);
-      state.dataViewer.workspace = { ...response.workspace };
-      state.selectedDataObjectDetail = response.execution || null;
-      if (response.execution?.ok && response.execution?.views?.length) {
+  state.dataViewer.rowOffset = preserved?.rowOffset ?? 0;
+  state.dataViewer.rowLimit = preserved?.rowLimit ?? state.dataViewer.rowLimit;
+  state.dataViewer.columnOffset = preserved?.columnOffset ?? 0;
+  state.dataViewer.columnLimit = preserved?.columnLimit ?? state.dataViewer.columnLimit;
+  state.dataViewer.query = preserved?.query ?? null;
+  state.dataViewer.viewKind = preserved?.viewKind ?? null;
+  state.dataViewer.viewKey = preserved?.viewKey ?? null;
+  state.dataViewer.sortColumn = preserved?.sortColumn ?? null;
+  state.dataViewer.sortDirection = preserved?.sortDirection ?? null;
+  $("#dataViewerFilter").value = state.dataViewer.query || "";
+  renderEnvironment();
+
+  const promise = (async () => {
+    let dataResponse = null;
+    let dataError = null;
+    try {
+      dataResponse = await invoke("inspect_data_object", { request: { object_name: name } });
+    } catch (error) {
+      dataError = error;
+    }
+    if (!requestIsCurrent()) return null;
+
+    if (dataResponse) {
+      updateIdentity(dataResponse.workspace);
+      state.dataViewer.workspace = { ...dataResponse.workspace };
+      state.selectedDataObjectDetail = dataResponse.execution || null;
+      if (dataResponse.execution?.ok && dataResponse.execution?.views?.length) {
         state.selectedObjectDetail = null;
+        const view = dataResponse.execution.views.find((candidate) =>
+          candidate.kind === preserved?.viewKind && candidate.key === preserved?.viewKey
+        ) || dataResponse.execution.views[0];
+        state.dataViewer.viewKind = view.kind;
+        state.dataViewer.viewKey = view.key;
+        state.dataViewer.rowOffset = boundedViewerOffset(
+          state.dataViewer.rowOffset,
+          view.rows,
+          state.dataViewer.rowLimit,
+        );
+        state.dataViewer.columnOffset = boundedViewerOffset(
+          state.dataViewer.columnOffset,
+          view.columns,
+          state.dataViewer.columnLimit,
+        );
+        if (state.dataViewer.sortColumn !== null
+            && state.dataViewer.sortColumn >= Number(view.columns || 0)) {
+          state.dataViewer.sortColumn = null;
+          state.dataViewer.sortDirection = null;
+          state.dataViewer.rowOffset = 0;
+        }
         renderEnvironment();
-        return loadDataViewPage({ view: response.execution.views[0], rowOffset: 0, columnOffset: 0 })
-          .then(() => state.selectedDataObjectDetail);
+        await loadDataViewPage({
+          view,
+          rowOffset: state.dataViewer.rowOffset,
+          columnOffset: state.dataViewer.columnOffset,
+          expectedProjectRoot: projectRoot,
+          expectedProjectRefreshSequence: projectRefreshSequence,
+          expectedInspectionRequestId: inspectionRequestId,
+          recoverIncompatibleSort: preserveViewerState,
+        });
+        return requestIsCurrent() ? state.selectedDataObjectDetail : null;
       }
-      return invoke("inspect_object", { request: { name } }).then((fallback) => {
-        updateIdentity(fallback.workspace);
-        state.selectedObjectDetail = fallback.execution || null;
-        renderEnvironment();
-        return state.selectedObjectDetail;
-      });
-    })
-    .catch((error) => {
-      return invoke("inspect_object", { request: { name } }).then((fallback) => {
-        updateIdentity(fallback.workspace);
-        state.selectedObjectDetail = fallback.execution || null;
-        state.selectedDataObjectDetail = { ok: false, message: String(error), error_code: "viewer_unavailable", name };
-        renderEnvironment();
-        return state.selectedObjectDetail;
-      });
-    })
-    .catch((error) => {
+    }
+
+    try {
+      const fallback = await invoke("inspect_object", { request: { name } });
+      if (!requestIsCurrent()) return null;
+      updateIdentity(fallback.workspace);
+      state.dataViewer.workspace = { ...fallback.workspace };
+      state.selectedObjectDetail = fallback.execution || null;
+      if (dataError) {
+        state.selectedDataObjectDetail = {
+          ok: false,
+          message: String(dataError),
+          error_code: "viewer_unavailable",
+          name,
+        };
+      }
+      renderEnvironment();
+      return state.selectedObjectDetail;
+    } catch (error) {
+      if (!requestIsCurrent()) return null;
       toast(reportUiFailure("inspect R object", error, "This object could not be inspected. Refresh Environment and try again."), true);
       state.selectedObjectDetail = null;
-      state.selectedDataObjectDetail = { ok: false, message: String(error), error_code: "viewer_unavailable", name };
+      state.selectedDataObjectDetail = {
+        ok: false,
+        message: String(dataError || error),
+        error_code: "viewer_unavailable",
+        name,
+      };
       renderEnvironment();
       return null;
-    })
-    .finally(() => {
-      if (state.objectInspection?.promise === promise) state.objectInspection = null;
-    });
-  state.objectInspection = { name, promise };
+    }
+  })().finally(() => {
+    if (state.objectInspection?.requestId === inspectionRequestId) state.objectInspection = null;
+  });
+  state.objectInspection = { name, requestId: inspectionRequestId, promise };
   return promise;
 }
 
@@ -17424,6 +17772,9 @@ async function handleExternalDocumentChange(path) {
 
 async function hydrateProject(response) {
   state.projectRefreshSequence += 1;
+  state.objects = [];
+  state.environment = null;
+  clearEnvironmentObjectSelection();
   clearAgentLlmCredentialInput();
   state.agentLlm.operation = { state: "idle", message: "" };
   state.agentLlm.wizardOperation = { state: "idle", message: "" };
@@ -17719,7 +18070,7 @@ $("#projectSwitcher").addEventListener("click", async () => {
       return;
     }
     await hydrateProject(response);
-    void loadRunData({ quiet: true });
+    void Promise.all([loadRunData({ quiet: true }), refreshEnvironment({ quiet: true })]);
   } catch (error) {
     toast(reportUiFailure("switch project", error, "The project could not be switched. The current project remains active."), true);
   }
@@ -18200,6 +18551,9 @@ $("#packageManagementClose").addEventListener("click", () => closePackageManagem
 $("#packageManagementCancel").addEventListener("click", () => closePackageManagementDialog());
 $("[data-package-management-close]").addEventListener("click", () => closePackageManagementDialog());
 $("#dataViewerViewSelect").addEventListener("change", () => {
+  const [viewKind, ...viewKeyParts] = $("#dataViewerViewSelect").value.split(":");
+  state.dataViewer.viewKind = viewKind || null;
+  state.dataViewer.viewKey = viewKeyParts.join(":") || null;
   state.dataViewer.rowOffset = 0;
   state.dataViewer.columnOffset = 0;
   state.dataViewer.sortColumn = null;
@@ -18532,8 +18886,7 @@ $("#restartButton").addEventListener("click", async () => {
     setKernelStatus("idle", "R idle");
     state.objects = [];
     state.environment = null;
-    state.selectedObjectName = null;
-    state.selectedObjectDetail = null;
+    clearEnvironmentObjectSelection();
     renderEnvironment();
     addLog("SYSTEM", "R session restarted and ready");
     await loadRunData();

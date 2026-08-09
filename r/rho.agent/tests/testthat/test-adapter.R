@@ -387,6 +387,107 @@ test_that("runtime profile admits exactly one matching non-secret route", {
   )
 })
 
+test_that("registered runtime startup preserves the canonical routed model", {
+  skip_if_not_installed("aisdk")
+  skip_if_not_installed("aisdk.providers")
+  credential_name <- "RHO_TEST_REGISTERED_PROVIDER_KEY"
+  previous <- Sys.getenv(credential_name, unset = NA_character_)
+  on.exit({
+    if (is.na(previous)) {
+      Sys.unsetenv(credential_name)
+    } else {
+      do.call(Sys.setenv, stats::setNames(list(previous), credential_name))
+    }
+  }, add = TRUE)
+  do.call(Sys.setenv, stats::setNames(list("disposable-no-network-key"), credential_name))
+
+  profile <- list(
+    settings_revision = 10L,
+    route_capability = "agent.act",
+    profile_id = "model-act",
+    provider_kind = "registered",
+    runtime_provider_id = "rho_profile_provider_act",
+    registered_provider_id = "deepseek",
+    model_id = "deepseek-v4-flash",
+    api_key_env = credential_name,
+    api_key_required = TRUE,
+    base_url = "https://api.deepseek.com",
+    base_url_env = NULL,
+    wire_api = "chat_completions",
+    disable_stream_options = FALSE,
+    tool_calling = "yes",
+    capability_routes = list(list(
+      capability = "agent.act",
+      model = "deepseek:deepseek-v4-flash",
+      model_type = "language",
+      required_model_capabilities = list("function_call")
+    ))
+  )
+
+  resolved_model <- suppressWarnings(rho.agent:::rho_resolve_model_profile(profile))
+  expect_identical(resolved_model, "deepseek:deepseek-v4-flash")
+  routes <- rho.agent:::rho_runtime_profile_capability_models(profile, resolved_model)
+  expect_identical(routes[["agent.act"]]$model, resolved_model)
+
+  model <- getFromNamespace("resolve_model", "aisdk")(resolved_model)
+  expect_s3_class(model, "DeepSeekLanguageModel")
+  expect_identical(model$provider, "deepseek")
+  expect_identical(model$get_config()$api_key, "disposable-no-network-key")
+
+  session <- rho_create_aisdk_session(
+    model = resolved_model,
+    tools = list(),
+    capability_models = routes
+  )
+  expect_s3_class(session, "ChatSession")
+  expect_identical(
+    session$get_metadata("capability_models")[["agent.act"]]$model,
+    resolved_model
+  )
+
+  profile$capability_routes[[1L]]$model <- "rho_profile_provider_act:deepseek-v4-flash"
+  expect_error(
+    rho.agent:::rho_runtime_profile_capability_models(profile, resolved_model),
+    "does not match the effective model"
+  )
+})
+
+test_that("custom runtime profiles retain their isolated provider identity", {
+  skip_if_not_installed("aisdk")
+  profile <- list(
+    settings_revision = 10L,
+    route_capability = "agent.chat",
+    profile_id = "model-custom",
+    provider_kind = "openai_compatible",
+    runtime_provider_id = "rho_profile_provider_custom_connection",
+    registered_provider_id = NULL,
+    model_id = "custom-language-model",
+    api_key_env = NULL,
+    api_key_required = FALSE,
+    base_url = "https://custom.example.test/v1",
+    base_url_env = NULL,
+    wire_api = "chat_completions",
+    disable_stream_options = FALSE,
+    tool_calling = "yes",
+    capability_routes = list(list(
+      capability = "agent.chat",
+      model = "rho_profile_provider_custom_connection:custom-language-model",
+      model_type = "language",
+      required_model_capabilities = list()
+    ))
+  )
+
+  resolved_model <- rho.agent:::rho_resolve_model_profile(profile)
+  expect_identical(
+    resolved_model,
+    "rho_profile_provider_custom_connection:custom-language-model"
+  )
+  routes <- rho.agent:::rho_runtime_profile_capability_models(profile, resolved_model)
+  expect_identical(routes[["agent.chat"]]$model, resolved_model)
+  model <- getFromNamespace("resolve_model", "aisdk")(resolved_model)
+  expect_identical(model$provider, "rho_profile_provider_custom_connection")
+})
+
 test_that("reviewed aisdk.providers adapters are explicit and bounded", {
   expect_identical(
     rho.agent:::rho_registered_provider_ids(),

@@ -4,6 +4,26 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior that is already available in a released build.
 
+## 0.4.0-dev.21 - 2026-08-08
+
+### Fixed
+
+- `Fix with Agent` now starts registered-Provider repair sessions with the
+  exact canonical model identity carried by the function-calling Act route.
+  The read-only Ask policy and one-credential boundary remain unchanged, and a
+  route/profile mismatch still fails before any Provider request.
+- Environment now automatically re-inspects the selected R object after a
+  Workspace state change, including executions that mutate objects before
+  failing. The Data Viewer receives a current view token instead of asking the
+  user to recover from its own stale revision.
+
+### Improved
+
+- Automatic object refresh preserves the selected view, literal query,
+  compatible sort, page size, and bounded row/column window. It clamps windows
+  when data shrinks, clears disappeared objects truthfully, and rejects late
+  responses after a newer refresh or project switch.
+
 ## 0.4.0-dev.20 - 2026-08-08
 
 ### Fixed

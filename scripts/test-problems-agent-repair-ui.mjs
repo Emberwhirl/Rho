@@ -12,9 +12,11 @@ const coordinator = read("crates", "rho-server", "src", "coordinator.rs");
 const store = read("crates", "rho-store", "src", "lib.rs");
 const migration = read("crates", "rho-store", "src", "migration.rs");
 const bridge = read("r", "rho.bridge", "R", "execute.R");
+const adapter = read("r", "rho.agent", "R", "aisdk_adapter.R");
 const contract = read("docs", "plans", "active-2026-08-07-problems-agent-repair-spec.md");
 
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-2/);
+assert.match(contract, /PROBLEMS-AGENT-REPAIR-3 Installed Acceptance Correction/);
 assert.match(contract, /explicitly authorized its complete resolution on 2026-08-08/);
 assert.match(contract, /range_kind=user_selection/);
 
@@ -60,6 +62,11 @@ assert.match(agentLlm, /route\.capability == "agent\.act"/);
 assert.match(agentLlm, /function_call/);
 assert.match(agentLlm, /credential is missing/);
 
+assert.match(adapter, /rho_runtime_profile_model_reference <- function\(profile\)/);
+assert.match(adapter, /identical\(profile\$provider_kind, "registered"\)[\s\S]*profile\$registered_provider_id/);
+assert.match(adapter, /aisdk::register_provider\(registration_id, function\(\) provider\)/);
+assert.match(adapter, /rho_runtime_profile_capability_models <- function\(profile, resolved_model = NULL\)[\s\S]*expected_model <- rho_runtime_profile_model_reference\(profile\)/);
+
 assert.match(js, /source_range: request\.sourceRange \?\? null/);
 assert.match(js, /function problemExactRange\(problem\)/);
 assert.match(js, /function currentProblemSelectionRange\(problem\)/);
@@ -88,4 +95,4 @@ for (const evidence of [
 assert.match(js, /previewParams\.get\("state"\) === "repair-probe"/);
 assert.match(js, /repair_probe: state\.problemRepairPreviewProbe/);
 
-console.log("Problems Agent repair R2 contract checks passed.");
+console.log("Problems Agent repair R3 contract checks passed.");

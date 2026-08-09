@@ -303,3 +303,62 @@ pass. The final post-format DMG is 21,224,710 bytes with SHA-256
 No real Provider request or credential was used. Owner-installed repair
 acceptance, signing, notarization, authoritative assets, MAC5, and publication
 remain separate `NOT RUN` gates.
+
+## PROBLEMS-AGENT-REPAIR-3 Installed Acceptance Correction — 2026-08-08
+
+The owner-installed `0.4.0-dev.20` candidate rejects the R2 acceptance gate.
+The submitted task was correctly typed as `problem_repair`, bound to the exact
+file range and failed run, resolved the effective `agent.act` route, and kept
+Ask policy. It then failed before any Provider request with:
+
+```text
+Runtime capability route does not match the effective model.
+```
+
+The installed evidence identifies a runtime-reference defect rather than a
+diagnostic-location or task-policy defect. Rust records a registered Provider
+route with its canonical model reference (for example
+`deepseek:deepseek-v4-flash`), while Agent R constructs the one-credential
+Provider under an ephemeral internal alias and returns that alias as the
+runtime model. Exact route validation then rejects the two names before the
+session starts.
+
+PROBLEMS-AGENT-REPAIR-3 is authorized as a D3/R3 corrective slice with these
+invariants:
+
+- Ask/Plan/Act remains the behavioral policy lane. A `problem_repair` task
+  continues to use Ask policy with `auto_approve=false` while resolving the
+  tool-capable `agent.act` route; policy does not select or rename a model.
+- A registered Provider profile has one canonical Provider/model reference.
+  The isolated Agent R process must register the credential-bound reviewed
+  Provider at that same canonical Provider ID and resolve the exact route
+  model. It must not introduce a second effective name, Provider fallback, or
+  ambient credential lookup.
+- Generic/custom Provider profiles retain their explicit per-profile runtime
+  Provider ID. The change must not collapse distinct custom connections or
+  change their Base URL behavior.
+- The route capability, route model, profile Provider/model fields, and tool
+  capability are validated together before `ChatSession` creation. A mismatch
+  still fails closed before a Provider request.
+- The existing single system-store credential projection is unchanged. Tests
+  use a disposable value and no live Provider request.
+
+Regression evidence must execute the same registered-Provider startup path as
+the desktop child, including reviewed `aisdk.providers` construction,
+registration, model resolution, capability-route normalization, and session
+creation. It must cover Ask policy plus `agent.act`, canonical mismatch
+rejection, custom-Provider isolation, and absence of network calls. A Rust
+contract test must keep the generated child sequence and route attribution
+explicit.
+
+The one-click Problems entry remains the authorized automatic handoff: after
+the user selects `Fix with Agent`, Rho prepares the exact context and starts the
+typed repair task without another selection or confirmation. This correction
+does not authorize an unsolicited Provider request for every R error, automatic
+R execution, automatic proposal acceptance, or file mutation.
+
+Because the exact installed `dev.20` identity failed, it is historical and
+must not be rebuilt or relabeled. After the corrective matrix passes, the
+application advances to `0.4.0-dev.21`; `rho.agent` advances independently
+because its runtime Provider-resolution contract changes. Installed/live-
+Provider acceptance remains open on that exact replacement artifact.

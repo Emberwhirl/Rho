@@ -360,8 +360,11 @@ rho_runtime_profile_capability_models <- function(profile, resolved_model = NULL
   if (!identical(capability, profile$route_capability %||% "")) {
     stop("Runtime capability route does not match the effective route.")
   }
-  model <- resolved_model %||% route$model %||% ""
-  if (!nzchar(model) || !identical(route$model %||% "", model)) {
+  expected_model <- rho_runtime_profile_model_reference(profile)
+  model <- resolved_model %||% expected_model
+  if (!nzchar(model) ||
+      !identical(route$model %||% "", expected_model) ||
+      !identical(model, expected_model)) {
     stop("Runtime capability route does not match the effective model.")
   }
   type <- route$model_type %||% "auto"
@@ -632,8 +635,32 @@ rho_make_runtime_provider <- function(profile) {
   if (is.null(provider)) {
     return(NULL)
   }
-  aisdk::register_provider(profile$runtime_provider_id, function() provider)
+  registration_id <- if (identical(profile$provider_kind, "registered")) {
+    profile$registered_provider_id %||% ""
+  } else {
+    profile$runtime_provider_id %||% ""
+  }
+  if (!nzchar(registration_id)) {
+    stop("Runtime provider registration requires a non-empty provider ID.")
+  }
+  aisdk::register_provider(registration_id, function() provider)
   provider
+}
+
+rho_runtime_profile_model_reference <- function(profile) {
+  provider_id <- if (identical(profile$provider_kind, "registered")) {
+    profile$registered_provider_id %||% ""
+  } else {
+    profile$runtime_provider_id %||% ""
+  }
+  if (!nzchar(provider_id)) {
+    stop("Runtime model profiles require an effective provider ID.")
+  }
+  model_id <- profile$model_id %||% ""
+  if (!nzchar(model_id)) {
+    stop("Runtime model profiles require an effective model ID.")
+  }
+  sprintf("%s:%s", provider_id, model_id)
 }
 
 rho_resolve_model_profile <- function(profile) {
@@ -644,9 +671,8 @@ rho_resolve_model_profile <- function(profile) {
     if (!nzchar(provider_id)) {
       stop("Registered runtime profiles require registered_provider_id.")
     }
-    return(sprintf("%s:%s", provider_id, profile$model_id))
   }
-  sprintf("%s:%s", profile$runtime_provider_id, profile$model_id)
+  rho_runtime_profile_model_reference(profile)
 }
 
 rho_test_model_profile <- function(profile) {

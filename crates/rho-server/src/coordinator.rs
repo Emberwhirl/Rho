@@ -5463,6 +5463,24 @@ mod tests {
     }
 
     #[test]
+    fn desktop_agent_startup_resolves_the_profile_before_validating_its_route() {
+        let script = desktop_agent_turn_script();
+        let resolve = script
+            .find("resolved_model <- rho_resolve_model_profile(profile)")
+            .expect("desktop Agent startup must resolve its admitted runtime profile");
+        let route = script
+            .find("capability_models <- rho_runtime_profile_capability_models(profile, resolved_model)")
+            .expect("desktop Agent startup must validate the resolved model against its route");
+        let session = script
+            .find("session <- rho_create_aisdk_session(")
+            .expect("desktop Agent startup must create the routed session");
+
+        assert!(resolve < route && route < session);
+        assert!(script.contains("mode_policy <- switch("));
+        assert!(!script.contains("rho_resolve_model_profile(profile, mode)"));
+    }
+
+    #[test]
     fn desktop_agent_result_omits_large_persisted_kernel_events() {
         let workspace = json!({
             "workspace_id": "workspace_1",

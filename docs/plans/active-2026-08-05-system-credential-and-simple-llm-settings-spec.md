@@ -1339,3 +1339,28 @@ override-rejection, and settings-deep-link tests pass without a real Provider
 request. The historical `dev.19` settings artifact cannot validate this new
 consumer. Live Provider/Keychain acceptance moves to the exact `dev.20`
 owner-installed gate; CRED-UX4B/C remain unauthorized.
+
+## CRED-UX4A-R2 Registered Runtime Identity Correction — 2026-08-08
+
+Owner-installed `dev.20` evidence rejects the Issue #6 consumer before its
+first Provider request. The persisted route correctly uses the canonical
+registered Provider/model reference, but the supervised Agent R child registers
+the reviewed one-credential Provider under a private alias and resolves that
+alias as the session model. Exact route validation then fails.
+
+The correction keeps one identity per registered runtime profile: in the
+isolated one-profile child process, the explicitly constructed reviewed
+Provider is registered at the profile's canonical registered Provider ID and
+the session resolves the exact canonical route model. Generic/custom Providers
+continue using their unique runtime IDs. This does not authorize global
+Provider replacement, a second credential, ambient environment fallback,
+silent model fallback, or changes to persisted settings schema. Mismatched
+route/profile models still fail closed before network access.
+
+Regression coverage must construct a reviewed registered Provider with a
+disposable credential, resolve and normalize one `agent.act` route under Ask
+policy, create the session without a request, and separately prove canonical
+mismatch and custom-connection isolation. The exact installed `dev.20`
+artifact is historical; the corrected runtime contract advances `rho.agent`
+and is eligible only for replacement application identity `0.4.0-dev.21`.
+CRED-UX4B/C remain unauthorized.

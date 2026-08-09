@@ -201,3 +201,46 @@ Browser evidence at the default desktop viewport and 800 x 900 narrow viewport:
 Installed-app and exact-candidate manual acceptance were not run. This document
 therefore remains active even though the WS3-Q1 capability checklist item is
 closed.
+
+## WS3-Q1-R1 Installed Data View Refresh Correction — 2026-08-08
+
+Installed `0.4.0-dev.20` evidence rejects the selected-object refresh portion
+of the viewer acceptance gate. After Workspace R changes, Environment updates
+the object inventory (including the new dimensions) but leaves the selected
+object detail, view token, and viewer workspace identity bound to the previous
+state revision. The next page request therefore truthfully rejects the stale
+token, but the UI asks the user to repair state that Rho can refresh safely and
+deterministically itself.
+
+WS3-Q1-R1 is an authorized D2/R2 correction owned by the existing read-only
+Workspace viewer lane:
+
+- `snapshot_workspace` remains inventory authority. When its returned kernel,
+  state, or project identity differs from the identity that owns an existing
+  selected data-object detail, the frontend force-reinspects that same object
+  and obtains a new view token before reading a page.
+- If the identity did not change, ordinary refresh does not issue an extra
+  object/page read.
+- A successful refresh preserves the selected view key when still available,
+  literal query, compatible sort, page size, and bounded row/column window.
+  Off-end windows are clamped and retried at the last valid bounded page; the
+  frontend never fabricates rows or locally replays query/sort semantics.
+- If the object disappeared or became unsupported, the previous page and token
+  are cleared and the current state is shown truthfully. A refresh failure keeps
+  a visible retryable error rather than presenting old rows as current.
+- Object inspection and page reads use monotonic request generations plus the
+  captured active project root. Late responses after a newer refresh or project
+  switch cannot replace current state.
+- Failed executions are included: if Workspace R advanced before returning an
+  error, the surviving/mutated selected object is refreshed from the returned
+  workspace identity.
+- Browser/mock mode must advance the same workspace revision and stale-token
+  contract. A deterministic behavior probe must prove successful automatic
+  reinspection/page reload, preserved query/sort/window, disappeared-object
+  recovery, stale-response rejection, and two-project isolation.
+
+This package adds no Workspace mutation, schema, execution authority, polling,
+or public protocol. The replacement behavior is user-visible and ships only
+under `0.4.0-dev.21` after the complete affected frontend/browser and existing
+Workspace viewer matrices pass. Installed-app acceptance remains a separate
+gate.

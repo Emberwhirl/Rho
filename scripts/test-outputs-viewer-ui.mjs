@@ -20,7 +20,7 @@ assert.match(html, /vendor\/viewer\/katex\.min\.js/);
 assert.match(html, /vendor\/viewer\/katex-auto-render\.min\.js/);
 assert.match(html, /vendor\/viewer\/katex\.min\.css/);
 assert.match(html, /vendor\/viewer\/papaparse\.min\.js/);
-assert.match(html, /app\.js\?v=0\.4\.0-dev\.20/);
+assert.match(html, /app\.js\?v=0\.4\.0-dev\.21/);
 
 assert.match(project, /MAX_VIEWER_FILE_BYTES: u64 = 4 \* 1024 \* 1024/);
 assert.match(project, /MAX_VIEWER_HTML_BYTES: u64 = 32 \* 1024 \* 1024/);
@@ -88,7 +88,7 @@ assert.match(js, /projectRefreshSequence: 0/);
 assert.match(loadRunData, /const refreshSequence = state\.projectRefreshSequence/);
 assert.match(loadRunData, /const projectRoot = state\.project\.root/);
 assert.match(loadRunData, /refreshSequence !== state\.projectRefreshSequence \|\| projectRoot !== state\.project\.root/);
-assert.match(js, /await hydrateProject\(response\);\s*void loadRunData\(\{ quiet: true \}\);/);
+assert.match(js, /await hydrateProject\(response\);\s*void Promise\.all\(\[loadRunData\(\{ quiet: true \}\), refreshEnvironment\(\{ quiet: true \}\)\]\);/);
 assert.match(js, /state\.runs = \[\];[\s\S]*state\.artifacts = \[\];[\s\S]*renderAgentOutputs\(\);/);
 assert.match(js, /function capturePanelViewport\(panel, keySelector = null\)/);
 assert.match(js, /function restorePanelViewport\(panel, viewport, keySelector = null\)/);

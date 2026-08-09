@@ -1,3 +1,12 @@
+# rho.agent 0.1.5
+
+- Registered Provider profiles now construct and register the isolated
+  credential-bound runtime at the same canonical Provider/model identity used
+  by the admitted capability route. Exact route validation therefore succeeds
+  without adding a fallback, ambient credential, or second effective model.
+- Runtime route validation now checks the route model against the profile's
+  Provider and model fields before a session can start.
+
 # rho.agent 0.1.4
 
 - Added explicit, bounded runtime adapters for the reviewed

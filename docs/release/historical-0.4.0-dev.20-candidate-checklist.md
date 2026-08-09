@@ -1,10 +1,12 @@
 # Rho 0.4.0-dev.20 Cross-Platform Candidate Checklist
 
-Status: active development-candidate identity for PROBLEMS-AGENT-REPAIR-2;
+Status: historical rejected development-candidate identity for
+PROBLEMS-AGENT-REPAIR-2;
 implementation, complete affected automated verification, deterministic
 browser behavior review, version synchronization, and exact local unsigned
-app/DMG verification are complete; owner-installed acceptance, authoritative assets,
-GitHub Release draft, MAC5, publication, and release GO are NOT RUN
+app/DMG verification are complete; owner-installed acceptance was attempted
+and rejected; authoritative assets, GitHub Release draft, MAC5, publication,
+and release GO are NOT RUN
 
 Date: 2026-08-08
 
@@ -128,21 +130,25 @@ tag/Release non-existence check, and complete exact-source validation.
 
 ## Installed Acceptance And Publication
 
-Installed acceptance must use the exact immutable candidate and prove a real
+Installed acceptance used the exact immutable candidate to test a real
 file execution failure produces an exact durable range after restart; one
 Problems click prepares a reviewable proposal without manual selection; source
 does not change before Accept; Reject and stale Accept remain safe; Console and
 manual-selection fallback are truthful; two projects remain isolated; route
 and credential blockers are actionable; and no secret appears in UI, logs or
-evidence. It remains `NOT RUN`.
+evidence. The attempt is `REJECTED`: the typed repair task failed before its
+Provider request because the registered runtime alias did not match the
+canonical route model, and an Environment inventory refresh left the selected
+Data Viewer bound to its previous view token after Workspace R changed.
 
 MAC5, candidate draft creation, update publication, Pages mutation, tag/Release
 creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. `0.4.0-dev.20` is the active development identity. Source
-implementation and affected automated/browser verification pass. Final
-all-workspace verification and exact local unsigned artifact verification
-pass. Owner-installed acceptance, authoritative candidate assets, MAC5, and
-publication remain open.
+`REJECTED / NO-GO`. `0.4.0-dev.20` is immutable historical evidence. Its local
+automated/browser and unsigned-artifact checks remain facts about that exact
+source, but owner-installed acceptance exposed two blocking defects. It is
+superseded by corrective identity `0.4.0-dev.21`; no `dev.20` artifact, hash,
+tag, draft, or checklist row may be rebuilt, overwritten, or relabelled to
+satisfy the replacement candidate.

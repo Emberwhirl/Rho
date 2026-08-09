@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-08
-Current baseline: `0.4.0-dev.20`
+Current baseline: `0.4.0-dev.21`
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -199,12 +199,24 @@ Repair task; known ranges no longer require manual selection; and no-range
 parse/history cases have an explicit user-selection fallback. The complete
 affected Rust/R/frontend matrix, deterministic browser behavior review, and
 exact local unsigned arm64 DMG verification pass; owner-installed acceptance
-remains open.
-`rho.agent` advances independently to `0.1.4` for its explicit provider-adapter
+then rejected `dev.20`: the registered Agent runtime alias did not match the
+canonical Act-route model, and the selected Data Viewer retained its previous
+view token after Workspace R changed. PROBLEMS-AGENT-REPAIR-3,
+CRED-UX4A-R2, and WS3-Q1-R1 advance the corrective baseline to
+`0.4.0-dev.21`. Registered Provider sessions now keep one canonical routed
+identity, while Environment re-inspects the selected object on revision change
+and preserves compatible query/sort/page state under monotonic project-bound
+guards. The complete affected automation and deterministic desktop/narrow
+browser behavior matrix pass; exact local artifact and owner-installed/live-
+Provider acceptance remain open.
+`rho.agent` advances independently to `0.1.5` for its canonical registered
+runtime identity contract (after `0.1.4` introduced explicit provider adapters).
+`rho.agent` `0.1.4` remains historical for its explicit provider-adapter
 contract. `rho.bridge` independently advances to `0.1.12` for the structured
 execution-range result. CRED-UX4B/C workers and media consumers remain
 unauthorized. The
-`dev.18` artifact is rejected and cannot serve as acceptance evidence. All
+`dev.18` and `dev.20` artifacts are rejected and cannot serve as acceptance
+evidence. All
 earlier runs and artifacts remain historical exact-source evidence and cannot
 validate the replacement behavior. Owner acceptance, exact
 installed-candidate native accessibility, Keychain, live-provider discovery,
