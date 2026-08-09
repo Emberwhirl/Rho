@@ -215,9 +215,9 @@ REPAIR-4 advances the baseline to `0.4.0-dev.22`: Console waits for and binds
 the exact durable failed run, exposes the same repair/setup/selection action as
 Problems, bounds refresh recovery, rejects duplicate dispatch, and permanently
 disables an old action after project switch. The complete affected
-Rust/R/frontend matrix, formatting, and deterministic desktop/narrow browser
-review pass; exact local unsigned artifact and installed/live-Provider
-acceptance remain open.
+Rust/R/frontend matrix, formatting, deterministic desktop/narrow browser
+review, and exact local unsigned arm64 artifact verification pass;
+owner-installed/live-Provider acceptance remains open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter

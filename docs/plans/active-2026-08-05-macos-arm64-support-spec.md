@@ -1746,3 +1746,27 @@ stale-token rejection, two-project and restart isolation, interrupt recovery,
 and crash recovery. The bundle has linker ad-hoc signing only. No Developer ID,
 notarization, staple, Gatekeeper, installed-user, live-Provider/Keychain, MAC5,
 hosted candidate, or publication claim is made.
+
+## Issue #6 `dev.22` Console Repair Local Packaging Handoff — 2026-08-08
+
+The owner rejected `dev.21` because repair remained discoverable only after
+navigating away from the just-failed Console to Problems. The authorized
+PROBLEMS-AGENT-REPAIR-4 correction exposes the shared durable repair action at
+the Console error site while Problems remains the diagnostic-history
+authority. This user-visible behavior advances the replacement application
+identity to `0.4.0-dev.22` without changing Ark discovery, Keychain ownership,
+entitlements, signing/notarization policy, update schema, or MAC4/MAC5
+authority.
+
+From exact clean feature-branch source commit
+`2b5809151a154c0ca35c092f2e53dd7e064ab11b`, Tauri CLI `2.11.4` produced the
+local unsigned arm64 `Rho_0.4.0-dev.22_aarch64.dmg`. It is 21,224,605 bytes
+with SHA-256
+`6550ebd87d1def65c317eeb9e8de12077c39cfa3c0b3ae00bee8dea7df0e0c50`.
+`hdiutil verify` passed; the read-only mounted app and bundled Ark are arm64;
+the bundle reports `0.4.0-dev.22` and macOS 14.0 minimum; and complete mounted
+Workspace smoke passed, including Plot, Environment, paged Data View,
+stale-token rejection, two-project and restart isolation, interrupt recovery,
+and crash recovery. The bundle has an ad-hoc signature and no Team ID. No
+Developer ID, notarization, staple, Gatekeeper, owner-installed-user,
+live-Provider/Keychain, MAC5, hosted candidate, or publication claim is made.

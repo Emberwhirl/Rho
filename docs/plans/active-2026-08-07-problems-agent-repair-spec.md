@@ -467,5 +467,11 @@ Because the handed-off `dev.21` identity is immutable, user-visible R4 behavior
 advances the synchronized application and workflow defaults to
 `0.4.0-dev.22`; `NEWS.md` and the active exact-candidate checklist are updated.
 No R package contract changes, so `rho.agent` remains `0.1.5` and `rho.bridge`
-remains `0.1.12`. Exact local unsigned `dev.22` artifact verification and
-owner-installed/live-Provider acceptance remain separate open gates.
+remains `0.1.12`. From exact clean source commit
+`2b5809151a154c0ca35c092f2e53dd7e064ab11b`, Tauri CLI `2.11.4` produced the
+21,224,605-byte local unsigned arm64 `Rho_0.4.0-dev.22_aarch64.dmg` with
+SHA-256
+`6550ebd87d1def65c317eeb9e8de12077c39cfa3c0b3ae00bee8dea7df0e0c50`.
+`hdiutil verify`, bundle/version/architecture inspection, and complete mounted
+Workspace smoke passed. Owner-installed/live-Provider acceptance remains a
+separate open gate.

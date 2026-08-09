@@ -3,7 +3,7 @@
 Status: active replacement development-candidate identity for
 PROBLEMS-AGENT-REPAIR-4; Console error-site implementation, complete affected
 Rust/R/frontend automation, formatting, and deterministic browser behavior
-review pass; exact local unsigned arm64 artifact verification,
+review and exact local unsigned arm64 artifact verification pass;
 owner-installed/live-Provider acceptance, authoritative assets, GitHub Release
 draft, MAC5, publication, and release GO remain open
 
@@ -45,11 +45,11 @@ artifacts, hashes, and acceptance evidence cannot satisfy this checklist.
 | Release name | `Rho 0.4.0-dev.22` | workflow default only; Release/draft NOT CREATED |
 | Release channel | development prerelease | fixed by SemVer |
 | Source repository | `YuLab-SMU/Rho` | authoritative-candidate restriction unchanged |
-| Local source commit | one reviewed feature-branch SHA | NOT COMMITTED |
+| Local source commit | `2b5809151a154c0ca35c092f2e53dd7e064ab11b` | exact clean feature-branch source used for local unsigned artifact |
 | Authoritative source commit | one reviewed 40-character default-branch SHA | NOT SELECTED |
-| macOS platform | `macos_aarch64` | exact local unsigned artifact NOT RUN |
+| macOS platform | `macos_aarch64` | exact local unsigned artifact PASS |
 | Minimum macOS | 14.0 | configuration unchanged |
-| Release decision | `NO-GO` | local artifact and owner-installed acceptance open |
+| Release decision | `NO-GO` | owner-installed/live-Provider acceptance open |
 
 The version/tag is single-use. Rejection advances to another version; no
 artifact, tag, draft, hash, or evidence file may be overwritten or relabelled.
@@ -91,7 +91,12 @@ Current evidence on 2026-08-08:
   previous-project disablement: PASS;
 - disposable mock credentials only; live Provider request and real credential
   use: NOT RUN;
-- exact clean-source local unsigned arm64 `Rho.app`/DMG build and smoke: NOT RUN.
+- Tauri CLI `2.11.4` built the clean-source unsigned arm64 `Rho.app` and DMG in
+  about 71 seconds. `hdiutil verify`, mounted bundle metadata/architecture, and
+  complete Workspace smoke passed. The DMG is 21,224,605 bytes with SHA-256
+  `6550ebd87d1def65c317eeb9e8de12077c39cfa3c0b3ae00bee8dea7df0e0c50`.
+  The app and bundled Ark are arm64; the app reports `0.4.0-dev.22`, minimum
+  macOS 14.0, ad-hoc signature, and no Team ID.
 
 ## Required Candidate Assets
 
@@ -100,8 +105,8 @@ Current evidence on 2026-08-08:
 | `Rho_0.4.0-dev.22_x64-setup.exe` | Windows candidate job | NOT RUN |
 | `Rho_0.4.0-dev.22_x64-setup.exe.sha256` | Windows candidate job | NOT RUN |
 | `rho-0.4.0-dev.22-windows-x86_64-evidence.json` | Windows candidate job | NOT RUN |
-| `Rho_0.4.0-dev.22_aarch64.dmg` | local macOS build / later finalizer | NOT RUN |
-| `Rho_0.4.0-dev.22_aarch64.dmg.sha256` | local macOS build / later finalizer | NOT RUN |
+| `Rho_0.4.0-dev.22_aarch64.dmg` | local macOS build / later finalizer | local unsigned PASS; authoritative finalizer NOT RUN |
+| `Rho_0.4.0-dev.22_aarch64.dmg.sha256` | local macOS build / later finalizer | local hash PASS; authoritative finalizer NOT RUN |
 | `rho-0.4.0-dev.22-macos-aarch64-evidence.json` | macOS finalizer | NOT RUN |
 | `rho-0.4.0-dev.22-candidate-evidence.json` | draft assembly | NOT RUN |
 
@@ -129,6 +134,6 @@ creation, and release GO remain separately gated and unauthorized.
 ## Current Decision
 
 `NO-GO`. Implementation, complete affected Rust/R/frontend validation, and
-deterministic browser review pass for `0.4.0-dev.22`; exact local unsigned
-artifact verification and owner-installed/live-Provider acceptance remain
-open. No hosted or published candidate is authorized.
+deterministic browser review, and exact local unsigned artifact verification
+pass for `0.4.0-dev.22`; owner-installed/live-Provider acceptance remains open.
+No hosted or published candidate is authorized.
