@@ -534,17 +534,20 @@ body.agent-posture .git-conflict-banner .conflict-list { display: none; }
 }
 .task-rail-item:hover { background: var(--hover); }
 .task-rail-item.active { border-left-color: var(--accent); background: var(--hover); }
-.task-rail-item .mode-badge {
-  display: inline-block; padding: 1px 5px; border-radius: 3px;
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  background: var(--border); color: var(--muted);
+.task-rail-item .task-mode-icon {
+  display: inline-grid; place-items: center;
+  width: 16px; height: 16px; flex: 0 0 16px;
+  color: var(--muted); transition: color 0.15s;
 }
-.task-rail-item .mode-badge.act { background: var(--error); color: #fff; }
+.task-rail-item .task-mode-icon .ui-icon { width: 15px; height: 15px; flex-basis: 15px; }
+.task-rail-item:hover .task-mode-icon { color: var(--ink); }
+.task-rail-item.active .task-mode-icon,
+.task-rail-item:focus-visible .task-mode-icon { color: var(--accent-strong); }
 .task-rail-item .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .task-rail-item .status-dot.running { background: var(--accent); }
 .task-rail-item .status-dot.completed { background: var(--success); }
 .task-rail-item .status-dot.failed { background: var(--error); }
-.task-rail-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.task-rail-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .task-rail-empty { display: grid; gap: 7px; justify-items: start; padding: 18px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .task-rail-empty strong { color: var(--ink); font-size: 12px; }
 .task-rail-empty p { margin: 0; }

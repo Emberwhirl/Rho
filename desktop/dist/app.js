@@ -6028,6 +6028,55 @@ function prettyAgentStatus(status) {
   }, "Needs attention");
 }
 
+const TASK_RAIL_MODE_PRESENTATION = Object.freeze({
+  ask: Object.freeze({ label: "Ask", icon: "message-circle" }),
+  plan: Object.freeze({ label: "Plan", icon: "list-checks" }),
+  act: Object.freeze({ label: "Act", icon: "pencil-line" }),
+});
+
+const TASK_RAIL_FALLBACK_MODE_PRESENTATION = Object.freeze({
+  key: "unknown",
+  label: "Agent",
+  icon: "bot",
+});
+
+function taskRailModePresentation(mode) {
+  const key = String(mode || "").toLowerCase();
+  const presentation = TASK_RAIL_MODE_PRESENTATION[key];
+  return presentation ? { key, ...presentation } : TASK_RAIL_FALLBACK_MODE_PRESENTATION;
+}
+
+function createTaskRailModeIcon(mode) {
+  const presentation = taskRailModePresentation(mode);
+  const wrapper = document.createElement("span");
+  wrapper.className = `task-mode-icon task-mode-${presentation.key}`;
+  wrapper.dataset.mode = presentation.key;
+  wrapper.setAttribute("role", "img");
+  wrapper.setAttribute("aria-label", `${presentation.label} mode`);
+  wrapper.title = `${presentation.label} mode`;
+
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.classList.add("ui-icon");
+  icon.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#icon-${presentation.icon}`);
+  icon.append(use);
+  wrapper.append(icon);
+  return wrapper;
+}
+
+function createTaskRailStatusDot(status) {
+  const key = String(status || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  const label = prettyAgentStatus(status);
+  const dot = document.createElement("span");
+  dot.className = `status-dot ${key}`;
+  dot.dataset.status = String(status || "unknown");
+  dot.setAttribute("role", "img");
+  dot.setAttribute("aria-label", `${label} status`);
+  dot.title = `${label} status`;
+  return dot;
+}
+
 function truncateText(text, limit = 120) {
   const compact = String(text || "").replace(/\s+/g, " ").trim();
   if (!compact) return "";
@@ -8912,26 +8961,28 @@ function renderTaskRail() {
   }
 
   for (const turn of turns) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = `task-rail-item${state.selectedTurnId === turn.turn_id ? " active" : ""}`;
-    item.dataset.turnId = turn.turn_id;
-
-    const status = document.createElement("span");
-    status.className = `status-dot ${turn.status}`;
-
-    const badge = document.createElement("span");
-    badge.className = `mode-badge${turn.mode === "act" ? " act" : ""}`;
-    badge.textContent = turn.mode;
-
-    const preview = document.createElement("span");
-    preview.className = "task-rail-preview";
-    preview.textContent = turn.prompt_preview
+    const active = state.selectedTurnId === turn.turn_id;
+    const modePresentation = taskRailModePresentation(turn.mode);
+    const statusLabel = prettyAgentStatus(turn.status);
+    const previewText = turn.prompt_preview
       || turn.final_message
       || (turn.error_message ? userFacingError(turn.error_message, "The Agent could not complete this task.") : "")
       || "(empty)";
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `task-rail-item${active ? " active" : ""}`;
+    item.dataset.turnId = turn.turn_id;
+    item.setAttribute("aria-label", `${modePresentation.label} mode, ${statusLabel} status: ${previewText}`);
+    if (active) item.setAttribute("aria-current", "true");
 
-    item.append(status, badge, preview);
+    const status = createTaskRailStatusDot(turn.status);
+    const modeIcon = createTaskRailModeIcon(turn.mode);
+
+    const preview = document.createElement("span");
+    preview.className = "task-rail-preview";
+    preview.textContent = previewText;
+
+    item.append(status, modeIcon, preview);
     item.addEventListener("click", async () => selectTaskTurn(turn.turn_id));
     list.append(item);
   }
@@ -13193,7 +13244,39 @@ async function maybeApplyPreviewScenario() {
     const previewState = previewParams.get("state") || "default";
     state.posture = "agent";
     state.agentSurface = "direct";
-    if (!["empty", "outputs-empty"].includes(previewState)) {
+    if (previewState === "task-rail") {
+      state.agentMode = "ask";
+      const askTurn = createMockAgentTurn({
+        prompt: "Summarize the current project context.",
+        mode: "ask",
+        model: "mock-read-only",
+      });
+      askTurn.status = "completed";
+      askTurn.prompt_preview = "";
+      askTurn.final_message = "";
+      askTurn.error_message = null;
+
+      const planTurn = createMockAgentTurn({
+        prompt: "Plan a reproducible 单细胞 RNA-seq quality-control workflow with deliberately long context that must stay inside the Task Rail row without widening the page.",
+        mode: "plan",
+        model: "mock-read-only",
+      });
+      planTurn.status = "running";
+      planTurn.finished_at = null;
+      planTurn.final_message = null;
+
+      const actTurn = createMockAgentTurn({
+        prompt: "Apply the reviewed source edit.",
+        mode: "act",
+        model: "mock-tool-capable",
+        autoApprove: true,
+      });
+      actTurn.status = "failed";
+      actTurn.finished_at = new Date().toISOString();
+      actTurn.final_message = null;
+      actTurn.error_message = "The reviewed edit could not be applied.";
+      await loadAgentData();
+    } else if (!["empty", "outputs-empty"].includes(previewState)) {
       const approvalPreview = previewState === "approval";
       const fileProposalPreview = previewState === "file-proposal";
       state.agentMode = approvalPreview ? "act" : "ask";
@@ -14242,9 +14325,33 @@ function recordPreviewLayoutEvidence() {
   }
   if (scenario === "agent-first-direct") {
     const taskRail = rectEvidence($("#taskRail"));
+    const taskRailList = $("#taskRailList");
     const agentFlow = rectEvidence($("#agentPanel"));
     const workSurface = rectEvidence($(".workspace"));
     const composer = rectEvidence($(".agent-composer"));
+    const taskRailItems = $$("#taskRailList .task-rail-item").map((item) => {
+      const modeIcon = item.querySelector(".task-mode-icon");
+      const statusDot = item.querySelector(".status-dot");
+      const preview = item.querySelector(".task-rail-preview");
+      return {
+        turn_id: item.dataset.turnId || null,
+        mode: modeIcon?.dataset.mode || null,
+        mode_label: modeIcon?.getAttribute("aria-label") || null,
+        mode_title: modeIcon?.title || null,
+        icon_href: modeIcon?.querySelector("use")?.getAttribute("href") || null,
+        icon_hidden: modeIcon?.querySelector("svg")?.getAttribute("aria-hidden") || null,
+        status: statusDot?.dataset.status || null,
+        status_label: statusDot?.getAttribute("aria-label") || null,
+        status_title: statusDot?.title || null,
+        active: item.getAttribute("aria-current") === "true",
+        item_label: item.getAttribute("aria-label"),
+        preview: preview?.textContent || null,
+        preview_overflow: Boolean(preview && preview.scrollWidth > preview.clientWidth),
+        mode_color: modeIcon ? getComputedStyle(modeIcon).color : null,
+        mode_background: modeIcon ? getComputedStyle(modeIcon).backgroundColor : null,
+        status_color: statusDot ? getComputedStyle(statusDot).backgroundColor : null,
+      };
+    });
     target.textContent = JSON.stringify({
       viewport: { width: window.innerWidth, height: window.innerHeight },
       posture: state.posture,
@@ -14275,6 +14382,12 @@ function recordPreviewLayoutEvidence() {
         task_rail: taskRail?.width || 0,
         agent_flow: agentFlow?.width || 0,
         work_surface: workSurface?.width || 0,
+      },
+      task_rail: {
+        items: taskRailItems,
+        list_overflow: Boolean(taskRailList && taskRailList.scrollWidth > taskRailList.clientWidth),
+        list_scroll_width: taskRailList?.scrollWidth || 0,
+        list_client_width: taskRailList?.clientWidth || 0,
       },
       overlaps: {
         composer_with_work_surface: rectsOverlap(composer, workSurface),
