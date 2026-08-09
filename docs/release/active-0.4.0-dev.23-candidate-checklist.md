@@ -1,9 +1,9 @@
 # Rho 0.4.0-dev.23 Cross-Platform Candidate Checklist
 
 Status: active replacement development-candidate identity for
-PROBLEMS-AGENT-REPAIR-5; implementation, complete affected validation, exact
-local unsigned artifact verification, and owner-installed/live-Provider
-acceptance remain open
+PROBLEMS-AGENT-REPAIR-5; implementation and complete affected automated/browser
+validation pass; exact local unsigned artifact verification and
+owner-installed/live-Provider acceptance remain open
 
 Date: 2026-08-08
 
@@ -35,10 +35,10 @@ checklist.
 
 | Field | Required value | Current evidence |
 | --- | --- | --- |
-| Application version | `0.4.0-dev.23` | source synchronization pending |
-| `rho.bridge` version | `0.1.13` | parser-result contract update pending |
+| Application version | `0.4.0-dev.23` | source metadata synchronized |
+| `rho.bridge` version | `0.1.13` | DESCRIPTION and package NEWS synchronized |
 | `rho.agent` version | `0.1.5` | unchanged |
-| Store schema | `11` | migration implementation pending |
+| Store schema | `11` | migration/recovery and project-isolation verification pass |
 | Release tag | `v0.4.0-dev.23` | workflow default only; tag NOT CREATED |
 | Release name | `Rho 0.4.0-dev.23` | workflow default only; Release/draft NOT CREATED |
 | Release channel | development prerelease | fixed by SemVer |
@@ -97,7 +97,16 @@ Required evidence:
   complete Rust workspace/all-target verification, formatting, deterministic
   desktop/narrow browser review, and exact local app/DMG smoke.
 
-Current evidence: NOT RUN.
+Current evidence: PASS for the affected source matrix. All 45 fail-fast frontend
+contract scripts and JavaScript syntax pass; `rho.bridge` passes 97 test blocks /
+568 expectations; `rho.agent` passes 24 / 120; the complete Rust workspace/all-
+target matrix passes 325 with zero failures and one existing opt-in Keychain
+smoke ignored; formatting and `git diff --check` pass. Deterministic Chromium
+review at exact `1440 x 900` and `800 x 900` passes with no page exceptions,
+overlap, or horizontal overflow. Both Console and Problems select exactly `，`,
+preserve `r_parse_token`, bind the exact failed run, create one Ask repair turn,
+and leave source unchanged before Accept. Exact local app/DMG smoke remains
+NOT RUN.
 
 ## Required Candidate Assets
 
@@ -134,6 +143,6 @@ creation, and release GO remain separately gated and unauthorized.
 
 ## Current Decision
 
-`NO-GO`. R5 implementation, validation, exact local artifact, and
-owner-installed/live-Provider acceptance remain open. No hosted or published
-candidate is authorized.
+`NO-GO`. R5 implementation and affected automated/browser validation pass;
+exact local artifact and owner-installed/live-Provider acceptance remain open.
+No hosted or published candidate is authorized.

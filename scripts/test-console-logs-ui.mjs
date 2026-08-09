@@ -51,6 +51,10 @@ assert.match(js, /configureProblemRepairButton\(fix, problem\)/);
 assert.match(js, /label: "Fix with Agent"/);
 assert.match(js, /label: "Set up Agent repair"/);
 assert.match(js, /label: "Select code for Agent"/);
+assert.match(js, /Exact diagnostic and failed run ready\./);
+assert.match(js, /Failed run ready; exact source range unavailable\./);
+assert.match(js, /range_kind: "r_parse_token"/);
+assert.match(js, /selection_text: turnEvidence\.context\?\.selection_text/);
 assert.doesNotMatch(
   js.match(/async function fixProblemWithAgent\(problem\)[\s\S]*?\n}\n\nfunction problemSourceKind/)?.[0] || "",
   /switchDockTab\("problems"\)/,
@@ -80,4 +84,4 @@ for (const evidence of [
 ]) assert.ok(js.includes(evidence), `${evidence} Console repair evidence must exist`);
 assert.match(js, /repair_probe: state\.consoleRepairPreviewProbe/);
 
-console.log("Console/Logs and error-site Agent repair contract checks passed.");
+console.log("Console/Logs and parse-token Agent repair contract checks passed.");

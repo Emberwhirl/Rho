@@ -91,7 +91,8 @@ pub(crate) fn v8_schema_sql() -> &'static str {
         error_end_line INTEGER,
         error_end_column INTEGER,
         error_range_kind TEXT CHECK (
-            error_range_kind IS NULL OR error_range_kind = 'r_expression'
+            error_range_kind IS NULL OR
+            error_range_kind IN ('r_expression', 'r_parse_token')
         ),
         cancel_requested INTEGER NOT NULL DEFAULT 0,
         environment_snapshot_id TEXT,
@@ -436,7 +437,8 @@ pub(crate) fn rebuild_runs_v8(transaction: &rusqlite::Transaction<'_>) -> Result
             error_end_line INTEGER,
             error_end_column INTEGER,
             error_range_kind TEXT CHECK (
-                error_range_kind IS NULL OR error_range_kind = 'r_expression'
+                error_range_kind IS NULL OR
+                error_range_kind IN ('r_expression', 'r_parse_token')
             ),
             cancel_requested INTEGER NOT NULL DEFAULT 0,
             environment_snapshot_id TEXT,
@@ -723,10 +725,119 @@ pub(crate) fn add_run_error_range_columns(
          ALTER TABLE runs ADD COLUMN error_end_line INTEGER;
          ALTER TABLE runs ADD COLUMN error_end_column INTEGER;
          ALTER TABLE runs ADD COLUMN error_range_kind TEXT CHECK (
-             error_range_kind IS NULL OR error_range_kind = 'r_expression'
+             error_range_kind IS NULL OR
+             error_range_kind IN ('r_expression', 'r_parse_token')
          );",
     )?;
     Ok(())
+}
+
+pub(crate) fn rebuild_runs_error_range_kind_v11(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), StoreError> {
+    transaction.execute_batch(
+        "DROP INDEX IF EXISTS idx_runs_project_started;
+         ALTER TABLE runs RENAME TO runs_v10;
+         CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            parent_run_id TEXT,
+            project_root TEXT NOT NULL CHECK (project_root <> ''),
+            origin TEXT NOT NULL DEFAULT 'system',
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            terminal_reason TEXT,
+            request_type TEXT NOT NULL DEFAULT 'workspace.execute',
+            operation_class TEXT NOT NULL DEFAULT 'probe',
+            code TEXT NOT NULL DEFAULT '',
+            arguments_json TEXT NOT NULL DEFAULT '{}',
+            source_path TEXT,
+            execution_mode TEXT,
+            document_version INTEGER,
+            workspace_id TEXT,
+            state_revision_before INTEGER,
+            project_revision_before INTEGER,
+            state_revision_after INTEGER,
+            project_revision_after INTEGER,
+            stdout TEXT,
+            value_text TEXT,
+            messages_json TEXT NOT NULL DEFAULT '[]',
+            warnings_json TEXT NOT NULL DEFAULT '[]',
+            error_message TEXT,
+            error_call TEXT,
+            traceback_json TEXT NOT NULL DEFAULT '[]',
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            environment_snapshot_id TEXT,
+            environment_snapshot_id_after TEXT,
+            error_start_line INTEGER,
+            error_start_column INTEGER,
+            error_end_line INTEGER,
+            error_end_column INTEGER,
+            error_range_kind TEXT CHECK (
+                error_range_kind IS NULL OR
+                error_range_kind IN ('r_expression', 'r_parse_token')
+            )
+         );
+         INSERT INTO runs(
+            run_id, parent_run_id, project_root, origin, status, started_at,
+            finished_at, terminal_reason, request_type, operation_class, code,
+            arguments_json, source_path, execution_mode, document_version,
+            workspace_id, state_revision_before, project_revision_before,
+            state_revision_after, project_revision_after, stdout, value_text,
+            messages_json, warnings_json, error_message, error_call,
+            traceback_json, cancel_requested, environment_snapshot_id,
+            environment_snapshot_id_after, error_start_line,
+            error_start_column, error_end_line, error_end_column,
+            error_range_kind
+         )
+         SELECT
+            run_id, parent_run_id, project_root, origin, status, started_at,
+            finished_at, terminal_reason, request_type, operation_class, code,
+            arguments_json, source_path, execution_mode, document_version,
+            workspace_id, state_revision_before, project_revision_before,
+            state_revision_after, project_revision_after, stdout, value_text,
+            messages_json, warnings_json, error_message, error_call,
+            traceback_json, cancel_requested, environment_snapshot_id,
+            environment_snapshot_id_after, error_start_line,
+            error_start_column, error_end_line, error_end_column,
+            error_range_kind
+         FROM runs_v10;
+         DROP TABLE runs_v10;
+         CREATE INDEX idx_runs_project_started
+            ON runs(project_root, started_at DESC);",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn assert_runs_error_range_kind_constraint(
+    connection: &Connection,
+) -> Result<(), StoreError> {
+    let sql = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'runs'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let compact = sql
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if compact.contains("error_range_kindin('r_expression','r_parse_token')") {
+        Ok(())
+    } else {
+        Err(StoreError::MigrationRejected {
+            message: "runs.error_range_kind constraint is not current".to_string(),
+            outcome: MigrationOutcome::rejected(
+                Some(SCHEMA_VERSION),
+                None,
+                MigrationRecordCounts::default(),
+                "invalid_current_schema",
+            ),
+        })
+    }
 }
 
 pub(crate) fn assert_column_exists(

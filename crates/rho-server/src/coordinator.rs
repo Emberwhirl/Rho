@@ -4586,7 +4586,16 @@ fn translated_run_error_range(arguments: &Value, result: &Value) -> Option<RunEr
         return None;
     }
     let source_range = decode_diagnostic_range(arguments.get("source_range")?)?;
-    let relative_range = decode_diagnostic_range(result.get("error")?.get("source_range")?)?;
+    let error = result.get("error")?;
+    let range_kind = match (
+        error.get("stage").and_then(Value::as_str),
+        error.get("range_kind").and_then(Value::as_str),
+    ) {
+        (Some("evaluation"), Some("r_expression")) => "r_expression",
+        (Some("parse"), Some("r_parse_token")) => "r_parse_token",
+        _ => return None,
+    };
+    let relative_range = decode_diagnostic_range(error.get("source_range")?)?;
     let code = arguments.get("code").and_then(Value::as_str)?;
     let code_lines = code.split('\n').collect::<Vec<_>>();
     let start =
@@ -4604,7 +4613,7 @@ fn translated_run_error_range(arguments: &Value, result: &Value) -> Option<RunEr
         start_column: start.column,
         end_line: end.line,
         end_column: end.column,
-        range_kind: "r_expression".to_string(),
+        range_kind: range_kind.to_string(),
     })
 }
 
@@ -4806,6 +4815,8 @@ mod tests {
             "ok": false,
             "error": {
                 "message": "boom",
+                "stage": "evaluation",
+                "range_kind": "r_expression",
                 "source_range": {
                     "start_line": 2,
                     "start_column": 1,
@@ -4837,7 +4848,10 @@ mod tests {
             }
         });
         let first_line_result = json!({
-            "error": {"source_range": {
+            "error": {
+                "stage": "evaluation",
+                "range_kind": "r_expression",
+                "source_range": {
                 "start_line": 1,
                 "start_column": 1,
                 "end_line": 1,
@@ -4850,9 +4864,84 @@ mod tests {
     }
 
     #[test]
+    fn translates_validated_parse_tokens_into_utf16_editor_coordinates() {
+        let arguments = json!({
+            "code": "prefix <- '😀'\nbroken <- c(1， 2)",
+            "source_path": "分析.R",
+            "source_range": {
+                "start_line": 10,
+                "start_column": 5,
+                "end_line": 11,
+                "end_column": 20
+            }
+        });
+        let result = json!({
+            "ok": false,
+            "error": {
+                "message": "<text>:2:14: unexpected input",
+                "stage": "parse",
+                "range_kind": "r_parse_token",
+                "source_range": {
+                    "start_line": 2,
+                    "start_column": 14,
+                    "end_line": 2,
+                    "end_column": 15
+                }
+            }
+        });
+
+        assert_eq!(
+            translated_run_error_range(&arguments, &result),
+            Some(RunErrorRange {
+                start_line: 11,
+                start_column: 14,
+                end_line: 11,
+                end_column: 15,
+                range_kind: "r_parse_token".to_string(),
+            })
+        );
+
+        let supplementary_arguments = json!({
+            "code": "😀，",
+            "source_path": "analysis.R",
+            "source_range": {
+                "start_line": 4,
+                "start_column": 3,
+                "end_line": 4,
+                "end_column": 6
+            }
+        });
+        let supplementary_result = json!({
+            "error": {
+                "stage": "parse",
+                "range_kind": "r_parse_token",
+                "source_range": {
+                    "start_line": 1,
+                    "start_column": 2,
+                    "end_line": 1,
+                    "end_column": 3
+                }
+            }
+        });
+        assert_eq!(
+            translated_run_error_range(&supplementary_arguments, &supplementary_result),
+            Some(RunErrorRange {
+                start_line: 4,
+                start_column: 5,
+                end_line: 4,
+                end_column: 6,
+                range_kind: "r_parse_token".to_string(),
+            })
+        );
+    }
+
+    #[test]
     fn rejects_untrusted_partial_or_out_of_scope_diagnostic_ranges() {
         let valid_result = json!({
-            "error": {"source_range": {
+            "error": {
+                "stage": "evaluation",
+                "range_kind": "r_expression",
+                "source_range": {
                 "start_line": 1,
                 "start_column": 1,
                 "end_line": 1,
@@ -4897,7 +4986,7 @@ mod tests {
                     "start_column": 0,
                     "end_line": 1,
                     "end_column": 5
-                }}}),
+                }, "stage": "evaluation", "range_kind": "r_expression"}}),
             )
             .is_none()
         );
@@ -4909,6 +4998,29 @@ mod tests {
             .is_none()
         );
         assert!(translated_run_error_range(&arguments, &json!({"ok": true})).is_none());
+        for result in [
+            json!({"error": {
+                "stage": "parse",
+                "range_kind": "r_expression",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 2}
+            }}),
+            json!({"error": {
+                "stage": "evaluation",
+                "range_kind": "r_parse_token",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 2}
+            }}),
+            json!({"error": {
+                "stage": "parse",
+                "range_kind": "unknown",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 2}
+            }}),
+            json!({"error": {
+                "stage": "parse",
+                "source_range": {"start_line": 1, "start_column": 1, "end_line": 1, "end_column": 2}
+            }}),
+        ] {
+            assert!(translated_run_error_range(&arguments, &result).is_none());
+        }
     }
 
     #[test]

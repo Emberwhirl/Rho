@@ -1311,7 +1311,9 @@ function recordMockRun({
     column_number: errorRange?.start_column ?? null,
     end_line_number: errorRange?.end_line ?? null,
     end_column_number: errorRange?.end_column ?? null,
-    range_kind: errorRange ? "r_expression" : null,
+    range_kind: errorRange
+      ? (errorRange.range_kind ?? errorRange.rangeKind ?? "r_expression")
+      : null,
   };
   mockRuns.unshift(entry);
   return entry;
@@ -1483,7 +1485,25 @@ function mockProblemList() {
 function mockExecutionErrorRange(request) {
   const sourceRange = request?.source_range ?? request?.sourceRange ?? null;
   const code = String(request?.code || "");
-  if (!sourceRange || !code.includes("stop(")) return null;
+  if (!sourceRange) return null;
+  const parseTokenOffset = code.indexOf("，");
+  if (parseTokenOffset >= 0) {
+    const lineStart = code.lastIndexOf("\n", Math.max(0, parseTokenOffset - 1)) + 1;
+    const relativeLine = code.slice(0, lineStart).split("\n").length;
+    const relativeColumn = code.slice(lineStart, parseTokenOffset).length + 1;
+    const startLine = sourceRange.start_line + relativeLine - 1;
+    const startColumn = relativeLine === 1
+      ? sourceRange.start_column + relativeColumn - 1
+      : relativeColumn;
+    return {
+      start_line: startLine,
+      start_column: startColumn,
+      end_line: startLine,
+      end_column: startColumn + 1,
+      range_kind: "r_parse_token",
+    };
+  }
+  if (!code.includes("stop(")) return null;
   const stopOffset = code.indexOf("stop(");
   const lineStart = code.lastIndexOf("\n", Math.max(0, stopOffset - 1)) + 1;
   const lineEnd = code.indexOf("\n", stopOffset);
@@ -1495,6 +1515,7 @@ function mockExecutionErrorRange(request) {
     start_column: relativeLine === 1 ? sourceRange.start_column : 1,
     end_line: startLine,
     end_column: (relativeLine === 1 ? sourceRange.start_column : 1) + lineText.length,
+    range_kind: "r_expression",
   };
 }
 
@@ -1921,7 +1942,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.22",
+      version: "0.4.0-dev.23",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -1939,8 +1960,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.22",
-      available_version: "0.4.0-dev.22",
+      installed_version: "0.4.0-dev.23",
+      available_version: "0.4.0-dev.23",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2057,6 +2078,11 @@ async function mockInvoke(command, args) {
   if (command === "execute_r") {
     const request = args.request || {};
     const helpTarget = mockConsoleHelpTarget(request.code);
+    const parseFailed = String(request.code || "").includes("，");
+    const evaluationFailed = String(request.code || "").includes("stop(");
+    const executionFailed = parseFailed || evaluationFailed;
+    const errorMessage = parseFailed ? "<text>:1:11: unexpected input" : evaluationFailed ? "boom" : null;
+    const errorCall = evaluationFailed ? "stop(\"boom\")" : null;
     const unpaddedMockPng = MOCK_PNG_BASE64.replace(/=+$/, "");
     state.revision.state_revision += 1;
     const selectedObject = state.selectedObjectName && state.selectedObjectName !== "qc"
@@ -2068,19 +2094,19 @@ async function mockInvoke(command, args) {
     ];
     const run = recordMockRun({
       origin: "user",
-      status: request.code?.includes("stop(") ? "failed" : "completed",
+      status: executionFailed ? "failed" : "completed",
       code: request.code || "",
       sourcePath: request.source_path ?? request.sourcePath ?? null,
       executionMode: request.execution_mode ?? request.type ?? null,
       documentVersion: request.document_version ?? request.documentVersion ?? null,
-      errorMessage: request.code?.includes("stop(") ? "boom" : null,
-      errorCall: request.code?.includes("stop(") ? "stop(\"boom\")" : null,
-      traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
+      errorMessage,
+      errorCall,
+      traceback: evaluationFailed ? ["stop(\"boom\")"] : [],
       parentRunId: request.parent_run_id ?? null,
       sourceRange: request.source_range ?? request.sourceRange ?? null,
       errorRange: mockExecutionErrorRange(request),
     });
-    if (!request.code?.includes("stop(") && !helpTarget) {
+    if (!executionFailed && !helpTarget) {
       mockPlots.unshift({
         plot_id: `plot_${run.run_id}`,
         run_id: run.run_id,
@@ -2098,19 +2124,19 @@ async function mockInvoke(command, args) {
       });
     }
     return {
-      execution_id: "exec_demo",
+      execution_id: run.run_id,
       execution: {
-        ok: !request.code?.includes("stop("),
+        ok: !executionFailed,
         code: request.code,
         stdout: "",
-        value: request.code?.includes("stop(") || helpTarget ? null : "     reads        detected   \n Min.   : 40122   Min.   :2511  \n Median : 72840   Median :3238  \n Mean   : 76114   Mean   :3216",
+        value: executionFailed || helpTarget ? null : "     reads        detected   \n Min.   : 40122   Min.   :2511  \n Median : 72840   Median :3238  \n Mean   : 76114   Mean   :3216",
         warnings: [],
         messages: [],
         help: helpTarget,
-        error: request.code?.includes("stop(") ? { message: "boom", call: "stop(\"boom\")" } : null,
-        traceback: request.code?.includes("stop(") ? ["stop(\"boom\")"] : [],
+        error: executionFailed ? { message: errorMessage, call: errorCall } : null,
+        traceback: evaluationFailed ? ["stop(\"boom\")"] : [],
       },
-      events: helpTarget ? [] : [{ event: { type: "display_data", data: { "image/png": unpaddedMockPng } } }],
+      events: helpTarget || executionFailed ? [] : [{ event: { type: "display_data", data: { "image/png": unpaddedMockPng } } }],
       workspace: state.revision,
     };
   }
@@ -5218,7 +5244,9 @@ function syncConsoleRepairEntry(entry) {
       configureProblemRepairButton(entry.button, entry.problem, {
         activate: () => activateConsoleRepairEntry(entry),
       });
-      entry.status.textContent = "Exact failed run ready.";
+      entry.status.textContent = problemExactRange(entry.problem)
+        ? "Exact diagnostic and failed run ready."
+        : "Failed run ready; exact source range unavailable.";
       entry.status.className = "console-repair-status ready";
       return;
     }
@@ -9476,7 +9504,8 @@ function problemExactRange(problem) {
   const [startLine, startColumn, endLine, endColumn] = values;
   if (startLine > 10_000_000 || endLine > 10_000_000 || startColumn > 1_000_000 || endColumn > 1_000_000) return null;
   if (endLine < startLine || (endLine === startLine && endColumn <= startColumn)) return null;
-  if (problem.origin !== "lintr" && problem.range_kind !== "r_expression") return null;
+  if (problem.origin !== "lintr"
+    && !["r_expression", "r_parse_token"].includes(problem.range_kind)) return null;
   return {
     startLine,
     startColumn,
@@ -12777,6 +12806,7 @@ async function runConsoleRepairEntryMockProbe(entry) {
         end_column: turnEvidence.context.diagnostic.end_column_number,
         kind: turnEvidence.context.diagnostic.range_kind,
       } : null,
+      selection_text: turnEvidence.context?.selection_text || null,
       proposal_created: turnEvidence.proposal_created,
       did_not_navigate_problems: dockAfterClick !== "problems",
       source_unchanged_before_accept: sourceBefore === mockProjects[state.project.root]?.contents?.["analysis.R"],
@@ -12794,10 +12824,18 @@ async function runConsoleRepairEntryMockProbe(entry) {
   };
 }
 
-async function runProblemRepairMockProbe(fileProblem, consoleProblem) {
+async function runProblemRepairMockProbe(fileProblem, consoleProblem, parseProblem) {
   const projectRoot = state.project.root;
   const alternateProjectRoot = mockPlatformFixture.alternateProjectRoot;
   const projectSourceBefore = mockProjects[projectRoot].contents["analysis.R"];
+  const parseSourceBefore = mockProjects[projectRoot].contents["parse-error.R"];
+
+  const parseTurnCountBefore = mockAgentTurns.length;
+  await fixProblemWithAgent(parseProblem);
+  const parseTurn = mockAgentTurns[0] || null;
+  const parseEvidence = mockProblemRepairTurnEvidence(parseTurn);
+  const parseTurnCount = mockAgentTurns.length;
+
   const fileTurnCountBefore = mockAgentTurns.length;
 
   await fixProblemWithAgent(fileProblem);
@@ -12902,6 +12940,21 @@ async function runProblemRepairMockProbe(fileProblem, consoleProblem) {
 
   const activeSource = state.documents["analysis.R"]?.content;
   return {
+    parse_token: {
+      ...parseEvidence,
+      turn_created_once: parseTurnCount === parseTurnCountBefore + 1,
+      exact_selection: parseEvidence.context?.selection_text || null,
+      diagnostic_range: parseEvidence.context?.diagnostic ? {
+        start_line: parseEvidence.context.diagnostic.line_number,
+        start_column: parseEvidence.context.diagnostic.column_number,
+        end_line: parseEvidence.context.diagnostic.end_line_number,
+        end_column: parseEvidence.context.diagnostic.end_column_number,
+        kind: parseEvidence.context.diagnostic.range_kind,
+      } : null,
+      run_id: parseEvidence.context?.run_context?.run_id || null,
+      source_unchanged_before_accept:
+        parseSourceBefore === mockProjects[projectRoot].contents["parse-error.R"],
+    },
     file: {
       ...fileEvidence,
       turn_created_once: fileTurnCount === fileTurnCountBefore + 1,
@@ -13531,35 +13584,51 @@ async function maybeApplyPreviewScenario() {
     addLog("AGENT", "R work completed");
     if (previewParams.get("state") === "repair-entry") {
       await openDocument("analysis.R");
+      const parseCode = "summary(qc，)";
+      const parseDocumentContent = `# Project analysis\n${parseCode}\n`;
+      const parseDocument = activeDocument();
+      if (parseDocument) {
+        parseDocument.content = parseDocumentContent;
+        parseDocument.savedContent = parseDocumentContent;
+        parseDocument.versionId = Number(parseDocument.versionId || 0) + 1;
+        parseDocument.cursorStart = 0;
+        parseDocument.cursorEnd = 0;
+        mockProjects[state.project.root].contents["analysis.R"] = parseDocumentContent;
+        renderActiveDocument();
+      }
       const renderMockConsoleFailure = (runId) => {
         const documentVersion = activeDocument()?.versionId ?? 0;
         recordMockRun({
           runId,
           origin: "user",
           status: "failed",
-          code: "summary(qc)",
+          code: parseCode,
           sourcePath: "analysis.R",
           executionMode: "selection",
           documentVersion,
-          errorMessage: "object 'qc' not found",
-          errorCall: "summary(qc)",
-          traceback: ["summary(qc)", "summary.default(qc)"],
-          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
-          errorRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+          errorMessage: "<text>:1:11: unexpected input",
+          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 13 },
+          errorRange: {
+            start_line: 2,
+            start_column: 11,
+            end_line: 2,
+            end_column: 12,
+            range_kind: "r_parse_token",
+          },
         });
         renderExecution({
           execution_id: runId,
           execution: {
             ok: false,
             kind: "execute",
-            error: { message: "object 'qc' not found", call: "summary(qc)" },
-            traceback: ["summary(qc)", "summary.default(qc)"],
+            error: { message: "<text>:1:11: unexpected input", call: null },
+            traceback: [],
           },
         }, {
           type: "selection",
           sourcePath: "analysis.R",
           documentVersion,
-          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 12 },
+          sourceRange: { start_line: 2, start_column: 1, end_line: 2, end_column: 13 },
         });
         return Array.from(state.consoleRepairEntries.values()).at(-1);
       };
@@ -13578,6 +13647,30 @@ async function maybeApplyPreviewScenario() {
     return;
   }
   if (scenario === "usability-problems") {
+    const parseSource = "value <- c(1， 2)\n";
+    mockUpsertProjectFile(mockLastProject, "parse-error.R", parseSource, {
+      trackInTree: true,
+      kind: "source",
+    });
+    state.project = mockProjectState(mockLastProject);
+    recordMockRun({
+      runId: "run_parse_problem",
+      origin: "user",
+      status: "failed",
+      code: parseSource,
+      sourcePath: "parse-error.R",
+      executionMode: "file",
+      documentVersion: 1,
+      errorMessage: "<text>:1:13: unexpected input",
+      sourceRange: { start_line: 1, start_column: 1, end_line: 2, end_column: 1 },
+      errorRange: {
+        start_line: 1,
+        start_column: 13,
+        end_line: 1,
+        end_column: 14,
+        range_kind: "r_parse_token",
+      },
+    });
     recordMockRun({
       runId: "run_console_problem",
       origin: "user",
@@ -13613,16 +13706,17 @@ async function maybeApplyPreviewScenario() {
       errorMessage: "source file was removed",
     });
     state.problems = mockProblemList().filter((problem) =>
-      ["run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
+      ["run_parse_problem", "run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
     );
     renderProblems();
     switchDockTab("problems");
     if (previewParams.get("state") === "repair-probe") {
       const fileProblem = state.problems.find((problem) => problem.run_id === "run_file_problem");
       const consoleProblem = state.problems.find((problem) => problem.run_id === "run_console_problem");
-      state.problemRepairPreviewProbe = await runProblemRepairMockProbe(fileProblem, consoleProblem);
+      const parseProblem = state.problems.find((problem) => problem.run_id === "run_parse_problem");
+      state.problemRepairPreviewProbe = await runProblemRepairMockProbe(fileProblem, consoleProblem, parseProblem);
       state.problems = mockProblemList().filter((problem) =>
-        ["run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
+        ["run_parse_problem", "run_console_problem", "run_file_problem", "run_missing_problem"].includes(problem.run_id)
       );
       applyWorkbenchLayout("analyze");
       renderProblems();

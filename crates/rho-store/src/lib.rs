@@ -6,7 +6,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub(crate) const SCHEMA_VERSION: i64 = 10;
+pub(crate) const SCHEMA_VERSION: i64 = 11;
 const DEFAULT_LIMIT: usize = 50;
 const MAX_DIAGNOSTIC_LINE: u32 = 10_000_000;
 const MAX_DIAGNOSTIC_COLUMN: u32 = 1_000_000;
@@ -75,7 +75,7 @@ fn validate_run_error_range(range: &RunErrorRange) -> Result<(), StoreError> {
         || range.start_column > MAX_DIAGNOSTIC_COLUMN
         || range.end_column > MAX_DIAGNOSTIC_COLUMN
         || !ordered
-        || range.range_kind != "r_expression"
+        || !matches!(range.range_kind.as_str(), "r_expression" | "r_parse_token")
     {
         return Err(StoreError::Validation(
             "run error range is incomplete, out of bounds, or unsupported".to_string(),
@@ -233,6 +233,8 @@ struct StoreOpenOptions {
     inject_v8_failure_before_commit: bool,
     #[cfg(test)]
     inject_v9_failure_before_commit: bool,
+    #[cfg(test)]
+    inject_v10_failure_before_commit: bool,
 }
 
 #[derive(Debug)]
@@ -289,7 +291,13 @@ impl Store {
             Some(9) => {
                 let backup_path =
                     migration::create_pre_migration_backup(&self.connection, path, 9)?;
-                let outcome = self.migrate_v9_to_v10(backup_path, options)?;
+                let outcome = self.migrate_v9_to_v11(backup_path, options)?;
+                self.migration_outcome = outcome;
+            }
+            Some(10) => {
+                let backup_path =
+                    migration::create_pre_migration_backup(&self.connection, path, 10)?;
+                let outcome = self.migrate_v10_to_v11(backup_path, options)?;
                 self.migration_outcome = outcome;
             }
             Some(other) => {
@@ -430,7 +438,7 @@ impl Store {
         ))
     }
 
-    fn migrate_v9_to_v10(
+    fn migrate_v9_to_v11(
         &mut self,
         backup_path: Option<PathBuf>,
         _options: &StoreOpenOptions,
@@ -468,6 +476,96 @@ impl Store {
         ))
     }
 
+    fn migrate_v10_to_v11(
+        &mut self,
+        backup_path: Option<PathBuf>,
+        _options: &StoreOpenOptions,
+    ) -> Result<MigrationOutcome, StoreError> {
+        let backup_path_string = backup_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().replace('\\', "/"));
+        let transaction = self.connection.transaction()?;
+        let invalid_kind_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM runs
+             WHERE error_range_kind IS NOT NULL
+               AND error_range_kind <> 'r_expression'",
+            [],
+            |row| row.get(0),
+        )?;
+        if invalid_kind_count > 0 {
+            return Err(StoreError::MigrationRejected {
+                message: "schema v10 contains an unsupported run error range kind".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(10),
+                    backup_path_string,
+                    MigrationRecordCounts {
+                        rejected: invalid_kind_count,
+                        ..MigrationRecordCounts::default()
+                    },
+                    "invalid_v10_range_kind",
+                ),
+            });
+        }
+        let before_count: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))?;
+        migration::rebuild_runs_error_range_kind_v11(&transaction)?;
+        let after_count: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))?;
+        if before_count != after_count {
+            return Err(StoreError::MigrationRejected {
+                message: "schema v10 run copy count changed during migration".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(10),
+                    backup_path_string,
+                    MigrationRecordCounts {
+                        rejected: before_count.saturating_sub(after_count).abs(),
+                        ..MigrationRecordCounts::default()
+                    },
+                    "v10_copy_mismatch",
+                ),
+            });
+        }
+        transaction.execute(
+            "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [SCHEMA_VERSION.to_string()],
+        )?;
+        if migration::assert_runs_error_range_kind_constraint(&transaction).is_err()
+            || migration::assert_index_exists(&transaction, "idx_runs_project_started").is_err()
+        {
+            return Err(StoreError::MigrationRejected {
+                message: "schema v11 run table assertion failed".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(10),
+                    backup_path_string,
+                    MigrationRecordCounts::default(),
+                    "invalid_v11_runs_schema",
+                ),
+            });
+        }
+        #[cfg(test)]
+        if _options.inject_v10_failure_before_commit {
+            return Err(StoreError::MigrationRejected {
+                message: "injected v10 migration failure".to_string(),
+                outcome: MigrationOutcome::rejected(
+                    Some(10),
+                    backup_path_string,
+                    MigrationRecordCounts::default(),
+                    "injected_failure",
+                ),
+            });
+        }
+        transaction.commit()?;
+        self.assert_current_schema()?;
+        Ok(MigrationOutcome::migrated(
+            10,
+            backup_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().replace('\\', "/")),
+            MigrationRecordCounts::default(),
+        ))
+    }
+
     fn set_schema_version(&self, version: i64) -> Result<(), StoreError> {
         migration::set_schema_version(&self.connection, version)?;
         Ok(())
@@ -495,6 +593,7 @@ impl Store {
         ] {
             migration::assert_column_exists(&self.connection, "runs", column)?;
         }
+        migration::assert_runs_error_range_kind_constraint(&self.connection)?;
         Ok(())
     }
 
@@ -1995,8 +2094,8 @@ fn text_preview(text: &str, limit: usize) -> String {
 mod tests {
     use super::*;
     use crate::migration::{
-        assert_index_exists, assert_not_null_project_identity, read_schema_version,
-        set_schema_version,
+        assert_index_exists, assert_not_null_project_identity,
+        assert_runs_error_range_kind_constraint, read_schema_version, set_schema_version,
     };
     use rho_protocol::{MessageKind, WorkspaceIdentity};
     use serde_json::json;
@@ -2327,8 +2426,12 @@ mod tests {
                         start_line: if project_root.ends_with('A') { 7 } else { 70 },
                         start_column: 3,
                         end_line: if project_root.ends_with('A') { 7 } else { 70 },
-                        end_column: 15,
-                        range_kind: "r_expression".to_string(),
+                        end_column: if project_root.ends_with('A') { 4 } else { 15 },
+                        range_kind: if project_root.ends_with('A') {
+                            "r_parse_token".to_string()
+                        } else {
+                            "r_expression".to_string()
+                        },
                     }),
                 )
                 .unwrap();
@@ -2340,8 +2443,8 @@ mod tests {
         assert_eq!(problems_a[0].line_number, Some(7));
         assert_eq!(problems_a[0].column_number, Some(3));
         assert_eq!(problems_a[0].end_line_number, Some(7));
-        assert_eq!(problems_a[0].end_column_number, Some(15));
-        assert_eq!(problems_a[0].range_kind.as_deref(), Some("r_expression"));
+        assert_eq!(problems_a[0].end_column_number, Some(4));
+        assert_eq!(problems_a[0].range_kind.as_deref(), Some("r_parse_token"));
         let problems_b = store.list_problems("D:/projects/B", None).unwrap();
         assert_eq!(problems_b.len(), 1);
         assert_eq!(problems_b[0].run_id, "run_range_b");
@@ -2397,6 +2500,20 @@ mod tests {
                         end_line: 8,
                         end_column: 4,
                         range_kind: "r_expression".to_string(),
+                    }),
+                )
+                .is_err()
+        );
+        assert!(
+            store
+                .finish_run_with_error_range(
+                    &finish,
+                    Some(&RunErrorRange {
+                        start_line: 8,
+                        start_column: 4,
+                        end_line: 8,
+                        end_column: 5,
+                        range_kind: "message_guess".to_string(),
                     }),
                 )
                 .is_err()
@@ -3477,7 +3594,7 @@ mod tests {
     }
 
     #[test]
-    fn bootstraps_empty_store_to_v10_and_reopens_idempotently() {
+    fn bootstraps_empty_store_to_v11_and_reopens_idempotently() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
 
@@ -3496,7 +3613,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v7_to_v10_and_marks_legacy_unscoped_records() {
+    fn migrates_v7_to_v11_and_marks_legacy_unscoped_records() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v7_fixture(&database);
@@ -3504,7 +3621,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(7));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(11));
         assert_eq!(store.migration_outcome().scoped_count, 4);
         assert_eq!(store.migration_outcome().legacy_unscoped_count, 4);
         assert_eq!(store.migration_outcome().rejected_count, 0);
@@ -3651,7 +3768,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v8_to_v10_with_backup_and_reopens() {
+    fn migrates_v8_to_v11_with_backup_and_reopens() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v8_fixture(&database);
@@ -3659,7 +3776,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(8));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(11));
         assert!(Path::new(store.migration_outcome().backup_path.as_deref().unwrap()).exists());
         assert_index_exists(&store.connection, "idx_evidence_claims_project").unwrap();
         drop(store);
@@ -3699,7 +3816,7 @@ mod tests {
         drop(verification);
 
         let recovered = Store::open(&database).unwrap();
-        assert_eq!(recovered.migration_outcome().to_schema_version, Some(10));
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(11));
     }
 
     fn create_v9_fixture(path: &Path) {
@@ -3719,7 +3836,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v9_to_v10_without_guessing_historical_ranges_and_reopens() {
+    fn migrates_v9_to_v11_without_guessing_historical_ranges_and_reopens() {
         let directory = TempDir::new().unwrap();
         let database = directory.path().join("rho.sqlite");
         create_v9_fixture(&database);
@@ -3743,7 +3860,7 @@ mod tests {
         let store = Store::open(&database).unwrap();
         assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
         assert_eq!(store.migration_outcome().from_schema_version, Some(9));
-        assert_eq!(store.migration_outcome().to_schema_version, Some(10));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(11));
         assert!(
             store
                 .migration_outcome()
@@ -3795,7 +3912,210 @@ mod tests {
         drop(verification);
 
         let recovered = Store::open(&database).unwrap();
-        assert_eq!(recovered.migration_outcome().to_schema_version, Some(10));
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(11));
+    }
+
+    fn create_v10_fixture(path: &Path) {
+        create_v9_fixture(path);
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute_batch(
+                "ALTER TABLE runs ADD COLUMN error_start_line INTEGER;
+                 ALTER TABLE runs ADD COLUMN error_start_column INTEGER;
+                 ALTER TABLE runs ADD COLUMN error_end_line INTEGER;
+                 ALTER TABLE runs ADD COLUMN error_end_column INTEGER;
+                 ALTER TABLE runs ADD COLUMN error_range_kind TEXT CHECK (
+                     error_range_kind IS NULL OR error_range_kind = 'r_expression'
+                 );",
+            )
+            .unwrap();
+        set_schema_version(&connection, 10).unwrap();
+    }
+
+    #[test]
+    fn migrates_v10_to_v11_preserving_expression_ranges_without_parse_backfill() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v10_fixture(&database);
+        let connection = Connection::open(&database).unwrap();
+        let now = Utc::now().to_rfc3339();
+        connection
+            .execute(
+                "INSERT INTO runs(
+                    run_id, project_root, origin, status, started_at, request_type,
+                    operation_class, code, arguments_json, source_path,
+                    messages_json, warnings_json, traceback_json, error_message,
+                    error_start_line, error_start_column, error_end_line,
+                    error_end_column, error_range_kind
+                 ) VALUES(
+                    'expression_problem', 'D:/projects/A', 'user', 'failed', ?1,
+                    'workspace.execute', 'state_capable', 'stop(\"old\")', '{}',
+                    'analysis.R', '[]', '[]', '[]', 'old failure', 7, 3, 7, 14,
+                    'r_expression'
+                 )",
+                [now.clone()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO runs(
+                    run_id, project_root, origin, status, started_at, request_type,
+                    operation_class, code, arguments_json, source_path,
+                    messages_json, warnings_json, traceback_json, error_message
+                 ) VALUES(
+                    'historical_parse_problem', 'D:/projects/A', 'user', 'failed', ?1,
+                    'workspace.execute', 'state_capable', 'value <- (', '{}',
+                    'analysis.R', '[]', '[]', '[]', '<text>:1:10: unexpected end'
+                 )",
+                [now],
+            )
+            .unwrap();
+        drop(connection);
+
+        let store = Store::open(&database).unwrap();
+        assert_eq!(store.migration_outcome().status, MigrationStatus::Migrated);
+        assert_eq!(store.migration_outcome().from_schema_version, Some(10));
+        assert_eq!(store.migration_outcome().to_schema_version, Some(11));
+        assert!(
+            store
+                .migration_outcome()
+                .backup_path
+                .as_deref()
+                .unwrap()
+                .ends_with("rho.sqlite.schema-v10.bak")
+        );
+        let problems = store.list_problems("D:/projects/A", None).unwrap();
+        let expression = problems
+            .iter()
+            .find(|problem| problem.run_id == "expression_problem")
+            .unwrap();
+        assert_eq!(expression.line_number, Some(7));
+        assert_eq!(expression.column_number, Some(3));
+        assert_eq!(expression.end_column_number, Some(14));
+        assert_eq!(expression.range_kind.as_deref(), Some("r_expression"));
+        let historical_parse = problems
+            .iter()
+            .find(|problem| problem.run_id == "historical_parse_problem")
+            .unwrap();
+        assert_eq!(historical_parse.line_number, None);
+        assert_eq!(historical_parse.range_kind, None);
+        assert_index_exists(&store.connection, "idx_runs_project_started").unwrap();
+        assert_runs_error_range_kind_constraint(&store.connection).unwrap();
+        let legacy_table_count: i64 = store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'runs_v10'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy_table_count, 0);
+        assert!(
+            store
+                .connection
+                .execute(
+                    "UPDATE runs SET error_range_kind = 'message_guess'
+                 WHERE run_id = 'expression_problem'",
+                    [],
+                )
+                .is_err()
+        );
+        drop(store);
+
+        let reopened = Store::open(&database).unwrap();
+        assert_eq!(
+            reopened.migration_outcome(),
+            &MigrationOutcome::opened_current()
+        );
+    }
+
+    #[test]
+    fn rolls_back_v10_migration_after_injected_failure_and_recovers() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v10_fixture(&database);
+
+        let error = Store::open_with_options(
+            &database,
+            StoreOpenOptions {
+                inject_v10_failure_before_commit: true,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(outcome.from_schema_version, Some(10));
+        assert_eq!(outcome.reason_code.as_deref(), Some("injected_failure"));
+        assert!(
+            outcome
+                .backup_path
+                .as_deref()
+                .unwrap()
+                .ends_with("rho.sqlite.schema-v10.bak")
+        );
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(10));
+        let schema_sql: String = verification
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'runs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!schema_sql.contains("r_parse_token"));
+        drop(verification);
+
+        let recovered = Store::open(&database).unwrap();
+        assert_eq!(recovered.migration_outcome().to_schema_version, Some(11));
+        assert_runs_error_range_kind_constraint(&recovered.connection).unwrap();
+    }
+
+    #[test]
+    fn rejects_unknown_v10_range_kind_without_laundering_it() {
+        let directory = TempDir::new().unwrap();
+        let database = directory.path().join("rho.sqlite");
+        create_v10_fixture(&database);
+        let connection = Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA ignore_check_constraints = ON;
+                 INSERT INTO runs(
+                    run_id, project_root, origin, status, started_at, request_type,
+                    operation_class, code, arguments_json, source_path,
+                    messages_json, warnings_json, traceback_json, error_message,
+                    error_start_line, error_start_column, error_end_line,
+                    error_end_column, error_range_kind
+                 ) VALUES(
+                    'unknown_kind', 'D:/projects/A', 'user', 'failed',
+                    '2026-08-08T00:00:00Z', 'workspace.execute', 'state_capable',
+                    'x', '{}', 'analysis.R', '[]', '[]', '[]', 'failure',
+                    1, 1, 1, 2, 'message_guess'
+                 );
+                 PRAGMA ignore_check_constraints = OFF;",
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = Store::open(&database).unwrap_err();
+        let outcome = error.migration_outcome().unwrap();
+        assert_eq!(outcome.status, MigrationStatus::Rejected);
+        assert_eq!(outcome.from_schema_version, Some(10));
+        assert_eq!(
+            outcome.reason_code.as_deref(),
+            Some("invalid_v10_range_kind")
+        );
+        assert_eq!(outcome.rejected_count, 1);
+        let verification = Connection::open(&database).unwrap();
+        assert_eq!(read_schema_version(&verification).unwrap(), Some(10));
+        let retained: String = verification
+            .query_row(
+                "SELECT error_range_kind FROM runs WHERE run_id = 'unknown_kind'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, "message_guess");
     }
 
     #[test]

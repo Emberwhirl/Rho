@@ -65,6 +65,8 @@ test_that("errors and prior mutations are retained", {
     result$error$source_range,
     list(start_line = 1L, start_column = 9L, end_line = 1L, end_column = 21L)
   )
+  expect_identical(result$error$stage, "evaluation")
+  expect_identical(result$error$range_kind, "r_expression")
 })
 
 test_that("execution errors expose the exact multiline top-level expression", {
@@ -88,12 +90,99 @@ test_that("execution errors expose the exact multiline top-level expression", {
   )
 })
 
-test_that("parse failures never invent an expression range", {
+test_that("parse failures admit only an exact parser token", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute(
+    paste(
+      "data.frame(",
+      "    y     = intercept + 0.8 * runif(34, 0, 10，) + rnorm(34)",
+      ")",
+      sep = "\n"
+    ),
+    envir = workspace
+  )
+
+  expect_false(result$ok)
+  expect_identical(result$error$stage, "parse")
+  expect_identical(result$error$range_kind, "r_parse_token")
+  expect_identical(
+    result$error$source_range,
+    list(start_line = 2L, start_column = 46L, end_line = 2L, end_column = 47L)
+  )
+})
+
+test_that("ASCII and supplementary-Unicode parse tokens use character columns", {
+  workspace <- new.env(parent = baseenv())
+
+  ascii <- rho_execute("value <- @", envir = workspace)
+  expect_false(ascii$ok)
+  expect_identical(ascii$error$stage, "parse")
+  expect_identical(ascii$error$range_kind, "r_parse_token")
+  expect_identical(
+    ascii$error$source_range,
+    list(start_line = 1L, start_column = 10L, end_line = 1L, end_column = 11L)
+  )
+
+  unicode <- rho_execute('value <- c("😀"， 2)', envir = workspace)
+  expect_false(unicode$ok)
+  expect_identical(unicode$error$stage, "parse")
+  expect_identical(unicode$error$range_kind, "r_parse_token")
+  expect_identical(
+    unicode$error$source_range,
+    list(start_line = 1L, start_column = 15L, end_line = 1L, end_column = 16L)
+  )
+})
+
+test_that("parse EOF remains unlocated instead of inventing a token", {
   workspace <- new.env(parent = baseenv())
   result <- rho_execute("value <- (", envir = workspace)
 
   expect_false(result$ok)
+  expect_identical(result$error$stage, "parse")
   expect_null(result$error$source_range)
+  expect_null(result$error$range_kind)
+})
+
+test_that("nested parse messages remain evaluation expression errors", {
+  workspace <- new.env(parent = baseenv())
+  result <- rho_execute("parse(text = 'value <- (')", envir = workspace)
+
+  expect_false(result$ok)
+  expect_identical(result$error$stage, "evaluation")
+  expect_identical(result$error$range_kind, "r_expression")
+  expect_identical(
+    result$error$source_range,
+    list(start_line = 1L, start_column = 1L, end_line = 1L, end_column = 27L)
+  )
+})
+
+test_that("parser token admission validates bounded anchored Unicode coordinates", {
+  range <- rho.bridge:::rho_execution_parse_token_range
+
+  expect_identical(
+    range(simpleError("<text>:1:4: localized reason"), "😀ab，z"),
+    list(start_line = 1L, start_column = 4L, end_line = 1L, end_column = 5L)
+  )
+  expect_identical(
+    range(simpleError("<text>:2:1: localized reason"), "first\n错"),
+    list(start_line = 2L, start_column = 1L, end_line = 2L, end_column = 2L)
+  )
+
+  for (message in c(
+    "prefix <text>:1:1: reason",
+    "<console>:1:1: reason",
+    "<text>:01:1: reason",
+    "<text>:1:01: reason",
+    "<text>:0:1: reason",
+    "<text>:1:0: reason",
+    "<text>:10000001:1: reason",
+    "<text>:1:1000000: reason",
+    "<text>:2:1: reason",
+    "<text>:1:6: reason",
+    "<text>:1: reason"
+  )) {
+    expect_null(range(simpleError(message), "😀ab，z"), info = message)
+  }
 })
 
 test_that("source ranges use character columns and an exclusive end", {

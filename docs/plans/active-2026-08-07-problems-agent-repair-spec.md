@@ -600,6 +600,42 @@ and one-credential guards remain authoritative.
   deterministic `1440 x 900` and `800 x 900` browser review, and the exact
   replacement app/DMG mounted smoke before installed handoff.
 
+### R5 Implementation And Automated Evidence
+
+The reviewed implementation follows the R5 contract without deviation:
+
+- `rho_execute()` marks its exact top-level parse phase and admits only the
+  bounded anchored `<text>:line:column:` prefix after validating that the
+  coordinate names a submitted Unicode scalar. Evaluation keeps the prior
+  expression `srcref`; EOF and all untrusted shapes remain unlocated.
+- The coordinator accepts only the paired `parse/r_parse_token` and
+  `evaluation/r_expression` results, translates character columns to UTF-16,
+  contains the result in the admitted project source, and persists the closed
+  kind. Store schema v11 rebuilds v10 transactionally after backup, performs no
+  historical parse backfill, and recovers after injected failure.
+- Console and Problems accept both exact kinds through their shared action
+  state. The direct Console row distinguishes exact-range readiness from the
+  truthful no-range fallback; neither route auto-runs R, auto-sends a Provider
+  request, accepts a proposal, saves, or mutates the source file.
+
+All 45 fail-fast frontend contract scripts and JavaScript syntax pass.
+`rho.bridge` passes 97 test blocks / 568 expectations, `rho.agent` passes 24 /
+120, and the complete Rust workspace/all-target matrix passes 325 tests with
+zero failures and one existing opt-in Keychain smoke ignored. Rust formatting
+and `git diff --check` pass. Focused store migration/recovery tests pass all 100
+cases, including v10 rollback/reopen and two-project range isolation.
+
+Deterministic Chromium review passes at exact `1440 x 900` and `800 x 900`
+viewports with no page exceptions, overlap, or horizontal overflow. Console
+shows `Fix with Agent`; one direct click selects exactly `，`, preserves
+`r_parse_token` at `2:11-2:12`, binds the same run and diagnostic IDs, creates
+one read-only Ask `problem_repair` turn, does not open Problems, and leaves the
+source unchanged before Accept. Problems independently selects exactly `，` at
+`1:13-1:14` with the same kind and one turn. Duplicate, failed/missing refresh,
+route, project-switch, stale-source, and manual-selection recovery probes remain
+closed. Exact local app/DMG smoke and owner-installed/live-Provider acceptance
+remain separate open gates.
+
 ### Version And Release Impact
 
 The installed `dev.22` identity, artifact, hash, and acceptance ledger are

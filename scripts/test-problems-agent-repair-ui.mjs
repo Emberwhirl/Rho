@@ -18,6 +18,7 @@ const contract = read("docs", "plans", "active-2026-08-07-problems-agent-repair-
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-2/);
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-3 Installed Acceptance Correction/);
 assert.match(contract, /PROBLEMS-AGENT-REPAIR-4 Console Error-Site Entry Correction/);
+assert.match(contract, /PROBLEMS-AGENT-REPAIR-5 Parser-Token Correction/);
 assert.match(contract, /explicitly authorized its complete resolution on 2026-08-08/);
 assert.match(contract, /range_kind=user_selection/);
 assert.match(contract, /same action-state helper/);
@@ -25,10 +26,13 @@ assert.match(contract, /does not navigate[\s\S]{0,40}Problems/);
 
 assert.match(bridge, /parse\(text = code, keep\.source = TRUE\)/);
 assert.match(bridge, /attr\(expressions, "srcref", exact = TRUE\)/);
-assert.match(bridge, /source_range = current_source_range/);
-assert.doesNotMatch(bridge, /regexec|strcapture|unexpected.*source_range/i);
+assert.match(bridge, /function\(error\)[\s\S]*stage = if \(isTRUE\(parse_active\)\) "parse" else "evaluation"/);
+assert.match(bridge, /function\(error\)[\s\S]*range_kind = if \(is\.null\(error_range\)\)/);
+assert.ok(bridge.includes('"^<text>:([1-9][0-9]{0,7}):([1-9][0-9]{0,6}):"'));
+assert.match(bridge, /rho_execution_parse_token_range\(error, code\)/);
+assert.doesNotMatch(bridge, /unexpected.*source_range/i);
 
-assert.match(store, /pub\(crate\) const SCHEMA_VERSION: i64 = 10/);
+assert.match(store, /pub\(crate\) const SCHEMA_VERSION: i64 = 11/);
 for (const column of [
   "error_start_line",
   "error_start_column",
@@ -38,7 +42,10 @@ for (const column of [
 ]) {
   assert.ok(store.includes(column) || migration.includes(column), `${column} must be durable`);
 }
-assert.match(store, /fn migrate_v9_to_v10/);
+assert.match(store, /fn migrate_v9_to_v11/);
+assert.match(store, /fn migrate_v10_to_v11/);
+assert.match(migration, /fn rebuild_runs_error_range_kind_v11/);
+assert.match(migration, /error_range_kind IN \('r_expression', 'r_parse_token'\)/);
 assert.match(store, /finish_run_with_error_range/);
 assert.match(store, /validate_run_error_range/);
 assert.match(store, /rejects_invalid_problem_ranges_and_projects_partial_history_as_unknown/);
@@ -46,7 +53,8 @@ assert.match(store, /rejects_invalid_problem_ranges_and_projects_partial_history
 assert.match(coordinator, /fn translated_run_error_range/);
 assert.match(coordinator, /utf16_column_at_character_boundary/);
 assert.match(coordinator, /project_relative_diagnostic_source/);
-assert.match(coordinator, /range_kind: "r_expression"\.to_string\(\)/);
+assert.match(coordinator, /Some\("evaluation"\), Some\("r_expression"\)/);
+assert.match(coordinator, /Some\("parse"\), Some\("r_parse_token"\)/);
 assert.match(coordinator, /Current editor context:/);
 assert.match(coordinator, /exact executed code[\s\S]{0,180}do not require the user to restate or manually select a known error range/);
 
@@ -72,6 +80,7 @@ assert.match(adapter, /rho_runtime_profile_capability_models <- function\(profil
 
 assert.match(js, /source_range: request\.sourceRange \?\? null/);
 assert.match(js, /function problemExactRange\(problem\)/);
+assert.match(js, /\["r_expression", "r_parse_token"\]\.includes\(problem\.range_kind\)/);
 assert.match(js, /function currentProblemSelectionRange\(problem\)/);
 assert.match(js, /rangeKind: "user_selection"/);
 assert.match(js, /function problemRunContext\(detail\)/);
@@ -90,7 +99,9 @@ assert.match(js, /state\.agentLlm\.routingExpandedCapability = "agent\.act"/);
 
 assert.match(js, /run\.run_id === runId && run\.project_root === mockLastProject/);
 assert.match(js, /run\.project_root === mockLastProject && run\.error_message/);
-assert.match(js, /function runProblemRepairMockProbe\(fileProblem, consoleProblem\)/);
+assert.match(js, /function runProblemRepairMockProbe\(fileProblem, consoleProblem, parseProblem\)/);
+assert.match(js, /parse_token:/);
+assert.match(js, /range_kind: "r_parse_token"/);
 for (const evidence of [
   "foreign_project_blocked",
   "stale_source_blocked",
@@ -101,4 +112,4 @@ for (const evidence of [
 assert.match(js, /previewParams\.get\("state"\) === "repair-probe"/);
 assert.match(js, /repair_probe: state\.problemRepairPreviewProbe/);
 
-console.log("Problems/Console shared Agent repair R4 contract checks passed.");
+console.log("Problems/Console shared Agent repair R5 contract checks passed.");

@@ -3,8 +3,8 @@
 Status: active
 
 Date: 2026-08-08
-Current source baseline: `0.4.0-dev.22`
-Active replacement identity: `0.4.0-dev.23` (R5 implementation open)
+Current source baseline: `0.4.0-dev.23`
+Active replacement identity: `0.4.0-dev.23` (R5 local artifact and installed acceptance open)
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -225,13 +225,14 @@ strictly bounded parser-owned `<text>:line:column:` coordinate that names an
 actual submitted Unicode scalar, the coordinator translates it through the
 admitted file range, and schema v11 durably distinguishes `r_parse_token` from
 `r_expression`. EOF/ambiguous locations remain explicit-selection fallbacks;
-implementation, migration/recovery evidence, local artifact, and
-owner-installed/live-Provider acceptance are open.
+implementation and complete affected automation/browser evidence pass; local
+artifact and owner-installed/live-Provider acceptance remain open.
 `rho.agent` advances independently to `0.1.5` for its canonical registered
 runtime identity contract (after `0.1.4` introduced explicit provider adapters).
 `rho.agent` `0.1.4` remains historical for its explicit provider-adapter
-contract. `rho.bridge` independently advances to `0.1.12` for the structured
-execution-range result. CRED-UX4B/C workers and media consumers remain
+contract. `rho.bridge` independently advances through `0.1.12` for structured
+expression ranges and to `0.1.13` for the bounded parser-token result.
+CRED-UX4B/C workers and media consumers remain
 unauthorized. The
 `dev.18` and `dev.20` artifacts are rejected and cannot serve as acceptance
 evidence. All

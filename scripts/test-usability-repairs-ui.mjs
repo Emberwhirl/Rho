@@ -24,7 +24,7 @@ assert.match(js, /unavailable\.textContent = "Source unavailable"/);
 assert.match(js, /switchDockTab\("console"\);[\s\S]*consoleInput/);
 assert.match(js, /scenario === "usability-problems"/);
 assert.match(js, /previewParams\.get\("state"\) === "repair-probe"/);
-assert.match(js, /runProblemRepairMockProbe\(fileProblem, consoleProblem\)/);
+assert.match(js, /runProblemRepairMockProbe\(fileProblem, consoleProblem, parseProblem\)/);
 assert.match(js, /"usability-problems"(?:, "[^"]+")*\]\.includes\(scenario\)/);
 assert.match(css, /\.problem-source-unavailable/);
 

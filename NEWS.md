@@ -2,7 +2,29 @@
 
 This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
-this file records behavior that is already available in a released build.
+this file records behavior included in a versioned build candidate.
+
+## 0.4.0-dev.23 - 2026-08-08
+
+### Fixed
+
+- File parse failures with an exact R parser location now carry a durable
+  one-character `r_parse_token` diagnostic through Workspace, schema v11,
+  Problems, and the Console error site. `Fix with Agent` selects that token
+  automatically and starts the same read-only repair flow without asking the
+  user to select code already located by the parser.
+- Parser locations are accepted only from the bounded anchored parse phase and
+  only when they identify an actual Unicode scalar in the submitted code.
+  EOF, malformed, oversized, out-of-source, nested, or untrusted locations
+  remain explicitly unavailable.
+
+### Improved
+
+- Console now distinguishes “exact diagnostic and failed run ready” from
+  “failed run ready; exact source range unavailable,” while Problems and
+  Console share the same closed `r_expression`/`r_parse_token` routing rules.
+- Store schema v11 adds the parse-token range kind through a transactional,
+  backed-up v10 migration without guessing or backfilling historical errors.
 
 ## 0.4.0-dev.22 - 2026-08-08
 

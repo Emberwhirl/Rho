@@ -1,3 +1,12 @@
+# rho.bridge 0.1.13
+
+- Structured parse failures now distinguish their parse phase and expose a
+  bounded one-character `r_parse_token` range only when R's anchored parser
+  location identifies an actual Unicode scalar in the exact submitted code.
+- Evaluation failures retain the existing exact top-level `r_expression`
+  range; malformed, out-of-bounds, EOF, and nested parse messages remain
+  unlocated instead of being inferred from ordinary error text.
+
 # rho.bridge 0.1.12
 
 - Structured execution errors now include the exact parsed top-level R

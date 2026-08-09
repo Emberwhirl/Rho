@@ -48,6 +48,55 @@ rho_execution_srcref_range <- function(srcref,
   )
 }
 
+rho_execution_parse_token_range <- function(error,
+                                            code,
+                                            max_line = 10000000L,
+                                            max_column = 1000000L) {
+  message <- tryCatch(conditionMessage(error), error = function(error) NULL)
+  if (!is.character(message) || length(message) != 1L || is.na(message)) return(NULL)
+
+  prefix <- substr(message, 1L, 128L)
+  matched <- regexec(
+    "^<text>:([1-9][0-9]{0,7}):([1-9][0-9]{0,6}):",
+    prefix,
+    perl = TRUE
+  )
+  parts <- regmatches(prefix, matched)[[1L]]
+  if (length(parts) != 3L) return(NULL)
+
+  coordinates <- suppressWarnings(as.numeric(parts[2L:3L]))
+  if (length(coordinates) != 2L || anyNA(coordinates) ||
+      any(!is.finite(coordinates)) || any(coordinates != floor(coordinates))) {
+    return(NULL)
+  }
+  line <- as.integer(coordinates[[1L]])
+  column <- as.integer(coordinates[[2L]])
+  if (line < 1L || line > max_line || column < 1L || column >= max_column) {
+    return(NULL)
+  }
+
+  code_lines <- strsplit(code, "\n", fixed = TRUE)[[1L]]
+  if (line > length(code_lines)) return(NULL)
+  line_text <- code_lines[[line]]
+  character_count <- tryCatch(
+    nchar(line_text, type = "chars", allowNA = TRUE, keepNA = TRUE),
+    error = function(error) NA_integer_
+  )
+  if (length(character_count) != 1L || is.na(character_count) ||
+      column > character_count) {
+    return(NULL)
+  }
+  token <- tryCatch(substr(line_text, column, column), error = function(error) "")
+  if (!nzchar(token)) return(NULL)
+
+  list(
+    start_line = line,
+    start_column = column,
+    end_line = line,
+    end_column = column + 1L
+  )
+}
+
 #' Execute R Code with Structured Conditions and Bounded Output
 #' @export
 rho_execute <- function(code,
@@ -69,13 +118,16 @@ rho_execute <- function(code,
   error_info <- NULL
   call_stack <- character()
   current_source_range <- NULL
+  parse_active <- FALSE
   value <- NULL
 
   output <- capture.output({
     value <- withCallingHandlers(
       tryCatch(
         {
+          parse_active <- TRUE
           expressions <- parse(text = code, keep.source = TRUE)
+          parse_active <- FALSE
           expression_srcrefs <- attr(expressions, "srcref", exact = TRUE)
           result <- NULL
           for (index in seq_along(expressions)) {
@@ -90,12 +142,25 @@ rho_execute <- function(code,
           result
         },
         error = function(error) {
+          error_range <- if (isTRUE(parse_active)) {
+            rho_execution_parse_token_range(error, code)
+          } else {
+            current_source_range
+          }
           call_stack <<- vapply(sys.calls(), safe_call_text, character(1))
           error_info <<- list(
             message = conditionMessage(error),
             classes = class(error),
             call = if (is.null(conditionCall(error))) NULL else safe_call_text(conditionCall(error)),
-            source_range = current_source_range
+            stage = if (isTRUE(parse_active)) "parse" else "evaluation",
+            source_range = error_range,
+            range_kind = if (is.null(error_range)) {
+              NULL
+            } else if (isTRUE(parse_active)) {
+              "r_parse_token"
+            } else {
+              "r_expression"
+            }
           )
           NULL
         }
