@@ -15,11 +15,19 @@ in the work surface.
 ### P2-A: Task rail
 
 - Left column (220px) shows existing Agent turns as a task list
-- Each turn renders: mode badge (Ask/Plan/Act), status icon, prompt preview (first 60 chars)
+- Each turn renders: an independently labelled status dot, a neutral and
+  shape-distinct mode icon (Ask/Plan/Act), and a prompt preview (first 60 chars)
 - Click a turn → loads turn detail in center Agent flow
 - Active turn highlighted; completed turns dimmed
 - "New task" button at top opens an empty composer in the Agent flow
 - Label the column "Tasks" with turn count
+
+Issue #9 amendment (2026-08-08): status owns status color, mode owns shape and
+an accessible name, and operation risk remains on the approval/review surface
+that owns it. Ask uses MessageCircle, Plan uses ListChecks, and Act uses
+PencilLine. A mode icon has no badge background and Act is never error-colored
+merely because it is Act. The bounded implementation and regression contract is
+[`active-2026-08-08-task-rail-mode-status-semantics-spec.md`](active-2026-08-08-task-rail-mode-status-semantics-spec.md).
 
 ### P2-B: Agent flow (center column)
 

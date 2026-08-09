@@ -5,6 +5,9 @@ Status: active
 Date: 2026-08-08
 Current source baseline: `0.4.0-dev.23`
 Active replacement identity: `0.4.0-dev.23` (R5 local artifact and installed acceptance open)
+Authorized successor correction: Issue #9 `TASK-RAIL-SEMANTICS-1` is active;
+after implementation and verification it must advance the user-visible source
+identity to `0.4.0-dev.24` rather than relabelling `dev.23`.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
@@ -307,7 +310,7 @@ RA-RC1) have prior acceptance evidence.
 | 4 | UX2 first use, files, Run scope, and result handoff | Finish modernization Phase 1 without structural navigation changes | Novice task protocol and browser/Tauri parity pass |
 | 5 | WB1 read-only public Workbench Protocol | Maintenance and accepted non-conflicting presentation work only | Versioned protocol, bounds, redaction, project isolation, and rejection behavior pass. **Implemented 2026-08-01.** |
 | 6 | WB2 authenticated local CLI, MCP, and event replay | Begin cross-platform transport validation against the accepted protocol | Local authentication, compatibility, replay, redaction, and platform evidence pass. **Implemented 2026-08-01** (CLI + MCP + event replay). |
-| 7 | RA-RC2, UX4 (Agent-first posture) — both selected | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review. **Implemented 2026-08-01** (RA-RC2 audit engine + UI, UX4 posture + task rail + Monitor/Review). |
+| 7 | RA-RC2, UX4 (Agent-first posture) — both selected | BH4 must precede any retention, prune, hide, or delete behavior | Each package is separately authorized, accepted, and stopped for review. **Implemented 2026-08-01** (RA-RC2 audit engine + UI, UX4 posture + task rail + Monitor/Review). Issue #9 Task Rail mode/status presentation correction was authorized as the separate D1/R1 `TASK-RAIL-SEMANTICS-1` package on 2026-08-08. |
 | 8 | WS2 editor-intelligence checkpoint: Air selected as primary backend | Local Help contract refinement only | Air selected; bounded protocol, process, recovery, license and Windows evidence. **Implemented 2026-08-01.** |
 | 9 | WS2 Air backend + WS9 `lintr` Problems integration | Behavior-neutral editor presentation work only | Completion/navigation/help and normalized diagnostics pass. **Implemented 2026-08-01** (Air completions + hover help + lintr). |
 | 10 | WS3 TanStack Table interaction layer over the implemented bounded viewer | Accepted Artifact presentation work only | Server-owned paging/sort/filter/export limits remain authoritative. **Implemented 2026-08-01** (sortable columns + keyboard nav). |

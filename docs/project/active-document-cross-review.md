@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-07
+Review date: 2026-08-08
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 Manual acceptance ownership: the runnable example workflow and candidate-level
@@ -64,6 +64,7 @@ semantics.
 | `plans/active-2026-08-02-agent-entry-and-direct-surface-polish-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | simplified Agent entry and current Agent-first Direct presentation only | policy and authority boundaries preserved; installed-app acceptance remains open; broader UX4 work still requires separate authorization |
 | `plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | second-round Agent-first navigation, progressive activity disclosure, and presentation density | internal posture/surface values and all authority boundaries preserved; installed-app acceptance remains open |
 | `plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md` | active; UX4-AWS1 implementation and automated/browser verification complete 2026-08-03 | simple default Agent-first Task surface and explicitly opened file/run/Artifact/audit work surfaces over existing entities | installed-app acceptance remains open; no new Task schema or audit scope |
+| `plans/active-2026-08-08-task-rail-mode-status-semantics-spec.md` | active; Issue #9 TASK-RAIL-SEMANTICS-1 explicitly authorized 2026-08-08; implementation open | Task Rail-only separation of mode shape/accessibility, status color/name, and risk ownership over existing turn data | may proceed frontend-only; UX4-P2 retains selection/task authority, Agent/broker retain mode/status/approval/execution truth, no schema or durable-state change, and mandatory browser/version review follows implementation |
 | `plans/active-2026-08-04-interface-modernization-foundation-shell-spec.md` | active; M1 implementation and automated/browser verification complete 2026-08-04 | presentation-only semantic tokens, shared controls, local icons, shell hierarchy, tab roles, focus, and responsive geometry | installed-app/display-scale acceptance open; themes and workflow-surface redesign remain proposed |
 | `plans/active-2026-08-04-interface-modernization-workbench-hierarchy-spec.md` | active; M2 implementation and automated/browser verification complete 2026-08-04 | Human-first editor hierarchy, existing tab and panel geometry presentation, and correct restoration of the existing `human_preset` value | installed-app/display-scale acceptance remains separate; themes remain proposed |
 | `plans/active-2026-08-05-workbench-menu-command-organization-spec.md` | active; UX-MENU-1 implementation and automated/browser verification complete 2026-08-05; installed acceptance open | five-menu command organization, truthful local command state, and keyboard menu traversal over existing actions | M2 retains layout/panel authority; editor shortcuts retain command ownership; Format/Render retain behavior; Viewer/Outputs is a later independent package |
