@@ -4072,8 +4072,12 @@ function workbenchShortcutOwnedByInput(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
 }
 
-function workbenchShortcutOwnedByDialog() {
+function modalDialogIsOpen() {
   return Boolean(document.querySelector('[role="dialog"]:not(.hidden)'));
+}
+
+function workbenchShortcutOwnedByDialog() {
+  return modalDialogIsOpen();
 }
 
 function keepsNativeContextMenu(target) {
@@ -4835,7 +4839,9 @@ function applyDocumentSelection(documentState) {
       endColumn: end.column,
     });
     state.editor.editor.revealPositionInCenterIfOutsideViewport(end);
-    state.editor.editor.focus();
+    // Background renders (agent edits, file-watcher reloads, poll refreshes)
+    // must not steal keyboard focus from an open modal dialog.
+    if (!modalDialogIsOpen()) state.editor.editor.focus();
   } else {
     const editor = fallbackEditor();
     editor.disabled = state.projectStatus !== "ready" || Boolean(documentState.readOnly);
