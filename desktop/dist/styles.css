@@ -1817,6 +1817,61 @@ body.resizing-vertical { cursor: col-resize; }
   background: #fff;
   box-shadow: 0 18px 48px rgba(24, 41, 45, 0.24);
 }
+.agent-llm-provider-delete-surface { width: min(620px, calc(100vw - 32px)); }
+.agent-llm-provider-delete-impact {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e3c0bc;
+  border-radius: 7px;
+  background: #fff8f6;
+}
+.agent-llm-provider-delete-impact > div:first-child { display: grid; gap: 3px; }
+.agent-llm-provider-delete-impact strong { font-size: 11px; }
+.agent-llm-provider-delete-impact p,
+.agent-llm-provider-delete-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.agent-llm-provider-delete-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+.agent-llm-provider-delete-facts > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #ead5d1;
+  border-radius: 5px;
+  background: #fff;
+}
+.agent-llm-provider-delete-facts dt { color: var(--subtle); font-size: 9px; }
+.agent-llm-provider-delete-facts dd { margin: 0; overflow-wrap: anywhere; color: var(--text); font-size: 10.5px; font-weight: 600; }
+.agent-llm-provider-delete-list-section { display: grid; gap: 4px; }
+.agent-llm-provider-delete-list-section ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.agent-llm-provider-delete-list-section li { overflow-wrap: anywhere; }
+.agent-llm-provider-delete-blocker {
+  padding: 9px 10px;
+  border: 1px solid #dfcca2;
+  border-radius: 5px;
+  color: #6e5729;
+  background: #fff9eb;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.agent-llm-provider-delete-surface .agent-llm-dialog-actions button.danger {
+  border-color: var(--danger);
+  color: #fff;
+  background: var(--danger);
+}
 .agent-llm-shell {
   display: grid;
   grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
@@ -2497,6 +2552,7 @@ body.resizing-vertical { cursor: col-resize; }
   .agent-llm-routing-context,
   .agent-llm-recovery-banner { align-items: flex-start; flex-direction: column; }
   .agent-llm-custom-route-fields { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-provider-delete-facts { grid-template-columns: minmax(0, 1fr); }
 }
 .send-button { display: grid; place-items: center; width: 29px; height: 29px; border: 0; border-radius: 4px; color: #fff; background: var(--accent); cursor: pointer; font-size: 16px; }
 .send-button:disabled { background: #aab6b7; cursor: wait; }

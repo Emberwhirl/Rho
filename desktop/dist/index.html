@@ -933,8 +933,8 @@ plot(
                   </div>
                   <details id="agentLlmProviderDanger" class="agent-llm-danger-zone">
                     <summary>Danger zone</summary>
-                    <p>Remove this provider only after its models have been removed. The stored key is deleted first.</p>
-                    <button id="agentLlmDeleteProvider" class="danger" type="button">Delete provider</button>
+                    <p id="agentLlmProviderDangerSummary">Remove this provider, its imported models, optional route assignments, and stored key in one confirmed action.</p>
+                    <button id="agentLlmDeleteProvider" class="danger" type="button">Delete provider and models</button>
                   </details>
                 </div>
               </details>
@@ -1130,6 +1130,46 @@ plot(
             <p>Removing a model does not rewrite earlier Agent turns.</p>
             <button id="agentLlmDeleteModel" class="danger" type="button">Delete model</button>
           </details>
+        </div>
+      </div>
+    </div>
+    <div id="agentLlmProviderDeleteDialog" class="agent-llm-dialog agent-llm-subdialog hidden">
+      <div class="agent-llm-scrim" data-agent-llm-provider-delete-close="true"></div>
+      <div class="agent-llm-subdialog-surface agent-llm-provider-delete-surface">
+        <div class="agent-llm-header">
+          <div>
+            <strong id="agentLlmProviderDeleteTitle">Delete provider and models?</strong>
+            <p>Review the complete impact before anything is removed.</p>
+          </div>
+          <button id="agentLlmProviderDeleteClose" type="button" aria-label="Close provider deletion">✕</button>
+        </div>
+        <div id="agentLlmProviderDeleteStatus" class="agent-llm-operation-status hidden" role="status" aria-live="polite"></div>
+        <section class="agent-llm-provider-delete-impact" aria-labelledby="agentLlmProviderDeleteImpactTitle">
+          <div>
+            <strong id="agentLlmProviderDeleteImpactTitle">This action removes</strong>
+            <p id="agentLlmProviderDeleteSummary">Provider impact is unavailable.</p>
+          </div>
+          <dl class="agent-llm-provider-delete-facts">
+            <div><dt>Provider</dt><dd id="agentLlmProviderDeleteName">—</dd></div>
+            <div><dt>Imported models</dt><dd id="agentLlmProviderDeleteModelCount">0</dd></div>
+            <div><dt>Optional routes cleared</dt><dd id="agentLlmProviderDeleteRouteCount">0</dd></div>
+            <div><dt>Stored API key</dt><dd id="agentLlmProviderDeleteCredential">Not stored</dd></div>
+          </dl>
+          <div id="agentLlmProviderDeleteModelsSection" class="agent-llm-provider-delete-list-section hidden">
+            <strong>Models</strong>
+            <ul id="agentLlmProviderDeleteModels"></ul>
+          </div>
+          <div id="agentLlmProviderDeleteRoutesSection" class="agent-llm-provider-delete-list-section hidden">
+            <strong>Route assignments</strong>
+            <ul id="agentLlmProviderDeleteRoutes"></ul>
+          </div>
+        </section>
+        <div id="agentLlmProviderDeleteBlocker" class="agent-llm-provider-delete-blocker hidden" role="alert"></div>
+        <p class="agent-llm-provider-delete-note">Earlier Agent history is retained. This action cannot be undone.</p>
+        <div class="agent-llm-actions agent-llm-dialog-actions">
+          <button id="agentLlmProviderDeleteCancel" type="button">Cancel</button>
+          <button id="agentLlmProviderDeleteRouting" type="button" class="primary hidden">Open Model routing</button>
+          <button id="agentLlmProviderDeleteConfirm" type="button" class="danger">Delete provider and models</button>
         </div>
       </div>
     </div>

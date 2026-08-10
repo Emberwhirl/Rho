@@ -20,7 +20,7 @@ function sliceBetween(source, start, end, label) {
 
 const wizard = sliceBetween(html, '<div id="agentLlmProviderWizard"', '<div id="agentLlmModelDialog"', "Add provider wizard");
 const wizardModel = sliceBetween(wizard, '<section id="agentLlmWizardStepModel"', "</section>", "Wizard Model step");
-const modelDialog = sliceBetween(html, '<div id="agentLlmModelDialog"', "<!-- Generic product dialogs -->", "Add/Edit model dialog");
+const modelDialog = sliceBetween(html, '<div id="agentLlmModelDialog"', '<div id="agentLlmProviderDeleteDialog"', "Add/Edit model dialog");
 
 for (const id of [
   "agentLlmWizardDiscoveredModel",

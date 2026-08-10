@@ -28,7 +28,7 @@ const advancedStart = html.indexOf('<details id="agentLlmProviderAdvanced"');
 const advancedEnd = html.indexOf('<details id="agentLlmProviderDanger"', advancedStart);
 const advanced = html.slice(advancedStart, advancedEnd);
 const modelDialogStart = html.indexOf('<div id="agentLlmModelDialog"');
-const modelDialogEnd = html.indexOf("<!-- Generic product dialogs -->", modelDialogStart);
+const modelDialogEnd = html.indexOf('<div id="agentLlmProviderDeleteDialog"', modelDialogStart);
 const modelDialog = html.slice(modelDialogStart, modelDialogEnd);
 assert.ok(advancedStart >= 0 && !/<details id="agentLlmProviderAdvanced"[^>]*\sopen(?:\s|>)/.test(advanced));
 for (const id of [

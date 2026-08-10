@@ -19,6 +19,10 @@ explicitly authorized by the project owner on 2026-08-07 after the installed
 implementation, complete affected local matrix, independent security/contract
 review, browser review, and unsigned arm64 replacement-DMG verification are
 complete, while owner installed-app and live-Provider acceptance remain open;
+CRED-UX4A-R3 one-confirmation Provider removal was explicitly authorized by the
+project owner on 2026-08-10; its implementation, complete affected automated
+matrix, deterministic wide/narrow screenshot review, and independent R3 review
+are complete, while final interactive and installed-app acceptance remain open;
 CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
@@ -73,6 +77,16 @@ prompt text, auto-assign an imported model, or broaden the existing credential
 and Provider-network lanes. The mandatory stop is a new `0.4.0-dev.19` local
 candidate, complete affected verification, independent credential/contract
 review, and owner installed-app acceptance.
+
+Authorized work package: CRED-UX4A-R3, revision-bound one-confirmation Provider
+removal. It may remove the selected Provider's imported models, optional route
+assignments, and one system-store credential in one guarded compensating
+operation after presenting their exact impact. It may not infer or silently replace the required
+`agent.chat` route, remove another Provider/model/credential, weaken
+credential rollback, or introduce a second settings authority. The mandatory
+stop is focused destructive-state and recovery tests, complete affected
+frontend/Rust validation, deterministic browser review, independent R3
+contract review, and owner installed-app acceptance before release handoff.
 
 Authorized follow-up: simplify the delivered settings surface and make the
 Windows system credential the only Agent LLM API-key source. Legacy
@@ -707,10 +721,14 @@ route; route and capability tokens use bounded canonical ASCII names. The
 presentation view includes a revision. Every route mutation supplies the
 expected revision and rejects stale dialogs before writing.
 
-Deleting or disabling a model referenced by any route is rejected until the
-route is reassigned or removed. Removing a route never removes its model or
+Deleting or disabling one model directly remains rejected until its route is
+reassigned or removed. Removing one route never removes its model or
 credential. Removing a credential leaves routes configured but visibly not
-ready. Provider deletion remains blocked until all of its models are removed.
+ready. The explicit Provider-removal operation is the sole cascade exception:
+after one impact confirmation, it removes that Provider's models and any
+optional routes that reference them. It remains blocked while the required
+`agent.chat` route references one of those models; the user must explicitly
+assign Chat to a compatible model from another Provider first.
 
 ### Least-Privilege Runtime Architecture
 
@@ -1364,3 +1382,181 @@ mismatch and custom-connection isolation. The exact installed `dev.20`
 artifact is historical; the corrected runtime contract advances `rho.agent`
 and is eligible only for replacement application identity `0.4.0-dev.21`.
 CRED-UX4B/C remain unauthorized.
+
+## CRED-UX4A-R3 One-Confirmation Provider Removal — 2026-08-10
+
+### Reproduction And Invariant
+
+The Provider-first surface presents a selected Provider, its imported models,
+their route assignments, and credential state together. Despite already
+holding that dependency graph, `Delete provider` currently opens a confirmation
+that tells the user to remove every model manually, then the command rejects
+with the same instruction. The screenshot reproduction used an unassigned
+AiHubMix model: deleting the Provider failed even though no product decision
+remained for the user to make.
+
+The accepted invariant is:
+
+> One destructive confirmation removes exactly one revision-bound Provider,
+> all models owned by it, optional routes that reference those models, and its
+> one system credential. If deletion would remove the required `agent.chat`
+> route, Rho blocks before mutation and links to Model routing; it never guesses
+> a replacement. Cancellation, stale state, credential failure, or settings
+> persistence failure leaves the complete pre-operation state recoverable and
+> never reports success.
+
+### Typed Mutation And Ordering
+
+The existing command becomes one typed request:
+
+```text
+DeleteProviderRequest {
+  provider_id: String,
+  expected_revision: u64
+}
+
+agent_llm_delete_provider(request) -> AgentLlmSettingsView
+```
+
+Under the existing process-wide settings mutation lock, Rust must:
+
+1. load and validate current settings;
+2. reject a stale `expected_revision` before credential access;
+3. resolve the exact Provider, its model IDs, and every referencing route;
+4. reject before credential access when `agent.chat` references a target model;
+5. build and validate the candidate state after removing only the target
+   Provider, its models, and referencing non-Chat routes, then increment the
+   revision exactly once;
+6. read and delete only the target Provider's system credential;
+7. atomically persist the candidate settings;
+8. if persistence fails, restore the previous credential and report failure;
+   if restoration also fails, report that recovery failure truthfully while
+   leaving settings metadata unchanged.
+
+Credential read/delete failure occurs before metadata persistence and therefore
+retains Provider, model, and route state. A duplicate or late request is stale,
+not idempotent success. No key value enters the request, response, settings,
+DOM, mock fixture, log, or diagnostics.
+
+### User Experience
+
+- The Danger zone explains that one confirmed action removes the Provider, its
+  imported models, optional route assignments, and stored API key.
+- The action label is `Delete provider and models`, not a command that implies
+  models must already be gone.
+- Before confirmation, the UI derives and presents the exact model count,
+  optional route names/count, and whether a stored key is included. The
+  confirmation button repeats the model count.
+- If a target model owns `agent.chat`, the destructive confirmation is not
+  shown. A decision dialog explains that Chat must remain assigned and offers
+  `Open Model routing`; no Provider, model, route, or credential command runs.
+- Cancel closes the dialog and restores focus to the invoking action without
+  mutation. Working state disables duplicate submission.
+- A stale backend rejection reloads the latest settings and asks the user to
+  review the updated impact. Other failures keep the Provider selected and
+  present a retryable, credential-redacted message.
+- On success, Connections selects a remaining Provider and reports the exact
+  deleted model and optional-route counts. Model routing, Model library, and
+  the composer update from the returned authoritative view.
+- Empty, long-name, narrow-window, keyboard, focus, and screen-reader semantics
+  remain within the existing product-dialog and Model settings contracts.
+
+### Compatibility, Tests, And Stop
+
+This is a settings-schema-v2 mutation only. It adds no schema field, database,
+project ownership, Provider-network request, credential source, route fallback,
+or R package behavior. Direct single-model deletion remains non-cascading.
+
+Required deterministic evidence is:
+
+- success removes multiple target models, target optional routes, target
+  Provider, and only its credential while preserving another Provider, its
+  model, required Chat route, and credential across reopen;
+- cancellation performs no command or state change;
+- required-Chat ownership, unknown Provider, stale revision, credential read or
+  delete failure, injected settings-write failure, and credential-restore
+  failure reject truthfully with the strongest recoverable state;
+- repeated/late submission and concurrent revision change cannot delete newly
+  added dependencies;
+- mock/Tauri command parity plus UI impact copy, Chat-route handoff, success,
+  stale/reload, failure, long-name, keyboard/focus, and narrow layout;
+- focused Rust and frontend regressions, complete affected Rust/frontend/R
+  suites, syntax/format/diff checks, deterministic browser review, and an
+  independent credential/destructive-state contract review.
+
+This user-visible behavior requires the next unused application identity before
+integration or packaging. `0.4.0-dev.27` and Draft `367934137` remain immutable;
+the implementation is not distributable under that identity. The implementation
+review decides whether to synchronize `0.4.0-dev.28` immediately or defer it to
+a named integration candidate with packaging prohibited meanwhile. No R package
+version change is expected. Candidate construction, publication, update-site
+mutation, and MAC5 are outside this work package.
+
+## CRED-UX4A-R3 Implementation Evidence — 2026-08-10
+
+The authorized slice is implemented as one revision-bound command and one
+dedicated impact-review dialog. The backend validates the complete candidate
+before credential access, rejects required-Chat ownership without guessing a
+replacement, removes only target-owned models and optional routes, deletes only
+the target account in the system credential store, and restores the previous
+credential if atomic settings persistence fails. Credential restoration failure
+keeps metadata unchanged and is projected as an explicit instruction to save the
+API key again rather than as a false all-or-nothing success.
+
+The UI shows Provider, model count and names, optional route count and names,
+and current credential-store status. Chat ownership replaces the destructive
+action with `Open Model routing`; Cancel restores focus; working state prevents
+duplicate submission; stale state reloads and requires another review; and a
+failed reload preserves the reviewed state instead of falsely claiming another
+window deleted it. The Tauri payload uses the nested request's serialized
+`provider_id` and `expected_revision` names; browser/mock mode accepts the same
+contract and applies the same cascade and Chat guard.
+
+Focused regressions cover multiple target models, target route removal,
+two-Provider/key isolation, empty Provider/no-key deletion, reopen, late replay,
+simultaneous requests, malformed and unknown Provider IDs, required-Chat
+rejection before credential access, credential read/delete failures, injected
+metadata-write failure with successful restoration and retry, and restoration
+failure with truthful partial-recovery state. The frontend contract covers
+impact copy, cancellation/no-command behavior, typed request parity, stale
+reload, failure projections, focus trapping, ARIA ownership, responsive layout,
+mock ordering, and deterministic normal/empty/Chat-blocked preview states.
+
+Final automated evidence from the reviewed worktree:
+
+```text
+cargo fmt --all -- --check
+cargo check --workspace --all-targets
+cargo test --workspace --all-targets --no-fail-fast
+  PASS (rho-desktop: 174 passed, 1 opt-in Keychain smoke ignored;
+  rho-server: 58; rho-store: 108; all remaining workspace targets passed)
+Rscript -e "testthat::test_local('r/rho.bridge', reporter='summary')"
+Rscript -e "testthat::test_local('r/rho.agent', reporter='summary')"
+  PASS
+node --check desktop/dist/app.js
+all 51 scripts/test-*.mjs
+git diff --check
+  PASS
+```
+
+Deterministic Chrome screenshots were reviewed at `1440 x 900` and `700 x 850`
+for both an executable two-model/one-route deletion and required-Chat blocking.
+The review showed the exact impact, long-name wrapping, visible default Cancel
+focus, no destructive button in the blocked state, no overlap, and no clipping
+outside the viewport. The configured in-app browser connection was unavailable
+for a final scripted keyboard/DOM pass; final interactive and exact installed-app
+acceptance are therefore still `NOT RUN` and remain release gates.
+
+The independent post-test review found and resolved four boundary defects before
+this evidence was recorded: nested Tauri fields initially used the wrong case;
+stale reload failure could be mistaken for deletion in another window; a
+credential restoration failure was projected too generically; and the Provider
+ID input lacked an explicit request bound. No unresolved schema, route fallback,
+cross-Provider deletion, credential disclosure, persistence, or command-parity
+finding remains in the implemented source slice.
+
+Version decision: this branch deliberately remains source-only. Application
+metadata and `NEWS.md` stay at immutable `0.4.0-dev.27`; the change must advance
+all application authorities and NEWS to the next unused identity (currently
+expected to be `0.4.0-dev.28`) before integration, packaging, or distribution.
+No R package contract or version changed.

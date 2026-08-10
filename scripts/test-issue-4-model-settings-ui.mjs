@@ -19,7 +19,7 @@ const mainDialog = sliceBetween(html, '<div id="agentLlmDialog"', '<div id="agen
 const providerAdvanced = sliceBetween(mainDialog, '<details id="agentLlmProviderAdvanced"', '<details id="agentLlmProviderDanger"', "Provider Advanced");
 const providerDanger = sliceBetween(mainDialog, '<details id="agentLlmProviderDanger"', "</details>", "Provider Danger zone");
 const providerWizard = sliceBetween(html, '<div id="agentLlmProviderWizard"', '<div id="agentLlmModelDialog"', "Add provider wizard");
-const modelDialog = sliceBetween(html, '<div id="agentLlmModelDialog"', "<!-- Generic product dialogs -->", "Model editor");
+const modelDialog = sliceBetween(html, '<div id="agentLlmModelDialog"', '<div id="agentLlmProviderDeleteDialog"', "Model editor");
 const modelDanger = sliceBetween(modelDialog, '<details id="agentLlmModelDanger"', "</details>", "Model Danger zone");
 
 for (const id of [

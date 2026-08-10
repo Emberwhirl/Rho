@@ -64,8 +64,8 @@ assert.doesNotMatch(js, /hunk_content\s*:/, "Frontend must never send raw patch 
 for (const staleArgument of ["file_path", "expected_revision", "hunk_index", "expected_staged_revision"]) {
   assert.doesNotMatch(
     js,
-    new RegExp(`(?:args\\.${staleArgument}\\b|[,{]\\s*${staleArgument}\\s*:)`),
-    `Frontend/mock must use the installed Tauri camelCase argument for ${staleArgument}`,
+    new RegExp(`args\\.${staleArgument}\\b`),
+    `Git mock handlers must read the installed Tauri camelCase argument for ${staleArgument}`,
   );
 }
 

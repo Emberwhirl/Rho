@@ -78,9 +78,15 @@ const state = {
     wizardProviderId: null,
     wizardModelId: null,
     modelDialogOpen: false,
+    providerDeleteOpen: false,
+    providerDeleteProviderId: null,
+    providerDeleteRevision: null,
+    providerDeleteWorking: false,
+    providerDeleteOperation: { state: "idle", message: "" },
     returnFocusElement: null,
     wizardReturnFocusElement: null,
     modelReturnFocusElement: null,
+    providerDeleteReturnFocusElement: null,
   },
   objects: [],
   plots: [],
@@ -877,6 +883,7 @@ function maybeFailMockAgentLlm(failure) {
   mockAgentLlmFailure = null;
   const messages = {
     "save-provider": "Mock provider save failed.",
+    "delete-provider": "Mock Provider credential deletion failed.",
     "set-credential": "Mock credential storage failed.",
     "save-model": "Mock model save failed.",
     "discover-models": "Mock provider discovery failed.",
@@ -3161,10 +3168,28 @@ async function mockInvoke(command, args) {
     return structuredClone(rebuildMockAgentLlmSettings());
   }
   if (command === "agent_llm_delete_provider") {
-    const providerId = args.providerId ?? args.provider_id;
-    if (mockAgentLlmSettings.models.some((model) => model.provider_id === providerId)) {
-      throw new Error("Delete the provider's models before removing the provider.");
+    const request = args.request || {};
+    const providerId = request.providerId ?? request.provider_id;
+    const expectedRevision = request.expectedRevision ?? request.expected_revision;
+    if (expectedRevision !== mockAgentLlmSettings.revision) {
+      throw new Error("Model settings changed while this provider delete confirmation was open. Reload and review the updated impact.");
     }
+    if (!mockAgentLlmSettings.providers.some((provider) => provider.id === providerId)) {
+      throw new Error(`Unknown provider: ${providerId}`);
+    }
+    const modelIds = new Set(mockAgentLlmSettings.models
+      .filter((model) => model.provider_id === providerId)
+      .map((model) => model.id));
+    if (mockAgentLlmSettings.persisted_capability_routes.some((route) => (
+      route.capability === "agent.chat" && modelIds.has(route.model_id)
+    ))) {
+      throw new Error("Assign Chat to a model from another provider before deleting this provider.");
+    }
+    maybeFailMockAgentLlm("delete-provider");
+    mockAgentLlmSettings.persisted_capability_routes = mockAgentLlmSettings.persisted_capability_routes
+      .filter((route) => !modelIds.has(route.model_id));
+    mockAgentLlmSettings.models = mockAgentLlmSettings.models
+      .filter((model) => model.provider_id !== providerId);
     mockAgentLlmSystemCredentials.delete(providerId);
     mockAgentLlmSettings.providers = mockAgentLlmSettings.providers.filter((provider) => provider.id !== providerId);
     mockAgentLlmSettings.revision += 1;
@@ -7269,21 +7294,30 @@ function agentModelDisplayName(selector) {
   return "Configured model";
 }
 
-async function loadAgentLlmSettings() {
+async function loadAgentLlmSettings({ preserveOnFailure = false } = {}) {
+  const previousSettings = state.agentLlm.settings;
+  let loaded = false;
   try {
     const settings = await invoke("agent_llm_settings");
     state.agentLlm.settings = settings || emptyAgentLlmSettings("Agent LLM settings are unavailable.");
     state.agentLlm.selectedModelId = state.agentLlm.settings.selected_model_id || null;
     state.agentLlm.lastTestResult = null;
+    loaded = true;
   } catch (error) {
-    state.agentLlm.settings = emptyAgentLlmSettings(String(error));
-    state.agentLlm.selectedModelId = null;
+    if (preserveOnFailure && previousSettings) {
+      state.agentLlm.settings = previousSettings;
+      state.agentLlm.selectedModelId = previousSettings.selected_model_id || null;
+    } else {
+      state.agentLlm.settings = emptyAgentLlmSettings(String(error));
+      state.agentLlm.selectedModelId = null;
+    }
   }
   ensureAgentLlmSelectionState();
   updateAgentModelLabel();
   renderAgentModelSelector();
   renderAgentLlmDialog();
   syncAgentComposerState();
+  return loaded;
 }
 
 async function retryAgentLlmSettings() {
@@ -8549,6 +8583,8 @@ function renderAgentLlmDialog() {
     $("#agentLlmSelectedProviderKind").textContent = agentProviderKindLabel(selectedProvider.kind);
     $("#agentLlmSelectedProviderStatus").textContent = readiness.label;
     $("#agentLlmSelectedProviderStatus").className = `agent-llm-status-badge ${readiness.state}`;
+    const modelCount = providerModels.length;
+    $("#agentLlmProviderDangerSummary").textContent = `Remove this provider, ${modelCount} imported ${modelCount === 1 ? "model" : "models"}, optional route assignments, and its stored key in one confirmed action.`;
     renderAgentProviderForm();
   }
   const modelList = $("#agentLlmModelList");
@@ -8618,6 +8654,7 @@ function closeAgentLlmDialog() {
   clearAgentLlmCredentialInput();
   closeAgentLlmProviderWizard();
   closeAgentLlmModelDialog();
+  closeAgentLlmProviderDeleteDialog({ force: true, restoreFocus: false });
   $("#agentLlmDialog").classList.add("hidden");
   requestAnimationFrame(() => {
     if (returnFocus?.isConnected && !returnFocus.closest("[inert]")) returnFocus.focus();
@@ -8825,6 +8862,7 @@ function labelAgentLlmModal(titleId = "agentLlmDialogTitle") {
   const children = [
     [$("#agentLlmProviderWizard"), "agentLlmWizardTitle"],
     [$("#agentLlmModelDialog"), "agentLlmModelDialogTitle"],
+    [$("#agentLlmProviderDeleteDialog"), "agentLlmProviderDeleteTitle"],
   ];
   for (const [child] of children) {
     child.removeAttribute("role");
@@ -9159,28 +9197,245 @@ async function saveAgentProvider() {
   }
 }
 
-async function deleteAgentProvider() {
+function agentProviderDeleteImpact(providerId = state.agentLlm.selectedProviderId, settings = state.agentLlm.settings) {
+  const provider = settings?.providers?.find((item) => item.id === providerId) || null;
+  if (!provider) return null;
+  const models = (settings.models || []).filter((model) => model.provider_id === provider.id);
+  const modelIds = new Set(models.map((model) => model.id));
+  const routes = (settings.capability_routes || [])
+    .filter((route) => route.configured && modelIds.has(route.model_id));
+  return {
+    provider,
+    models,
+    chatRoute: routes.find((route) => route.capability === "agent.chat") || null,
+    optionalRoutes: routes.filter((route) => route.capability !== "agent.chat"),
+    credentialStored: provider.credential_source === "system" && provider.credential_status === "detected",
+    credentialUnavailable: provider.credential_source === "unavailable" || provider.credential_status === "unavailable",
+  };
+}
+
+function setAgentProviderDeleteOperation(operationState, message = "") {
+  state.agentLlm.providerDeleteOperation = { state: operationState, message };
+  renderAgentProviderDeleteDialog();
+}
+
+function agentProviderDeleteFailureMessage(error) {
+  const raw = typeof error === "string" ? error : error?.message || String(error || "");
+  const fallback = reportUiFailure("delete model provider", error,
+    "The Provider metadata was not deleted. Review the credential-store message and retry safely.",
+  );
+  if (/could not be restored/i.test(raw)) {
+    return "The Provider metadata was not deleted, but its API key could not be restored after the storage failure. Save the API key again before retrying.";
+  }
+  if (/system credential was restored/i.test(raw)) {
+    return "The Provider metadata was not deleted. Its stored API key was restored, so you can retry safely.";
+  }
+  if (/no system credential needed restoration/i.test(raw)) {
+    return "The Provider metadata was not deleted. No stored API key was affected, so you can retry safely.";
+  }
+  if (/credential read failure|reading .*(?:credential|keychain)/i.test(raw)) {
+    return "The Provider metadata was not deleted because Rho could not read its stored API key. The existing configuration remains in place.";
+  }
+  if (/credential delete failure|deleting .*(?:credential|api key|keychain)/i.test(raw)) {
+    return "The Provider metadata was not deleted because its stored API key could not be removed. The existing configuration remains in place.";
+  }
+  if (/opening .*(?:credential|keychain)/i.test(raw)) {
+    return "The Provider metadata was not deleted because Rho could not access its stored API key. The existing configuration remains in place.";
+  }
+  return fallback;
+}
+
+function renderAgentProviderDeleteItems(target, items, format) {
+  target.replaceChildren();
+  for (const item of items) {
+    const row = document.createElement("li");
+    row.textContent = format(item);
+    target.append(row);
+  }
+}
+
+function renderAgentProviderDeleteDialog() {
+  if (!state.agentLlm.providerDeleteOpen) return;
+  const impact = agentProviderDeleteImpact(state.agentLlm.providerDeleteProviderId);
+  const status = $("#agentLlmProviderDeleteStatus");
+  const operation = state.agentLlm.providerDeleteOperation;
+  status.className = `agent-llm-operation-status${operation.state === "idle" ? " hidden" : ` ${operation.state}`}`;
+  status.textContent = operation.message || "";
+  const confirm = $("#agentLlmProviderDeleteConfirm");
+  const routing = $("#agentLlmProviderDeleteRouting");
+  const cancel = $("#agentLlmProviderDeleteCancel");
+  const close = $("#agentLlmProviderDeleteClose");
+  const blocker = $("#agentLlmProviderDeleteBlocker");
+  if (!impact) {
+    $("#agentLlmProviderDeleteTitle").textContent = "Provider no longer available";
+    $("#agentLlmProviderDeleteSummary").textContent = "Reload Model settings before trying again.";
+    blocker.textContent = "This Provider is no longer present in the current settings revision.";
+    blocker.classList.remove("hidden");
+    confirm.classList.add("hidden");
+    routing.classList.add("hidden");
+    cancel.disabled = false;
+    close.disabled = false;
+    return;
+  }
+  const { provider, models, optionalRoutes, chatRoute, credentialStored, credentialUnavailable } = impact;
+  const modelCount = models.length;
+  const routeCount = optionalRoutes.length;
+  $("#agentLlmProviderDeleteTitle").textContent = `Delete ${provider.display_name}?`;
+  $("#agentLlmProviderDeleteName").textContent = provider.display_name;
+  $("#agentLlmProviderDeleteModelCount").textContent = String(modelCount);
+  $("#agentLlmProviderDeleteRouteCount").textContent = String(routeCount);
+  $("#agentLlmProviderDeleteCredential").textContent = credentialUnavailable
+    ? "Credential store unavailable"
+    : credentialStored
+      ? "Remove stored key"
+      : "No stored key";
+  $("#agentLlmProviderDeleteSummary").textContent = `One confirmed action removes ${modelCount} imported ${modelCount === 1 ? "model" : "models"}, clears ${routeCount} optional route ${routeCount === 1 ? "assignment" : "assignments"}, and removes only this Provider's stored key when present.`;
+  renderAgentProviderDeleteItems(
+    $("#agentLlmProviderDeleteModels"),
+    models,
+    (model) => `${model.display_name} · ${model.model_id}`,
+  );
+  renderAgentProviderDeleteItems(
+    $("#agentLlmProviderDeleteRoutes"),
+    optionalRoutes,
+    (route) => `${route.label || route.capability} · ${route.capability}`,
+  );
+  $("#agentLlmProviderDeleteModelsSection").classList.toggle("hidden", !modelCount);
+  $("#agentLlmProviderDeleteRoutesSection").classList.toggle("hidden", !routeCount);
+  const blocked = Boolean(chatRoute);
+  blocker.textContent = blocked
+    ? `Chat currently uses ${chatRoute.model_display_name || "a model"} from this Provider. Assign Chat to a compatible model from another Provider before deleting it.`
+    : "";
+  blocker.classList.toggle("hidden", !blocked);
+  routing.classList.toggle("hidden", !blocked);
+  confirm.classList.toggle("hidden", blocked);
+  confirm.textContent = modelCount
+    ? `Delete provider and ${modelCount} ${modelCount === 1 ? "model" : "models"}`
+    : "Delete provider";
+  for (const button of [confirm, routing, cancel, close]) {
+    button.disabled = state.agentLlm.providerDeleteWorking;
+  }
+}
+
+function openAgentProviderDeleteDialog() {
   clearAgentLlmCredentialInput();
   const provider = currentProviderRecord();
   if (!provider) {
     toast("Select a provider to delete.", true);
     return;
   }
-  if (!await confirmAction({
-    title: "Delete provider",
-    message: `Delete provider ${provider.display_name}? Its models must be removed first.`,
-    confirmLabel: "Delete provider",
-    destructive: true,
-  })) return;
-  setAgentLlmOperationState("working", `Deleting ${provider.display_name}…`);
+  state.agentLlm.providerDeleteReturnFocusElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  state.agentLlm.providerDeleteOpen = true;
+  state.agentLlm.providerDeleteProviderId = provider.id;
+  state.agentLlm.providerDeleteRevision = state.agentLlm.settings?.revision ?? null;
+  state.agentLlm.providerDeleteWorking = false;
+  state.agentLlm.providerDeleteOperation = { state: "idle", message: "" };
+  setAgentLlmMainDialogInert(true);
+  $("#agentLlmProviderDeleteDialog").classList.remove("hidden");
+  labelAgentLlmModal("agentLlmProviderDeleteTitle");
+  renderAgentProviderDeleteDialog();
+  requestAnimationFrame(() => $("#agentLlmProviderDeleteCancel").focus());
+}
+
+function closeAgentLlmProviderDeleteDialog({ force = false, restoreFocus = true } = {}) {
+  if (!state.agentLlm.providerDeleteOpen && $("#agentLlmProviderDeleteDialog").classList.contains("hidden")) return;
+  if (state.agentLlm.providerDeleteWorking && !force) return;
+  const returnFocus = state.agentLlm.providerDeleteReturnFocusElement;
+  state.agentLlm.providerDeleteOpen = false;
+  state.agentLlm.providerDeleteProviderId = null;
+  state.agentLlm.providerDeleteRevision = null;
+  state.agentLlm.providerDeleteWorking = false;
+  state.agentLlm.providerDeleteOperation = { state: "idle", message: "" };
+  state.agentLlm.providerDeleteReturnFocusElement = null;
+  $("#agentLlmProviderDeleteDialog").classList.add("hidden");
+  if (state.agentLlm.settingsOpen) {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  if (!restoreFocus || !state.agentLlm.settingsOpen) return;
+  requestAnimationFrame(() => {
+    if (returnFocus?.isConnected && !returnFocus.closest("[inert], .hidden")) returnFocus.focus();
+    else $("#agentLlmSelectedProviderName")?.focus();
+  });
+}
+
+function openAgentProviderDeleteRouting() {
+  if (state.agentLlm.providerDeleteWorking) return;
+  closeAgentLlmProviderDeleteDialog({ restoreFocus: false });
+  state.agentLlm.selectedRouteCapability = "agent.chat";
+  state.agentLlm.routingExpandedCapability = "agent.chat";
+  state.agentLlm.routingFocusModelId = null;
+  switchAgentLlmView("routing");
+  renderAgentLlmDialog();
+  requestAnimationFrame(() => $("[data-route='agent.chat'] button")?.focus());
+}
+
+async function confirmAgentProviderDeletion() {
+  if (state.agentLlm.providerDeleteWorking) return;
+  const impact = agentProviderDeleteImpact(state.agentLlm.providerDeleteProviderId);
+  if (!impact) {
+    setAgentProviderDeleteOperation("warning", "This Provider is no longer available. Close this review and reload Model settings.");
+    return;
+  }
+  if (impact.chatRoute) {
+    renderAgentProviderDeleteDialog();
+    $("#agentLlmProviderDeleteRouting").focus();
+    return;
+  }
+  const currentRevision = state.agentLlm.settings?.revision ?? null;
+  if (currentRevision !== state.agentLlm.providerDeleteRevision) {
+    state.agentLlm.providerDeleteRevision = currentRevision;
+    setAgentProviderDeleteOperation("warning", "Model settings changed. Review the updated impact, then confirm again.");
+    return;
+  }
+  state.agentLlm.providerDeleteWorking = true;
+  setAgentProviderDeleteOperation("working", `Deleting ${impact.provider.display_name}, its models, route assignments, and stored key…`);
   try {
-    const view = await invoke("agent_llm_delete_provider", { providerId: provider.id });
+    const view = await invoke("agent_llm_delete_provider", {
+      request: {
+        provider_id: impact.provider.id,
+        expected_revision: state.agentLlm.providerDeleteRevision,
+      },
+    });
     state.agentLlm.selectedProviderId = view.providers[0]?.id || null;
     state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
+    state.agentLlm.selectedModelEditorId = null;
+    state.agentLlm.editingModelId = null;
+    state.agentLlm.lastTestResult = null;
     applyAgentLlmView(view);
-    setAgentLlmOperationState("success", `Deleted provider ${provider.display_name}.`);
+    closeAgentLlmProviderDeleteDialog({ force: true, restoreFocus: false });
+    const routeCopy = impact.optionalRoutes.length
+      ? ` Cleared ${impact.optionalRoutes.length} optional route ${impact.optionalRoutes.length === 1 ? "assignment" : "assignments"}.`
+      : "";
+    setAgentLlmOperationState(
+      "success",
+      `Deleted ${impact.provider.display_name} and ${impact.models.length} imported ${impact.models.length === 1 ? "model" : "models"}.${routeCopy} Removed any stored API key for this Provider.`,
+    );
+    requestAnimationFrame(() => $("#agentLlmSelectedProviderName")?.focus());
   } catch (error) {
-    setAgentLlmOperationState("error", reportUiFailure("delete model provider", error, "The provider could not be deleted. Remove its models first, then try again."));
+    if (isStaleInformationError(error)) {
+      const reloaded = await loadAgentLlmSettings({ preserveOnFailure: true });
+      if (!reloaded) {
+        setAgentProviderDeleteOperation("error", "Model settings changed, but the latest settings could not be loaded. Close this review, then reopen Model settings and retry.");
+        return;
+      }
+      if (!agentProviderDeleteImpact(state.agentLlm.providerDeleteProviderId)) {
+        closeAgentLlmProviderDeleteDialog({ force: true, restoreFocus: false });
+        setAgentLlmOperationState("warning", "The Provider was already removed in another window. The latest settings were loaded.");
+        return;
+      }
+      state.agentLlm.providerDeleteRevision = state.agentLlm.settings?.revision ?? null;
+      setAgentProviderDeleteOperation("warning", "Model settings changed in another window. Review the updated impact, then confirm again.");
+    } else {
+      setAgentProviderDeleteOperation("error", agentProviderDeleteFailureMessage(error));
+    }
+  } finally {
+    if (state.agentLlm.providerDeleteOpen) {
+      state.agentLlm.providerDeleteWorking = false;
+      renderAgentProviderDeleteDialog();
+    }
   }
 }
 
@@ -13978,6 +14233,49 @@ async function maybeApplyPreviewScenario() {
       mockAgentLlmSettings.providers[0].display_name = "DeepSeek Research Gateway With A Deliberately Long Provider Name";
       mockAgentLlmSettings.models[0].display_name = "DeepSeek V4 Flash With Extended Reasoning And A Deliberately Long Model Name";
       rebuildMockAgentLlmSettings();
+    } else if (["delete-provider", "delete-provider-empty", "delete-provider-chat-blocked"].includes(modelSettingsPreviewState)) {
+      const sourceModel = structuredClone(mockAgentLlmSettings.models[0]);
+      const providerId = "provider-aihubmix-removal-preview";
+      mockAgentLlmSettings.providers.push({
+        ...structuredClone(mockAgentLlmSettings.providers[0]),
+        id: providerId,
+        display_name: "AiHubMix Research Gateway",
+        registered_provider_id: "aihubmix",
+        api_key_env: "AIHUBMIX_API_KEY",
+      });
+      if (modelSettingsPreviewState !== "delete-provider-empty") {
+        mockAgentLlmSettings.models.push(
+          {
+            ...structuredClone(sourceModel),
+            id: "model-aihubmix-claude",
+            provider_id: providerId,
+            display_name: "Claude Opus 5",
+            model_id: "claude-opus-5",
+            selected: false,
+            provider_display_name: "AiHubMix Research Gateway",
+          },
+          {
+            ...structuredClone(sourceModel),
+            id: "model-aihubmix-vision",
+            provider_id: providerId,
+            display_name: "Vision Review Model With A Deliberately Long Name",
+            model_id: "vision-review-model-with-a-deliberately-long-name",
+            selected: false,
+            provider_display_name: "AiHubMix Research Gateway",
+          },
+        );
+        mockAgentLlmSettings.persisted_capability_routes.push({
+          capability: "vision.inspect",
+          model_id: "model-aihubmix-vision",
+          model_type: "language",
+          required_model_capabilities: ["vision_input"],
+        });
+        if (modelSettingsPreviewState === "delete-provider-chat-blocked") {
+          mockAgentLlmSettings.persisted_capability_routes.find((route) => route.capability === "agent.chat").model_id = "model-aihubmix-claude";
+        }
+      }
+      mockAgentLlmSystemCredentials.add(providerId);
+      rebuildMockAgentLlmSettings();
     }
     await loadAgentLlmSettings();
     openAgentLlmDialog();
@@ -13992,6 +14290,16 @@ async function maybeApplyPreviewScenario() {
       state.agentLlm.routingExpandedCapability = "agent.chat";
       switchAgentLlmView("routing");
       renderAgentLlmDialog();
+    }
+    if (["delete-provider", "delete-provider-empty", "delete-provider-chat-blocked"].includes(previewParams.get("state"))) {
+      state.agentLlm.selectedProviderId = "provider-aihubmix-removal-preview";
+      state.agentLlm.selectedModelEditorId = "model-aihubmix-claude";
+      state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
+      state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+      switchAgentLlmView("connections");
+      renderAgentLlmDialog();
+      $("#agentLlmProviderAdvanced").open = true;
+      openAgentProviderDeleteDialog();
     }
     if (previewParams.get("state") === "add-model") {
       window.setTimeout(() => recordPreviewLayoutEvidence(), 140);
@@ -14875,6 +15183,10 @@ function recordPreviewLayoutEvidence() {
     const shell = rectEvidence($("#agentLlmShell"));
     const rail = rectEvidence($(".agent-llm-provider-rail"));
     const detail = rectEvidence($("#agentLlmProviderDetail"));
+    const providerDeleteSurface = rectEvidence($("#agentLlmProviderDeleteDialog .agent-llm-provider-delete-surface"));
+    const providerDeleteDialog = $("#agentLlmProviderDeleteDialog");
+    const providerDeleteConfirm = $("#agentLlmProviderDeleteConfirm");
+    const providerDeleteRouting = $("#agentLlmProviderDeleteRouting");
     target.textContent = JSON.stringify({
       viewport: { width: window.innerWidth, height: window.innerHeight },
       state: previewParams.get("state") || "default",
@@ -14887,8 +15199,20 @@ function recordPreviewLayoutEvidence() {
         provider_danger_open: $("#agentLlmProviderDanger").open,
         wizard_open: !$("#agentLlmProviderWizard").classList.contains("hidden"),
         model_editor_open: !$("#agentLlmModelDialog").classList.contains("hidden"),
+        provider_delete_open: !providerDeleteDialog.classList.contains("hidden"),
         model_manual_open: $("#agentLlmModelManualFields").open,
         wizard_manual_open: $("#agentLlmWizardManualModel").open,
+      },
+      provider_delete: {
+        blocked_by_chat: !$("#agentLlmProviderDeleteBlocker").classList.contains("hidden"),
+        confirm_visible: !providerDeleteConfirm.classList.contains("hidden"),
+        routing_visible: !providerDeleteRouting.classList.contains("hidden"),
+        model_items: $$("#agentLlmProviderDeleteModels li").length,
+        route_items: $$("#agentLlmProviderDeleteRoutes li").length,
+        role: providerDeleteDialog.getAttribute("role"),
+        aria_modal: providerDeleteDialog.getAttribute("aria-modal"),
+        labelledby: providerDeleteDialog.getAttribute("aria-labelledby"),
+        focused_id: document.activeElement?.id || null,
       },
       discovery: {
         model_status: state.agentLlm.modelDiscovery.status,
@@ -14901,9 +15225,15 @@ function recordPreviewLayoutEvidence() {
       overflow: {
         document_x: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         dialog_x: Boolean(dialog && dialog.width > window.innerWidth),
+        provider_delete_x: Boolean(providerDeleteSurface && (
+          providerDeleteSurface.left < 0 || providerDeleteSurface.right > window.innerWidth
+        )),
+        provider_delete_y: Boolean(providerDeleteSurface && (
+          providerDeleteSurface.top < 0 || providerDeleteSurface.bottom > window.innerHeight
+        )),
       },
       overlap: { rail_with_detail: rectsOverlap(rail, detail) },
-      rects: { dialog, shell, rail, detail },
+      rects: { dialog, shell, rail, detail, provider_delete: providerDeleteSurface },
     });
     return;
   }
@@ -20039,7 +20369,7 @@ $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
 $("#agentLlmDialog").addEventListener("keydown", (event) => {
-  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen) return;
+  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen || state.agentLlm.providerDeleteOpen) return;
   trapAgentLlmDialogFocus(event, $("#agentLlmDialog"), closeAgentLlmDialog);
 });
 $("#environmentOperationClose").addEventListener("click", closeEnvironmentOperationDialog);
@@ -20091,7 +20421,17 @@ $("#agentLlmLibraryAddModel").addEventListener("click", () => {
 $("#agentLlmLibraryEditModel").addEventListener("click", () => openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId));
 $("#agentLlmLibraryTestModel").addEventListener("click", testAgentModelConnection);
 $("#agentLlmSaveProvider").addEventListener("click", saveAgentProvider);
-$("#agentLlmDeleteProvider").addEventListener("click", deleteAgentProvider);
+$("#agentLlmDeleteProvider").addEventListener("click", openAgentProviderDeleteDialog);
+$("#agentLlmProviderDeleteClose").addEventListener("click", () => closeAgentLlmProviderDeleteDialog());
+$("#agentLlmProviderDeleteCancel").addEventListener("click", () => closeAgentLlmProviderDeleteDialog());
+$("#agentLlmProviderDeleteRouting").addEventListener("click", openAgentProviderDeleteRouting);
+$("#agentLlmProviderDeleteConfirm").addEventListener("click", () => void confirmAgentProviderDeletion());
+$("#agentLlmProviderDeleteDialog").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmProviderDeleteClose === "true") closeAgentLlmProviderDeleteDialog();
+});
+$("#agentLlmProviderDeleteDialog").addEventListener("keydown", (event) => {
+  trapAgentLlmDialogFocus(event, $("#agentLlmProviderDeleteDialog"), closeAgentLlmProviderDeleteDialog);
+});
 $("#agentLlmAddModel").addEventListener("click", () => openAgentLlmModelDialog(null));
 $("#agentLlmEditModel").addEventListener("click", () => openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId));
 $("#agentLlmRefreshModels").addEventListener("click", () => {
