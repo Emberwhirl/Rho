@@ -5044,6 +5044,9 @@ function currentLineExecution() {
         code,
       ),
       line,
+      nextCursorOffset: line < model.getLineCount()
+        ? model.getOffsetAt({ lineNumber: line + 1, column: 1 })
+        : model.getValue().length,
     };
   }
   const value = fallbackEditor().value;
@@ -5061,6 +5064,7 @@ function currentLineExecution() {
     range: { start: lineStart, end: lineEnd },
     sourceRange: executableSourceRange(value, { start: lineStart, end: lineEnd }, code),
     line: value.slice(0, lineStart).split("\n").length,
+    nextCursorOffset: nextBreak === -1 ? value.length : nextBreak + 1,
   };
 }
 
@@ -11897,7 +11901,7 @@ async function executeCode(request) {
       switchDockTab("plots");
     }
     setBusy(false);
-    if (!$("#consolePanel").classList.contains("hidden")) $("#consoleInput").focus();
+    if (request.type !== "line" && !$("#consolePanel").classList.contains("hidden")) $("#consoleInput").focus();
   }
 }
 
@@ -12334,13 +12338,29 @@ async function findProjectReferencesAtCursor() {
   await showProjectReferences(word.word);
 }
 
+function advanceCurrentLineCursor(request) {
+  const documentState = activeDocument();
+  if (request?.type !== "line"
+      || !Number.isInteger(request.nextCursorOffset)
+      || documentState?.path !== request.sourcePath) return;
+  const offset = Math.min(request.nextCursorOffset, documentState.content.length);
+  documentState.cursorStart = offset;
+  documentState.cursorEnd = offset;
+  applyDocumentSelection(documentState);
+  focusActiveEditor();
+  scheduleSessionSave();
+}
+
 async function runSelectionOrCurrentLine() {
+  if (state.busy) return;
   const request = selectionExecution() || currentLineExecution();
   if (!request) {
     toast("Current line is empty.", true);
     return;
   }
-  await executeCode(request);
+  const execution = executeCode(request);
+  advanceCurrentLineCursor(request);
+  await execution;
 }
 
 async function runActiveFile() {
