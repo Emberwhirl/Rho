@@ -157,6 +157,7 @@ struct RRuntimeProbe {
 }
 
 const RUNTIME_CACHE_VERSION: u32 = 2;
+const MINIMUM_AGENT_AISDK_VERSION: &str = "1.5.0";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct RuntimeFileSignature {
@@ -6552,13 +6553,10 @@ fn probe_agent_runtime(
     r_profile_user: Option<&Path>,
     r_environ_user: Option<&Path>,
 ) -> AgentRuntimeStatus {
-    let expression = r#"
-loadNamespace("aisdk")
-cat("__RHO_AISDK__", as.character(utils::packageVersion("aisdk")), "\n", sep = "")
-"#;
+    let expression = agent_runtime_probe_expression();
     let output = match run_r_probe(
         rscript,
-        expression,
+        &expression,
         Duration::from_secs(30),
         RProbeStartup::UserProfile,
         Some(RUserStartupFiles {
@@ -6575,23 +6573,53 @@ cat("__RHO_AISDK__", as.character(utils::packageVersion("aisdk")), "\n", sep = "
             };
         }
     };
+    agent_runtime_status_from_probe(output)
+}
+
+fn agent_runtime_probe_expression() -> String {
+    format!(
+        r#"
+loadNamespace("aisdk")
+version <- utils::packageVersion("aisdk")
+cat("__RHO_AISDK__", as.character(version), "\n", sep = "")
+minimum <- base::package_version("{MINIMUM_AGENT_AISDK_VERSION}")
+if (version < minimum) {{
+  stop(sprintf(
+    "Rho Agent requires aisdk >= %s, but %s is installed.",
+    as.character(minimum),
+    as.character(version)
+  ))
+}}
+required_exports <- c("normalize_capability_model_routes", "set_run_trace_sink")
+missing_exports <- setdiff(required_exports, getNamespaceExports("aisdk"))
+if (length(missing_exports)) {{
+  stop(sprintf(
+    "Installed aisdk is missing required Rho Agent APIs: %s.",
+    paste(missing_exports, collapse = ", ")
+  ))
+}}
+"#
+    )
+}
+
+fn agent_runtime_status_from_probe(output: ProbeProcessOutput) -> AgentRuntimeStatus {
+    let version = output.stdout.lines().find_map(|line| {
+        line.strip_prefix("__RHO_AISDK__")
+            .map(str::trim)
+            .map(str::to_string)
+    });
     if !output.success {
         return AgentRuntimeStatus {
             available: false,
-            aisdk_version: None,
+            aisdk_version: version,
             error: Some(format!(
-                "Agent R cannot load aisdk (exit_code={:?}, timed_out={}): {}",
+                "Agent R cannot use aisdk (exit_code={:?}, timed_out={}): {}",
                 output.exit_code,
                 output.timed_out,
                 bounded_diagnostic(&output.stderr)
             )),
         };
     }
-    let version = output.stdout.lines().find_map(|line| {
-        line.strip_prefix("__RHO_AISDK__")
-            .map(str::trim)
-            .map(str::to_string)
-    });
     match version {
         Some(version) => AgentRuntimeStatus {
             available: true,
@@ -7141,11 +7169,13 @@ mod tests {
     use super::{
         AgentFileApplyRequest, AgentFileMutationRegistry, AgentFileUndoRequest,
         AgentModelTestControl, AgentRuntimeStatus, AgentTaskEntry, AppState, ExecuteRequest,
-        ExecuteSourceRange, RUNTIME_CACHE_VERSION, RUserStartupFiles, RenderJobState,
-        RuntimeCacheFile, RuntimeConfig, StartupView, SwitchTestControl, SwitchTestStep,
-        active_context, agent_file_postwrite_failure, agent_file_write_failure, agent_retry_source,
-        agent_turn_admission_error, append_agent_file_mutation_event, apply_agent_file_edit_state,
-        ark_candidate_paths, attach_render_artifact, bounded_diagnostic, cancel_agent_turn_state,
+        ExecuteSourceRange, MINIMUM_AGENT_AISDK_VERSION, ProbeProcessOutput, RUNTIME_CACHE_VERSION,
+        RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig, StartupView,
+        SwitchTestControl, SwitchTestStep, active_context, agent_file_postwrite_failure,
+        agent_file_write_failure, agent_retry_source, agent_runtime_probe_expression,
+        agent_runtime_status_from_probe, agent_turn_admission_error,
+        append_agent_file_mutation_event, apply_agent_file_edit_state, ark_candidate_paths,
+        attach_render_artifact, bounded_diagnostic, cancel_agent_turn_state,
         classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         delete_agent_conversation_state, durable_project_root, editor_format_result,
@@ -7335,6 +7365,46 @@ mod tests {
         std::fs::write(&rscript, b"rscript").unwrap();
         std::fs::write(&ark, b"ark").unwrap();
         assert!(load_runtime_cache(directory.path(), &rscript, &ark).is_none());
+    }
+
+    #[test]
+    fn agent_runtime_contract_requires_the_pinned_aisdk_agent_apis() {
+        assert_eq!(MINIMUM_AGENT_AISDK_VERSION, "1.5.0");
+        let expression = agent_runtime_probe_expression();
+        assert!(expression.contains("base::package_version"));
+        assert!(!expression.contains("utils::package_version"));
+        assert!(expression.contains("version < minimum"));
+        assert!(expression.contains("normalize_capability_model_routes"));
+        assert!(expression.contains("set_run_trace_sink"));
+
+        let incompatible = agent_runtime_status_from_probe(ProbeProcessOutput {
+            success: false,
+            exit_code: Some(1),
+            stdout: "__RHO_AISDK__1.4.12\n".to_string(),
+            stderr: "Rho Agent requires aisdk >= 1.5.0, but 1.4.12 is installed.".to_string(),
+            elapsed_ms: 10,
+            timed_out: false,
+        });
+        assert!(!incompatible.available);
+        assert_eq!(incompatible.aisdk_version.as_deref(), Some("1.4.12"));
+        assert!(
+            incompatible
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("requires aisdk >= 1.5.0"))
+        );
+
+        let compatible = agent_runtime_status_from_probe(ProbeProcessOutput {
+            success: true,
+            exit_code: Some(0),
+            stdout: "__RHO_AISDK__1.5.0\n".to_string(),
+            stderr: String::new(),
+            elapsed_ms: 10,
+            timed_out: false,
+        });
+        assert!(compatible.available);
+        assert_eq!(compatible.aisdk_version.as_deref(), Some("1.5.0"));
+        assert!(compatible.error.is_none());
     }
 
     #[test]

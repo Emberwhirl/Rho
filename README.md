@@ -34,7 +34,8 @@ It requires:
 - Windows 10/11 with Microsoft Edge WebView2 Runtime, or Apple Silicon macOS
   14 or later;
 - R 4.4 or later;
-- `aisdk` and a configured model only for Agent features; the pinned
+- `aisdk` 1.5.0 or later and a configured model only for Agent features; the
+  pinned
   `aisdk.providers` package is additionally required when using DeepSeek,
   Moonshot, Kimi Code, Stepfun, Volcengine, AiHubMix, xAI, OpenRouter, Bailian,
   or NVIDIA.
