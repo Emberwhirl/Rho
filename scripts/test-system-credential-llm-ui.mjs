@@ -28,7 +28,7 @@ const advancedStart = html.indexOf('<details id="agentLlmProviderAdvanced"');
 const advancedEnd = html.indexOf('<details id="agentLlmProviderDanger"', advancedStart);
 const advanced = html.slice(advancedStart, advancedEnd);
 const modelDialogStart = html.indexOf('<div id="agentLlmModelDialog"');
-const modelDialogEnd = html.indexOf('<div id="agentLlmProviderDeleteDialog"', modelDialogStart);
+const modelDialogEnd = html.indexOf('<div id="agentLlmModelDeleteDialog"', modelDialogStart);
 const modelDialog = html.slice(modelDialogStart, modelDialogEnd);
 assert.ok(advancedStart >= 0 && !/<details id="agentLlmProviderAdvanced"[^>]*\sopen(?:\s|>)/.test(advanced));
 for (const id of [
@@ -89,8 +89,9 @@ const providerKindChange = js.slice(js.indexOf('$("#agentLlmProviderKind").addEv
 assert.match(providerKindChange, /clearAgentLlmCredentialInput\(\)/);
 assert.match(js, /\["openai_compatible", "local_openai_compatible"\]\.includes\(kind\)/);
 assert.match(js, /agentLlmCredentialField"\)\.classList\.toggle\("hidden", !keyRequired\)/);
-const currentSelectionRender = js.slice(js.indexOf("function renderAgentLlmCurrentSelection"), js.indexOf("\nfunction renderAgentLlmDialog"));
+const currentSelectionRender = js.slice(js.indexOf("function agentProviderChatPresentation"), js.indexOf("\nfunction renderAgentLlmDialog"));
 assert.match(currentSelectionRender, /settings\.selected_model_id/);
+assert.match(currentSelectionRender, /model\.provider_id !== selectedProviderId/);
 assert.match(currentSelectionRender, /agentLlmCurrentSelection/);
 assert.match(js, /\$\("#agentLlmAddProvider"\)\.addEventListener\("click", openAgentLlmProviderWizard\)/);
 assert.match(js, /\$\("#agentLlmAddModel"\)\.addEventListener\("click", \(\) => openAgentLlmModelDialog\(null\)\)/);

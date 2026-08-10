@@ -23,6 +23,11 @@ CRED-UX4A-R3 one-confirmation Provider removal was explicitly authorized by the
 project owner on 2026-08-10; its implementation, complete affected automated
 matrix, deterministic wide/narrow screenshot review, and independent R3 review
 are complete, while final interactive and installed-app acceptance remain open;
+CRED-UX4A-R4 Issue #25 Provider-context and model-deletion modal repair was
+explicitly authorized by the project owner on 2026-08-10; its implementation,
+complete affected automated matrix, deterministic browser review, and
+independent destructive-state/accessibility review are complete, while owner
+installed-app acceptance remains open;
 CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
@@ -87,6 +92,17 @@ credential rollback, or introduce a second settings authority. The mandatory
 stop is focused destructive-state and recovery tests, complete affected
 frontend/Rust validation, deterministic browser review, independent R3
 contract review, and owner installed-app acceptance before release handoff.
+
+Authorized work package: CRED-UX4A-R4, the bounded Issue #25 repair. It may
+make the Connections Chat summary relative to the selected Provider and replace
+the generic model-deletion confirmation with a Model-settings-owned sibling
+modal. It may not change route persistence, choose a route, cascade model
+deletion, change the existing model-deletion command, or broaden Provider,
+credential, schema, project, or network authority. The mandatory stop is a
+focused failing regression, complete affected frontend validation,
+deterministic wide/narrow modal review, an independent destructive-state and
+accessibility review, and owner installed-app acceptance before release
+handoff.
 
 Authorized follow-up: simplify the delivered settings surface and make the
 Windows system credential the only Agent LLM API-key source. Legacy
@@ -1560,3 +1576,163 @@ metadata and `NEWS.md` stay at immutable `0.4.0-dev.27`; the change must advance
 all application authorities and NEWS to the next unused identity (currently
 expected to be `0.4.0-dev.28`) before integration, packaging, or distribution.
 No R package contract or version changed.
+
+## CRED-UX4A-R4 Issue #25 Provider Context And Model-Delete Modal Repair — 2026-08-10
+
+### Reproduction And Invariants
+
+Issue #25 reports three linked Model settings defects. The R3 Provider-removal
+slice above already resolves the second: one guarded confirmation removes a
+Provider and its owned models without requiring a manual model-by-model cleanup.
+Two defects remain in the same Provider-first surface:
+
+1. Connections renders the global `agent.chat` model inside every selected
+   Provider detail. Selecting a new or unassigned Provider can therefore show a
+   model and Provider name owned by another connection immediately above the
+   selected Provider's connection test.
+2. Model deletion calls the generic product confirmation at stacking level 32
+   while the Model editor is a Model-settings child at stacking level 34. The
+   confirmation is visually behind the editor, and both roots can retain modal
+   semantics instead of exposing one active dialog.
+
+The accepted invariants are:
+
+> A selected Provider detail never presents another Provider's model as its
+> Chat assignment. When the global Chat route belongs elsewhere, the detail
+> says that this Provider is not assigned and reveals no unrelated model name.
+
+> Model deletion is admitted only from one visible, topmost, Model-settings-
+> owned confirmation dialog. Cancel, scrim close, or Escape issues no delete
+> command and restores focus to the invoking Delete model action. While the
+> confirmation is active, the Model editor is inert and is not exposed as a
+> second modal dialog.
+
+### Provider-Scoped Chat Presentation
+
+The persisted route and selected model remain global. Connections derives a
+presentation-only result from the selected Provider ID and the authoritative
+Chat model:
+
+- if the Chat model is owned by the selected Provider, show that model and its
+  existing readiness status;
+- if Chat is missing or is owned by another Provider, show `This Provider is
+  not assigned to Chat.` with `Not assigned` status;
+- never substitute the selected Provider's first model, mutate a route, or show
+  the other Provider/model in this detail;
+- Model routing and the composer remain the global places that expose the
+  effective Chat assignment.
+
+Provider switching, a newly saved Provider with no model, an unassigned
+Provider with models, and a Provider that owns Chat must all re-render from the
+same pure derivation. No schema, command, credential, or Provider-network path
+changes.
+
+### Model-Delete Dialog Contract
+
+Model settings owns a dedicated sibling `Model deletion` modal above the Model
+editor. Opening it captures the exact existing model ID and the invoking
+element, presents the model display name plus the non-cascading consequence,
+makes Cancel the initial focus, and performs no mutation. The confirmation
+button calls the existing `agent_llm_delete_model` request for that exact model.
+
+Cancel, close, scrim, and Escape clear the captured model ID, restore the Model
+editor as the sole modal root, make it interactive again, and return focus to
+the invoking action. Duplicate confirmation is disabled while the request is
+in flight. Success applies the returned authoritative view, closes both delete
+and edit dialogs, and reports the deleted model. Failure keeps the confirmation
+open with a credential-free retryable error and does not claim deletion. Route
+dependency rejection remains owned by the existing backend and does not
+cascade or guess a replacement.
+
+The main Model settings root stays suspended throughout the nested flow.
+Closing Model settings forcibly closes the deletion dialog without restoring
+focus into a hidden tree. Exactly one of the main settings root, Add Provider,
+Model editor, Provider deletion, or Model deletion owns `role=dialog` and
+`aria-modal=true` at a time.
+
+### Acceptance Matrix And Stop
+
+Required deterministic evidence is:
+
+- a behavioral regression for selected Provider A owning Chat while selected
+  Provider B has no route, plus the positive same-Provider case;
+- model-delete dialog structure, topmost stacking, one-modal ownership, Model
+  editor inertness, Cancel/scrim/Escape no-command behavior, focus restoration,
+  duplicate-submit suppression, success, and failure/retry projection;
+- unchanged direct-model backend rejection for a referenced route and unchanged
+  Provider one-confirmation regressions;
+- deterministic normal and narrow-window previews with the confirmation fully
+  visible, reachable, and unclipped;
+- frontend syntax plus all frontend contract scripts, followed by the complete
+  affected Rust/R matrix because this branch also contains the R3 Provider
+  transaction awaiting integration;
+- a deliberately separate post-test review of route truthfulness, destructive
+  admission, modal/accessibility ownership, mock/Tauri parity, and diff scope.
+
+This is a source-only continuation of the not-yet-integrated R3 branch. The
+immutable `0.4.0-dev.27` identity and Draft `367934137` remain unchanged. R3 and
+R4 together require the next unused application identity and a `NEWS.md` entry
+before integration, packaging, or distribution; no R package contract changes.
+Installed-app acceptance and release actions remain outside this work package.
+
+### Implementation And Verification Evidence
+
+The implemented UI now derives the Connections Chat summary from the selected
+Provider and the authoritative configured `agent.chat` route. A foreign Chat
+model produces only `This Provider is not assigned to Chat.` and `Not
+assigned`; the effective global route remains visible and editable in Model
+routing and the composer. The existing R3 one-confirmation Provider-removal
+flow continues to own Issue #25's Provider cleanup requirement.
+
+Direct model deletion now uses a dedicated Model-settings sibling dialog above
+the Model editor. It captures the exact model ID, makes the editor inert,
+assigns modal semantics to only the active dialog, starts on Cancel, calls the
+unchanged non-cascading `agent_llm_delete_model` command only after explicit
+confirmation, and keeps a rejected request open for a truthful retry. Cancel,
+close, scrim, and Escape perform no mutation and restore editor focus.
+
+Failing-first evidence: `node scripts/test-issue-25-model-settings-ui.mjs`
+initially failed because `agentProviderChatPresentation` did not exist. After
+implementation, `node --check desktop/dist/app.js` and all 52
+`scripts/test-*.mjs` frontend contract checks pass, including Provider
+ownership projection, modal stacking/ownership, inertness, no-command
+cancellation paths, and duplicate-submit suppression. The interactive
+success/dependency-rejection evidence is recorded below.
+
+The complete affected branch matrix also passes:
+
+- `cargo fmt --all -- --check`, `cargo check --workspace --all-targets`, and
+  `cargo test --workspace --all-targets --no-fail-fast` (including 174
+  `rho-desktop`, 58 `rho-server`, and 108 `rho-store` tests; the opt-in
+  Keychain smoke test remains ignored by design);
+- `Rscript -e "testthat::test_local('r/rho.bridge', reporter='summary')"` and
+  the equivalent `r/rho.agent` suite;
+- candidate/update-site dry runs, the macOS Ark bootstrap contract, macOS
+  entitlement/notary contract checks, workflow YAML parsing, and
+  `git diff --check`.
+
+Deterministic Chrome review covered the selected-unassigned Provider and the
+model-delete confirmation at `1440 x 900`, `700 x 850`, and a blocked-delete
+state at `900 x 820`. The selected Minimax Provider disclosed no DeepSeek Chat
+model, and the confirmation remained topmost, fully visible, unclipped, and
+focused on Cancel. A CDP interaction probe verified that Cancel preserved
+revision/model count and restored Delete-model focus; success moved revision
+`1 -> 2` and model count `3 -> 2`; a Chat-route dependency rejection kept the
+dialog open with an enabled retry after the error. Every state exposed exactly
+one active `aria-modal` dialog and produced no browser exception.
+
+The deliberately separate post-test review covered route truthfulness,
+destructive admission, modal/accessibility ownership, mock/Tauri command
+parity, and diff scope. It found one bounded reentrancy issue: programmatic
+duplicate-open or already-closed paths could needlessly relabel another active
+dialog. Explicit open/close state guards were added, then the full 52-script
+frontend matrix was rerun successfully. No unresolved route mutation,
+cross-Provider disclosure, cascade deletion, credential, schema, persistence,
+network, or backend-command finding remains.
+
+Version decision: this remains a source-only continuation of the R3 branch.
+Application metadata and `NEWS.md` remain at immutable `0.4.0-dev.27`; R3 and
+R4 must advance all application version authorities and NEWS to the next
+unused identity before integration, packaging, or distribution. No R package
+contract or package version changed. Exact installed-app acceptance is `NOT
+RUN` and remains the release gate.

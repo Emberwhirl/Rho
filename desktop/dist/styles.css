@@ -1802,7 +1802,9 @@ body.resizing-vertical { cursor: col-resize; }
   gap: 12px;
 }
 .agent-llm-subdialog { z-index: 34; }
+.agent-llm-model-delete-dialog { z-index: 36; }
 .agent-llm-dialog.agent-llm-parent-suspended { display: none; }
+.agent-llm-model-dialog-inert { pointer-events: none; }
 .agent-llm-subdialog-surface {
   position: relative;
   z-index: 1;
@@ -1817,6 +1819,18 @@ body.resizing-vertical { cursor: col-resize; }
   background: #fff;
   box-shadow: 0 18px 48px rgba(24, 41, 45, 0.24);
 }
+.agent-llm-model-delete-surface { width: min(500px, calc(100vw - 32px)); }
+.agent-llm-model-delete-impact {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #e3c0bc;
+  border-radius: 7px;
+  background: #fff8f6;
+}
+.agent-llm-model-delete-impact strong { font-size: 11px; }
+.agent-llm-model-delete-impact p,
+.agent-llm-model-delete-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .agent-llm-provider-delete-surface { width: min(620px, calc(100vw - 32px)); }
 .agent-llm-provider-delete-impact {
   display: grid;
@@ -2552,6 +2566,7 @@ body.resizing-vertical { cursor: col-resize; }
   .agent-llm-routing-context,
   .agent-llm-recovery-banner { align-items: flex-start; flex-direction: column; }
   .agent-llm-custom-route-fields { grid-template-columns: minmax(0, 1fr); }
+  .agent-llm-model-delete-surface { width: min(500px, calc(100vw - 20px)); }
   .agent-llm-provider-delete-facts { grid-template-columns: minmax(0, 1fr); }
 }
 .send-button { display: grid; place-items: center; width: 29px; height: 29px; border: 0; border-radius: 4px; color: #fff; background: var(--accent); cursor: pointer; font-size: 16px; }

@@ -78,6 +78,10 @@ const state = {
     wizardProviderId: null,
     wizardModelId: null,
     modelDialogOpen: false,
+    modelDeleteOpen: false,
+    modelDeleteModelId: null,
+    modelDeleteWorking: false,
+    modelDeleteOperation: { state: "idle", message: "" },
     providerDeleteOpen: false,
     providerDeleteProviderId: null,
     providerDeleteRevision: null,
@@ -86,6 +90,7 @@ const state = {
     returnFocusElement: null,
     wizardReturnFocusElement: null,
     modelReturnFocusElement: null,
+    modelDeleteReturnFocusElement: null,
     providerDeleteReturnFocusElement: null,
   },
   objects: [],
@@ -8159,23 +8164,43 @@ function renderAgentModelForm() {
   renderAgentLlmDiscovery("model");
 }
 
-function renderAgentLlmCurrentSelection(settings) {
-  const model = (settings.models || []).find((item) => item.id === settings.selected_model_id)
+function agentProviderChatPresentation(settings, selectedProviderId) {
+  const chatRoute = (settings.capability_routes || []).find(
+    (route) => route.capability === "agent.chat" && route.configured,
+  ) || null;
+  const chatModelId = chatRoute?.model_id || settings.selected_model_id;
+  const model = (settings.models || []).find((item) => item.id === chatModelId)
     || settings.selected_model
     || null;
+  if (!model || !selectedProviderId || model.provider_id !== selectedProviderId) {
+    return {
+      model: null,
+      status: "Not assigned",
+      selection: "This Provider is not assigned to Chat.",
+      tone: "",
+    };
+  }
   const provider = model
     ? (settings.providers || []).find((item) => item.id === model.provider_id)
     : null;
   const status = model ? modelSelectorStatusLabel(model) : "No model selected";
-  $("#agentLlmCurrentStatus").textContent = status;
   const selectorStatus = String(model?.selector_status || "").toLowerCase();
   const tone = ["error", "key missing", "unavailable", "invalid"].includes(selectorStatus)
     ? " error"
     : ["selected", "available", "ready"].includes(selectorStatus) ? " ready" : "";
-  $("#agentLlmCurrentStatus").className = `agent-llm-current-status${tone}`;
-  $("#agentLlmCurrentSelection").textContent = model
-    ? `${model.display_name || model.model_id} · ${provider?.display_name || model.provider_display_name || "Provider"}`
-    : "No model selected. Choose or add a model below.";
+  return {
+    model,
+    status,
+    selection: `${model.display_name || model.model_id} · ${provider?.display_name || "Provider"}`,
+    tone,
+  };
+}
+
+function renderAgentLlmCurrentSelection(settings, selectedProviderId) {
+  const presentation = agentProviderChatPresentation(settings, selectedProviderId);
+  $("#agentLlmCurrentStatus").textContent = presentation.status;
+  $("#agentLlmCurrentStatus").className = `agent-llm-current-status${presentation.tone}`;
+  $("#agentLlmCurrentSelection").textContent = presentation.selection;
 }
 
 function switchAgentLlmView(view, { focus = false } = {}) {
@@ -8535,7 +8560,7 @@ function renderAgentLlmDialog() {
   const selectedProvider = settings.providers.find((provider) => provider.id === state.agentLlm.selectedProviderId) || null;
   const providerModels = settings.models.filter((model) => model.provider_id === selectedProvider?.id);
   const selectedModel = providerModels.find((model) => model.id === state.agentLlm.selectedModelEditorId) || null;
-  renderAgentLlmCurrentSelection(settings);
+  renderAgentLlmCurrentSelection(settings, selectedProvider?.id || null);
   $("#agentLlmUserEnviron").textContent = "Connections store keys; the model library stores evidence; capability routes choose each typed use.";
   $("#agentLlmValidationMessage").textContent = settings.validation_error
     ? userFacingError(settings.validation_error, "The model configuration needs attention. Review the selected provider and model.")
@@ -8653,6 +8678,7 @@ function closeAgentLlmDialog() {
   state.agentLlm.returnFocusElement = null;
   clearAgentLlmCredentialInput();
   closeAgentLlmProviderWizard();
+  closeAgentLlmModelDeleteDialog({ force: true, restoreFocus: false });
   closeAgentLlmModelDialog();
   closeAgentLlmProviderDeleteDialog({ force: true, restoreFocus: false });
   $("#agentLlmDialog").classList.add("hidden");
@@ -8857,13 +8883,24 @@ function setAgentLlmMainDialogInert(inert) {
   root.removeAttribute("aria-hidden");
 }
 
+function setAgentLlmModelDialogInert(inert) {
+  const root = $("#agentLlmModelDialog");
+  root.classList.toggle("agent-llm-model-dialog-inert", inert);
+  if (inert) root.setAttribute("inert", "");
+  else root.removeAttribute("inert");
+}
+
 function labelAgentLlmModal(titleId = "agentLlmDialogTitle") {
   const root = $("#agentLlmDialog");
   const children = [
     [$("#agentLlmProviderWizard"), "agentLlmWizardTitle"],
     [$("#agentLlmModelDialog"), "agentLlmModelDialogTitle"],
+    [$("#agentLlmModelDeleteDialog"), "agentLlmModelDeleteTitle"],
     [$("#agentLlmProviderDeleteDialog"), "agentLlmProviderDeleteTitle"],
   ];
+  root.removeAttribute("role");
+  root.removeAttribute("aria-modal");
+  root.removeAttribute("aria-labelledby");
   for (const [child] of children) {
     child.removeAttribute("role");
     child.removeAttribute("aria-modal");
@@ -9147,11 +9184,15 @@ function openAgentLlmModelDialog(modelId = null) {
 }
 
 function closeAgentLlmModelDialog() {
+  if (state.agentLlm.modelDeleteOpen) {
+    closeAgentLlmModelDeleteDialog({ force: true, restoreFocus: false });
+  }
   const returnFocus = state.agentLlm.modelReturnFocusElement;
   state.agentLlm.modelReturnFocusElement = null;
   state.agentLlm.modelDialogOpen = false;
   resetAgentLlmDiscovery("model", null);
   state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+  setAgentLlmModelDialogInert(false);
   $("#agentLlmModelDialog").classList.add("hidden");
   if (!state.agentLlm.wizardOpen) {
     labelAgentLlmModal();
@@ -9547,19 +9588,90 @@ async function deleteAgentLlmCredential() {
   }
 }
 
-async function deleteAgentModel() {
+function setAgentModelDeleteOperation(operationState, message = "") {
+  state.agentLlm.modelDeleteOperation = { state: operationState, message };
+  renderAgentModelDeleteDialog();
+}
+
+function renderAgentModelDeleteDialog() {
+  const model = state.agentLlm.settings?.models?.find(
+    (item) => item.id === state.agentLlm.modelDeleteModelId,
+  ) || null;
+  const operation = state.agentLlm.modelDeleteOperation;
+  $("#agentLlmModelDeleteTitle").textContent = model
+    ? `Delete ${model.display_name || model.model_id}?`
+    : "Delete model?";
+  $("#agentLlmModelDeleteSummary").textContent = model
+    ? `${model.display_name || model.model_id} · ${model.model_id}`
+    : "The selected model is no longer available. Close this review and reload Model settings.";
+  const status = $("#agentLlmModelDeleteStatus");
+  status.className = `agent-llm-operation-status${operation.state === "idle" ? " hidden" : ` ${operation.state}`}`;
+  status.textContent = operation.message || "";
+  $("#agentLlmModelDeleteClose").disabled = state.agentLlm.modelDeleteWorking;
+  $("#agentLlmModelDeleteCancel").disabled = state.agentLlm.modelDeleteWorking;
+  $("#agentLlmModelDeleteConfirm").disabled = state.agentLlm.modelDeleteWorking || !model;
+}
+
+function openAgentModelDeleteDialog() {
+  if (!state.agentLlm.modelDialogOpen || state.agentLlm.modelDeleteOpen) return;
   const model = currentModelRecord();
   if (!model) {
     toast("Select a model to delete.", true);
     return;
   }
-  if (!await confirmAction({
-    title: "Delete model",
-    message: `Delete model ${model.display_name}?`,
-    confirmLabel: "Delete model",
-    destructive: true,
-  })) return;
-  setAgentLlmOperationState("working", `Deleting ${model.display_name}…`, "model");
+  state.agentLlm.modelDeleteReturnFocusElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  state.agentLlm.modelDeleteOpen = true;
+  state.agentLlm.modelDeleteModelId = model.id;
+  state.agentLlm.modelDeleteWorking = false;
+  state.agentLlm.modelDeleteOperation = { state: "idle", message: "" };
+  renderAgentModelDeleteDialog();
+  setAgentLlmModelDialogInert(true);
+  $("#agentLlmModelDeleteDialog").classList.remove("hidden");
+  labelAgentLlmModal("agentLlmModelDeleteTitle");
+  requestAnimationFrame(() => $("#agentLlmModelDeleteCancel").focus());
+}
+
+function closeAgentLlmModelDeleteDialog({ force = false, restoreFocus = true } = {}) {
+  if (!state.agentLlm.modelDeleteOpen && $("#agentLlmModelDeleteDialog").classList.contains("hidden")) return;
+  if (state.agentLlm.modelDeleteWorking && !force) return;
+  const returnFocus = state.agentLlm.modelDeleteReturnFocusElement;
+  state.agentLlm.modelDeleteReturnFocusElement = null;
+  state.agentLlm.modelDeleteOpen = false;
+  state.agentLlm.modelDeleteModelId = null;
+  state.agentLlm.modelDeleteWorking = false;
+  state.agentLlm.modelDeleteOperation = { state: "idle", message: "" };
+  $("#agentLlmModelDeleteDialog").classList.add("hidden");
+  setAgentLlmModelDialogInert(false);
+  if (state.agentLlm.modelDialogOpen) {
+    labelAgentLlmModal("agentLlmModelDialogTitle");
+  } else {
+    labelAgentLlmModal();
+    setAgentLlmMainDialogInert(false);
+  }
+  if (!restoreFocus) return;
+  requestAnimationFrame(() => {
+    if (!state.agentLlm.modelDialogOpen) return;
+    if (returnFocus?.isConnected && returnFocus.getClientRects().length && !returnFocus.closest("[inert], .hidden")) {
+      returnFocus?.focus();
+    } else {
+      $("#agentLlmDeleteModel").focus();
+    }
+  });
+}
+
+async function confirmAgentModelDeletion() {
+  if (state.agentLlm.modelDeleteWorking) return;
+  const model = state.agentLlm.settings?.models?.find(
+    (item) => item.id === state.agentLlm.modelDeleteModelId,
+  ) || null;
+  if (!model) {
+    setAgentModelDeleteOperation("error", "This model is no longer available. Close this review and reload Model settings.");
+    return;
+  }
+  state.agentLlm.modelDeleteWorking = true;
+  setAgentModelDeleteOperation("working", `Deleting ${model.display_name}…`);
   try {
     const view = await invoke("agent_llm_delete_model", {
       request: {
@@ -9571,11 +9683,14 @@ async function deleteAgentModel() {
     state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
     state.agentLlm.lastTestResult = null;
     applyAgentLlmView(view);
+    closeAgentLlmModelDeleteDialog({ force: true, restoreFocus: false });
     closeAgentLlmModelDialog();
     setAgentLlmOperationState("success", `Deleted model ${model.display_name}.`);
     renderAgentLlmDialog();
   } catch (error) {
-    setAgentLlmOperationState("error", reportUiFailure("delete model", error, "The model could not be deleted. Reassign or remove every route that uses it, then try again."), "model");
+    state.agentLlm.modelDeleteWorking = false;
+    setAgentModelDeleteOperation("error", reportUiFailure("delete model", error,
+      "The model could not be deleted. Reassign or remove every route that uses it, then try again."));
   }
 }
 
@@ -14233,6 +14348,27 @@ async function maybeApplyPreviewScenario() {
       mockAgentLlmSettings.providers[0].display_name = "DeepSeek Research Gateway With A Deliberately Long Provider Name";
       mockAgentLlmSettings.models[0].display_name = "DeepSeek V4 Flash With Extended Reasoning And A Deliberately Long Model Name";
       rebuildMockAgentLlmSettings();
+    } else if (["provider-unassigned", "model-delete"].includes(modelSettingsPreviewState)) {
+      const sourceProvider = structuredClone(mockAgentLlmSettings.providers[0]);
+      const sourceModel = structuredClone(mockAgentLlmSettings.models[0]);
+      mockAgentLlmSettings.providers.push({
+        ...sourceProvider,
+        id: "provider-minimax-unassigned-preview",
+        display_name: "Minimax Token Plan (China)",
+        registered_provider_id: "minimax",
+        api_key_env: "MINIMAX_API_KEY",
+      });
+      mockAgentLlmSettings.models.push({
+        ...sourceModel,
+        id: "model-minimax-unassigned-preview",
+        provider_id: "provider-minimax-unassigned-preview",
+        display_name: "MiniMax M2.5",
+        model_id: "MiniMax-M2.5",
+        selected: false,
+        provider_display_name: "Minimax Token Plan (China)",
+      });
+      mockAgentLlmSystemCredentials.add("provider-minimax-unassigned-preview");
+      rebuildMockAgentLlmSettings();
     } else if (["delete-provider", "delete-provider-empty", "delete-provider-chat-blocked"].includes(modelSettingsPreviewState)) {
       const sourceModel = structuredClone(mockAgentLlmSettings.models[0]);
       const providerId = "provider-aihubmix-removal-preview";
@@ -14281,6 +14417,10 @@ async function maybeApplyPreviewScenario() {
     openAgentLlmDialog();
     if (previewParams.get("state") === "wizard") openAgentLlmProviderWizard();
     if (previewParams.get("state") === "model") openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId);
+    if (previewParams.get("state") === "model-delete-blocked") {
+      openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId);
+      openAgentModelDeleteDialog();
+    }
     if (previewParams.get("state") === "add-model") openAgentLlmModelDialog(null);
     if (previewParams.get("state") === "advanced") {
       switchAgentLlmView("connections");
@@ -14300,6 +14440,18 @@ async function maybeApplyPreviewScenario() {
       renderAgentLlmDialog();
       $("#agentLlmProviderAdvanced").open = true;
       openAgentProviderDeleteDialog();
+    }
+    if (["provider-unassigned", "model-delete"].includes(previewParams.get("state"))) {
+      state.agentLlm.selectedProviderId = "provider-minimax-unassigned-preview";
+      state.agentLlm.selectedModelEditorId = "model-minimax-unassigned-preview";
+      state.agentLlm.editingProviderId = state.agentLlm.selectedProviderId;
+      state.agentLlm.editingModelId = state.agentLlm.selectedModelEditorId;
+      switchAgentLlmView("connections");
+      renderAgentLlmDialog();
+      if (previewParams.get("state") === "model-delete") {
+        openAgentLlmModelDialog(state.agentLlm.selectedModelEditorId);
+        openAgentModelDeleteDialog();
+      }
     }
     if (previewParams.get("state") === "add-model") {
       window.setTimeout(() => recordPreviewLayoutEvidence(), 140);
@@ -15187,6 +15339,9 @@ function recordPreviewLayoutEvidence() {
     const providerDeleteDialog = $("#agentLlmProviderDeleteDialog");
     const providerDeleteConfirm = $("#agentLlmProviderDeleteConfirm");
     const providerDeleteRouting = $("#agentLlmProviderDeleteRouting");
+    const modelDeleteSurface = rectEvidence($("#agentLlmModelDeleteDialog .agent-llm-model-delete-surface"));
+    const modelDeleteDialog = $("#agentLlmModelDeleteDialog");
+    const modelEditor = $("#agentLlmModelDialog");
     target.textContent = JSON.stringify({
       viewport: { width: window.innerWidth, height: window.innerHeight },
       state: previewParams.get("state") || "default",
@@ -15199,6 +15354,7 @@ function recordPreviewLayoutEvidence() {
         provider_danger_open: $("#agentLlmProviderDanger").open,
         wizard_open: !$("#agentLlmProviderWizard").classList.contains("hidden"),
         model_editor_open: !$("#agentLlmModelDialog").classList.contains("hidden"),
+        model_delete_open: !modelDeleteDialog.classList.contains("hidden"),
         provider_delete_open: !providerDeleteDialog.classList.contains("hidden"),
         model_manual_open: $("#agentLlmModelManualFields").open,
         wizard_manual_open: $("#agentLlmWizardManualModel").open,
@@ -15212,6 +15368,20 @@ function recordPreviewLayoutEvidence() {
         role: providerDeleteDialog.getAttribute("role"),
         aria_modal: providerDeleteDialog.getAttribute("aria-modal"),
         labelledby: providerDeleteDialog.getAttribute("aria-labelledby"),
+        focused_id: document.activeElement?.id || null,
+      },
+      provider_context: {
+        selected_provider_id: state.agentLlm.selectedProviderId,
+        chat_selection: $("#agentLlmCurrentSelection").textContent,
+        chat_status: $("#agentLlmCurrentStatus").textContent,
+      },
+      model_delete: {
+        model_delete_open: !modelDeleteDialog.classList.contains("hidden"),
+        model_editor_inert: modelEditor.hasAttribute("inert"),
+        role: modelDeleteDialog.getAttribute("role"),
+        aria_modal: modelDeleteDialog.getAttribute("aria-modal"),
+        labelledby: modelDeleteDialog.getAttribute("aria-labelledby"),
+        active_modal_count: $$('[role="dialog"][aria-modal="true"]:not(.hidden)').length,
         focused_id: document.activeElement?.id || null,
       },
       discovery: {
@@ -15231,9 +15401,15 @@ function recordPreviewLayoutEvidence() {
         provider_delete_y: Boolean(providerDeleteSurface && (
           providerDeleteSurface.top < 0 || providerDeleteSurface.bottom > window.innerHeight
         )),
+        model_delete_x: Boolean(modelDeleteSurface && (
+          modelDeleteSurface.left < 0 || modelDeleteSurface.right > window.innerWidth
+        )),
+        model_delete_y: Boolean(modelDeleteSurface && (
+          modelDeleteSurface.top < 0 || modelDeleteSurface.bottom > window.innerHeight
+        )),
       },
       overlap: { rail_with_detail: rectsOverlap(rail, detail) },
-      rects: { dialog, shell, rail, detail, provider_delete: providerDeleteSurface },
+      rects: { dialog, shell, rail, detail, model_delete: modelDeleteSurface, provider_delete: providerDeleteSurface },
     });
     return;
   }
@@ -20369,7 +20545,7 @@ $("#agentLlmDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmClose === "true") closeAgentLlmDialog();
 });
 $("#agentLlmDialog").addEventListener("keydown", (event) => {
-  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen || state.agentLlm.providerDeleteOpen) return;
+  if (state.agentLlm.wizardOpen || state.agentLlm.modelDialogOpen || state.agentLlm.modelDeleteOpen || state.agentLlm.providerDeleteOpen) return;
   trapAgentLlmDialogFocus(event, $("#agentLlmDialog"), closeAgentLlmDialog);
 });
 $("#environmentOperationClose").addEventListener("click", closeEnvironmentOperationDialog);
@@ -20461,14 +20637,24 @@ $("#agentLlmModelId").addEventListener("input", () => {
   $("#agentLlmModelDiscoveredModel").value = "";
 });
 $("#agentLlmSaveModel").addEventListener("click", saveAgentModel);
-$("#agentLlmDeleteModel").addEventListener("click", deleteAgentModel);
+$("#agentLlmDeleteModel").addEventListener("click", openAgentModelDeleteDialog);
 $("#agentLlmModelClose").addEventListener("click", closeAgentLlmModelDialog);
 $("#agentLlmModelCancel").addEventListener("click", closeAgentLlmModelDialog);
 $("#agentLlmModelDialog").addEventListener("click", (event) => {
   if (event.target?.dataset?.agentLlmModelClose === "true") closeAgentLlmModelDialog();
 });
 $("#agentLlmModelDialog").addEventListener("keydown", (event) => {
+  if (state.agentLlm.modelDeleteOpen) return;
   trapAgentLlmDialogFocus(event, $("#agentLlmModelDialog"), closeAgentLlmModelDialog);
+});
+$("#agentLlmModelDeleteClose").addEventListener("click", () => closeAgentLlmModelDeleteDialog());
+$("#agentLlmModelDeleteCancel").addEventListener("click", () => closeAgentLlmModelDeleteDialog());
+$("#agentLlmModelDeleteConfirm").addEventListener("click", () => void confirmAgentModelDeletion());
+$("#agentLlmModelDeleteDialog").addEventListener("click", (event) => {
+  if (event.target?.dataset?.agentLlmModelDeleteClose === "true") closeAgentLlmModelDeleteDialog();
+});
+$("#agentLlmModelDeleteDialog").addEventListener("keydown", (event) => {
+  trapAgentLlmDialogFocus(event, $("#agentLlmModelDeleteDialog"), closeAgentLlmModelDeleteDialog);
 });
 $("#agentLlmTestModel").addEventListener("click", testAgentModelConnection);
 $("#agentLlmCancelTest").addEventListener("click", cancelAgentModelTest);

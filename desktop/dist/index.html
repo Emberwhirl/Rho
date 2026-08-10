@@ -862,7 +862,7 @@ plot(
               </div>
               <div class="agent-llm-current-row">
                 <div>
-                  <span class="agent-llm-eyebrow">Chat route</span>
+                  <span class="agent-llm-eyebrow">This Provider's Chat route</span>
                   <div id="agentLlmCurrentSelection" class="agent-llm-current-selection">No model selected.</div>
                 </div>
                 <span id="agentLlmCurrentStatus" class="agent-llm-current-status">No model selected</span>
@@ -1130,6 +1130,29 @@ plot(
             <p>Removing a model does not rewrite earlier Agent turns.</p>
             <button id="agentLlmDeleteModel" class="danger" type="button">Delete model</button>
           </details>
+        </div>
+      </div>
+    </div>
+    <div id="agentLlmModelDeleteDialog" class="agent-llm-dialog agent-llm-subdialog agent-llm-model-delete-dialog hidden">
+      <div class="agent-llm-scrim" data-agent-llm-model-delete-close="true"></div>
+      <div class="agent-llm-subdialog-surface agent-llm-model-delete-surface">
+        <div class="agent-llm-header">
+          <div>
+            <strong id="agentLlmModelDeleteTitle">Delete model?</strong>
+            <p>Review the exact model before anything is removed.</p>
+          </div>
+          <button id="agentLlmModelDeleteClose" type="button" aria-label="Close model deletion">✕</button>
+        </div>
+        <div id="agentLlmModelDeleteStatus" class="agent-llm-operation-status hidden" role="status" aria-live="polite"></div>
+        <section class="agent-llm-model-delete-impact" aria-labelledby="agentLlmModelDeleteImpactTitle">
+          <strong id="agentLlmModelDeleteImpactTitle">This action removes</strong>
+          <p id="agentLlmModelDeleteSummary">The selected model record.</p>
+          <p>Any route using this model must be reassigned or removed first. Provider settings, its stored API key, and earlier Agent history are kept.</p>
+        </section>
+        <p class="agent-llm-model-delete-note">This action cannot be undone.</p>
+        <div class="agent-llm-actions agent-llm-dialog-actions">
+          <button id="agentLlmModelDeleteCancel" type="button">Cancel</button>
+          <button id="agentLlmModelDeleteConfirm" type="button" class="danger">Delete model</button>
         </div>
       </div>
     </div>
