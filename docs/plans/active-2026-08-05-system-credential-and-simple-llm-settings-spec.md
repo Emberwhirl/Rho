@@ -26,8 +26,10 @@ are complete, while final interactive and installed-app acceptance remain open;
 CRED-UX4A-R4 Issue #25 Provider-context and model-deletion modal repair was
 explicitly authorized by the project owner on 2026-08-10; its implementation,
 complete affected automated matrix, deterministic browser review, and
-independent destructive-state/accessibility review are complete, while owner
-installed-app acceptance remains open;
+independent destructive-state/accessibility review are complete; the project
+owner authorized push, upstream merge, and Issue reply on 2026-08-10, and the
+application identity is synchronized to `0.4.0-dev.28` for that integration,
+while owner installed-app acceptance remains open;
 CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
@@ -1730,9 +1732,39 @@ frontend matrix was rerun successfully. No unresolved route mutation,
 cross-Provider disclosure, cascade deletion, credential, schema, persistence,
 network, or backend-command finding remains.
 
-Version decision: this remains a source-only continuation of the R3 branch.
-Application metadata and `NEWS.md` remain at immutable `0.4.0-dev.27`; R3 and
-R4 must advance all application version authorities and NEWS to the next
-unused identity before integration, packaging, or distribution. No R package
-contract or package version changed. Exact installed-app acceptance is `NOT
-RUN` and remains the release gate.
+Version decision at the source-review checkpoint: this was a source-only
+continuation of the R3 branch. Application metadata and `NEWS.md` remained at
+immutable `0.4.0-dev.27`; R3 and R4 therefore required the next unused
+identity before integration, packaging, or distribution. No R package contract
+or package version changed. Exact installed-app acceptance was `NOT RUN` and
+remained the release gate.
+
+## CRED-UX4A-R3/R4 Integration Handoff — 2026-08-10
+
+The project owner's instruction to push, merge, and reply to Issue #25
+authorizes the already reviewed R3/R4 source slice to enter upstream `main`.
+It does not authorize candidate construction, installation, publication, or
+reuse of the immutable `0.4.0-dev.27` Draft.
+
+All application version authorities, release-workflow defaults, cache
+identities, release-contract fixtures, and `NEWS.md` are synchronized to the
+next unused identity, `0.4.0-dev.28`. The active `dev.28` checklist owns any
+future exact-candidate evidence; no `dev.27` artifact, receipt, hash, or
+installed result is composable with it. `rho.bridge 0.1.13`, `rho.agent
+0.1.5`, and store schema 12 remain unchanged.
+
+The integration branch carries the reviewed implementation commits
+`751e71d` and `2b12d1f` plus this bounded identity/documentation
+reconciliation. The merge commit and final Issue disposition must be recorded
+only after upstream integration is factually complete. Exact installed-app
+acceptance remains a separate `dev.28` release gate.
+
+The pre-integration rerun passed `cargo fmt --all -- --check`, `cargo check
+--workspace --all-targets`, and `cargo test --workspace --all-targets
+--no-fail-fast` (desktop 174 passed with the opt-in Keychain smoke ignored,
+server 58, store 108, and all other workspace targets passed). Both R package
+suites and all 52 `scripts/test-*.mjs` contracts passed, together with
+JavaScript syntax and `git diff --check`. The first frontend matrix run
+truthfully rejected stale escaped `dev.27` cache-version fixtures; those
+fixtures were synchronized to `dev.28`, and the complete 52-script matrix
+then passed. No implementation behavior changed during that correction.
