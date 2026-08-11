@@ -1,3 +1,9 @@
+# rho.bridge 0.1.14
+
+- Data Viewer row cells and cell-state metadata now serialize as unnamed,
+  positionally aligned JSON arrays, including for data frames with duplicate
+  or non-syntactic column labels.
+
 # rho.bridge 0.1.13
 
 - Structured parse failures now distinguish their parse phase and expose a

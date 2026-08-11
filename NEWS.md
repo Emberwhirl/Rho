@@ -4,6 +4,18 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.31 - 2026-08-11
+
+### Fixed
+
+- Environment Data Viewer rows now cross the R/Ark/Tauri boundary as ordered
+  cell and cell-state arrays, so ordinary data frames—including duplicate or
+  non-syntactic column labels—render positionally instead of failing after a
+  successful backend read.
+- Data Viewer protocol and presentation failures are no longer mislabeled as
+  stale workspace data. The refresh-required message is reserved for an
+  actual view-token or workspace-revision rejection.
+
 ## 0.4.0-dev.30 - 2026-08-11
 
 ### Fixed
