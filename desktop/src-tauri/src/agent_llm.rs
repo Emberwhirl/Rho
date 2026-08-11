@@ -361,6 +361,13 @@ pub struct DeleteModelRequest {
     pub replacement_model_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteProviderRequest {
+    pub provider_id: String,
+    pub expected_revision: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct AgentModelTestState {
     pub pid: Option<u32>,
@@ -657,21 +664,24 @@ pub fn save_provider(data_dir: &Path, provider: AgentProviderProfile) -> Result<
     Ok(settings)
 }
 
-pub fn delete_provider(data_dir: &Path, provider_id: &str) -> Result<AgentLlmSettings> {
-    delete_provider_with_store(data_dir, provider_id, &SystemCredentialStore)
+pub fn delete_provider(
+    data_dir: &Path,
+    request: &DeleteProviderRequest,
+) -> Result<AgentLlmSettings> {
+    delete_provider_with_store(data_dir, request, &SystemCredentialStore)
 }
 
 fn delete_provider_with_store(
     data_dir: &Path,
-    provider_id: &str,
+    request: &DeleteProviderRequest,
     credential_store: &impl CredentialStore,
 ) -> Result<AgentLlmSettings> {
-    delete_provider_with_store_and_save(data_dir, provider_id, credential_store, save_settings)
+    delete_provider_with_store_and_save(data_dir, request, credential_store, save_settings)
 }
 
 fn delete_provider_with_store_and_save<F>(
     data_dir: &Path,
-    provider_id: &str,
+    request: &DeleteProviderRequest,
     credential_store: &impl CredentialStore,
     save: F,
 ) -> Result<AgentLlmSettings>
@@ -681,28 +691,48 @@ where
     let _guard = settings_mutation_guard();
     let mut settings = load_settings(data_dir)?;
     ensure!(
-        !settings
-            .models
-            .iter()
-            .any(|model| model.provider_id == provider_id),
-        "Delete the provider's models before removing the provider."
+        settings.revision == request.expected_revision,
+        "Model settings changed while this provider delete confirmation was open. Reload and review the updated impact."
     );
-    let before = settings.providers.len();
+    let provider_id = request.provider_id.as_str();
+    validate_bounded(provider_id, "Provider ID", MAX_ID_LENGTH)?;
+    settings
+        .providers
+        .iter()
+        .find(|provider| provider.id == provider_id)
+        .with_context(|| format!("Unknown provider: {provider_id}"))?;
+    let model_ids = settings
+        .models
+        .iter()
+        .filter(|model| model.provider_id == provider_id)
+        .map(|model| model.id.clone())
+        .collect::<HashSet<_>>();
+    ensure!(
+        !settings.capability_routes.iter().any(|route| {
+            route.capability == "agent.chat" && model_ids.contains(&route.model_id)
+        }),
+        "Assign Chat to a model from another provider before deleting this provider."
+    );
+    settings
+        .capability_routes
+        .retain(|route| !model_ids.contains(&route.model_id));
+    settings
+        .models
+        .retain(|model| model.provider_id != provider_id);
     settings
         .providers
         .retain(|provider| provider.id != provider_id);
-    ensure!(
-        settings.providers.len() != before,
-        "Unknown provider: {provider_id}"
-    );
     increment_revision(&mut settings)?;
+    validate_settings(&settings)?;
     let previous_credential = credential_store.get(provider_id)?;
     credential_store.delete(provider_id)?;
     if let Err(save_error) = save(data_dir, &settings) {
         let recovery = if let Some(credential) = previous_credential.as_deref() {
-            credential_store.set(provider_id, credential).with_context(|| {
-                "Provider metadata could not be saved, and its system credential could not be restored"
-            })?;
+            if let Err(restore_error) = credential_store.set(provider_id, credential) {
+                return Err(anyhow::anyhow!(
+                    "Provider metadata could not be saved ({save_error:#}), and its system credential could not be restored ({restore_error:#})."
+                ));
+            }
             "Provider metadata could not be saved; its system credential was restored"
         } else {
             "Provider metadata could not be saved; no system credential needed restoration"
@@ -2889,16 +2919,23 @@ mod tests {
     #[derive(Default)]
     struct MemoryCredentialStore {
         entries: Mutex<HashMap<String, String>>,
+        get_calls: Mutex<Vec<String>>,
+        set_calls: Mutex<Vec<String>>,
+        delete_calls: Mutex<Vec<String>>,
+        fail_get: bool,
         fail_set: bool,
         fail_delete: bool,
     }
 
     impl CredentialStore for MemoryCredentialStore {
         fn get(&self, provider_id: &str) -> Result<Option<String>> {
+            self.get_calls.lock().unwrap().push(provider_id.to_string());
+            ensure!(!self.fail_get, "injected credential read failure");
             Ok(self.entries.lock().unwrap().get(provider_id).cloned())
         }
 
         fn set(&self, provider_id: &str, credential: &str) -> Result<()> {
+            self.set_calls.lock().unwrap().push(provider_id.to_string());
             ensure!(!self.fail_set, "injected credential write failure");
             self.entries
                 .lock()
@@ -2908,6 +2945,10 @@ mod tests {
         }
 
         fn delete(&self, provider_id: &str) -> Result<()> {
+            self.delete_calls
+                .lock()
+                .unwrap()
+                .push(provider_id.to_string());
             ensure!(!self.fail_delete, "injected credential delete failure");
             self.entries.lock().unwrap().remove(provider_id);
             Ok(())
@@ -2979,8 +3020,42 @@ mod tests {
                 "provider-deepseek-existing".to_string(),
                 secret.to_string(),
             )])),
-            fail_set: false,
-            fail_delete: false,
+            ..Default::default()
+        }
+    }
+
+    fn provider_removal_fixture() -> AgentLlmSettings {
+        let mut settings = default_settings();
+        let mut remaining_provider = settings.providers[0].clone();
+        remaining_provider.id = "provider-remaining".to_string();
+        remaining_provider.display_name = "Remaining Provider".to_string();
+        let mut remaining_model = settings.models[0].clone();
+        remaining_model.id = "model-remaining-chat".to_string();
+        remaining_model.provider_id = remaining_provider.id.clone();
+        remaining_model.display_name = "Remaining Chat Model".to_string();
+        remaining_model.model_id = "remaining-chat-model".to_string();
+        let mut second_target_model = settings.models[0].clone();
+        second_target_model.id = "model-target-vision".to_string();
+        second_target_model.display_name = "Target Vision Model".to_string();
+        second_target_model.model_id = "target-vision-model".to_string();
+        settings.providers.push(remaining_provider);
+        settings.models.push(second_target_model);
+        settings.models.push(remaining_model);
+        settings.capability_routes[0].model_id = "model-remaining-chat".to_string();
+        settings.capability_routes.push(AgentCapabilityRoute {
+            capability: "agent.act".to_string(),
+            model_id: "model-deepseek-v4-flash".to_string(),
+            model_type: "language".to_string(),
+            required_model_capabilities: vec!["function_call".to_string()],
+        });
+        validate_settings(&settings).unwrap();
+        settings
+    }
+
+    fn delete_provider_request(settings: &AgentLlmSettings) -> DeleteProviderRequest {
+        DeleteProviderRequest {
+            provider_id: "provider-deepseek-existing".to_string(),
+            expected_revision: settings.revision,
         }
     }
 
@@ -3391,8 +3466,7 @@ mod tests {
                 ),
                 ("provider-act".to_string(), "act-secret".to_string()),
             ])),
-            fail_set: false,
-            fail_delete: false,
+            ..Default::default()
         };
 
         let (chat, chat_credential) =
@@ -3449,8 +3523,7 @@ mod tests {
                 ),
                 ("provider-repair".to_string(), "repair-secret".to_string()),
             ])),
-            fail_set: false,
-            fail_delete: false,
+            ..Default::default()
         };
 
         let (resolved, credential) = resolve_model_and_credential_for_task_with_store(
@@ -3667,7 +3740,7 @@ mod tests {
     }
 
     #[test]
-    fn credential_backend_failure_preserves_existing_secret_and_provider_metadata() {
+    fn credential_write_failure_preserves_existing_secret() {
         let directory = TempDir::new().unwrap();
         save_settings(directory.path(), &default_settings()).unwrap();
         let store = MemoryCredentialStore {
@@ -3677,6 +3750,7 @@ mod tests {
             )])),
             fail_set: true,
             fail_delete: true,
+            ..Default::default()
         };
 
         assert!(
@@ -3692,60 +3766,325 @@ mod tests {
             store.get("provider-deepseek-existing").unwrap().as_deref(),
             Some("existing-secret")
         );
-        let mut settings = load_settings(directory.path()).unwrap();
-        let mut second_provider = settings.providers[0].clone();
-        second_provider.id = "provider-second".to_string();
-        second_provider.display_name = "Second".to_string();
-        let mut second_model = settings.models[0].clone();
-        second_model.id = "model-second".to_string();
-        second_model.provider_id = second_provider.id.clone();
-        second_model.display_name = "Second Model".to_string();
-        settings.providers.push(second_provider);
-        settings.models = vec![second_model];
-        settings.capability_routes[0].model_id = "model-second".to_string();
-        save_settings(directory.path(), &settings).unwrap();
+    }
 
-        let original = load_settings(directory.path()).unwrap();
-        assert!(
-            delete_provider_with_store(directory.path(), "provider-deepseek-existing", &store,)
-                .is_err()
+    #[test]
+    fn provider_deletion_cascades_owned_dependencies_and_survives_reopen() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let store = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([
+                (
+                    "provider-deepseek-existing".to_string(),
+                    "target-secret".to_string(),
+                ),
+                (
+                    "provider-remaining".to_string(),
+                    "remaining-secret".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+        let request = delete_provider_request(&settings);
+
+        let removed = delete_provider_with_store(directory.path(), &request, &store).unwrap();
+
+        assert_eq!(removed.revision, settings.revision + 1);
+        assert_eq!(removed.providers.len(), 1);
+        assert_eq!(removed.providers[0].id, "provider-remaining");
+        assert_eq!(removed.models.len(), 1);
+        assert_eq!(removed.models[0].id, "model-remaining-chat");
+        assert_eq!(removed.capability_routes.len(), 1);
+        assert_eq!(removed.capability_routes[0].capability, "agent.chat");
+        assert_eq!(
+            removed.capability_routes[0].model_id,
+            "model-remaining-chat"
+        );
+        assert_eq!(store.get("provider-deepseek-existing").unwrap(), None);
+        assert_eq!(
+            store.get("provider-remaining").unwrap().as_deref(),
+            Some("remaining-secret")
         );
         assert_eq!(
-            load_settings(directory.path()).unwrap().providers[0].id,
-            original.providers[0].id
+            store.delete_calls.lock().unwrap().as_slice(),
+            ["provider-deepseek-existing"]
+        );
+
+        let reopened = load_settings(directory.path()).unwrap();
+        assert_eq!(reopened.revision, removed.revision);
+        assert_eq!(reopened.providers[0].id, "provider-remaining");
+        assert_eq!(reopened.models[0].id, "model-remaining-chat");
+        assert_eq!(reopened.capability_routes[0].capability, "agent.chat");
+
+        let late = delete_provider_with_store(directory.path(), &request, &store).unwrap_err();
+        assert!(late.to_string().contains("changed"));
+        assert_eq!(
+            store.delete_calls.lock().unwrap().as_slice(),
+            ["provider-deepseek-existing"]
         );
     }
 
     #[test]
-    fn provider_metadata_failure_restores_deleted_credential() {
+    fn provider_deletion_handles_a_provider_without_models_or_a_stored_credential() {
         let directory = TempDir::new().unwrap();
         let mut settings = default_settings();
-        let mut second_provider = settings.providers[0].clone();
-        second_provider.id = "provider-second".to_string();
-        second_provider.display_name = "Second".to_string();
-        settings.providers.push(second_provider);
-        settings.models[0].provider_id = "provider-second".to_string();
+        let mut empty_provider = settings.providers[0].clone();
+        empty_provider.id = "provider-empty".to_string();
+        empty_provider.display_name = "Empty Provider".to_string();
+        settings.providers.push(empty_provider);
         save_settings(directory.path(), &settings).unwrap();
+        let store = MemoryCredentialStore::default();
+
+        let removed = delete_provider_with_store(
+            directory.path(),
+            &DeleteProviderRequest {
+                provider_id: "provider-empty".to_string(),
+                expected_revision: settings.revision,
+            },
+            &store,
+        )
+        .unwrap();
+
+        assert_eq!(removed.revision, settings.revision + 1);
+        assert_eq!(removed.providers.len(), 1);
+        assert_eq!(removed.providers[0].id, "provider-deepseek-existing");
+        assert_eq!(removed.models.len(), 1);
+        assert_eq!(removed.capability_routes.len(), 1);
+        assert_eq!(
+            store.delete_calls.lock().unwrap().as_slice(),
+            ["provider-empty"]
+        );
+        validate_settings(&load_settings(directory.path()).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn provider_deletion_rejects_stale_unknown_and_chat_ownership_before_credential_access() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let original = std::fs::read(settings_path(directory.path())).unwrap();
         let store = MemoryCredentialStore {
             entries: Mutex::new(HashMap::from([(
                 "provider-deepseek-existing".to_string(),
-                "existing-secret".to_string(),
+                "target-secret".to_string(),
             )])),
-            fail_set: false,
-            fail_delete: false,
+            fail_get: true,
+            ..Default::default()
         };
 
-        let result = delete_provider_with_store_and_save(
+        let stale = delete_provider_with_store(
             directory.path(),
-            "provider-deepseek-existing",
+            &DeleteProviderRequest {
+                provider_id: "provider-deepseek-existing".to_string(),
+                expected_revision: settings.revision + 1,
+            },
             &store,
-            |_, _| bail!("injected metadata write failure"),
+        )
+        .unwrap_err();
+        assert!(stale.to_string().contains("changed"));
+        assert!(store.get_calls.lock().unwrap().is_empty());
+
+        let unknown = delete_provider_with_store(
+            directory.path(),
+            &DeleteProviderRequest {
+                provider_id: "provider-missing".to_string(),
+                expected_revision: settings.revision,
+            },
+            &store,
+        )
+        .unwrap_err();
+        assert!(unknown.to_string().contains("Unknown provider"));
+        assert!(store.get_calls.lock().unwrap().is_empty());
+
+        for invalid_provider_id in [String::new(), "x".repeat(MAX_ID_LENGTH + 1)] {
+            let malformed = delete_provider_with_store(
+                directory.path(),
+                &DeleteProviderRequest {
+                    provider_id: invalid_provider_id,
+                    expected_revision: settings.revision,
+                },
+                &store,
+            )
+            .unwrap_err();
+            assert!(
+                malformed.to_string().contains("must not be empty")
+                    || malformed.to_string().contains("too long")
+            );
+        }
+        assert!(store.get_calls.lock().unwrap().is_empty());
+
+        let mut chat_owned = settings.clone();
+        chat_owned.capability_routes[0].model_id = "model-deepseek-v4-flash".to_string();
+        save_settings(directory.path(), &chat_owned).unwrap();
+        let chat_original = std::fs::read(settings_path(directory.path())).unwrap();
+        let chat_blocked = delete_provider_with_store(
+            directory.path(),
+            &delete_provider_request(&chat_owned),
+            &store,
+        )
+        .unwrap_err();
+        assert!(chat_blocked.to_string().contains("Assign Chat"));
+        assert!(store.get_calls.lock().unwrap().is_empty());
+        assert!(store.delete_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            store
+                .entries
+                .lock()
+                .unwrap()
+                .get("provider-deepseek-existing")
+                .map(String::as_str),
+            Some("target-secret")
+        );
+        assert_ne!(chat_original, original);
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            chat_original
+        );
+        assert_eq!(load_settings(directory.path()).unwrap().providers.len(), 2);
+    }
+
+    #[test]
+    fn provider_deletion_credential_failures_preserve_metadata_and_secret() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let original = std::fs::read(settings_path(directory.path())).unwrap();
+        let request = delete_provider_request(&settings);
+        let read_failure = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([(
+                "provider-deepseek-existing".to_string(),
+                "target-secret".to_string(),
+            )])),
+            fail_get: true,
+            ..Default::default()
+        };
+
+        let error =
+            delete_provider_with_store(directory.path(), &request, &read_failure).unwrap_err();
+        assert!(error.to_string().contains("credential read failure"));
+        assert!(read_failure.delete_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            read_failure
+                .entries
+                .lock()
+                .unwrap()
+                .get("provider-deepseek-existing")
+                .map(String::as_str),
+            Some("target-secret")
+        );
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
         );
 
-        assert!(result.is_err());
+        let delete_failure = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([(
+                "provider-deepseek-existing".to_string(),
+                "target-secret".to_string(),
+            )])),
+            fail_delete: true,
+            ..Default::default()
+        };
+        let error =
+            delete_provider_with_store(directory.path(), &request, &delete_failure).unwrap_err();
+        assert!(error.to_string().contains("credential delete failure"));
+        assert_eq!(delete_failure.delete_calls.lock().unwrap().len(), 1);
+        assert_eq!(
+            delete_failure
+                .entries
+                .lock()
+                .unwrap()
+                .get("provider-deepseek-existing")
+                .map(String::as_str),
+            Some("target-secret")
+        );
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn provider_metadata_failure_restores_deleted_credential_and_allows_retry() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let original = std::fs::read(settings_path(directory.path())).unwrap();
+        let request = delete_provider_request(&settings);
+        let store = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([
+                (
+                    "provider-deepseek-existing".to_string(),
+                    "target-secret".to_string(),
+                ),
+                (
+                    "provider-remaining".to_string(),
+                    "remaining-secret".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+
+        let result =
+            delete_provider_with_store_and_save(directory.path(), &request, &store, |_, _| {
+                bail!("injected metadata write failure")
+            });
+
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("system credential was restored")
+        );
         assert_eq!(
             store.get("provider-deepseek-existing").unwrap().as_deref(),
-            Some("existing-secret")
+            Some("target-secret")
+        );
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
+        );
+        assert_eq!(store.delete_calls.lock().unwrap().len(), 1);
+        assert_eq!(store.set_calls.lock().unwrap().len(), 1);
+
+        let recovered = delete_provider_with_store(directory.path(), &request, &store).unwrap();
+        assert_eq!(recovered.providers[0].id, "provider-remaining");
+        assert_eq!(store.get("provider-deepseek-existing").unwrap(), None);
+        assert_eq!(
+            store.get("provider-remaining").unwrap().as_deref(),
+            Some("remaining-secret")
+        );
+    }
+
+    #[test]
+    fn provider_metadata_and_credential_restore_failure_reports_partial_recovery_truthfully() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let original = std::fs::read(settings_path(directory.path())).unwrap();
+        let store = MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([(
+                "provider-deepseek-existing".to_string(),
+                "target-secret".to_string(),
+            )])),
+            fail_set: true,
+            ..Default::default()
+        };
+
+        let error = delete_provider_with_store_and_save(
+            directory.path(),
+            &delete_provider_request(&settings),
+            &store,
+            |_, _| bail!("injected metadata write failure"),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("could not be restored"));
+        assert!(!error.to_string().contains("target-secret"));
+        assert_eq!(
+            std::fs::read(settings_path(directory.path())).unwrap(),
+            original
         );
         assert!(
             load_settings(directory.path())
@@ -3754,6 +4093,61 @@ mod tests {
                 .iter()
                 .any(|provider| provider.id == "provider-deepseek-existing")
         );
+        assert!(
+            !store
+                .entries
+                .lock()
+                .unwrap()
+                .contains_key("provider-deepseek-existing")
+        );
+        assert_eq!(store.delete_calls.lock().unwrap().len(), 1);
+        assert_eq!(store.set_calls.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn simultaneous_provider_deletions_accept_exactly_one_revision() {
+        let directory = TempDir::new().unwrap();
+        let settings = provider_removal_fixture();
+        save_settings(directory.path(), &settings).unwrap();
+        let data_dir = Arc::new(directory.path().to_path_buf());
+        let request = Arc::new(delete_provider_request(&settings));
+        let store = Arc::new(MemoryCredentialStore {
+            entries: Mutex::new(HashMap::from([(
+                "provider-deepseek-existing".to_string(),
+                "target-secret".to_string(),
+            )])),
+            ..Default::default()
+        });
+        let barrier = Arc::new(Barrier::new(3));
+        let handles = (0..2)
+            .map(|_| {
+                let data_dir = Arc::clone(&data_dir);
+                let request = Arc::clone(&request);
+                let store = Arc::clone(&store);
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    barrier.wait();
+                    delete_provider_with_store(data_dir.as_path(), request.as_ref(), &*store)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        barrier.wait();
+        let outcomes = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes.iter().filter(|outcome| outcome.is_err()).count(),
+            1
+        );
+        assert_eq!(store.get_calls.lock().unwrap().len(), 1);
+        assert_eq!(store.delete_calls.lock().unwrap().len(), 1);
+        let reopened = load_settings(directory.path()).unwrap();
+        assert_eq!(reopened.revision, settings.revision + 1);
+        assert_eq!(reopened.providers[0].id, "provider-remaining");
     }
 
     #[test]
