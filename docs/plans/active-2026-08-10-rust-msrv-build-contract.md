@@ -1,16 +1,16 @@
 # Rust MSRV And Dual-Toolchain Build Contract
 
 Status: active implementation contract; Issue #28 authorized `MSRV-1` on
-2026-08-10; source implementation and local macOS acceptance complete; hosted
-matrix acceptance pending
+2026-08-10; source implementation, local macOS acceptance, and first hosted
+four-leg matrix acceptance complete; merge review pending
 
 Date: 2026-08-10
 Issue: https://github.com/YuLab-SMU/Rho/issues/28
 Change class: D3 shared build and toolchain policy
 Risk: R3 cross-platform build and release-validation foundation
 Authorized work package: `MSRV-1`
-Next mandatory stop: review the complete source diff and all four hosted Rust
-compatibility matrix outcomes before merge
+Next mandatory stop: require the same four hosted checks on the current PR HEAD,
+then complete reviewer merge disposition
 
 ## Problem And Reproduction
 
@@ -252,9 +252,27 @@ bundle configuration. It was staged locally through
 `scripts/bootstrap-ark-macos.sh`; the workflow performs the same
 checksum-pinned preparation. No generated runtime file is committed.
 
-The four hosted matrix outcomes remain the mandatory integration gate. Until
-they pass on the exact pull-request commit, Windows GNU compatibility and the
-overall definition of done remain pending.
+The first hosted matrix completed successfully on implementation commit
+`94ca28fe430cce1dd83e0a82bb4021df68a8ca2d` in GitHub Actions run
+`31448825609`:
+
+| Matrix identity | Result | Duration |
+| --- | --- | --- |
+| `macos-26 / Rust stable` | pass | 4m12s |
+| `macos-26 / Rust 1.88.0` | pass | 4m56s |
+| `windows-latest / Rust stable` | pass | 9m30s |
+| `windows-latest / Rust 1.88.0` | pass | 10m09s |
+
+GitHub emitted non-blocking Node.js 20 deprecation annotations for the existing
+`actions/checkout@v4` and `actions/setup-node@v4` action runtimes while forcing
+them to Node.js 24. Those annotations do not weaken Rust compatibility
+evidence. Updating third-party Action majors is outside `MSRV-1` and requires a
+separate dependency/workflow review before GitHub changes runner enforcement.
+
+The evidence-reconciliation commit must receive the same four required checks
+on its PR HEAD. GitHub evaluates pull-request path filters with the cumulative
+three-dot diff against the base, so the Rust changes continue to trigger this
+matrix after a documentation-only evidence commit.
 
 ## Work Package And Stop Point
 
