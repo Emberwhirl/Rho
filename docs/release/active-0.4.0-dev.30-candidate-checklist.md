@@ -1,10 +1,10 @@
 # Rho 0.4.0-dev.30 Cross-Platform Candidate Checklist
 
-Status: active stacked source-candidate contract; Issue #33 interaction repair
-implemented and reviewed; exact identity synchronization, stacked source
-validation, branch publication, Draft PR #34, and Issue reply complete;
-upstream integration, artifacts, installed acceptance, MAC5, and publication
-open
+Status: active source-candidate contract; Issue #33 interaction repair
+implemented and reviewed; exact identity synchronization, dependency
+integration, refreshed local source validation, branch publication, Draft PR
+#34, and Issue reply complete; final hosted source matrix, upstream integration,
+artifacts, installed acceptance, MAC5, and publication open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -22,18 +22,17 @@ authority. The macOS arm64 specification owns packaging and trust gates. This
 checklist alone owns the exact `0.4.0-dev.30` identity and any future candidate,
 installed, MAC5, or publication evidence.
 
-Authorization: the project owner's 2026-08-11 instruction to reply to Issue
-#33, push the repair, and upgrade authorizes the reviewed interaction repair,
-stacking the exact open PR #24 head, synchronized `dev.30` metadata and
-`NEWS.md`, scoped commits, branch push, draft PR, and Issue status reply. It does
-not authorize merging PR #24 or this branch, candidate construction,
-installation, public publication, update-site mutation, or Issue closure.
+Authorization: the project owner's 2026-08-11 instructions authorize the
+reviewed interaction repair, synchronized `dev.30` metadata and `NEWS.md`,
+scoped commits, branch refresh, exact verification, and source integration once
+its final hosted source gate passes. They do not authorize candidate
+construction, installation, public publication, update-site mutation, or Issue
+closure.
 
-PR #24 exact head `105e8b3c024051809c7ce1b8f44c32fdc8247436` reserves
-`0.4.0-dev.29`. The `dev.30` branch includes that exact dependency reconciled
-with current upstream `main`; its PR must not merge until PR #24 establishes
-`dev.29` on `main`. No `dev.29` artifact or acceptance evidence is relabelled or
-composed into this identity.
+PR #24 established `0.4.0-dev.29` on `main` at merge `f05315c`, and PR #29
+established the Rust 1.88/Resolver 3 build contract at merge `9e0b36b`. The
+`dev.30` branch is refreshed through that exact main identity. No `dev.29`
+artifact or acceptance evidence is relabelled or composed into this identity.
 
 ## Exact Identity
 
@@ -45,10 +44,10 @@ composed into this identity.
 | Store schema | `12` | unchanged; no persistence schema changed |
 | Release tag/name | `v0.4.0-dev.30` / `Rho 0.4.0-dev.30` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Dependency | PR #24 head `105e8b3c` | stacked; upstream integration pending |
-| Authoritative source commit | reviewed upstream default-branch SHA | Draft PR #34 published; pending dependent PR integration |
+| Dependency | upstream `main` `9e0b36b` | PR #24 `dev.29` and PR #29 MSRV integrations included |
+| Authoritative source commit | reviewed upstream default-branch SHA | Draft PR #34 refreshed; final hosted source matrix and integration pending |
 | Windows/macOS artifacts | exact `dev.30` candidate only | not built |
-| Release decision | source `PASS`; merge/release `NO-GO` | source verification complete; dependency, integration, artifacts, installed acceptance, MAC5, and publication open |
+| Release decision | source local `PASS`; merge pending hosted gate; release `NO-GO` | dependency and refreshed local verification complete; hosted source matrix, integration, artifacts, installed acceptance, MAC5, and publication open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -82,16 +81,17 @@ checks, complete Rust workspace formatting/check/tests, both R package suites,
 and `git diff --check`. Browser/mock interaction and exact installed Windows
 reproduction remain separate gates and cannot be inferred from automation.
 
-Source verification completed against the synchronized stacked `dev.30` tree
+Source verification completed against the synchronized `dev.30` tree
 on 2026-08-11:
 
 - `node --check desktop/dist/app.js`: PASS;
-- all 53 `scripts/test-*.mjs` contracts, including all 46 UI contracts and the
+- all 54 `scripts/test-*.mjs` contracts, including all 46 UI contracts, the
+  Rust MSRV contract, and the
   deterministic Issue #33 focus/activation/scroll/background-edit regression:
   PASS;
 - `cargo fmt --all -- --check`: PASS;
-- `cargo check --workspace`: PASS;
-- `cargo test --workspace`: 364 passed, 0 failed, 1 opt-in macOS Keychain test
+- `cargo check --workspace --all-targets --locked`: PASS;
+- `cargo test --workspace --locked --no-fail-fast`: 364 passed, 0 failed, 1 opt-in macOS Keychain test
   ignored;
 - `rho.bridge`: 97 test blocks / 568 expectations passed, with 0 failures,
   errors, warnings, or skips;
@@ -107,11 +107,13 @@ browser was exposed. No browser or installed-application result is claimed.
 
 ## Integration Handoff And Remaining Gates
 
-The exact reviewed branch is published as Draft PR #34, and the truthful
-source-verification status is recorded on Issue #33. Both explicitly retain
-the dependency on PR #24 and leave Issue #33 open. PR #24 must land before PR
-#34 can be refreshed, revalidated, and integrated. Exact `dev.30` candidate
+The exact reviewed branch is published as Draft PR #34, refreshed through
+upstream `main` `9e0b36b`, and the truthful source-verification status remains
+recorded on Issue #33. Source integration requires the four hosted Rust
+compatibility identities on the exact pushed head. Exact `dev.30` candidate
 construction, Windows/macOS installed acceptance, browser interaction, MAC5,
-publication, and update-site evidence remain independent facts.
+publication, and update-site evidence remain independent facts and Issue #33
+remains open.
 
-Current decision: `NO-GO` for merge, packaging, or publication.
+Current decision: `GO` for source merge only after the final hosted matrix;
+`NO-GO` for packaging or publication.

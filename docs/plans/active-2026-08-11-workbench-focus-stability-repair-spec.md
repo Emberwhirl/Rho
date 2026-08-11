@@ -2,7 +2,9 @@
 
 Status: active; ISSUE-33-INTERACTION-1 authorized 2026-08-11; source
 implementation, automated verification, and post-verification contract review
-complete; browser/mock interaction and installed Windows acceptance open
+complete; PR #24 dependency integrated, branch refreshed through upstream
+`main` `9e0b36b`, and exact local validation complete; final hosted source
+matrix, browser/mock interaction, and installed Windows acceptance open
 
 Date: 2026-08-11
 Authorization: user requested verification and repair of GitHub Issue #33 on
@@ -152,14 +154,13 @@ surfaces.
 
 ## Version, NEWS, And Stop Point
 
-The current upstream baseline is `0.4.0-dev.28`; open PR #24 already reserves
-the next development identity, `0.4.0-dev.29`. This source work package must
-not create a second `dev.29`. On 2026-08-11 the user explicitly authorized the
-push and `0.4.0-dev.30` upgrade. The publish branch therefore stacks on the
-exact PR #24 head `105e8b3c024051809c7ce1b8f44c32fdc8247436`, after reconciling
-it with current upstream `main`, and synchronizes all application metadata and
-`NEWS.md` to `0.4.0-dev.30`. Its PR must be marked as dependent on #24 and must
-not merge before #24 establishes `0.4.0-dev.29` on `main`.
+PR #24 established `0.4.0-dev.29` on upstream `main` through merge `f05315c`.
+This source work package therefore retains the separately authorized
+`0.4.0-dev.30` identity and synchronizes all application metadata and
+`NEWS.md` without reusing `dev.29`. PR #29 subsequently integrated the
+repository-wide Rust 1.88/Resolver 3 build contract at `9e0b36b`; the Issue #33
+branch inherits that build-only contract without changing its product behavior
+or version.
 
 Stop after this interaction-stability work package, deterministic evidence,
 post-verification contract review, scoped commit, and integration handoff.
@@ -214,13 +215,12 @@ but the current environment exposed zero connected browsers. Therefore no
 browser interaction result is claimed and that acceptance gate remains open.
 Exact installed Windows reproduction and acceptance also remain open.
 
-Version review reconfirmed that upstream remains `0.4.0-dev.28` while open,
-clean PR #24 at `105e8b3c024051809c7ce1b8f44c32fdc8247436` reserves synchronized
-`0.4.0-dev.29` metadata and `NEWS.md`. The 2026-08-11 upgrade authorization
-requires this stacked publish branch to allocate and document
-`0.4.0-dev.30`. Source repair reviewability is separate from release readiness;
-browser/mock, exact installed Windows, and candidate publication gates remain
-open after metadata synchronization.
+Version review records that PR #24 integrated synchronized `0.4.0-dev.29`
+metadata and `NEWS.md` at `f05315c`. The 2026-08-11 upgrade authorization
+therefore remains correctly allocated to `0.4.0-dev.30`. Source repair
+reviewability is separate from release readiness; browser/mock, exact installed
+Windows, and candidate publication gates remain open after metadata
+synchronization.
 
 The authorized stacked `0.4.0-dev.30` synchronization was subsequently
 verified on 2026-08-11 with all 53 `scripts/test-*.mjs` contracts, JavaScript
@@ -232,7 +232,14 @@ workspace results verify the exact PR #24 dependency plus Issue #33 source
 composition; they do not satisfy the still-open browser/mock, installed
 Windows, candidate artifact, MAC5, or publication gates.
 
-Integration handoff completed on 2026-08-11: the reviewed stacked source is
-published as Draft PR #34, and Issue #33 records the source result while
-remaining open. PR #34 explicitly depends on PR #24 and must be refreshed and
-revalidated after #24 lands before any integration decision.
+Integration refresh completed on 2026-08-11: Draft PR #34 now includes upstream
+`main` through MSRV merge `9e0b36b` while retaining `0.4.0-dev.30` and the
+reviewed Issue #33 behavior. The refreshed tree passed all 54 JavaScript
+contracts, JavaScript syntax, locked Rust formatting/check and 364 workspace
+tests with zero failures and one opt-in Keychain smoke ignored, both focused R
+package suites, and `git diff --check`. The exact pushed PR head must still pass
+the four hosted Rust compatibility identities before source integration.
+Browser/mock interaction and installed Windows reproduction remain open after
+source merge and continue to block Issue closure and candidate/release
+acceptance; they do not become passing evidence merely because source is
+integrated.
