@@ -2,7 +2,10 @@
 
 Status: active; ISSUE-2-AGENT-LAUNCH-1 authorized 2026-08-10; launcher and
 aisdk-readiness repairs implemented; exact updated-main automated verification
-and owner desktop Agent acceptance passed; pull-request review pending
+and owner desktop Agent acceptance passed; ISSUE-2-AGENT-LAUNCH-R1 fresh
+readiness admission authorized by the project owner's 2026-08-10 repair
+instruction and implemented; exact `0.4.0-dev.29` verification and PR update
+passes; exact installed Windows acceptance and PR update remain pending
 
 Date: 2026-08-10
 Authorization: user requested a fix and pull request for upstream GitHub Issue
@@ -85,6 +88,43 @@ an older loadable package remains an actionable runtime setup failure.
 - No ownership, schema, security-policy, persistence, or sequencing conflict
   remains.
 
+## ISSUE-2-AGENT-LAUNCH-R1 Fresh Readiness Admission
+
+The general R/Ark runtime cache is not authoritative for Agent compatibility.
+An `aisdk` installation can be upgraded, downgraded, or replaced independently
+of the cached Rscript, Ark, profile, and environment file signatures. Reusing a
+previous positive `agent_runtime` value would therefore create a startup race
+in which one Agent turn could be admitted before the asynchronous fresh probe
+rejects the current package.
+
+The accepted repair contract is:
+
+- remove `agent_runtime` from the persisted `RuntimeCacheFile`; an older
+  cache carrying that JSON member remains readable only for its R/Ark metadata,
+  and the member is ignored;
+- both cache-hit and cache-miss startup paths expose one shared deferred,
+  unavailable Agent status until `agent_runtime_retry` completes a fresh
+  probe against the current R library;
+- no Agent turn may observe a cached positive readiness value; Workspace R may
+  still use the existing validated cache and start without waiting for aisdk;
+- fresh-probe success and failure continue to update only the current in-memory
+  startup/runtime views. Manual Retry remains the recovery path and no R
+  library mutation is introduced;
+- add a backward-compatibility regression that injects a legacy positive
+  `agent_runtime` member, proves the cache still loads its R/Ark facts, proves
+  newly serialized cache state omits that member, and proves deferred status is
+  unavailable with no version claim;
+- retain the exact aisdk version/export regressions, Windows script-file
+  launcher tests, prompt/credential stdin isolation, and complete affected
+  validation.
+
+This changes no database schema, project state, credential source, Provider
+request, model route, approval, Agent turn identity, or R package contract. The
+cache is machine-local performance state, not product persistence authority.
+The System Credential specification retains model-readiness ownership; the
+Windows startup specification retains R/Ark cache ownership; this repair only
+removes an invalid overlap between them.
+
 ## Acceptance And Verification
 
 - A deterministic Rust regression test proves the generated script file has an
@@ -96,6 +136,8 @@ an older loadable package remains an actionable runtime setup failure.
 - Runtime-probe regressions prove loadable aisdk 1.4.12 is unavailable with its
   version retained, while compatible 1.5.0 is admitted only after the required
   exports are checked.
+- A legacy-cache regression proves a persisted positive Agent status cannot
+  enter current startup admission before the fresh probe.
 - Run focused `rho-server` tests, formatting, the affected workspace tests,
   both R package suites, JavaScript syntax, and `git diff --check`.
 - Build and launch the updated Windows desktop application. The owner manually
@@ -104,14 +146,18 @@ an older loadable package remains an actionable runtime setup failure.
 
 ## Version, NEWS, And Stop Point
 
-This source repair does not itself authorize a new distributable application
-candidate. Application version and `NEWS.md` are deferred to upstream's next
-explicitly authorized integration candidate; the R packages, database schema,
-and public protocol are unchanged.
+The project owner's instruction to fix the existing upstream pull request
+authorizes this user-visible source correction as the single-use
+`0.4.0-dev.29` integration identity. Application metadata, workflow defaults,
+release fixtures, cache identity, and `NEWS.md` are synchronized. The R package
+versions, database schema, and public protocol are unchanged. This does not
+authorize candidate construction, installation, merge, publication, or update
+site mutation.
 
-Stop after this repair, regression evidence, updated-app owner acceptance,
-contract review, scoped commit, and draft pull request. Do not expand into
-provider-specific behavior or broader Agent diagnostics.
+Stop after this repair, exact-source regression evidence, contract review,
+scoped commit, and update of PR #24. Exact installed `dev.29` Windows acceptance
+remains an explicit release gate. Do not expand into provider-specific behavior
+or broader Agent diagnostics.
 
 ## Implementation Evidence
 
@@ -144,9 +190,30 @@ cancellation, persistence, approval, schema, or frontend protocol. The branch
 remains active until pull-request review and integration. No version or release
 decision changes.
 
+ISSUE-2-AGENT-LAUNCH-R1 removes `agent_runtime` from the serialized general
+R/Ark cache and uses the same unavailable deferred status on cache hits and
+misses. The background and manual retry paths remain the only fresh readiness
+writers, and they update current in-memory startup/runtime state. A legacy-cache
+regression injects an incompatible positive aisdk 1.4.12 status, proves Rscript,
+Ark, R version, and R library facts still load, proves current serialization
+omits Agent readiness, and proves startup remains unavailable until a fresh
+probe.
+
+On the synchronized `0.4.0-dev.29` source, Rust formatting and complete
+workspace check/tests pass: desktop 176 passed with one opt-in native Keychain
+smoke ignored, server 59 passed, and store 108 passed. Both R package suites,
+JavaScript syntax, all 52 frontend/release-contract scripts, version/release
+fixtures, and `git diff --check` pass. Focused legacy-cache, pinned-aisdk, and
+desktop script-file transport regressions pass. Post-verification contract
+review confirms that legacy extra JSON fields remain readable, cache hit and
+miss share the same fail-closed admission, and the temporary Agent script owner
+remains live through child completion.
+
 Owner acceptance used the refreshed `0.4.0-dev.27` debug application with the
 exact pinned aisdk 1.5.0 commit installed in the selected R library. The Agent
 runtime probe completed and a configured model returned an Agent response. The
 earlier Windows access violation and the later incompatible-aisdk startup
 failure did not recur. Separately observed panel-wide focus movement is outside
-this work package and neither blocks nor expands Issue #2.
+this work package and neither blocks nor expands Issue #2. This evidence remains
+valid for the original launcher/readiness correction but is not exact installed
+`dev.29` acceptance; that release gate remains open.

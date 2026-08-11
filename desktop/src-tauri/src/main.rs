@@ -125,6 +125,14 @@ struct AgentRuntimeStatus {
     error: Option<String>,
 }
 
+fn deferred_agent_runtime_status() -> AgentRuntimeStatus {
+    AgentRuntimeStatus {
+        available: false,
+        aisdk_version: None,
+        error: Some("Agent runtime check is continuing in the background.".to_string()),
+    }
+}
+
 #[derive(Serialize)]
 struct AppRuntimeInfo {
     rscript: Option<String>,
@@ -179,7 +187,6 @@ struct RuntimeCacheFile {
     path_sep: String,
     r_version: String,
     r_libs: String,
-    agent_runtime: AgentRuntimeStatus,
 }
 
 struct ProbeProcessOutput {
@@ -6084,7 +6091,7 @@ fn prepare_runtime_files_with_rscript(
             cache
                 .r_environ_user
                 .map(|signature| PathBuf::from(signature.path)),
-            cache.agent_runtime,
+            deferred_agent_runtime_status(),
         )
     } else {
         let probe_started = Instant::now();
@@ -6103,11 +6110,7 @@ fn prepare_runtime_files_with_rscript(
             "startup_phase=runtime_probe elapsed_ms={} agent_probe=deferred",
             probe_started.elapsed().as_millis()
         ));
-        let agent_runtime = AgentRuntimeStatus {
-            available: false,
-            aisdk_version: None,
-            error: Some("Agent runtime check is continuing in the background.".to_string()),
-        };
+        let agent_runtime = deferred_agent_runtime_status();
         let cache = RuntimeCacheFile {
             version: RUNTIME_CACHE_VERSION,
             rscript: runtime_file_signature(&rscript)?,
@@ -6126,7 +6129,6 @@ fn prepare_runtime_files_with_rscript(
             path_sep: path_sep.clone(),
             r_version: r_version.clone(),
             r_libs: r_libs.clone(),
-            agent_runtime: agent_runtime.clone(),
         };
         if let Err(error) = save_runtime_cache(&data_dir, &cache) {
             write_startup_log(&format!(
@@ -7177,16 +7179,17 @@ mod tests {
         attach_render_artifact, bounded_diagnostic, cancel_agent_turn_state,
         classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
-        delete_agent_conversation_state, durable_project_root, editor_format_result,
-        ensure_artifact_export_target, ensure_supported_r_architecture, ensure_supported_r_version,
-        existing_startup_file, find_executable_on_path, finish_render_job, has_png_signature,
-        interrupt_all_agent_tasks, load_runtime_cache, locate_ark_from_candidates, locate_rscript,
-        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
-        r_architecture_supported, reconcile_render_job, recover_incomplete_agent_file_mutations,
-        render_job_is_terminal, retry_run_arguments, run_is_retryable, runtime_file_signature,
-        safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
-        switch_project_with_watcher_factory, text_sha256, undo_agent_file_edit_state,
-        validate_execute_source_range_shape, workspace_project_root_code, write_r_probe_script,
+        deferred_agent_runtime_status, delete_agent_conversation_state, durable_project_root,
+        editor_format_result, ensure_artifact_export_target, ensure_supported_r_architecture,
+        ensure_supported_r_version, existing_startup_file, find_executable_on_path,
+        finish_render_job, has_png_signature, interrupt_all_agent_tasks, load_runtime_cache,
+        locate_ark_from_candidates, locate_rscript, lockfile_inventory_arguments,
+        parse_r_runtime_probe, project_switch_blocker, r_architecture_supported,
+        reconcile_render_job, recover_incomplete_agent_file_mutations, render_job_is_terminal,
+        retry_run_arguments, run_is_retryable, runtime_file_signature, safe_delete_project_file,
+        save_runtime_cache, source_claim_snapshot, switch_project_with_watcher_factory,
+        text_sha256, undo_agent_file_edit_state, validate_execute_source_range_shape,
+        workspace_project_root_code, write_r_probe_script,
     };
     use crate::platform;
 
@@ -7332,11 +7335,6 @@ mod tests {
             path_sep: ";".to_string(),
             r_version: "R version 4.4.2".to_string(),
             r_libs: "C:/R/library".to_string(),
-            agent_runtime: AgentRuntimeStatus {
-                available: false,
-                aisdk_version: None,
-                error: None,
-            },
         }
     }
 
@@ -7351,6 +7349,50 @@ mod tests {
 
         std::fs::write(&rscript, b"changed").unwrap();
         assert!(load_runtime_cache(directory.path(), &rscript, &ark).is_none());
+    }
+
+    #[test]
+    fn runtime_cache_ignores_legacy_positive_agent_readiness() {
+        let directory = TempDir::new().unwrap();
+        let cache = test_runtime_cache(directory.path());
+        let mut legacy_cache = serde_json::to_value(&cache).unwrap();
+        legacy_cache["agent_runtime"] = json!({
+            "available": true,
+            "aisdk_version": "1.4.12",
+            "error": null
+        });
+        let cache_path = directory.path().join("runtime").join("runtime-cache.json");
+        std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cache_path,
+            serde_json::to_vec_pretty(&legacy_cache).unwrap(),
+        )
+        .unwrap();
+
+        let rscript = directory.path().join("Rscript.exe");
+        let ark = directory.path().join("ark.exe");
+        let loaded = load_runtime_cache(directory.path(), &rscript, &ark).unwrap();
+        assert_eq!(loaded.rscript.path, cache.rscript.path);
+        assert_eq!(loaded.ark.path, cache.ark.path);
+        assert_eq!(loaded.r_version, cache.r_version);
+        assert_eq!(loaded.r_libs, cache.r_libs);
+        assert!(
+            serde_json::to_value(&loaded)
+                .unwrap()
+                .get("agent_runtime")
+                .is_none(),
+            "general R/Ark cache state must not persist Agent readiness"
+        );
+
+        let deferred = deferred_agent_runtime_status();
+        assert!(!deferred.available);
+        assert!(deferred.aisdk_version.is_none());
+        assert!(
+            deferred
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("continuing in the background"))
+        );
     }
 
     #[test]
