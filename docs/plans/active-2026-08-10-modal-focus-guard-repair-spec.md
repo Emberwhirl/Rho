@@ -32,8 +32,9 @@ the dialog input and the background document. Keystrokes typed while focus was
 stolen land in the background document and mutate it.
 
 Regression invariant: while any modal dialog is visible, no document render
-takes keyboard focus for the editor; with no dialog visible, document renders
-retain the existing editor-focus behavior exactly.
+takes keyboard focus for the editor. As authorized by Issue #33 on 2026-08-11,
+absence of a modal is no longer sufficient permission: background renders are
+non-focusing and deliberate foreground callers pass explicit focus intent.
 
 ## Contract
 
@@ -104,3 +105,14 @@ layering or focus-trap redesign.
 `workbenchShortcutOwnedByDialog()` now delegates to it. The Monaco branch of
 `applyDocumentSelection()` guards only its `focus()` call. No other statement
 changed.
+
+## Issue #33 Coordination Amendment
+
+`active-2026-08-11-workbench-focus-stability-repair-spec.md` broadens the focus
+ownership rule beyond modal lifetime. `modalDialogIsOpen()` remains the single
+modal predicate and defense in depth, but document-render callers now carry
+explicit focus intent; automatic Agent application, external reload, polling,
+and background hydration may not focus the editor even when no dialog is
+visible. Deliberate navigation, editor commands, dialog `returnFocus`, and
+manual Agent acceptance retain their explicit focus authority. The original
+Issue #18 evidence remains historical for its exact baseline.

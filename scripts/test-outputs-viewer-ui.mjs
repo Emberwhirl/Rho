@@ -90,14 +90,16 @@ assert.match(loadRunData, /const projectRoot = state\.project\.root/);
 assert.match(loadRunData, /refreshSequence !== state\.projectRefreshSequence \|\| projectRoot !== state\.project\.root/);
 assert.match(js, /await hydrateProject\(response\);\s*void Promise\.all\(\[[\s\S]{0,180}loadAgentData\(\{ quiet: true \}\),[\s\S]{0,120}loadRunData\(\{ quiet: true \}\),[\s\S]{0,120}refreshEnvironment\(\{ quiet: true \}\),?[\s\S]{0,40}\]\);/);
 assert.match(js, /state\.runs = \[\];[\s\S]*state\.artifacts = \[\];[\s\S]*renderAgentOutputs\(\);/);
-assert.match(js, /function capturePanelViewport\(panel, keySelector = null\)/);
+assert.match(js, /function capturePanelViewport\(panel, keySelector = null, \{ stickToEnd = false \} = \{\}\)/);
 assert.match(js, /function restorePanelViewport\(panel, viewport, keySelector = null\)/);
 assert.match(js, /function renderAgentOutputs\(\)[\s\S]*capturePanelViewport\(list, "data-output-key"\)[\s\S]*restorePanelViewport\(list, viewport, "data-output-key"\)/);
-assert.match(js, /function renderAgentTimeline\(\)[\s\S]*capturePanelViewport\(panel, "data-turn-id"\)[\s\S]*restorePanelViewport\(panel, viewport, "data-turn-id"\)/);
+assert.match(js, /function renderAgentTimeline\(\)[\s\S]*renderVolatileLane\([\s\S]*"agent-timeline"[\s\S]*\{ stickToEnd: true \}/);
+assert.match(js, /copyButton\.dataset\.focusKey = `turn:\$\{turn\.turn_id\}:copy`/);
+assert.match(js, /activityButton\.dataset\.focusKey = `turn:\$\{turn\.turn_id\}:activity`/);
 assert.match(js, /card\.dataset\.outputKey = agentOutputKey\(entry\.kind, entry\.id\)/);
 assert.match(
   loadRunData,
-  /try \{\s*const detail = await invoke\("get_artifact_record"[\s\S]*?\} catch \(error\) \{[\s\S]*?state\.selectedArtifactDetail = listedArtifact/,
+  /try \{\s*const detail = await invoke\("get_artifact_record"[\s\S]*?\} catch \(error\) \{[\s\S]*?selectedArtifactDetail = listedArtifact[\s\S]*?state\.selectedArtifactDetail = selectedArtifactDetail/,
   "Saved-output detail failure must be isolated from core Outputs rendering",
 );
 

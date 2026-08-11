@@ -132,8 +132,13 @@ assert.equal(focused, 1);
 const executeSource = between("async function executeCode(request)", "\nasync function gotoDefinitionAtCursor()");
 assert.match(
   executeSource,
-  /request\.type !== "line"[^\n]*consolePanel[^\n]*consoleInput[^\n]*focus\(\)/,
-  "Current-line execution must not move focus to the Console input",
+  /shouldRestoreConsoleFocus\(request\.type, interactionRevision\)/,
+  "Only an interaction-revision-guarded Console-origin request may restore Console focus",
+);
+assert.doesNotMatch(
+  executeSource,
+  /request\.type !== "line"[^\n]*consoleInput[^\n]*focus\(\)/,
+  "Line, selection, and file execution must not move focus to the Console input",
 );
 
 console.log("Run-current-line cursor advance contract checks passed.");
