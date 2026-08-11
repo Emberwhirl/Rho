@@ -27,9 +27,10 @@ CRED-UX4A-R4 Issue #25 Provider-context and model-deletion modal repair was
 explicitly authorized by the project owner on 2026-08-10; its implementation,
 complete affected automated matrix, deterministic browser review, and
 independent destructive-state/accessibility review are complete; the project
-owner authorized push, upstream merge, and Issue reply on 2026-08-10, and the
-application identity is synchronized to `0.4.0-dev.28` for that integration,
-while owner installed-app acceptance remains open;
+owner authorized push, upstream merge, and Issue reply on 2026-08-10; PR #31
+merged the reviewed source into upstream `main` at `e89ed70`, and the
+application identity is synchronized to `0.4.0-dev.28`, while owner
+installed-app acceptance remains open;
 CRED-UX4B isolated workers and CRED-UX4C media interaction remain unauthorized
 
 Change class: D3 credential boundary and cross-process execution configuration
@@ -1755,9 +1756,11 @@ installed result is composable with it. `rho.bridge 0.1.13`, `rho.agent
 
 The integration branch carries the reviewed implementation commits
 `751e71d` and `2b12d1f` plus this bounded identity/documentation
-reconciliation. The merge commit and final Issue disposition must be recorded
-only after upstream integration is factually complete. Exact installed-app
-acceptance remains a separate `dev.28` release gate.
+reconciliation. [PR #31](https://github.com/YuLab-SMU/Rho/pull/31) merged all
+three commits into upstream `main` at
+`e89ed7000e9b646e486843f501067687428da07e`. The final Issue evidence and
+disposition remain; exact installed-app acceptance is a separate `dev.28`
+release gate.
 
 The pre-integration rerun passed `cargo fmt --all -- --check`, `cargo check
 --workspace --all-targets`, and `cargo test --workspace --all-targets
