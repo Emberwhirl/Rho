@@ -4,6 +4,38 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.29 - 2026-08-10
+
+### Fixed
+
+- Windows Agent turns now launch their complete R program from a flushed UTF-8
+  temporary `.R` file instead of transporting multi-line code through
+  `Rscript -e`.
+- Complete Agent readiness now requires `aisdk >= 1.5.0` and the Agent-only
+  exports used by a turn; a basic Provider connection test cannot admit an
+  incomplete Agent runtime.
+- Startup no longer persists or trusts Agent readiness in the general R/Ark
+  runtime cache. Both cached and uncached startup wait for a fresh Agent probe,
+  so a stale positive cache cannot admit a turn after the R library changes.
+
+## 0.4.0-dev.28 - 2026-08-10
+
+### Fixed
+
+- Connections now shows the Chat assignment only when it belongs to the
+  selected Provider, so a new or unassigned Provider no longer displays
+  another connection's model.
+- Model deletion now uses a visible, topmost Model-settings confirmation with
+  one active modal, safe cancellation, focus restoration, and truthful retry
+  behavior.
+
+### Improved
+
+- A Provider, its imported models, optional capability routes, and stored API
+  key can now be removed in one guarded, revision-bound confirmation. Chat
+  ownership, stale state, credential failures, and metadata-write failures
+  remain fail-closed.
+
 ## 0.4.0-dev.27 - 2026-08-10
 
 ### Fixed

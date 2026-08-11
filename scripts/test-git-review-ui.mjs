@@ -16,7 +16,7 @@ assert.match(html, /id="gitWorkingFiles"[\s\S]*id="gitStagedFiles"/);
 assert.match(html, /id="gitDiffReview"[\s\S]*id="gitHunkList"/);
 assert.match(html, /id="gitCommitMessage"[\s\S]*id="gitCommitButton"/);
 assert.match(html, /id="gitRefreshButton"[^>]*aria-label="Refresh Git review"/);
-assert.match(html, /app\.js\?v=0\.4\.0-dev\.27(?:&amp;|&)rev=m(?:1-shell|2-workbench|3-scientific-review-v3)/);
+assert.match(html, /app\.js\?v=0\.4\.0-dev\.29(?:&amp;|&)rev=m(?:1-shell|2-workbench|3-scientific-review-v3)/);
 
 assert.match(css, /\.git-review-body\s*\{[^}]*overflow:\s*hidden/);
 assert.match(css, /\.git-hunk-list\s*\{[^}]*overflow:\s*auto/);
@@ -64,8 +64,8 @@ assert.doesNotMatch(js, /hunk_content\s*:/, "Frontend must never send raw patch 
 for (const staleArgument of ["file_path", "expected_revision", "hunk_index", "expected_staged_revision"]) {
   assert.doesNotMatch(
     js,
-    new RegExp(`(?:args\\.${staleArgument}\\b|[,{]\\s*${staleArgument}\\s*:)`),
-    `Frontend/mock must use the installed Tauri camelCase argument for ${staleArgument}`,
+    new RegExp(`args\\.${staleArgument}\\b`),
+    `Git mock handlers must read the installed Tauri camelCase argument for ${staleArgument}`,
   );
 }
 

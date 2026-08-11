@@ -14,7 +14,7 @@ members = [
 exclude = ["vendor/jet"]
 
 [workspace.package]
-version = "0.4.0-dev.27"
+version = "0.4.0-dev.29"
 edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/YuLab-SMU/Rho"

@@ -1,8 +1,9 @@
 # AGPL License Transition Contract
 
 Status: active; LIC-1 implementation, affected automated verification, and
-independent contract review complete 2026-08-10; contributor relicensing and
-future distribution acceptance open
+independent contract review complete 2026-08-10; `Emberwhirl` relicensing
+consent recorded; `xuzhougeng` consent or an authorized legal determination
+and future distribution acceptance remain open
 
 Date: 2026-08-10
 Authorization: project owner directed that Rho use AGPL instead of MIT to
@@ -194,3 +195,20 @@ fail before mutation when a notice is missing. No blocking engineering finding
 remains. Contributor permission or an authorized legal/ownership determination
 is still external and unresolved, so merge, installed-app claims, SignPath
 acceptance, and public release remain blocked and unrun.
+
+On 2026-08-11, `Emberwhirl` explicitly consented in PR #30 to license the
+identified contribution under `AGPL-3.0-only` in addition to existing grants.
+No equivalent consent from `xuzhougeng`, and no substitute authorized
+legal/ownership determination, has been recorded; the merge gate therefore
+remains closed.
+
+The Draft branch was also merged with upstream `main` at `0111dd9`, preserving
+the current `0.4.0-dev.29` product metadata and its source fixes while retaining
+the AGPL metadata. The only textual merge conflict was the frontend lockfile
+root record; it was resolved to keep both version `0.4.0-dev.29` and license
+`AGPL-3.0-only`. The synchronized tree passed all 54 JavaScript contracts,
+license negative tests and the real repository contract, both vendor-notice
+failure/recovery matrices, Rust formatting/check and 364 workspace tests (zero
+failed, one opt-in Keychain smoke ignored), both focused R package suites, and
+`git diff --check`. This engineering refresh does not satisfy or weaken the
+remaining contributor gate.
