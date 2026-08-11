@@ -3,8 +3,10 @@
 Status: active source-candidate contract; Issue #33 interaction repair
 implemented and reviewed; exact identity synchronization, dependency
 integration, refreshed local source validation, exact hosted source matrix,
-upstream source integration through PR #34, and Issue reply complete; artifacts,
-browser/mock interaction, installed acceptance, MAC5, and publication open
+upstream source integration through PR #34, and Issue reply complete; one exact
+default-branch candidate/Draft construction authorized on 2026-08-11;
+artifacts, browser/mock interaction, installed acceptance, MAC5, and publication
+open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -25,9 +27,21 @@ installed, MAC5, or publication evidence.
 Authorization: the project owner's 2026-08-11 instructions authorize the
 reviewed interaction repair, synchronized `dev.30` metadata and `NEWS.md`,
 scoped commits, branch refresh, exact verification, and source integration once
-its final hosted source gate passes. They do not authorize candidate
-construction, installation, public publication, update-site mutation, or Issue
-closure.
+its final hosted source gate passes. The owner's later 2026-08-11 instruction
+"发布今天的最新版本" activates `DEV30-CANDIDATE-1`: one protected `candidate`
+dispatch against the exact current upstream default-branch commit, including
+fresh Windows x64 and signed/notarized/stapled macOS arm64 artifacts and
+immutable Draft assembly. This authorization does not convert automation into
+browser or installed-app acceptance and does not permit an acceptance asset,
+public publication, update-site mutation, or Issue closure before the exact
+candidate passes those gates and the owner records explicit MAC5 GO.
+
+Authorized work package: `DEV30-CANDIDATE-1`.
+
+Next mandatory stop: after the protected build either fails closed or creates
+the exact seven-asset unpublished Draft, record its run, commit, asset hashes,
+and disposition; then stop before any acceptance-evidence upload or publish
+workflow.
 
 PR #24 established `0.4.0-dev.29` on `main` at merge `f05315c`, and PR #29
 established the Rust 1.88/Resolver 3 build contract at merge `9e0b36b`. The
@@ -45,9 +59,9 @@ artifact or acceptance evidence is relabelled or composed into this identity.
 | Release tag/name | `v0.4.0-dev.30` / `Rho 0.4.0-dev.30` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
 | Dependency | upstream `main` `9e0b36b` | PR #24 `dev.29` and PR #29 MSRV integrations included |
-| Authoritative source commit | `1b3f522a48bced21bda52769aefd836ac4494334` | PR #34 integrated after exact head run `31511253088` passed all four Rust compatibility jobs |
+| Authoritative source commit | exact current upstream default-branch commit selected by the protected candidate workflow | source behavior integrated at `1b3f522`; the post-authorization exact candidate SHA must be recorded from the workflow before acceptance |
 | Windows/macOS artifacts | exact `dev.30` candidate only | not built |
-| Release decision | source integration `COMPLETE`; release `NO-GO` | hosted source matrix and integration complete; artifacts, browser/mock interaction, installed acceptance, MAC5, and publication open |
+| Release decision | candidate construction `GO`; release `NO-GO` | one protected exact-main Draft build authorized; artifacts, browser/mock interaction, installed acceptance, MAC5, and publication open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -116,5 +130,8 @@ construction, Windows/macOS installed acceptance, browser interaction, MAC5,
 publication, and update-site evidence remain independent facts and Issue #33
 remains open.
 
-Current decision: source integration `COMPLETE`; `NO-GO` for packaging or
-publication.
+Current decision: source integration `COMPLETE`; `GO` for one protected exact-
+main `DEV30-CANDIDATE-1` build and immutable Draft assembly; `NO-GO` for
+acceptance upload or public publication until browser/mock review, exact
+installed Windows/macOS acceptance, candidate-bound evidence, and explicit
+MAC5 GO are complete.
