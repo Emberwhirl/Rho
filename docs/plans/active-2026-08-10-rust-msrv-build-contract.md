@@ -2,7 +2,9 @@
 
 Status: active implementation contract; Issue #28 authorized `MSRV-1` on
 2026-08-10; source implementation, local macOS acceptance, and first hosted
-four-leg matrix acceptance complete; merge review pending
+four-leg matrix acceptance complete; refreshed against upstream `main`
+`0111dd9` with exact local validation complete; refreshed hosted matrix and
+merge review pending
 
 Date: 2026-08-10
 Issue: https://github.com/YuLab-SMU/Rho/issues/28
@@ -273,6 +275,33 @@ The evidence-reconciliation commit must receive the same four required checks
 on its PR HEAD. GitHub evaluates pull-request path filters with the cumulative
 three-dot diff against the base, so the Rust changes continue to trigger this
 matrix after a documentation-only evidence commit.
+
+On 2026-08-11, after PR #24 and its integration-evidence PR #35 entered
+`main`, the implementation branch merged upstream `main` at `0111dd9` into
+merge tree `3fefd37`. The synchronized tree passed the complete affected local
+matrix:
+
+```text
+node scripts/test-rust-msrv-contract.mjs --test
+node scripts/test-rust-msrv-contract.mjs
+node scripts/test-mac4-release-contract.mjs
+all 53 scripts/test-*.mjs contracts
+node --check desktop/dist/app.js
+cargo +1.88.0-aarch64-apple-darwin check --workspace --all-targets --locked
+cargo +1.88.0-aarch64-apple-darwin test --workspace --locked --no-fail-fast
+  364 passed; 0 failed; 1 opt-in Keychain test ignored
+cargo +1.97.0-aarch64-apple-darwin fmt --all -- --check
+cargo +1.97.0-aarch64-apple-darwin check --workspace --all-targets --locked
+cargo +1.97.0-aarch64-apple-darwin test --workspace --locked --no-fail-fast
+  364 passed; 0 failed; 1 opt-in Keychain test ignored
+testthat::test_local('r/rho.bridge', reporter='summary')
+testthat::test_local('r/rho.agent', reporter='summary')
+git diff --check
+```
+
+This refresh does not reuse the earlier hosted run as final acceptance. The
+four hosted identities remain mandatory on the pushed, evidence-reconciled PR
+HEAD before draft removal or merge.
 
 ## Work Package And Stop Point
 
