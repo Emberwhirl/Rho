@@ -1852,10 +1852,31 @@ close(connection)
 "#
 }
 
-fn desktop_agent_turn_args(port: u16, agent_package: &Path, mode: &str) -> Vec<OsString> {
+fn write_desktop_agent_turn_script() -> Result<tempfile::NamedTempFile> {
+    use std::io::Write;
+
+    let mut script_file = tempfile::Builder::new()
+        .prefix("rho-desktop-agent-turn-")
+        .suffix(".R")
+        .tempfile()
+        .context("creating desktop Agent R script file")?;
+    script_file
+        .write_all(desktop_agent_turn_script().as_bytes())
+        .context("writing desktop Agent R script file")?;
+    script_file
+        .flush()
+        .context("flushing desktop Agent R script file")?;
+    Ok(script_file)
+}
+
+fn desktop_agent_turn_args(
+    script_path: &Path,
+    port: u16,
+    agent_package: &Path,
+    mode: &str,
+) -> Vec<OsString> {
     vec![
-        OsString::from("-e"),
-        OsString::from(desktop_agent_turn_script()),
+        script_path.as_os_str().to_os_string(),
         OsString::from(port.to_string()),
         agent_package.as_os_str().to_os_string(),
         OsString::from(mode),
@@ -1944,7 +1965,13 @@ pub async fn run_agent_turn(
         let token = authenticator.bootstrap_token()?.to_string();
         let runtime_profile = runtime_profile
             .with_context(|| format!("missing runtime profile for Agent model `{model}`"))?;
-        let args = desktop_agent_turn_args(address.port(), &agent_package, &mode);
+        let agent_script = write_desktop_agent_turn_script()?;
+        let args = desktop_agent_turn_args(
+            agent_script.path(),
+            address.port(),
+            &agent_package,
+            &mode,
+        );
         let stdin_payload = desktop_agent_turn_stdin(&token, &runtime_profile, &model_prompt)?;
         let mut command = tokio::process::Command::new(rscript);
         hide_console_window(&mut command);
@@ -5962,7 +5989,9 @@ mod tests {
                 required_model_capabilities: Vec::new(),
             }],
         };
-        let args = desktop_agent_turn_args(4321, Path::new("r/rho.agent"), "ask");
+        let script_file = write_desktop_agent_turn_script().unwrap();
+        let args =
+            desktop_agent_turn_args(script_file.path(), 4321, Path::new("r/rho.agent"), "ask");
         let stdin_payload = desktop_agent_turn_stdin("secret-token", &profile, &prompt).unwrap();
         let script = desktop_agent_turn_script();
 
@@ -5973,7 +6002,14 @@ mod tests {
                 r#"model_prompt <- paste(readLines(input, warn = FALSE), collapse = "\n")"#
             )
         );
-        assert_eq!(args.len(), 5);
+        assert_eq!(args.len(), 4);
+        assert_eq!(args[0], script_file.path().as_os_str());
+        assert!(!args.iter().any(|arg| arg == "-e"));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("rho_agent_startup_trace"))
+        );
         assert!(
             !args
                 .iter()
@@ -5987,6 +6023,31 @@ mod tests {
         assert!(stdin_payload.starts_with("secret-token\n"));
         assert!(stdin_payload.ends_with(&prompt));
         assert!(stdin_payload.len() > 32 * 1024);
+    }
+
+    #[test]
+    fn desktop_agent_script_uses_a_flushed_utf8_r_file_instead_of_inline_e() {
+        let script_file = write_desktop_agent_turn_script().unwrap();
+        let script_path = script_file.path();
+        let args = desktop_agent_turn_args(script_path, 4321, Path::new("r/rho.agent"), "act");
+
+        assert_eq!(
+            script_path.extension().and_then(|value| value.to_str()),
+            Some("R")
+        );
+        assert_eq!(
+            std::fs::read_to_string(script_path).unwrap(),
+            desktop_agent_turn_script()
+        );
+        assert_eq!(
+            args,
+            vec![
+                script_path.as_os_str().to_os_string(),
+                OsString::from("4321"),
+                Path::new("r/rho.agent").as_os_str().to_os_string(),
+                OsString::from("act"),
+            ]
+        );
     }
 
     #[test]
