@@ -28,8 +28,9 @@ was superseded before construction and remains an immutable source-only record.
 Issue #2 advances the current source to `0.4.0-dev.29`. Windows Agent R code
 uses a temporary UTF-8 script, complete readiness requires the pinned aisdk
 contract, and the general R/Ark cache cannot admit Agent turns from persisted
-readiness. PR #24 review/integration and every exact `dev.29` artifact,
-installed, MAC5, and publication gate remain open.
+readiness. PR #24 integrated the reviewed source at merge `f05315c` and closed
+Issue #2. Every exact `dev.29` artifact, installed, MAC5, and publication gate
+remains open.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),
