@@ -28,8 +28,9 @@ was superseded before construction and remains an immutable source-only record.
 Issue #2 advances the current source to `0.4.0-dev.29`. Windows Agent R code
 uses a temporary UTF-8 script, complete readiness requires the pinned aisdk
 contract, and the general R/Ark cache cannot admit Agent turns from persisted
-readiness. PR #24 review/integration and every exact `dev.29` artifact,
-installed, MAC5, and publication gate remain open.
+readiness. PR #24 integrated the reviewed source at merge `f05315c` and closed
+Issue #2. Every exact `dev.29` artifact, installed, MAC5, and publication gate
+remains open.
 
 Issue #33 advances the stacked reviewed source to `0.4.0-dev.30`. Unchanged
 poll projections no longer rebuild volatile workbench surfaces, required

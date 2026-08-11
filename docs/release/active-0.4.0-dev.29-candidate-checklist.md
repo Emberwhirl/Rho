@@ -2,12 +2,12 @@
 
 Status: active source-candidate contract; Issue #2 launcher, aisdk-readiness,
 and fresh-readiness admission repairs are implemented on the current upstream
-baseline and exact-source automated validation passes; pull-request update,
-upstream integration, and every artifact, installed, MAC5, and publication gate
-remain open
+baseline; exact-source automated validation, contract review, and pull-request
+update pass; upstream integration completed at `f05315c`; every artifact,
+installed, MAC5, and publication gate remains open
 
 Date: 2026-08-10
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 Change class: D1 narrow Agent runtime defect correction plus the required D4
 single-use development identity
@@ -27,9 +27,11 @@ publication evidence.
 
 Authorization: the project owner's 2026-08-10 instruction to fix PR #24
 authorizes the reviewed Issue #2 repair slice, version synchronization, scoped
-commit, and update of the existing pull-request branch. It does not authorize
-upstream merge, candidate construction, installation, public publication, or
-update-site mutation.
+commit, and update of the existing pull-request branch. The owner's 2026-08-11
+instruction to complete the reviewed Draft-PR integration queue additionally
+authorizes final evidence reconciliation and upstream source integration of PR
+#24 after its source gate passes. Neither instruction authorizes candidate
+construction, installation, public publication, or update-site mutation.
 
 `0.4.0-dev.28` is an immutable source-only identity. It produced no artifact,
 Draft, tag, acceptance, MAC5, publication, or update-site evidence and cannot
@@ -45,9 +47,9 @@ be relabelled, replaced, or composed into this identity.
 | Store schema | `12` | unchanged; no persistence schema changed |
 | Release tag/name | `v0.4.0-dev.29` / `Rho 0.4.0-dev.29` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Authoritative source commit | reviewed upstream default-branch SHA | pending PR #24 review and integration |
+| Authoritative source commit | `f05315cde735f011a76c1400bdadd28d21acc57e` | PR #24 merged to upstream `main` on 2026-08-11 |
 | Windows/macOS artifacts | exact `dev.29` candidate only | not built |
-| Release decision | `NO-GO` | source validation passes; review/integration and every downstream release gate remain open |
+| Release decision | source `INTEGRATED`; release `NO-GO` | source validation/review and upstream integration pass; every downstream release gate remains open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -85,9 +87,9 @@ cache correction has not yet been exercised in an installed Windows build.
 
 ## Remaining Gates
 
-Update and review [PR #24](https://github.com/YuLab-SMU/Rho/pull/24), then
-integrate the reviewed source separately if authorized. Exact `dev.29`
-candidate construction, Windows/macOS installed acceptance, MAC5, publication,
-and update-site evidence remain independent facts.
+The exact reviewed [PR #24](https://github.com/YuLab-SMU/Rho/pull/24) source is
+integrated and Issue #2 is closed. Exact `dev.29` candidate construction,
+Windows/macOS installed acceptance, MAC5, publication, and update-site evidence
+remain independent facts and were not created by source integration.
 
 Current decision: `NO-GO` for packaging or publication.

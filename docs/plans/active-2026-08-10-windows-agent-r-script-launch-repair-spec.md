@@ -5,7 +5,8 @@ aisdk-readiness repairs implemented; exact updated-main automated verification
 and owner desktop Agent acceptance passed; ISSUE-2-AGENT-LAUNCH-R1 fresh
 readiness admission authorized by the project owner's 2026-08-10 repair
 instruction and implemented; exact `0.4.0-dev.29` verification and PR update
-passes; exact installed Windows acceptance and PR update remain pending
+passes; upstream integration completed in merge `f05315c`; exact installed
+Windows acceptance remains pending
 
 Date: 2026-08-10
 Authorization: user requested a fix and pull request for upstream GitHub Issue
@@ -187,8 +188,9 @@ R package suites remain unrun because this R library does not contain
 Post-verification review found no change to provider requests, credentials,
 model routing, Agent stdin, broker authentication, conversation identity,
 cancellation, persistence, approval, schema, or frontend protocol. The branch
-remains active until pull-request review and integration. No version or release
-decision changes.
+remains active until pull-request review and integration. At that initial
+checkpoint no version or release decision changed; the later authorized R1
+slice below allocated and synchronized the single-use `dev.29` source identity.
 
 ISSUE-2-AGENT-LAUNCH-R1 removes `agent_runtime` from the serialized general
 R/Ark cache and uses the same unavailable deferred status on cache hits and
@@ -217,3 +219,9 @@ failure did not recur. Separately observed panel-wide focus movement is outside
 this work package and neither blocks nor expands Issue #2. This evidence remains
 valid for the original launcher/readiness correction but is not exact installed
 `dev.29` acceptance; that release gate remains open.
+
+Upstream source integration completed on 2026-08-11 through PR #24 at merge
+commit `f05315cde735f011a76c1400bdadd28d21acc57e`. Issue #2 closed from the
+PR's source-fix relationship. This establishes only the reviewed `dev.29`
+default-branch source identity; no candidate, artifact, installed acceptance,
+MAC5, publication, or update-site fact was created or inferred.
