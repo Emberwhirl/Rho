@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.27`
+Current source baseline: `0.4.0-dev.29`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -17,6 +17,20 @@ bounded two-Conversation Act admission, per-path file scheduling and recovery,
 exact Retry/Delete, and project-transition ordering. Upstream integration and
 replacement two-platform candidate run `31337666426` pass; owner-installed
 acceptance and Issue closure remain open.
+
+Issue #25 advances the reviewed Model-settings Provider deletion and context
+repairs to the `0.4.0-dev.28` source identity. Provider removal is one guarded
+revision-bound action, Connections no longer projects a foreign Chat model,
+and direct model deletion owns one visible topmost confirmation. Upstream
+integration passed through PR #31 at `e89ed70`; exact `dev.28` candidate
+was superseded before construction and remains an immutable source-only record.
+
+Issue #2 advances the current source to `0.4.0-dev.29`. Windows Agent R code
+uses a temporary UTF-8 script, complete readiness requires the pinned aisdk
+contract, and the general R/Ark cache cannot admit Agent turns from persisted
+readiness. PR #24 integrated the reviewed source at merge `f05315c` and closed
+Issue #2. Every exact `dev.29` artifact, installed, MAC5, and publication gate
+remains open.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),

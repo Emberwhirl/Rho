@@ -107,7 +107,7 @@ const advancedStart = html.indexOf('<details id="agentLlmProviderAdvanced"');
 const advancedEnd = html.indexOf('<details id="agentLlmProviderDanger"', advancedStart);
 const advancedSettings = html.slice(advancedStart, advancedEnd);
 const modelDialogStart = html.indexOf('<div id="agentLlmModelDialog"');
-const modelDialogEnd = html.indexOf("<!-- Generic product dialogs -->", modelDialogStart);
+const modelDialogEnd = html.indexOf('<div id="agentLlmModelDeleteDialog"', modelDialogStart);
 const modelDialog = html.slice(modelDialogStart, modelDialogEnd);
 assert.ok(advancedStart >= 0, "Each provider needs its own Advanced disclosure");
 for (const id of ["agentLlmRegisteredProviderId", "agentLlmProviderApiKeyEnv", "agentLlmProviderBaseUrlEnv", "agentLlmProviderWireApi", "agentLlmProviderDisableStreamOptions"]) {
