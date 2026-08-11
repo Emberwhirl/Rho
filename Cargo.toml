@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
   "crates/rho-protocol",
   "crates/rho-store",
@@ -16,6 +16,7 @@ exclude = ["vendor/jet"]
 [workspace.package]
 version = "0.4.0-dev.30"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/YuLab-SMU/Rho"
 

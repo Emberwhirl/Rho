@@ -2,7 +2,7 @@
 
 Status: active documentation coordination record
 
-Review date: 2026-08-09
+Review date: 2026-08-10
 Scope: unfinished or acceptance-active specifications, plans, and release gates
 
 Manual acceptance ownership: the runnable example workflow and candidate-level
@@ -41,6 +41,7 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
+| `plans/active-2026-08-10-rust-msrv-build-contract.md` | active; Issue #28 authorized `MSRV-1`; implementation commit `94ca28f` passed the first hosted matrix; branch refresh merge tree `3fefd37` includes upstream `main` `0111dd9` and passed the complete affected local matrix; refreshed hosted acceptance and merge review pending | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | require all four checks on the pushed evidence-reconciled PR HEAD, then reviewer merge disposition; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
 | `release/historical-0.4.0-dev.16-candidate-checklist.md` | historical; review-only rehearsals passed and the decision remained NO-GO before the baseline advanced | immutable `0.4.0-dev.16` rehearsal evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, MAC5, or publication row |
 | `release/historical-0.4.0-dev.17-candidate-checklist.md` | historical; CRED-UX2 local matrix, browser review, and unsigned app/DMG smoke passed before CRED-UX3 advanced the baseline | immutable `0.4.0-dev.17` local evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, installed acceptance, MAC5, or publication row |
@@ -474,6 +475,23 @@ Moving between waves is not implicit authorization. For each bounded package,
 record entry evidence, activate or create its focused implementation handoff,
 update this matrix, and name the next mandatory stop point. Later packages in
 the same proposal remain proposed.
+
+### Rust toolchain compatibility boundaries
+
+The Issue #28 MSRV contract owns only the Rust compiler floor, Cargo resolver,
+locked workspace-test commands, and a read-only non-packaging compatibility
+workflow. `rust-toolchain.toml` remains the interactive development selection;
+`Cargo.lock` remains exact dependency identity; the Windows build environment
+retains Rtools/GNU linkage; and the macOS arm64 contract retains native runner,
+packaging, signing, notarization, and MAC5 authority.
+
+The four compatibility legs cannot build or upload installers, mutate a GitHub
+Release, satisfy candidate evidence, or close installed acceptance. Candidate
+workflows consume only the additional `--locked` source invariant. Resolver 3
+may prefer an older MSRV-compatible dependency during a future intentional
+lock refresh, but Issue #28 adds no dependency update and permits no lockfile
+churn. No active product, schema, approval, environment, credential, Agent, or
+update contract overlaps this build-only authority.
 
 ### Release boundaries
 
