@@ -38,9 +38,10 @@ refreshes preserve user-owned focus/activation/scroll state, and background
 editor/Console paths require explicit focus authority. This source depends on
 upstream PR #24 established `dev.29` at `f05315c`, and the branch is refreshed
 through MSRV merge `9e0b36b`. Exact PR #34 head `83e2719d` passed hosted run
-`31511253088` and integrated at `1b3f522`. Browser/mock, installed Windows,
-candidate, MAC5, and publication gates remain open and continue to block Issue
-#33 closure and release acceptance.
+`31511253088` and integrated at `1b3f522`. On 2026-08-11 the owner authorized
+one exact current-main `dev.30` candidate/Draft construction. Browser/mock,
+installed Windows/macOS, acceptance-evidence, MAC5, and publication gates remain
+open and continue to block Issue #33 closure and public release acceptance.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
