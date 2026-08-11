@@ -4,6 +4,28 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.30 - 2026-08-11
+
+### Fixed
+
+- Polling and background refresh no longer destructively rebuild unchanged
+  workbench projections or swallow pointer/keyboard activation. Required
+  refreshes preserve focus, selection, and reading position within Project
+  files/tabs, Agent, Runs, Problems, Plots/Outputs, Environment/Data Viewer,
+  and Git review.
+- Automatic Agent edits, external reload, project refresh, deferred session
+  restoration, and file/selection/line execution no longer redirect typing
+  from the Agent composer into source or Console. Console-origin execution may
+  restore its input only when no newer user interaction has taken ownership.
+- Console, Logs, and Agent activity no longer force-scroll a user away from
+  older output; they follow new content only while already pinned to the end.
+
+### Improved
+
+- Environment object rows now use native button semantics, and volatile
+  controls expose stable focus identities for keyboard and assistive-technology
+  use.
+
 ## 0.4.0-dev.29 - 2026-08-10
 
 ### Fixed

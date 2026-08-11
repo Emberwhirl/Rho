@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.29`
+Current source baseline: `0.4.0-dev.30`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -30,6 +30,14 @@ uses a temporary UTF-8 script, complete readiness requires the pinned aisdk
 contract, and the general R/Ark cache cannot admit Agent turns from persisted
 readiness. PR #24 review/integration and every exact `dev.29` artifact,
 installed, MAC5, and publication gate remain open.
+
+Issue #33 advances the stacked reviewed source to `0.4.0-dev.30`. Unchanged
+poll projections no longer rebuild volatile workbench surfaces, required
+refreshes preserve user-owned focus/activation/scroll state, and background
+editor/Console paths require explicit focus authority. This source depends on
+the exact open PR #24 `dev.29` head and must not integrate before #24 lands;
+browser/mock, installed Windows, candidate, MAC5, and publication gates remain
+open.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),

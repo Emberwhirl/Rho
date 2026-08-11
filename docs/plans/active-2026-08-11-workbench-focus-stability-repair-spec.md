@@ -201,9 +201,9 @@ Automated evidence completed on 2026-08-11:
   `test-desktop-platform-config.mjs`; and
 - `git diff --check`.
 
-The changed slice is JavaScript, CSS, tests, and governance documentation only;
-no R or Rust test was required or reported as run. A separate post-verification
-review found and corrected two initially missed background paths: deferred
+The initial interaction slice is JavaScript, CSS, tests, and governance
+documentation only. A separate post-verification review found and corrected
+two initially missed background paths: deferred
 session-document restoration and Environment Data Viewer cell reconstruction.
 The reviewed implementation now matches the amended contract, with no schema,
 backend command, persistence, approval, credential, filesystem, execution
@@ -221,3 +221,13 @@ requires this stacked publish branch to allocate and document
 `0.4.0-dev.30`. Source repair reviewability is separate from release readiness;
 browser/mock, exact installed Windows, and candidate publication gates remain
 open after metadata synchronization.
+
+The authorized stacked `0.4.0-dev.30` synchronization was subsequently
+verified on 2026-08-11 with all 53 `scripts/test-*.mjs` contracts, JavaScript
+syntax, Rust formatting and `cargo check --workspace`, 364 passing Rust tests
+with one opt-in macOS Keychain test ignored, `rho.bridge` 97 blocks / 568
+expectations, `rho.agent` 24 blocks / 120 expectations, and
+`git diff --check`. All reported checks passed with zero failures. These full
+workspace results verify the exact PR #24 dependency plus Issue #33 source
+composition; they do not satisfy the still-open browser/mock, installed
+Windows, candidate artifact, MAC5, or publication gates.
