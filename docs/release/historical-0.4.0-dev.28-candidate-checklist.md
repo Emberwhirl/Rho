@@ -1,10 +1,11 @@
 # Rho 0.4.0-dev.28 Cross-Platform Candidate Checklist
 
-Status: active source-candidate contract; Issue #25 CRED-UX4A-R3/R4
+Status: historical superseded source-candidate contract; Issue #25 CRED-UX4A-R3/R4
 implementation, complete affected automated verification, deterministic
 browser/CDP review, independent R3 review, and application identity
-synchronization pass; upstream integration through PR #31 passes, while every
-artifact, installed, MAC5, and publication gate remains open
+synchronization pass and upstream integration through PR #31 passed; no
+artifact was built before the later Issue #2 repair advanced the source to
+`0.4.0-dev.29`
 
 Date: 2026-08-10
 Last updated: 2026-08-10
@@ -19,8 +20,8 @@ or publication action
 Owning documents: the active System Credential And Simple LLM Settings
 specification owns Issue #25 behavior and source acceptance. The active macOS
 arm64 specification owns packaging and trust gates. This checklist alone owns
-the exact `0.4.0-dev.28` identity and any future candidate, installed, MAC5,
-or publication evidence.
+the immutable `0.4.0-dev.28` source identity and its NO-GO disposition. It no
+longer authorizes candidate, installed, MAC5, or publication evidence.
 
 Authorization: the project owner's 2026-08-10 instruction to push, merge, and
 reply authorizes the reviewed Issue #25 source slice, identity synchronization,
@@ -43,11 +44,11 @@ relabelled, replaced, or composed into this identity.
 | Release tag/name | `v0.4.0-dev.28` / `Rho 0.4.0-dev.28` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
 | Authoritative source commit | reviewed upstream default-branch SHA | `e89ed7000e9b646e486843f501067687428da07e` from PR #31 |
-| Windows/macOS artifacts | exact `dev.28` candidate only | not built |
-| Release decision | `NO-GO` | source integration passes; every downstream release gate remains open |
+| Windows/macOS artifacts | exact `dev.28` candidate only | not built; identity superseded |
+| Release decision | `NO-GO` | source integration passed, but the identity was superseded before construction |
 
-The identity is single-use. Any artifact-producing failed run or later
-user-visible source change consumes it and requires another version.
+The identity was consumed when the later user-visible Issue #2 repair entered
+the source baseline. It remains an immutable source-only record.
 
 ## Included Issue #25 Behavior
 
@@ -78,12 +79,12 @@ release-contract scripts, and `git diff --check`. A failing-first frontend run
 caught stale escaped `dev.27` cache fixtures; synchronizing those fixtures to
 `dev.28` restored the complete green matrix without changing behavior.
 
-## Remaining Gates
+## Final Disposition
 
 Upstream [PR #31](https://github.com/YuLab-SMU/Rho/pull/31) merged the reviewed
-source at `e89ed7000e9b646e486843f501067687428da07e`. Exact `dev.28`
-candidate construction, installed-app acceptance, MAC5, publication, and
-update-site evidence remain separate facts. Issue #25 may close after its final
-evidence comment; that closure does not satisfy or authorize any release gate.
+source at `e89ed7000e9b646e486843f501067687428da07e`. No exact `dev.28`
+candidate, Draft, tag, installed acceptance, MAC5, publication, or update-site
+mutation was created. Those gates are permanently closed for this identity and
+cannot be carried into `dev.29`.
 
 Current decision: `NO-GO` for packaging or publication.

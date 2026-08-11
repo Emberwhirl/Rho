@@ -4,6 +4,20 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.29 - 2026-08-10
+
+### Fixed
+
+- Windows Agent turns now launch their complete R program from a flushed UTF-8
+  temporary `.R` file instead of transporting multi-line code through
+  `Rscript -e`.
+- Complete Agent readiness now requires `aisdk >= 1.5.0` and the Agent-only
+  exports used by a turn; a basic Provider connection test cannot admit an
+  incomplete Agent runtime.
+- Startup no longer persists or trusts Agent readiness in the general R/Ark
+  runtime cache. Both cached and uncached startup wait for a fresh Agent probe,
+  so a stale positive cache cannot admit a turn after the R library changes.
+
 ## 0.4.0-dev.28 - 2026-08-10
 
 ### Fixed
