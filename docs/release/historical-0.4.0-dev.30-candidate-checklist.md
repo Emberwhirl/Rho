@@ -1,12 +1,13 @@
 # Rho 0.4.0-dev.30 Cross-Platform Candidate Checklist
 
-Status: active source-candidate contract; Issue #33 interaction repair
+Status: historical rejected-candidate contract; Issue #33 interaction repair
 implemented and reviewed; exact identity synchronization, dependency
 integration, refreshed local source validation, exact hosted source matrix,
 upstream source integration through PR #34, and Issue reply complete; one exact
 default-branch candidate/Draft construction authorized and completed in run
 `31515775702` on 2026-08-11; exact seven-asset Draft independently verified;
-browser/mock interaction, installed acceptance, MAC5, and publication open
+exact installed macOS interaction review completed with a blocking Data Viewer
+failure; candidate rejected and publication prohibited
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -38,10 +39,11 @@ candidate passes those gates and the owner records explicit MAC5 GO.
 
 Authorized work package: `DEV30-CANDIDATE-1`.
 
-Next mandatory stop: complete browser/mock interaction and exact installed
-Windows/macOS candidate acceptance, record the unsigned-Windows disposition
-under Issue #26, and reconcile candidate-bound evidence; then stop for explicit
-MAC5 GO before any acceptance-evidence upload or publish workflow.
+Next mandatory stop: preserve this immutable rejected Draft and implement the
+separately authorized Data Viewer row-shape repair under a fresh application
+identity. No acceptance upload, MAC5 decision, publish workflow, or update-site
+mutation may use `dev.30`. Exact installed Windows and unsigned-Windows
+disposition remain independently open.
 
 PR #24 established `0.4.0-dev.29` on `main` at merge `f05315c`, and PR #29
 established the Rust 1.88/Resolver 3 build contract at merge `9e0b36b`. The
@@ -61,7 +63,7 @@ artifact or acceptance evidence is relabelled or composed into this identity.
 | Dependency | upstream `main` `9e0b36b` | PR #24 `dev.29` and PR #29 MSRV integrations included |
 | Authoritative source commit | `bcc8e1cba717f5210a9b1016bf20a7da1decdade` | exact upstream default-branch SHA selected and built by run `31515775702` |
 | Windows/macOS artifacts | exact `dev.30` candidate only | both platform records and aggregate evidence passed in run `31515775702` |
-| Release decision | exact candidate/Draft `PASS`; release `NO-GO` | browser/mock interaction, installed acceptance, Windows signing disposition, MAC5, and publication open |
+| Release decision | exact candidate/Draft construction `PASS`; installed macOS `FAIL`; candidate `REJECTED`; release `NO-GO` | Data Viewer cannot render a valid page; Windows installed/signing and publication gates also remain open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -154,6 +156,48 @@ Windows signing claim is made; Issue #26 remains an explicit public-release
 gate unless its D4/R4 implementation passes or an owner-approved, documented
 governance exception defines compensating evidence.
 
+## Exact Installed macOS Acceptance
+
+The downloaded arm64 DMG independently matched
+`9ffafb568c78f05bfd04a0c0821dddea62c8be326bbbb359eb8932cf35a8e942` and
+installed `/Applications/Rho.app` with both application version and build
+`0.4.0-dev.30`. After a clean application shutdown, strict deep `codesign`
+verification passed and Gatekeeper reported `accepted`,
+`source=Notarized Developer ID`, and Developer ID Application
+`Yonghe Xia (GAAY6Z9874)`. The mounted DMG app and installed app were byte-for-
+byte identical. Workspace R 4.5.2 started in about 1.7 seconds and restored the
+acceptance project.
+
+Computer Use against the exact installed app passed the Issue #33 interaction
+exercises that were available on macOS:
+
+- Agent composer focus and text survived more than two polling cycles;
+- focused Agent activity retained keyboard activation, and mouse activation
+  succeeded while the turn remained Running;
+- a second Conversation composer retained text and focus while a background
+  Agent proposal arrived;
+- file execution completed without reclaiming focus from the Agent composer;
+- Console output did not drag a user reading older content to the new tail;
+- Environment rows retained native keyboard focus/Return activation; and
+- selected Plot state survived repeated refresh cycles.
+
+The review rejected the candidate on the Environment Data Viewer workflow. A
+new two-column, 120-row data frame appeared automatically in Environment, but
+selecting it, globally refreshing Environment, forcing reinspection, and
+reselecting it all produced `The source changed; refresh this object before
+continuing` and `No data loaded yet`. The same live Workspace R returned
+`VIEW_OK=TRUE ERROR= ROWS=50` from direct bridge inspection/read calls, while
+the durable `workspace.inspect_data_object` and `workspace.read_data_view`
+runs completed at matching revisions without backend error.
+
+Review traced this to named R lists crossing JSON as objects while the frontend
+requires ordered `cells` and `cell_states` arrays. The frontend render exception
+is then incorrectly classified as `stale_view_revision`. The active Data Viewer
+row-shape repair specification owns the replacement source work. Both file
+proposals used during focus testing were rejected, session mutation authority
+was disabled, the second-conversation draft was cleared, and the ignored
+scratch file was removed; no project file was changed by acceptance.
+
 ## Integration Handoff And Remaining Gates
 
 The exact reviewed PR #34 head
@@ -161,12 +205,14 @@ The exact reviewed PR #34 head
 `9e0b36b`, passed the four hosted Rust compatibility identities in run
 `31511253088` and merged as authoritative upstream source
 `1b3f522a48bced21bda52769aefd836ac4494334`. Exact `dev.30` candidate
-construction and Draft verification are now complete at `bcc8e1c`; Windows/
-macOS installed acceptance, browser interaction, Windows signing disposition,
-MAC5, publication, and update-site evidence remain independent facts and Issue
-#33 remains open.
+construction and Draft verification are complete at `bcc8e1c`; installed
+macOS acceptance is complete with `FAIL`, so this identity is rejected and
+cannot advance to MAC5, publication, or update-site mutation. Browser/mock,
+exact installed Windows, and Windows signing disposition remain independent
+open facts, and Issue #33 remains open despite its passing macOS focus checks.
 
 Current decision: source integration and exact candidate/Draft construction
-`COMPLETE`; `NO-GO` for acceptance upload or public publication until browser/
-mock review, exact installed Windows/macOS acceptance, Windows signing
-disposition, candidate-bound evidence, and explicit MAC5 GO are complete.
+`COMPLETE`; exact installed macOS acceptance `FAIL`; candidate `REJECTED` and
+release `NO-GO`. A repaired distributable must use a fresh version and complete
+all candidate, browser/mock, installed Windows/macOS, signing, candidate-bound
+evidence, MAC5, publication, and updater gates independently.

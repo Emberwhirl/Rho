@@ -2164,7 +2164,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.30",
+      version: "0.4.0-dev.31",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -2182,8 +2182,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.30",
-      available_version: "0.4.0-dev.30",
+      installed_version: "0.4.0-dev.31",
+      available_version: "0.4.0-dev.31",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -16707,6 +16707,53 @@ function dataViewerCellPresentation(value, state) {
   return { text: value === null || value === undefined ? "NA" : String(value), className: "", label: null };
 }
 
+function dataViewerProtocolError(message) {
+  const error = new Error(message);
+  error.error_code = "viewer_protocol_error";
+  return error;
+}
+
+function validateDataViewerPage(page) {
+  if (!page) return null;
+  if (!Array.isArray(page.columns) || !Array.isArray(page.rows)) {
+    throw dataViewerProtocolError("Data Viewer response columns and rows must be arrays.");
+  }
+  for (const row of page.rows) {
+    if (!Array.isArray(row?.cells) || !Array.isArray(row?.cell_states)) {
+      throw dataViewerProtocolError("Data Viewer response cells and cell states must be arrays.");
+    }
+    if (row.cells.length !== page.columns.length
+        || row.cell_states.length !== page.columns.length) {
+      throw dataViewerProtocolError("Data Viewer response row arrays must align with the returned columns.");
+    }
+  }
+  return page;
+}
+
+function dataViewerReadFailure(error) {
+  const message = typeof error === "string" ? error : error?.message || String(error || "");
+  const explicitCode = typeof error === "object" && error
+    ? String(error.error_code || error.code || "").trim()
+    : "";
+  const staleToken = explicitCode === "stale_view_token" || /stale_view_token/i.test(message);
+  const staleRevision = explicitCode === "stale_view_revision"
+    || /stale_view_revision|workspace (?:state )?revision (?:changed|mismatch)/i.test(message);
+  return {
+    message,
+    error_code: staleToken
+      ? "stale_view_token"
+      : staleRevision
+        ? "stale_view_revision"
+        : explicitCode || "viewer_read_failed",
+  };
+}
+
+function dataViewerErrorFallback(error) {
+  return ["stale_view_revision", "stale_view_token"].includes(error?.error_code)
+    ? "The source changed; refresh this object before continuing."
+    : "The data page could not be shown. Refresh the object and try again.";
+}
+
 function renderDataViewer() {
   const viewer = $("#dataViewer");
   const table = $("#dataViewerTable");
@@ -16748,7 +16795,7 @@ function renderDataViewer() {
   }
 
   $("#dataViewerStatus").textContent = state.dataViewer.error?.message
-    ? userFacingError(state.dataViewer.error.message, "The source changed; refresh this object before continuing.")
+    ? userFacingError(state.dataViewer.error.message, dataViewerErrorFallback(state.dataViewer.error))
     : (state.dataViewer.loadingPage
       ? "Searching Workspace R..."
       : page
@@ -17051,7 +17098,7 @@ async function loadDataViewPage(options = {}) {
       return null;
     }
 
-    const page = response.execution?.page || null;
+    const page = validateDataViewerPage(response.execution?.page || null);
     if (page) {
       const clampedRowOffset = boundedViewerOffset(
         requestedRowOffset,
@@ -17094,7 +17141,8 @@ async function loadDataViewPage(options = {}) {
     if (pageRequestId !== state.dataViewer.pageRequestId) return null;
     if (!requestIsCurrent()) return null;
     state.selectedDataPage = null;
-    state.dataViewer.error = { message: String(error), error_code: "stale_view_revision" };
+    console.error("[read data view]", error);
+    state.dataViewer.error = dataViewerReadFailure(error);
     renderEnvironment();
     return null;
   } finally {

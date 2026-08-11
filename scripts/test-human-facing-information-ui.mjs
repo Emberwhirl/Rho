@@ -86,7 +86,10 @@ assert.doesNotMatch(environmentOperation, /reason = request\.reason \? `[^`]*\$\
 
 const dataViewer = js.slice(js.indexOf("function renderDataViewer()"), js.indexOf("\nfunction dataViewerDelimitedText"));
 assert.doesNotMatch(dataViewer, /bounded page|bounded viewer/);
-assert.match(dataViewer, /The source changed; refresh this object before continuing/);
+assert.match(dataViewer, /dataViewerErrorFallback\(state\.dataViewer\.error\)/);
+const dataViewerErrors = js.slice(js.indexOf("function dataViewerReadFailure("), js.indexOf("\nfunction renderDataViewer()"));
+assert.match(dataViewerErrors, /The source changed; refresh this object before continuing/);
+assert.match(dataViewerErrors, /The data page could not be shown\. Refresh the object and try again/);
 
 const evidenceClaims = js.slice(js.indexOf("function renderEvidenceClaims()"), js.indexOf("\nfunction switchEvidenceTab"));
 assert.doesNotMatch(evidenceClaims, /`\$\{claim\.kind\}/);

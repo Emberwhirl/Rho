@@ -29,6 +29,6 @@ assert.match(css, /\.data-viewer-table \.non-finite\s*\{/);
 assert.match(bridge, /rho_viewer_column_type <- function/);
 assert.match(bridge, /rho_viewer_column_metadata <- function/);
 assert.match(bridge, /rho_viewer_cell_state <- function/);
-assert.match(bridge, /cell_states = lapply\(source_values, rho_viewer_cell_state\)/);
+assert.match(bridge, /cell_states = unname\(lapply\(source_values, rho_viewer_cell_state\)\)/);
 
 console.log("Data Viewer type/missing-value UI contract checks passed.");
