@@ -1,9 +1,10 @@
 # Rho 0.4.0-dev.30 Cross-Platform Candidate Checklist
 
 Status: active stacked source-candidate contract; Issue #33 interaction repair
-implemented and reviewed; exact identity synchronization and stacked source
-validation complete; branch publication, upstream integration, artifacts,
-installed acceptance, MAC5, and publication open
+implemented and reviewed; exact identity synchronization, stacked source
+validation, branch publication, Draft PR #34, and Issue reply complete;
+upstream integration, artifacts, installed acceptance, MAC5, and publication
+open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -45,7 +46,7 @@ composed into this identity.
 | Release tag/name | `v0.4.0-dev.30` / `Rho 0.4.0-dev.30` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
 | Dependency | PR #24 head `105e8b3c` | stacked; upstream integration pending |
-| Authoritative source commit | reviewed upstream default-branch SHA | pending dependent PR integration |
+| Authoritative source commit | reviewed upstream default-branch SHA | Draft PR #34 published; pending dependent PR integration |
 | Windows/macOS artifacts | exact `dev.30` candidate only | not built |
 | Release decision | source `PASS`; merge/release `NO-GO` | source verification complete; dependency, integration, artifacts, installed acceptance, MAC5, and publication open |
 
@@ -104,12 +105,13 @@ Tauri build-resource contract; these files are ignored and are not part of the
 commit. Browser/mock interaction was attempted earlier, but no connected
 browser was exposed. No browser or installed-application result is claimed.
 
-## Remaining Gates
+## Integration Handoff And Remaining Gates
 
-Push the exact reviewed branch, create a draft PR that explicitly depends on
-#24, and post the truthful source-verification status to Issue #33. PR #24 must
-land before this PR can be integrated. Exact `dev.30` candidate construction,
-Windows/macOS installed acceptance, browser interaction, MAC5, publication,
-and update-site evidence remain independent facts.
+The exact reviewed branch is published as Draft PR #34, and the truthful
+source-verification status is recorded on Issue #33. Both explicitly retain
+the dependency on PR #24 and leave Issue #33 open. PR #24 must land before PR
+#34 can be refreshed, revalidated, and integrated. Exact `dev.30` candidate
+construction, Windows/macOS installed acceptance, browser interaction, MAC5,
+publication, and update-site evidence remain independent facts.
 
 Current decision: `NO-GO` for merge, packaging, or publication.

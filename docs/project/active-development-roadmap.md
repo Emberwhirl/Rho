@@ -37,7 +37,8 @@ refreshes preserve user-owned focus/activation/scroll state, and background
 editor/Console paths require explicit focus authority. This source depends on
 the exact open PR #24 `dev.29` head and must not integrate before #24 lands;
 browser/mock, installed Windows, candidate, MAC5, and publication gates remain
-open.
+open. The reviewed branch and source evidence are published in Draft PR #34,
+with the same dependency and open-gate status recorded on Issue #33.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),

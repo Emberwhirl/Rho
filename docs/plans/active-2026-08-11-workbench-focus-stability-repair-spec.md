@@ -231,3 +231,8 @@ expectations, `rho.agent` 24 blocks / 120 expectations, and
 workspace results verify the exact PR #24 dependency plus Issue #33 source
 composition; they do not satisfy the still-open browser/mock, installed
 Windows, candidate artifact, MAC5, or publication gates.
+
+Integration handoff completed on 2026-08-11: the reviewed stacked source is
+published as Draft PR #34, and Issue #33 records the source result while
+remaining open. PR #34 explicitly depends on PR #24 and must be refreshed and
+revalidated after #24 lands before any integration decision.
