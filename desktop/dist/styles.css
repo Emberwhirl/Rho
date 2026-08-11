@@ -2798,7 +2798,7 @@ body.resizing-vertical { cursor: col-resize; }
 .package-state.missing_in_library { color: #9b4b34; font-weight: 600; }
 .package-state.missing_in_lockfile { color: #75601e; font-weight: 600; }
 .package-state.matched { color: #267064; }
-.environment-row { min-height: 38px; padding: 5px 11px; border-bottom: 1px solid #edf0f1; cursor: default; }
+.environment-row { width: 100%; min-height: 38px; margin: 0; padding: 5px 11px; border: 0; border-bottom: 1px solid #edf0f1; color: inherit; background: transparent; font: inherit; text-align: left; appearance: none; cursor: pointer; }
 .environment-row:hover { background: #f2f6f6; }
 .environment-row.active { background: #e1f1ef; }
 .object-name { display: flex; align-items: center; gap: 7px; min-width: 0; font-family: "Cascadia Code", Consolas, monospace; }

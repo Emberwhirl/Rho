@@ -37,9 +37,10 @@ rejected empty-line request never advance the cursor.
 - A non-empty selection executes literally and retains its selection/cursor.
 - An empty current line keeps the existing rejection and does not move.
 - Later R success or failure does not roll the admitted cursor transition back.
-- Console and other non-current-line execution retain their existing focus
-  behavior; current-line execution must not move focus to the Console input
-  after completion.
+- Current-line execution must not move focus to the Console input after
+  completion. As authorized by Issue #33 on 2026-08-11, file and selection
+  execution now follow the same no-steal rule; only a Console-origin request
+  may restore Console focus, and only if no newer user interaction occurred.
 - Cursor persistence continues through the existing document/session lane.
 - No broker command, execution payload, schema, project identity, approval,
   filesystem, or R-session authority changes.
@@ -114,3 +115,13 @@ Post-verification review found no contract deviation, backend payload change,
 schema/policy/project authority change, new dependency, or unrelated source
 edit. The active lifecycle is retained because installed Windows acceptance is
 not run. No roadmap milestone or release decision changes.
+
+## Issue #33 Coordination Amendment
+
+`active-2026-08-11-workbench-focus-stability-repair-spec.md` supersedes the
+legacy non-line completion-focus allowance from this repair. Current-line
+cursor advancement and immediate editor focus remain owned here. File,
+selection, and line completion may not transfer focus to Console; explicit
+Console-tab selection and interaction-revision-guarded Console-origin
+restoration remain valid. The original Issue #15 evidence remains historical
+for its exact implementation baseline and does not prove the amended rule.
