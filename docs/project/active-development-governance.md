@@ -264,7 +264,7 @@ The current common validation baseline is:
 ```powershell
 $env:PATH="C:\rtools45\x86_64-w64-mingw32.static.posix\bin;$env:PATH"
 cargo +stable-x86_64-pc-windows-gnu fmt --all -- --check
-cargo +stable-x86_64-pc-windows-gnu test --workspace
+cargo +stable-x86_64-pc-windows-gnu test --workspace --locked
 node --check desktop/dist/app.js
 Rscript -e "testthat::test_local('r/rho.bridge')"
 Rscript -e "testthat::test_local('r/rho.agent')"
@@ -550,6 +550,11 @@ content:
 - A new dependency requires a demonstrated need, maintenance/license/security
   review, platform/build impact, and focused tests.
 - Lockfile churn belongs only to the dependency change that caused it.
+- Workspace packages inherit one declared Rust MSRV. The native compatibility
+  workflow verifies the exact floor and current stable with the committed
+  lockfile; advancing the floor requires an active, reviewed build contract.
+- CI must select matrix toolchains explicitly. Changing the rustup default does
+  not override a repository `rust-toolchain.toml` and is not MSRV evidence.
 - Do not introduce a frontend framework, second store, second runtime, or
   public transport as incidental implementation detail.
 - Toolchain or generated-file changes must be reproducible from documented

@@ -147,7 +147,7 @@ jobs:
         run: |
           $env:PATH="$env:RHO_RTOOLS_BIN;$env:PATH"
           cargo fmt --all -- --check
-          cargo test --workspace --no-fail-fast
+          cargo test --workspace --locked --no-fail-fast
           Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"
           Rscript -e "testthat::test_local('r/rho.agent', reporter = 'summary')"
           node --check desktop/dist/app.js
@@ -250,7 +250,8 @@ jobs:
           rustup set profile minimal
           rustup toolchain install stable-aarch64-apple-darwin --no-self-update
           rustup component add rustfmt --toolchain stable-aarch64-apple-darwin
-          rustup default stable-aarch64-apple-darwin
+          export RUSTUP_TOOLCHAIN=stable-aarch64-apple-darwin
+          echo "RUSTUP_TOOLCHAIN=$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
           rustc -vV | grep -F 'host: aarch64-apple-darwin'
 
       - name: Bootstrap pinned macOS Ark runtime
@@ -262,7 +263,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo fmt --all -- --check
-          cargo test --workspace --no-fail-fast
+          cargo test --workspace --locked --no-fail-fast
           Rscript -e "testthat::test_local('r/rho.bridge', reporter = 'summary')"
           Rscript -e "testthat::test_local('r/rho.agent', reporter = 'summary')"
           node --check desktop/dist/app.js
