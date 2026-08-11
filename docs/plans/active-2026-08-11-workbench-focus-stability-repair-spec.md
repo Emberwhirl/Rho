@@ -154,11 +154,12 @@ surfaces.
 
 The current upstream baseline is `0.4.0-dev.28`; open PR #24 already reserves
 the next development identity, `0.4.0-dev.29`. This source work package must
-not create a second `dev.29`. If integrated after that reservation is resolved,
-the user-visible repair requires synchronized `0.4.0-dev.30` application
-metadata and `NEWS.md` before candidate distribution. Until then version and
-NEWS synchronization are an explicit integration gate, not evidence that the
-repair is absent.
+not create a second `dev.29`. On 2026-08-11 the user explicitly authorized the
+push and `0.4.0-dev.30` upgrade. The publish branch therefore stacks on the
+exact PR #24 head `105e8b3c024051809c7ce1b8f44c32fdc8247436`, after reconciling
+it with current upstream `main`, and synchronizes all application metadata and
+`NEWS.md` to `0.4.0-dev.30`. Its PR must be marked as dependent on #24 and must
+not merge before #24 establishes `0.4.0-dev.29` on `main`.
 
 Stop after this interaction-stability work package, deterministic evidence,
 post-verification contract review, scoped commit, and integration handoff.
@@ -215,8 +216,8 @@ Exact installed Windows reproduction and acceptance also remain open.
 
 Version review reconfirmed that upstream remains `0.4.0-dev.28` while open,
 clean PR #24 at `105e8b3c024051809c7ce1b8f44c32fdc8247436` reserves synchronized
-`0.4.0-dev.29` metadata and `NEWS.md`. This work package intentionally leaves
-version files and `NEWS.md` untouched; integration after PR #24 is resolved
-must allocate and document `0.4.0-dev.30`. The source repair is reviewable, but
-release readiness is not claimed until those integration and manual gates are
-complete.
+`0.4.0-dev.29` metadata and `NEWS.md`. The 2026-08-11 upgrade authorization
+requires this stacked publish branch to allocate and document
+`0.4.0-dev.30`. Source repair reviewability is separate from release readiness;
+browser/mock, exact installed Windows, and candidate publication gates remain
+open after metadata synchronization.
