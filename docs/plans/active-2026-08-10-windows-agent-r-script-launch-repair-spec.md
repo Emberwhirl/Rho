@@ -5,7 +5,8 @@ aisdk-readiness repairs implemented; exact updated-main automated verification
 and owner desktop Agent acceptance passed; ISSUE-2-AGENT-LAUNCH-R1 fresh
 readiness admission authorized by the project owner's 2026-08-10 repair
 instruction and implemented; exact `0.4.0-dev.29` verification and PR update
-passes; exact installed Windows acceptance and PR update remain pending
+passes; final upstream integration and exact installed Windows acceptance
+remain pending
 
 Date: 2026-08-10
 Authorization: user requested a fix and pull request for upstream GitHub Issue
@@ -187,8 +188,9 @@ R package suites remain unrun because this R library does not contain
 Post-verification review found no change to provider requests, credentials,
 model routing, Agent stdin, broker authentication, conversation identity,
 cancellation, persistence, approval, schema, or frontend protocol. The branch
-remains active until pull-request review and integration. No version or release
-decision changes.
+remains active until pull-request review and integration. At that initial
+checkpoint no version or release decision changed; the later authorized R1
+slice below allocated and synchronized the single-use `dev.29` source identity.
 
 ISSUE-2-AGENT-LAUNCH-R1 removes `agent_runtime` from the serialized general
 R/Ark cache and uses the same unavailable deferred status on cache hits and
