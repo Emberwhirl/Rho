@@ -5,8 +5,8 @@ aisdk-readiness repairs implemented; exact updated-main automated verification
 and owner desktop Agent acceptance passed; ISSUE-2-AGENT-LAUNCH-R1 fresh
 readiness admission authorized by the project owner's 2026-08-10 repair
 instruction and implemented; exact `0.4.0-dev.29` verification and PR update
-passes; final upstream integration and exact installed Windows acceptance
-remain pending
+passes; upstream integration completed in merge `f05315c`; exact installed
+Windows acceptance remains pending
 
 Date: 2026-08-10
 Authorization: user requested a fix and pull request for upstream GitHub Issue
@@ -219,3 +219,9 @@ failure did not recur. Separately observed panel-wide focus movement is outside
 this work package and neither blocks nor expands Issue #2. This evidence remains
 valid for the original launcher/readiness correction but is not exact installed
 `dev.29` acceptance; that release gate remains open.
+
+Upstream source integration completed on 2026-08-11 through PR #24 at merge
+commit `f05315cde735f011a76c1400bdadd28d21acc57e`. Issue #2 closed from the
+PR's source-fix relationship. This establishes only the reviewed `dev.29`
+default-branch source identity; no candidate, artifact, installed acceptance,
+MAC5, publication, or update-site fact was created or inferred.
