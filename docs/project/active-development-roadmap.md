@@ -22,8 +22,8 @@ Issue #25 advances the reviewed Model-settings Provider deletion and context
 repairs to the `0.4.0-dev.28` source identity. Provider removal is one guarded
 revision-bound action, Connections no longer projects a foreign Chat model,
 and direct model deletion owns one visible topmost confirmation. Upstream
-integration is authorized; exact `dev.28` candidate and installed acceptance
-remain separate release gates.
+integration passed through PR #31 at `e89ed70`; exact `dev.28` candidate
+and installed acceptance remain separate release gates.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),

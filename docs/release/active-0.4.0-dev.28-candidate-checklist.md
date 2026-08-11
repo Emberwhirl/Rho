@@ -3,8 +3,8 @@
 Status: active source-candidate contract; Issue #25 CRED-UX4A-R3/R4
 implementation, complete affected automated verification, deterministic
 browser/CDP review, independent R3 review, and application identity
-synchronization pass; upstream integration and every artifact, installed,
-MAC5, and publication gate remain open
+synchronization pass; upstream integration through PR #31 passes, while every
+artifact, installed, MAC5, and publication gate remains open
 
 Date: 2026-08-10
 Last updated: 2026-08-10
@@ -42,9 +42,9 @@ relabelled, replaced, or composed into this identity.
 | Store schema | `12` | unchanged; no persistence schema changed |
 | Release tag/name | `v0.4.0-dev.28` / `Rho 0.4.0-dev.28` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Authoritative source commit | reviewed upstream default-branch SHA | pending merge |
+| Authoritative source commit | reviewed upstream default-branch SHA | `e89ed7000e9b646e486843f501067687428da07e` from PR #31 |
 | Windows/macOS artifacts | exact `dev.28` candidate only | not built |
-| Release decision | `NO-GO` | integration and every downstream release gate remain open |
+| Release decision | `NO-GO` | source integration passes; every downstream release gate remains open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -80,9 +80,10 @@ caught stale escaped `dev.27` cache fixtures; synchronizing those fixtures to
 
 ## Remaining Gates
 
-Upstream pull request/merge, exact `dev.28` candidate construction,
-installed-app acceptance, MAC5, publication, and update-site evidence remain
-separate facts. Issue #25 may close after reviewed source integration and an
+Upstream [PR #31](https://github.com/YuLab-SMU/Rho/pull/31) merged the reviewed
+source at `e89ed7000e9b646e486843f501067687428da07e`. Exact `dev.28`
+candidate construction, installed-app acceptance, MAC5, publication, and
+update-site evidence remain separate facts. Issue #25 may close after its final
 evidence comment; that closure does not satisfy or authorize any release gate.
 
 Current decision: `NO-GO` for packaging or publication.
