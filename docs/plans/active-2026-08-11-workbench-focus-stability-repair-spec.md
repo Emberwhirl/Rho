@@ -2,9 +2,8 @@
 
 Status: active; ISSUE-33-INTERACTION-1 authorized 2026-08-11; source
 implementation, automated verification, and post-verification contract review
-complete; PR #24 dependency integrated, branch refreshed through upstream
-`main` `9e0b36b`, and exact local validation complete; final hosted source
-matrix, browser/mock interaction, and installed Windows acceptance open
+complete; exact hosted source matrix and upstream source integration complete
+at `1b3f522`; browser/mock interaction and installed Windows acceptance open
 
 Date: 2026-08-11
 Authorization: user requested verification and repair of GitHub Issue #33 on
@@ -232,14 +231,18 @@ workspace results verify the exact PR #24 dependency plus Issue #33 source
 composition; they do not satisfy the still-open browser/mock, installed
 Windows, candidate artifact, MAC5, or publication gates.
 
-Integration refresh completed on 2026-08-11: Draft PR #34 now includes upstream
+Integration refresh completed on 2026-08-11: PR #34 included upstream
 `main` through MSRV merge `9e0b36b` while retaining `0.4.0-dev.30` and the
 reviewed Issue #33 behavior. The refreshed tree passed all 54 JavaScript
 contracts, JavaScript syntax, locked Rust formatting/check and 364 workspace
 tests with zero failures and one opt-in Keychain smoke ignored, both focused R
-package suites, and `git diff --check`. The exact pushed PR head must still pass
-the four hosted Rust compatibility identities before source integration.
+package suites, and `git diff --check`. Exact PR head
+`83e2719d56941a4607af2d5e494c55466e78490f` passed all four hosted Rust
+compatibility identities in run `31511253088`, and PR #34 merged to upstream
+`main` as `1b3f522a48bced21bda52769aefd836ac4494334`.
+
 Browser/mock interaction and installed Windows reproduction remain open after
-source merge and continue to block Issue closure and candidate/release
+source integration and continue to block Issue closure and candidate/release
 acceptance; they do not become passing evidence merely because source is
-integrated.
+integrated. The required browser workflow was retried, but the environment
+exposed zero connected browser instances, so no browser result is claimed.

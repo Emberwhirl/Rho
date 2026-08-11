@@ -1,18 +1,18 @@
 # Rust MSRV And Dual-Toolchain Build Contract
 
-Status: active implementation contract; Issue #28 authorized `MSRV-1` on
-2026-08-10; source implementation, local macOS acceptance, and first hosted
-four-leg matrix acceptance complete; refreshed against upstream `main`
-`0111dd9` with exact local validation complete; refreshed hosted matrix and
-merge review pending
+Status: active integrated build contract; Issue #28 authorized `MSRV-1` on
+2026-08-10; source implementation, exact local validation, final hosted
+four-leg PR acceptance, upstream integration, and exact-merge main validation
+complete; Issue #28 closed
 
 Date: 2026-08-10
 Issue: https://github.com/YuLab-SMU/Rho/issues/28
 Change class: D3 shared build and toolchain policy
 Risk: R3 cross-platform build and release-validation foundation
 Authorized work package: `MSRV-1`
-Next mandatory stop: require the same four hosted checks on the current PR HEAD,
-then complete reviewer merge disposition
+Next mandatory stop: enforce the Rust 1.88 floor and dual-toolchain matrix
+continuously; any dependency, target, runner, packaging, or MSRV change requires
+a separately reviewed contract
 
 ## Problem And Reproduction
 
@@ -299,9 +299,18 @@ testthat::test_local('r/rho.agent', reporter='summary')
 git diff --check
 ```
 
-This refresh does not reuse the earlier hosted run as final acceptance. The
-four hosted identities remain mandatory on the pushed, evidence-reconciled PR
-HEAD before draft removal or merge.
+This refresh did not reuse the earlier hosted run as final acceptance. The four
+hosted identities remained mandatory on the pushed, evidence-reconciled PR HEAD
+before draft removal or merge.
+
+Final source integration completed on 2026-08-11. PR #29 head
+`f022d2c60808dd335ffae6945fa95a2032ac7acd` passed all four required jobs in
+GitHub Actions run `31509554882`, PR #29 merged to upstream `main` as
+`9e0b36b0d96c5389e7b36a30fa310751bffd0b47`, and the exact merge then passed
+the same four macOS/Windows stable/MSRV jobs in main-push run `31510716448`.
+Issue #28 was closed only after that integration evidence was available. These
+checks establish the build contract; they do not create candidate, artifact,
+installed-acceptance, MAC5, or release evidence.
 
 ## Work Package And Stop Point
 
@@ -310,9 +319,10 @@ resolver transition, compatibility workflow, locked candidate validation,
 deterministic tests, and documentation reconciliation as one bisectable build
 contract.
 
-Stop after pushing the reviewed implementation and collecting the four hosted
-matrix outcomes. Any dependency pin, target change, runner change, packaging
-change, or MSRV advance is outside this package and requires contract review.
+`MSRV-1` stopped after the reviewed source was integrated and the exact merge
+passed the four hosted matrix identities. Any dependency pin, target change,
+runner change, packaging change, or MSRV advance is outside this completed
+package and requires contract review.
 
 ## Version, NEWS, And Release Impact
 
