@@ -203,9 +203,10 @@ legal/ownership determination, has been recorded; the merge gate therefore
 remains closed.
 
 The Draft branch was synchronized through upstream `main`
-`1b3f522a48bced21bda52769aefd836ac4494334`, preserving the current
-`0.4.0-dev.30` product metadata, Issue #33 focus-stability source, Resolver 3,
-the Rust 1.88 MSRV contract, and locked candidate validation. Successive
+`50ac11974f06b8941eed4591ccc6e042f9e9421b`, preserving the current
+`0.4.0-dev.30` product metadata, Issue #33 focus-stability source and final
+integration evidence, Resolver 3, the Rust 1.88 MSRV contract, and locked
+candidate validation. Successive
 textual conflicts were resolved compositionally: the frontend lockfile root
 retains both version `0.4.0-dev.30` and license `AGPL-3.0-only`, while the
 workspace manifest retains both `rust-version = "1.88"` and license
