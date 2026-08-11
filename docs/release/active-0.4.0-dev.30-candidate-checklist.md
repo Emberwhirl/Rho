@@ -2,9 +2,9 @@
 
 Status: active source-candidate contract; Issue #33 interaction repair
 implemented and reviewed; exact identity synchronization, dependency
-integration, refreshed local source validation, branch publication, Draft PR
-#34, and Issue reply complete; final hosted source matrix, upstream integration,
-artifacts, installed acceptance, MAC5, and publication open
+integration, refreshed local source validation, exact hosted source matrix,
+upstream source integration through PR #34, and Issue reply complete; artifacts,
+browser/mock interaction, installed acceptance, MAC5, and publication open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -45,9 +45,9 @@ artifact or acceptance evidence is relabelled or composed into this identity.
 | Release tag/name | `v0.4.0-dev.30` / `Rho 0.4.0-dev.30` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
 | Dependency | upstream `main` `9e0b36b` | PR #24 `dev.29` and PR #29 MSRV integrations included |
-| Authoritative source commit | reviewed upstream default-branch SHA | Draft PR #34 refreshed; final hosted source matrix and integration pending |
+| Authoritative source commit | `1b3f522a48bced21bda52769aefd836ac4494334` | PR #34 integrated after exact head run `31511253088` passed all four Rust compatibility jobs |
 | Windows/macOS artifacts | exact `dev.30` candidate only | not built |
-| Release decision | source local `PASS`; merge pending hosted gate; release `NO-GO` | dependency and refreshed local verification complete; hosted source matrix, integration, artifacts, installed acceptance, MAC5, and publication open |
+| Release decision | source integration `COMPLETE`; release `NO-GO` | hosted source matrix and integration complete; artifacts, browser/mock interaction, installed acceptance, MAC5, and publication open |
 
 The identity is single-use. Any artifact-producing failed run or later
 user-visible source change consumes it and requires another version.
@@ -107,13 +107,14 @@ browser was exposed. No browser or installed-application result is claimed.
 
 ## Integration Handoff And Remaining Gates
 
-The exact reviewed branch is published as Draft PR #34, refreshed through
-upstream `main` `9e0b36b`, and the truthful source-verification status remains
-recorded on Issue #33. Source integration requires the four hosted Rust
-compatibility identities on the exact pushed head. Exact `dev.30` candidate
+The exact reviewed PR #34 head
+`83e2719d56941a4607af2d5e494c55466e78490f`, refreshed through upstream `main`
+`9e0b36b`, passed the four hosted Rust compatibility identities in run
+`31511253088` and merged as authoritative upstream source
+`1b3f522a48bced21bda52769aefd836ac4494334`. Exact `dev.30` candidate
 construction, Windows/macOS installed acceptance, browser interaction, MAC5,
 publication, and update-site evidence remain independent facts and Issue #33
 remains open.
 
-Current decision: `GO` for source merge only after the final hosted matrix;
-`NO-GO` for packaging or publication.
+Current decision: source integration `COMPLETE`; `NO-GO` for packaging or
+publication.
