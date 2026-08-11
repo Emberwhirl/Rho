@@ -202,13 +202,16 @@ No equivalent consent from `xuzhougeng`, and no substitute authorized
 legal/ownership determination, has been recorded; the merge gate therefore
 remains closed.
 
-The Draft branch was also merged with upstream `main` at `0111dd9`, preserving
-the current `0.4.0-dev.29` product metadata and its source fixes while retaining
-the AGPL metadata. The only textual merge conflict was the frontend lockfile
-root record; it was resolved to keep both version `0.4.0-dev.29` and license
-`AGPL-3.0-only`. The synchronized tree passed all 54 JavaScript contracts,
-license negative tests and the real repository contract, both vendor-notice
-failure/recovery matrices, Rust formatting/check and 364 workspace tests (zero
-failed, one opt-in Keychain smoke ignored), both focused R package suites, and
-`git diff --check`. This engineering refresh does not satisfy or weaken the
-remaining contributor gate.
+The Draft branch was synchronized through upstream `main`
+`9e0b36b0d96c5389e7b36a30fa310751bffd0b47`, preserving the current
+`0.4.0-dev.29` product metadata and source fixes while inheriting Resolver 3,
+the Rust 1.88 MSRV contract, and locked candidate validation. The two textual
+conflicts across the refreshes were resolved compositionally: the frontend
+lockfile root retains both version `0.4.0-dev.29` and license
+`AGPL-3.0-only`, while the workspace manifest retains both
+`rust-version = "1.88"` and license `AGPL-3.0-only`. The exact synchronized
+tree passed all 55 JavaScript contracts, license negative tests and the real
+repository contract, both vendor-notice failure/recovery matrices, Rust
+formatting/check and 364 workspace tests (zero failed, one opt-in Keychain
+smoke ignored), both focused R package suites, and `git diff --check`. This
+engineering refresh does not satisfy or weaken the remaining contributor gate.

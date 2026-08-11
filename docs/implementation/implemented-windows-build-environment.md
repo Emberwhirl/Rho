@@ -2,7 +2,7 @@
 
 Status: implemented and actively maintained
 
-Date: 2026-07-21
+Date: 2026-08-10
 Validated release: `0.2.0-dev.11`
 
 Release automation for later candidates runs
@@ -57,6 +57,7 @@ that produced the validated installer.
 | Node.js | `24.12.0` |
 | npm / npx | `11.6.2` |
 | Rust / Cargo | `1.97.0` |
+| Declared workspace Rust MSRV | `1.88` |
 | Release Rust host | `x86_64-pc-windows-gnu` |
 | Rtools compiler | Rtools45 GCC `14.3.0` |
 | Ark | `0.1.252`, Windows x64 |
@@ -99,13 +100,16 @@ Test-Path C:\rtools45\x86_64-w64-mingw32.static.posix\bin
 Test-Path E:\YuNotebooks\01_Development\source\Rho\desktop\resources\WebView2Loader.dll
 ```
 
-There are two Rust selections to distinguish:
+There are three Rust selections to distinguish:
 
 - entering the repository normally activates
   `1.97.0-x86_64-pc-windows-msvc` through `rust-toolchain.toml`;
 - the Windows installer script deliberately overrides this with
   `stable-x86_64-pc-windows-gnu` and places the Rtools GCC directory first on
-  `PATH`.
+  `PATH`;
+- `.github/workflows/rust-compatibility.yml` explicitly selects both
+  `stable-x86_64-pc-windows-gnu` and `1.88.0-x86_64-pc-windows-gnu` through
+  `RUSTUP_TOOLCHAIN`, so the repository override cannot invalidate the matrix.
 
 The installer script is the release authority. An agent must not assume the
 interactive `rustup` default is the packaging target.
@@ -178,7 +182,7 @@ Set-Location E:\YuNotebooks\01_Development\source\Rho
 node --check desktop\dist\app.js
 Rscript -e "testthat::test_local('r/rho.bridge')"
 Rscript -e "testthat::test_local('r/rho.agent')"
-cargo test --workspace
+cargo test --workspace --locked
 ```
 
 For release-target validation, repeat Rust tests with the same GNU environment
@@ -189,7 +193,7 @@ $env:CARGO_HOME = 'E:\software-data\scoop\persist\rustup\.cargo'
 $env:RUSTUP_HOME = 'E:\software-data\scoop\persist\rustup\.rustup'
 $env:RUSTUP_TOOLCHAIN = 'stable-x86_64-pc-windows-gnu'
 $env:PATH = 'C:\rtools45\x86_64-w64-mingw32.static.posix\bin;' + $env:CARGO_HOME + '\bin;' + $env:PATH
-cargo test --workspace
+cargo test --workspace --locked
 ```
 
 The model credential and network are not required for Rust tests, bridge

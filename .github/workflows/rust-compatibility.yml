@@ -1,0 +1,156 @@
+name: Rust Compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "crates/**/*.rs"
+      - "desktop/src-tauri/**"
+      - "vendor/jet/**/*.rs"
+      - "runtime/ark.json"
+      - "scripts/bootstrap-ark-macos.sh"
+      - ".github/workflows/rust-compatibility.yml"
+      - ".github/workflows/candidate-build-draft.yml"
+      - "scripts/test-rust-msrv-contract.mjs"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "crates/**/*.rs"
+      - "desktop/src-tauri/**"
+      - "vendor/jet/**/*.rs"
+      - "runtime/ark.json"
+      - "scripts/bootstrap-ark-macos.sh"
+      - ".github/workflows/rust-compatibility.yml"
+      - ".github/workflows/candidate-build-draft.yml"
+      - "scripts/test-rust-msrv-contract.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-compatibility:
+    name: ${{ matrix.os }} / Rust ${{ matrix.toolchain }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            toolchain: "stable"
+            rustup_toolchain: stable-aarch64-apple-darwin
+            host: aarch64-apple-darwin
+          - os: macos-26
+            toolchain: "1.88.0"
+            rustup_toolchain: 1.88.0-aarch64-apple-darwin
+            host: aarch64-apple-darwin
+          - os: windows-latest
+            toolchain: "stable"
+            rustup_toolchain: stable-x86_64-pc-windows-gnu
+            host: x86_64-pc-windows-gnu
+          - os: windows-latest
+            toolchain: "1.88.0"
+            rustup_toolchain: 1.88.0-x86_64-pc-windows-gnu
+            host: x86_64-pc-windows-gnu
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rustup_toolchain }}
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Windows Rtools
+        if: runner.os == 'Windows'
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.6.1"
+          rtools-version: "45"
+          use-public-rspm: true
+
+      - name: Configure Windows GNU linker
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $rtools = "C:\rtools45\x86_64-w64-mingw32.static.posix\bin"
+          if (-not (Test-Path -LiteralPath $rtools)) {
+            throw "Expected Rtools45 GNU directory was not found: $rtools"
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_RTOOLS_BIN=C:\rtools45\x86_64-w64-mingw32.static.posix\bin"
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $rtools
+
+      - name: Install and verify macOS Rust toolchain
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --no-self-update
+          if [[ "${{ matrix.toolchain }}" == "stable" ]]; then
+            rustup component add rustfmt --toolchain "$RUSTUP_TOOLCHAIN"
+          fi
+          active="$(rustup show active-toolchain)"
+          [[ "$active" == "$RUSTUP_TOOLCHAIN "* ]]
+          rust_version="$(rustc -V | awk '{print $2}')"
+          if [[ "${{ matrix.toolchain }}" == "1.88.0" ]]; then
+            test "$rust_version" = "1.88.0"
+          fi
+          rustc -vV | grep -Fx "host: ${{ matrix.host }}"
+          cargo -vV
+
+      - name: Install and verify Windows GNU Rust toolchain
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH="$env:RHO_RTOOLS_BIN;$env:PATH"
+          rustup set profile minimal
+          rustup toolchain install $env:RUSTUP_TOOLCHAIN --no-self-update
+          if ("${{ matrix.toolchain }}" -eq "stable") {
+            rustup component add rustfmt --toolchain $env:RUSTUP_TOOLCHAIN
+          }
+          $active = (& rustup show active-toolchain).Trim()
+          if (-not $active.StartsWith("$env:RUSTUP_TOOLCHAIN ")) {
+            throw "Expected $env:RUSTUP_TOOLCHAIN, received $active"
+          }
+          $rustVersion = ((& rustc -V).Trim() -split '\s+')[1]
+          if ("${{ matrix.toolchain }}" -eq "1.88.0" -and $rustVersion -ne "1.88.0") {
+            throw "Expected rustc 1.88.0, received $rustVersion"
+          }
+          $hostLine = (& rustc -vV | Select-String '^host: ').Line
+          if ($hostLine -ne "host: ${{ matrix.host }}") {
+            throw "Expected host ${{ matrix.host }}, received $hostLine"
+          }
+          cargo -vV
+
+      - name: Stage pinned macOS Ark sidecar for Tauri compilation
+        if: runner.os == 'macOS'
+        shell: bash
+        run: ./scripts/bootstrap-ark-macos.sh
+
+      - name: Enforce current stable formatting
+        if: matrix.toolchain == 'stable'
+        run: cargo fmt --all -- --check
+
+      - name: Verify locked workspace at selected Rust version
+        run: |
+          node scripts/test-rust-msrv-contract.mjs
+          cargo check --workspace --all-targets --locked
+          cargo test --workspace --locked --no-fail-fast
