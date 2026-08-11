@@ -34,6 +34,15 @@ assert.ok(lockLocalVersions.length >= 9, "Expected local Rho workspace packages 
 assert.ok(lockLocalVersions.every((version) => version === expectedVersion), "Cargo.lock local package versions must match the candidate");
 
 const build = read(".github/workflows/candidate-build-draft.yml");
+assert.equal(
+  count(build, /cargo test --workspace --locked --no-fail-fast/g),
+  2,
+  "Windows and macOS candidate validation must both use the committed Cargo.lock",
+);
+assert.doesNotMatch(build, /cargo test --workspace --no-fail-fast/);
+assert.match(build, /export RUSTUP_TOOLCHAIN=stable-aarch64-apple-darwin/);
+assert.match(build, /echo "RUSTUP_TOOLCHAIN=\$RUSTUP_TOOLCHAIN" >> "\$GITHUB_ENV"/);
+assert.doesNotMatch(build, /rustup default stable-aarch64-apple-darwin/);
 const buildModePattern = /build_mode:\n[\s\S]*?default: rehearsal\n[\s\S]*?type: choice\n[\s\S]*?- rehearsal\n[\s\S]*?- candidate/;
 const crlfBuildModeFixture = [
   "build_mode:",
