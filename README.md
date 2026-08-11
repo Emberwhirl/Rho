@@ -70,3 +70,20 @@ Rho is under active development. Windows packaging, Apple Silicon macOS
 packaging, and the core project workflow are implemented; installed-candidate
 acceptance, release signing/publication, macOS x64, and Linux packaging remain
 in progress.
+
+## License
+
+Rho-original source code, documentation, tests, and scripts are licensed under
+the [GNU Affero General Public License version 3 only](LICENSE)
+(`AGPL-3.0-only`), except where a file or directory carries a different
+notice. Copyright © 2026 YuLab-SMU and contributors.
+
+Commercial use is permitted. If you distribute a modified version, or let
+users interact with a modified version over a network, the AGPL requires the
+corresponding source to remain available under its terms. Rho does not offer a
+proprietary dual license.
+
+This change is prospective: licenses already granted for historical Rho
+versions or copies remain valid. Bundled and vendored third-party components
+retain their own licenses; see [Licensing and third-party notices](LICENSES.md).
+See [Contributing](CONTRIBUTING.md) before submitting changes.

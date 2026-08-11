@@ -40,6 +40,7 @@ semantics.
 | Document | Status after review | Owns | May proceed when |
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
+| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 implementation, affected automated verification, and independent review complete 2026-08-10; contributor relicensing and future distribution acceptance open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, and transition gates | keep the reviewed implementation in Draft; merge only after contributor permission or an authorized legal/ownership determination is recorded; future distribution requires a separately accepted candidate |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
 | `release/historical-0.4.0-dev.16-candidate-checklist.md` | historical; review-only rehearsals passed and the decision remained NO-GO before the baseline advanced | immutable `0.4.0-dev.16` rehearsal evidence and NO-GO snapshot only | cannot authorize or satisfy any later candidate, MAC5, or publication row |
@@ -145,6 +146,32 @@ semantics.
   states.
 
 ## Resolved Cross-Document Conflicts
+
+### AGPL license transition ownership
+
+The active AGPL transition contract owns only the prospective license and
+repository metadata for Rho-original source. Issue #26 retains all SignPath,
+Authenticode, privacy, code-signing-policy, credential, approval, signed-byte,
+and public-release authority. An OSI-approved AGPL license satisfies a license
+category prerequisite but does not establish SignPath Foundation acceptance.
+
+Historical releases and candidates retain the grant and exact bytes that
+applied when they were distributed. In particular, the existing
+`v0.4.0-dev.27` candidate cannot be relabelled or used as AGPL evidence; a
+future distributable AGPL candidate requires its own license/notice packaging,
+interactive legal-notice review, exact-candidate validation, and release gate.
+
+Rho-original content may adopt `AGPL-3.0-only`, while Jet, Ark, frontend vendor
+assets, dependency-manager content, and other third-party works remain under
+their own licenses. The transition does not reinterpret or relicense those
+components. Cargo, frontend, and R package metadata project the same Rho
+decision using each ecosystem's recognized identifier.
+
+The source implementation may be prepared and reviewed, but merge remains
+blocked until required historical contributors grant the additional AGPL
+permission or an authorized legal/ownership determination establishes that the
+existing inbound permission is sufficient. This unresolved external acceptance
+gate is explicit and does not create a competing engineering authority.
 
 ### Navigation and layout state
 
