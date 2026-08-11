@@ -1,9 +1,9 @@
 # Rho 0.4.0-dev.31 Cross-Platform Candidate Checklist
 
 Status: active replacement source-candidate contract; Data Viewer row-shape
-repair implemented, reviewed, versioned, and source-validated; upstream
-integration, exact candidate construction, installed acceptance, Windows
-signing disposition, MAC5, publication, and updater evidence open
+repair implemented, reviewed, versioned, source-validated, and integrated
+through upstream PR #39; exact candidate construction, installed acceptance,
+Windows signing disposition, MAC5, publication, and updater evidence open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -45,7 +45,7 @@ composed into this identity.
 | Store schema | `12` | unchanged; no persistence schema changed |
 | Release tag/name | `v0.4.0-dev.31` / `Rho 0.4.0-dev.31` | reserved defaults only; no tag or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Authoritative source commit | exact reviewed upstream default-branch SHA | pending source integration |
+| Authoritative repair merge | `a54fa2c48d84a77f67a0a37896869823d83738ac` | PR #39 merged exact reviewed head `ec4ddf52d85ce4b32fa3dc369cdcdd9e346c81a2` |
 | Windows/macOS artifacts | exact `dev.31` candidate only | not built |
 | Release decision | source repair `PASS`; release `NO-GO` | every artifact and installed/release gate remains open |
 
@@ -85,12 +85,18 @@ coercion, and no mock/real shape conflict. After version synchronization, all
 format/check/tests, exact desktop smoke, JavaScript syntax, metadata
 consistency, and `git diff --check` passed again.
 
+Hosted Rust Compatibility run `31523265847` passed the exact PR head on
+macOS-26 stable and 1.88.0 plus Windows stable and 1.88.0. PR #39 was marked
+ready only after all four checks completed, remained cleanly mergeable, and
+merged without bypass as `a54fa2c48d84a77f67a0a37896869823d83738ac`.
+
 ## Integration And Candidate Gates
 
-1. Commit only the reviewed repair, evidence, version, and release-contract
-   files from the isolated worktree; preserve the owner's unrelated checkout.
-2. Push a scoped branch, open/update a pull request, require hosted checks, and
-   merge the exact reviewed head into upstream `main` without force or bypass.
+1. **PASS** — only the reviewed repair, evidence, version, and release-contract
+   files were committed from the isolated worktree; the owner's unrelated
+   checkout was preserved.
+2. **PASS** — scoped PR #39 passed the four hosted Rust identities and merged
+   the exact reviewed head into upstream `main` without force or bypass.
 3. Confirm the merge SHA is the current default-branch head and run the exact
    candidate workflow in `candidate` mode for `v0.4.0-dev.31`.
 4. Independently verify the aggregate evidence, seven expected unique assets,
@@ -107,7 +113,8 @@ consistency, and `git diff --check` passed again.
 
 ## Current Decision
 
-Source repair, affected validation, review, and version synchronization are
-complete. Upstream integration and every distributable gate remain open.
+Source repair, affected validation, review, version synchronization, and
+upstream integration are complete. Every distributable gate remains open.
 Current decision: `NO-GO` for acceptance upload, MAC5, public publication, or
-update-site mutation.
+update-site mutation until an exact current-main candidate is constructed and
+accepted.
