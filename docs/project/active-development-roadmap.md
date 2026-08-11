@@ -45,8 +45,10 @@ Exact installed macOS acceptance subsequently rejected that candidate because
 valid Data Viewer pages encoded named R lists as JSON objects and the frontend
 required ordered arrays. `DATA-VIEWER-ROW-SHAPE-R1` repairs the existing WP2
 contract, advances the replacement source to `0.4.0-dev.31` with
-`rho.bridge 0.1.14`, and leaves browser/mock, installed Windows/macOS, Windows
-signing disposition, acceptance-evidence, MAC5, and publication gates open.
+`rho.bridge 0.1.14`, passed four-platform Rust Compatibility run `31523265847`,
+and integrated through PR #39 at `a54fa2c`. Browser/mock, installed
+Windows/macOS, Windows signing disposition, acceptance-evidence, MAC5, and
+publication gates remain open.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

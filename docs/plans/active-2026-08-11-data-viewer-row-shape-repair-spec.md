@@ -2,7 +2,8 @@
 
 Status: active; DATA-VIEWER-ROW-SHAPE-R1 authorized and implemented 2026-08-11;
 focused and complete affected source validation plus post-verification contract
-review pass; replacement candidate construction and installed acceptance open
+review pass; exact hosted matrix and upstream PR #39 integration pass;
+replacement candidate construction and installed acceptance open
 
 Date: 2026-08-11
 Authorization: the project owner's standing instruction to continue repairing
