@@ -20,7 +20,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use agent_llm::{
     AgentCapabilityRoute, AgentLlmSettingsView, AgentModelCapabilityPatch,
     AgentModelDiscoveryResponse, AgentModelProfile, AgentModelTestControl, AgentProviderProfile,
-    DeleteModelRequest,
+    DeleteModelRequest, DeleteProviderRequest,
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -4657,12 +4657,11 @@ async fn agent_llm_save_provider(
 
 #[tauri::command]
 async fn agent_llm_delete_provider(
-    provider_id: String,
+    request: DeleteProviderRequest,
     state: State<'_, AppState>,
 ) -> Result<AgentLlmSettingsView, String> {
     let config = runtime_config(&state).map_err(display_error)?;
-    let settings =
-        agent_llm::delete_provider(&config.data_dir, &provider_id).map_err(display_error)?;
+    let settings = agent_llm::delete_provider(&config.data_dir, &request).map_err(display_error)?;
     agent_llm::settings_view_from_settings(settings).map_err(display_error)
 }
 
