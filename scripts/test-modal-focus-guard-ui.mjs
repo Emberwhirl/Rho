@@ -23,11 +23,11 @@ const predicateSource = between(
   "\nfunction keepsNativeContextMenu",
 );
 const selectionSource = between(
-  "function applyDocumentSelection(documentState)",
+  "function applyDocumentSelection(documentState, { focusEditor = true } = {})",
   "\nasync function initializeEditor()",
 );
 
-function monacoContext({ dialogOpen }) {
+function monacoContext({ dialogOpen, focusEditor = true }) {
   const calls = [];
   const model = {
     getPositionAt: (offset) => ({ lineNumber: 1, column: (offset ?? 0) + 1 }),
@@ -60,7 +60,7 @@ function monacoContext({ dialogOpen }) {
     updateEditorChrome: () => calls.push(["chrome"]),
   };
   vm.runInNewContext(
-    `${predicateSource}\n${selectionSource}\napplyDocumentSelection({ path: "analysis.R", cursorStart: 2, cursorEnd: 5 });`,
+    `${predicateSource}\n${selectionSource}\napplyDocumentSelection({ path: "analysis.R", cursorStart: 2, cursorEnd: 5 }, { focusEditor: ${focusEditor} });`,
     context,
   );
   return calls;
@@ -85,6 +85,13 @@ assert.equal(selection.startLineNumber, 1, "selection mapping must be unchanged"
 assert.equal(selection.startColumn, 3, "selection mapping must be unchanged");
 assert.equal(selection.endLineNumber, 1, "selection mapping must be unchanged");
 assert.equal(selection.endColumn, 6, "selection mapping must be unchanged");
+
+// Issue #33 requires background callers to remain non-focusing even without a dialog.
+const background = monacoContext({ dialogOpen: false, focusEditor: false });
+assert.ok(!background.some(([name]) => name === "focus"), "background render intent must not focus Monaco");
+for (const required of ["setModel", "updateOptions", "setSelection", "reveal", "chrome"]) {
+  assert.ok(background.some(([name]) => name === required), `${required} must still run for a background render`);
+}
 
 // The basic-editor branch assigns selection without ever focusing.
 function textareaContext({ dialogOpen }) {

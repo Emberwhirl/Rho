@@ -120,6 +120,12 @@ Focused Console and usability checks passed. No application version bump was
 made because this is not yet a new distributed development candidate; the
 implemented repair is recorded in `NEWS.md`.
 
+Issue #33 coordination amendment (2026-08-11): explicit Console-tab selection
+continues to focus the visible enabled input. Execution completion and
+background refresh are not tab selection; they follow
+`active-2026-08-11-workbench-focus-stability-repair-spec.md` and may restore a
+Console-origin input only when no newer user interaction has taken ownership.
+
 ## UX-FIX5: Human-Reviewable Agent Runs And Review
 
 Agent-first Runs and Review must help a human answer: what was requested, what

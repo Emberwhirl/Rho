@@ -203,14 +203,14 @@ legal/ownership determination, has been recorded; the merge gate therefore
 remains closed.
 
 The Draft branch was synchronized through upstream `main`
-`9e0b36b0d96c5389e7b36a30fa310751bffd0b47`, preserving the current
-`0.4.0-dev.29` product metadata and source fixes while inheriting Resolver 3,
-the Rust 1.88 MSRV contract, and locked candidate validation. The two textual
-conflicts across the refreshes were resolved compositionally: the frontend
-lockfile root retains both version `0.4.0-dev.29` and license
-`AGPL-3.0-only`, while the workspace manifest retains both
-`rust-version = "1.88"` and license `AGPL-3.0-only`. The exact synchronized
-tree passed all 55 JavaScript contracts, license negative tests and the real
+`1b3f522a48bced21bda52769aefd836ac4494334`, preserving the current
+`0.4.0-dev.30` product metadata, Issue #33 focus-stability source, Resolver 3,
+the Rust 1.88 MSRV contract, and locked candidate validation. Successive
+textual conflicts were resolved compositionally: the frontend lockfile root
+retains both version `0.4.0-dev.30` and license `AGPL-3.0-only`, while the
+workspace manifest retains both `rust-version = "1.88"` and license
+`AGPL-3.0-only`. The exact synchronized tree passed all 56 JavaScript
+contracts, license negative tests and the real
 repository contract, both vendor-notice failure/recovery matrices, Rust
 formatting/check and 364 workspace tests (zero failed, one opt-in Keychain
 smoke ignored), both focused R package suites, and `git diff --check`. This

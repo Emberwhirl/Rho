@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.29`
+Current source baseline: `0.4.0-dev.30`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -31,6 +31,17 @@ contract, and the general R/Ark cache cannot admit Agent turns from persisted
 readiness. PR #24 integrated the reviewed source at merge `f05315c` and closed
 Issue #2. Every exact `dev.29` artifact, installed, MAC5, and publication gate
 remains open.
+
+Issue #33 advances the reviewed source to `0.4.0-dev.30`. Unchanged
+poll projections no longer rebuild volatile workbench surfaces, required
+refreshes preserve user-owned focus/activation/scroll state, and background
+editor/Console paths require explicit focus authority. This source depends on
+upstream PR #24 established `dev.29` at `f05315c`, and the branch is refreshed
+through MSRV merge `9e0b36b`. Browser/mock, installed Windows, candidate, MAC5,
+and publication gates remain open. The reviewed branch and refreshed source
+evidence are published in Draft PR #34; exact hosted source CI remains before
+integration, while the manual gates continue to block Issue closure and release
+acceptance.
 
 Progress: Waves 1-14 implementation code is present in the current source
 baseline. BH1-BH5, RA-RC1, WB1, WB2, UX4, RA-RC2, WS2 (Air backend selected),

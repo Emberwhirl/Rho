@@ -212,6 +212,9 @@ const state = {
   agentProblemRunContext: null,
   problemRepairPreviewProbe: null,
   agentPollTimer: null,
+  volatileRenders: new Map(),
+  volatileActivation: null,
+  userInteractionRevision: 0,
   activeRunId: null,
   agentReviewRunId: null,
   agentReviewRunDetail: null,
@@ -2161,7 +2164,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.29",
+      version: "0.4.0-dev.30",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -2179,8 +2182,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.29",
-      available_version: "0.4.0-dev.29",
+      installed_version: "0.4.0-dev.30",
+      available_version: "0.4.0-dev.30",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -4851,7 +4854,7 @@ function updateEditorChrome() {
   renderEnvironmentSummary();
 }
 
-function applyDocumentSelection(documentState) {
+function applyDocumentSelection(documentState, { focusEditor = true } = {}) {
   if (!documentState) return;
   if (state.editor.mode === "monaco" && state.editor.editor) {
     const model = ensureDocumentModel(documentState);
@@ -4869,9 +4872,9 @@ function applyDocumentSelection(documentState) {
       endColumn: end.column,
     });
     state.editor.editor.revealPositionInCenterIfOutsideViewport(end);
-    // Background renders (agent edits, file-watcher reloads, poll refreshes)
-    // must not steal keyboard focus from an open modal dialog.
-    if (!modalDialogIsOpen()) state.editor.editor.focus();
+    // Focus is caller-owned. Modal state is only a final guard against an
+    // explicit focus request landing behind an open dialog.
+    if (focusEditor && !modalDialogIsOpen()) state.editor.editor.focus();
   } else {
     const editor = fallbackEditor();
     editor.disabled = state.projectStatus !== "ready" || Boolean(documentState.readOnly);
@@ -5298,6 +5301,8 @@ function projectFileButton(file) {
   const button = document.createElement("button");
   button.className = `tree-item ${file.path === state.activeDocument ? "active" : ""}`;
   button.type = "button";
+  button.dataset.focusKey = `project-file:${file.path}`;
+  if (file.path === state.activeDocument) button.dataset.focusFallback = "true";
   const icon = document.createElement("span");
   icon.className = "file-icon";
   icon.textContent = projectFileIcon(file);
@@ -5346,6 +5351,7 @@ function renderProjectTreeNode(node, container, depth = 0) {
     const summary = document.createElement("summary");
     summary.className = "tree-directory-label";
     summary.title = directory.path;
+    summary.dataset.focusKey = `project-directory:${directory.path}`;
     const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     chevron.classList.add("ui-icon", "tree-directory-chevron");
     chevron.setAttribute("aria-hidden", "true");
@@ -5379,6 +5385,25 @@ function renderProjectTreeNode(node, container, depth = 0) {
 
 function renderProjectFiles() {
   const list = $("#projectFileList");
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    projectStatus: state.projectStatus,
+    files: state.project.files,
+    truncated: state.project.truncated,
+    activeDocument: state.activeDocument,
+    dirtyDocuments: Object.values(state.documents).map((documentState) => [
+      documentState.path,
+      documentIsDirty(documentState),
+    ]),
+    expandedDirectories: Array.from(state.expandedDirectories).sort(),
+    collapsedDirectories: Array.from(state.collapsedDirectories).sort(),
+  });
+  return renderVolatileLane("project-files", [list], signature, renderProjectFilesContent);
+}
+
+function renderProjectFilesContent() {
+  const list = $("#projectFileList");
   list.replaceChildren();
   if (state.projectStatus !== "ready") return;
   if (!state.project.files.length) {
@@ -5399,6 +5424,20 @@ function renderProjectFiles() {
 
 function renderDocumentTabs() {
   const tabs = $("#documentTabs");
+  const signature = workbenchProjectionSignature({
+    activeDocument: state.activeDocument,
+    documents: Object.values(state.documents).map((documentState) => ({
+      path: documentState.path,
+      displayName: documentState.displayName,
+      dirty: documentIsDirty(documentState),
+      readOnly: documentState.readOnly,
+    })),
+  });
+  return renderVolatileLane("document-tabs", [tabs], signature, renderDocumentTabsContent);
+}
+
+function renderDocumentTabsContent() {
+  const tabs = $("#documentTabs");
   tabs.replaceChildren();
   for (const fileDocument of Object.values(state.documents)) {
     const selected = fileDocument.path === state.activeDocument;
@@ -5415,6 +5454,8 @@ function renderDocumentTabs() {
     const activate = document.createElement("button");
     activate.type = "button";
     activate.className = "document-tab-main";
+    activate.dataset.focusKey = `document:${fileDocument.path}:activate`;
+    if (selected) activate.dataset.focusFallback = "true";
     activate.setAttribute("role", "tab");
     activate.setAttribute("aria-selected", String(selected));
     activate.setAttribute("title", fileDocument.displayName || fileDocument.path);
@@ -5423,6 +5464,7 @@ function renderDocumentTabs() {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "document-tab-close";
+    close.dataset.focusKey = `document:${fileDocument.path}:close`;
     close.setAttribute("aria-label", `Close ${fileDocument.path}`);
     close.textContent = "×";
     close.addEventListener("click", (event) => {
@@ -5434,7 +5476,7 @@ function renderDocumentTabs() {
   }
 }
 
-function renderActiveDocument() {
+function renderActiveDocument({ focusEditor = true } = {}) {
   const documentState = activeDocument();
   if (!documentState) {
     clearAgentEditHighlight();
@@ -5452,7 +5494,7 @@ function renderActiveDocument() {
     return;
   }
   $("#projectName").textContent = activeProjectName();
-  applyDocumentSelection(documentState);
+  applyDocumentSelection(documentState, { focusEditor });
   renderProjectFiles();
   renderDocumentTabs();
   updateEditorChrome();
@@ -5473,7 +5515,13 @@ async function restoreDraftChoice(path, savedContent, draftContent) {
 }
 
 async function openDocument(path, options = {}) {
-  const { sessionEntry = null, forceReload = false, revealWorkSurface = true, preserveActive = false } = options;
+  const {
+    sessionEntry = null,
+    forceReload = false,
+    revealWorkSurface = true,
+    preserveActive = false,
+    focusEditor = !preserveActive,
+  } = options;
   const previousActive = state.activeDocument;
   if (state.activeDocument && state.activeDocument !== path) {
     syncDocumentFromEditor({ render: false, persist: false });
@@ -5481,10 +5529,10 @@ async function openDocument(path, options = {}) {
   }
   if (state.documents[path]?.transient) {
     state.activeDocument = path;
-    renderActiveDocument();
+    renderActiveDocument({ focusEditor });
     if (preserveActive && state.activeDocument === path) {
       state.activeDocument = previousActive;
-      renderActiveDocument();
+      renderActiveDocument({ focusEditor: false });
     }
     if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
     requestAnimationFrame(() => layoutEditor());
@@ -5522,10 +5570,10 @@ async function openDocument(path, options = {}) {
     }
   }
   state.activeDocument = path;
-  renderActiveDocument();
+  renderActiveDocument({ focusEditor });
   if (preserveActive && state.activeDocument === path) {
     state.activeDocument = previousActive;
-    renderActiveDocument();
+    renderActiveDocument({ focusEditor: false });
   }
   if (revealWorkSurface && state.posture === "agent") openAgentWorkSurface("file");
   requestAnimationFrame(() => layoutEditor());
@@ -5560,7 +5608,7 @@ function closeDocument(path) {
   scheduleSessionSave();
 }
 
-async function refreshProject() {
+async function refreshProject({ focusEditor = false } = {}) {
   if (state.projectStatus !== "ready") {
     renderProjectFiles();
     renderDocumentTabs();
@@ -5573,7 +5621,7 @@ async function refreshProject() {
     const first = state.activeDocument && state.project.files.some((file) => file.path === state.activeDocument)
       ? state.activeDocument
       : state.project.files[0]?.path;
-    if (first) await openDocument(first);
+    if (first) await openDocument(first, { focusEditor });
   } catch (error) {
     toast(reportUiFailure("refresh project", error, "The project could not be refreshed. Check that it is still available and try again."), true);
   }
@@ -5624,18 +5672,12 @@ async function createDocument() {
   }
 }
 
-function scrollConsoleToPrompt() {
-  const terminal = $("#consoleTerminal");
-  terminal.scrollTop = terminal.scrollHeight;
-}
-
 function addTerminalOutput(text, kind = "") {
   if (text === null || text === undefined || text === "") return;
   const entry = document.createElement("div");
   entry.className = `terminal-entry ${kind}`.trim();
   entry.textContent = String(text);
-  $("#consoleOutput").append(entry);
-  scrollConsoleToPrompt();
+  appendWithPinnedScroll($("#consoleTerminal"), () => $("#consoleOutput").append(entry));
 }
 
 function normalizedProjectRootValue(value) {
@@ -5835,7 +5877,7 @@ function addConsoleExecutionError(message, { runId = null } = {}) {
   status.setAttribute("role", "status");
   repair.append(button, status);
   element.append(copy, repair);
-  $("#consoleOutput").append(element);
+  appendWithPinnedScroll($("#consoleTerminal"), () => $("#consoleOutput").append(element));
 
   state.consoleRepairSequence += 1;
   const entry = {
@@ -5862,7 +5904,6 @@ function addConsoleExecutionError(message, { runId = null } = {}) {
     syncConsoleRepairEntry(oldest);
   }
   syncConsoleRepairEntry(entry);
-  scrollConsoleToPrompt();
   return entry;
 }
 
@@ -5915,8 +5956,7 @@ function addLog(origin, text, kind = "") {
   const content = document.createElement("span");
   content.textContent = String(text);
   entry.append(badge, content);
-  $("#logsOutput").append(entry);
-  $("#logsOutput").scrollTop = $("#logsOutput").scrollHeight;
+  appendWithPinnedScroll($("#logsOutput"), () => $("#logsOutput").append(entry));
 }
 
 function addTimeline(title, body, status = "completed", code = null) {
@@ -5940,8 +5980,7 @@ function addTimeline(title, body, status = "completed", code = null) {
     content.append(source);
   }
   row.append(marker, content);
-  $("#agentTimeline").append(row);
-  $("#agentTimeline").scrollTop = $("#agentTimeline").scrollHeight;
+  appendWithPinnedScroll($("#agentTimeline"), () => $("#agentTimeline").append(row));
 }
 
 function prettyOrigin(origin) {
@@ -6117,6 +6156,8 @@ async function loadRunData({ quiet = false } = {}) {
   const refreshRequestSequence = state.problemRefreshRequestSequence;
   const refreshSequence = state.projectRefreshSequence;
   const projectRoot = state.project.root;
+  const previousSelectedArtifactId = state.selectedArtifactId;
+  const previousSelectedArtifactDetail = state.selectedArtifactDetail;
   try {
     const [runs, problems, plots, artifacts] = await Promise.all([
       invoke("list_runs", { limit: 50 }),
@@ -6139,22 +6180,32 @@ async function loadRunData({ quiet = false } = {}) {
     if (!state.artifacts.some((artifact) => artifact.artifact_id === state.selectedArtifactId)) {
       state.selectedArtifactId = state.artifacts[0]?.artifact_id || null;
     }
-    state.selectedArtifactDetail = null;
+    state.selectedArtifactDetail = state.selectedArtifactId && state.selectedArtifactId === previousSelectedArtifactId
+      ? previousSelectedArtifactDetail
+      : null;
     state.activeRunId = activeRunRecord()?.run_id || null;
     renderRuns();
     renderProblems();
     renderPlots();
     if (state.selectedArtifactId) {
-      const listedArtifact = state.artifacts.find((item) => item.artifact_id === state.selectedArtifactId);
+      const selectedArtifactId = state.selectedArtifactId;
+      const listedArtifact = state.artifacts.find((item) => item.artifact_id === selectedArtifactId);
+      let selectedArtifactDetail;
       try {
-        const detail = await invoke("get_artifact_record", { artifactId: state.selectedArtifactId });
-        state.selectedArtifactDetail = detail || (listedArtifact ? { artifact: listedArtifact, file_available: null } : null);
+        const detail = await invoke("get_artifact_record", { artifactId: selectedArtifactId });
+        selectedArtifactDetail = detail || (listedArtifact ? { artifact: listedArtifact, file_available: null } : null);
       } catch (error) {
-        state.selectedArtifactDetail = listedArtifact ? { artifact: listedArtifact, file_available: null } : null;
+        selectedArtifactDetail = listedArtifact ? { artifact: listedArtifact, file_available: null } : null;
         if (!quiet) toast(reportUiFailure("load saved output detail", error, "Saved output detail could not be loaded. Refresh and try again."), true);
       }
-      renderPlots();
+      if (refreshRequestSequence === state.problemRefreshAppliedSequence
+          && refreshSequence === state.projectRefreshSequence
+          && projectRoot === state.project.root
+          && state.selectedArtifactId === selectedArtifactId) {
+        state.selectedArtifactDetail = selectedArtifactDetail;
+      }
     }
+    renderPlots();
     try {
       await syncAgentRunsToConsole(state.runs);
     } catch (error) {
@@ -6232,7 +6283,11 @@ function renderGitFileList(target, files, staged) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "git-file-button";
+    button.dataset.focusKey = `git:${staged ? "staged" : "working"}:${file.path}`;
     button.classList.toggle("active", state.gitReview.selectedPath === file.path && state.gitReview.selectedStaged === staged);
+    if (state.gitReview.selectedPath === file.path && state.gitReview.selectedStaged === staged) {
+      button.dataset.focusFallback = "true";
+    }
     button.title = `${staged ? "Staged" : "Working"}: ${file.path}`;
     const status = document.createElement("span");
     status.className = "git-file-status";
@@ -6275,6 +6330,7 @@ function renderGitDiff() {
   const primary = document.createElement("button");
   primary.type = "button";
   primary.className = "primary";
+  primary.dataset.focusKey = `git:${diff.staged ? "unstage" : "stage"}:${diff.path}`;
   primary.textContent = diff.staged ? "Unstage file" : "Stage file";
   primary.addEventListener("click", () => runGitMutation(
     diff.staged ? "git_unstage_file" : "git_stage",
@@ -6286,6 +6342,7 @@ function renderGitDiff() {
     const restore = document.createElement("button");
     restore.type = "button";
     restore.className = "danger";
+    restore.dataset.focusKey = `git:restore:${diff.path}`;
     restore.textContent = "Restore";
     restore.addEventListener("click", () => confirmGitRestore(diff));
     actions.append(restore);
@@ -6312,6 +6369,7 @@ function renderGitDiff() {
     const action = document.createElement("button");
     action.type = "button";
     action.className = "git-hunk-action";
+    action.dataset.focusKey = `git:hunk:${diff.staged ? "unstage" : "stage"}:${diff.path}:${hunk.index}`;
     action.textContent = diff.staged ? "Unstage hunk" : "Stage hunk";
     action.addEventListener("click", () => runGitMutation(
       diff.staged ? "git_hunk_unstage" : "git_hunk_stage",
@@ -6334,6 +6392,22 @@ function renderGitDiff() {
 }
 
 function renderGitReview() {
+  const surfaces = [
+    $("#gitWorkingFiles"),
+    $("#gitStagedFiles"),
+    $("#gitFileActions"),
+    $("#gitHunkList"),
+  ];
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    gitStatus: state.gitStatus,
+    gitReview: state.gitReview,
+  });
+  return renderVolatileLane("git-review", surfaces, signature, renderGitReviewContent);
+}
+
+function renderGitReviewContent() {
   const status = state.gitStatus;
   const reviewState = $("#gitReviewState");
   const body = $("#gitReviewBody");
@@ -7038,23 +7112,218 @@ function parseApprovalArguments(argumentsJson) {
   }
 }
 
-function capturePanelViewport(panel, keySelector = null) {
+function panelIsNearEnd(panel, threshold = 24) {
+  if (!panel) return false;
+  return panel.scrollHeight - panel.clientHeight - panel.scrollTop <= threshold;
+}
+
+function appendWithPinnedScroll(panel, append) {
+  if (!panel) return append();
+  const pinnedToEnd = panelIsNearEnd(panel);
+  const previousTop = panel.scrollTop;
+  const result = append();
+  panel.scrollTop = pinnedToEnd ? panel.scrollHeight : previousTop;
+  return result;
+}
+
+function capturePanelViewport(panel, keySelector = null, { stickToEnd = false } = {}) {
   if (!panel) return null;
   const focused = document.activeElement;
+  const hadFocus = Boolean(focused && panel.contains(focused));
+  let focusAttribute = null;
+  let focusKey = null;
+  if (hadFocus && focused.hasAttribute?.("data-focus-key")) {
+    focusAttribute = "data-focus-key";
+    focusKey = focused.getAttribute("data-focus-key");
+  } else if (hadFocus && keySelector) {
+    focusAttribute = keySelector;
+    focusKey = focused.getAttribute?.(keySelector) || null;
+  }
   return {
     top: panel.scrollTop,
     left: panel.scrollLeft,
-    focusKey: keySelector && panel.contains(focused) ? focused.getAttribute(keySelector) : null,
+    pinnedToEnd: stickToEnd && panelIsNearEnd(panel),
+    hadFocus,
+    focusedElement: hadFocus ? focused : null,
+    focusAttribute,
+    focusKey,
   };
+}
+
+function focusPanelFallback(panel) {
+  const target = panel.querySelector(
+    '[data-focus-fallback], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  );
+  if (target) {
+    target.focus({ preventScroll: true });
+    return;
+  }
+  panel.tabIndex = -1;
+  panel.focus({ preventScroll: true });
 }
 
 function restorePanelViewport(panel, viewport, keySelector = null) {
   if (!panel || !viewport) return;
-  panel.scrollTop = viewport.top;
-  panel.scrollLeft = viewport.left;
-  if (keySelector && viewport.focusKey) {
-    panel.querySelector(`[${keySelector}="${CSS.escape(viewport.focusKey)}"]`)?.focus({ preventScroll: true });
+  if (viewport.hadFocus) {
+    const attribute = viewport.focusAttribute || keySelector;
+    const escapedKey = viewport.focusKey && typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(viewport.focusKey)
+      : String(viewport.focusKey || "").replace(/["\\]/g, "\\$&");
+    const retainedTarget = viewport.focusedElement?.isConnected
+      && panel.contains(viewport.focusedElement)
+      ? viewport.focusedElement
+      : null;
+    const target = retainedTarget || (attribute && viewport.focusKey
+      ? panel.querySelector(`[${attribute}="${escapedKey}"]`)
+      : null);
+    if (target) target.focus({ preventScroll: true });
+    else focusPanelFallback(panel);
   }
+  panel.scrollTop = viewport.pinnedToEnd ? panel.scrollHeight : viewport.top;
+  panel.scrollLeft = viewport.left;
+}
+
+function workbenchProjectionSignature(value) {
+  return JSON.stringify(value, (_key, item) => {
+    if (typeof item !== "string" || item.length <= 512) return item;
+    return `${item.length}:${item.slice(0, 256)}:${item.slice(-256)}`;
+  });
+}
+
+function performVolatileLaneRender(lane, surfaces, signature, render, options = {}) {
+  const entry = state.volatileRenders.get(lane) || { signature: null, pending: null };
+  state.volatileRenders.set(lane, entry);
+  entry.pending = null;
+  const panels = surfaces.filter(Boolean);
+  const viewports = panels.map((panel) => capturePanelViewport(panel, null, options));
+  let result;
+  try {
+    result = render();
+    entry.signature = signature;
+  } finally {
+    panels.forEach((panel, index) => restorePanelViewport(panel, viewports[index]));
+  }
+  return result;
+}
+
+function renderVolatileLane(lane, surfaces, signature, render, options = {}) {
+  const entry = state.volatileRenders.get(lane) || { signature: null, pending: null };
+  state.volatileRenders.set(lane, entry);
+  if (entry.signature === signature) {
+    entry.pending = null;
+    return false;
+  }
+  if (state.volatileActivation?.lane === lane) {
+    entry.pending = { surfaces, signature, render, options };
+    return false;
+  }
+  performVolatileLaneRender(lane, surfaces, signature, render, options);
+  return true;
+}
+
+function beginVolatileActivation(lane, kind = "pointer") {
+  if (!lane) return;
+  const current = state.volatileActivation;
+  if (current && current.lane !== lane) finishVolatileActivation(current.lane);
+  if (current?.releaseTimer) window.clearTimeout(current.releaseTimer);
+  state.volatileActivation = { lane, kind, releaseTimer: null };
+}
+
+function finishVolatileActivation(lane) {
+  const current = state.volatileActivation;
+  if (!current || current.lane !== lane) return;
+  if (current.releaseTimer) window.clearTimeout(current.releaseTimer);
+  state.volatileActivation = null;
+  const entry = state.volatileRenders.get(lane);
+  const pending = entry?.pending || null;
+  if (!pending) return;
+  entry.pending = null;
+  performVolatileLaneRender(lane, pending.surfaces, pending.signature, pending.render, pending.options);
+}
+
+function scheduleVolatileActivationFinish(lane) {
+  const current = state.volatileActivation;
+  if (!current || current.lane !== lane) return;
+  if (current.releaseTimer) window.clearTimeout(current.releaseTimer);
+  current.releaseTimer = window.setTimeout(() => finishVolatileActivation(lane), 0);
+}
+
+function recordWorkbenchInteraction() {
+  state.userInteractionRevision += 1;
+  return state.userInteractionRevision;
+}
+
+function shouldRestoreConsoleFocus(requestType, admittedRevision) {
+  return requestType === "console" && admittedRevision === state.userInteractionRevision;
+}
+
+function resetVolatileRenderState() {
+  if (state.volatileActivation?.releaseTimer) window.clearTimeout(state.volatileActivation.releaseTimer);
+  state.volatileActivation = null;
+  state.volatileRenders.clear();
+}
+
+function volatileLaneForTarget(target) {
+  return target?.closest?.("[data-volatile-lane]")?.dataset?.volatileLane || null;
+}
+
+function installWorkbenchInteractionCoordinator() {
+  const lanes = {
+    projectFileList: "project-files",
+    documentTabs: "document-tabs",
+    agentTimeline: "agent-timeline",
+    taskRailList: "task-rail",
+    runsPanel: "runs",
+    problemList: "problems",
+    plotHistory: "plots",
+    plotOutputList: "plots",
+    artifactRecordList: "plots",
+    artifactOutputList: "plots",
+    agentOutputsList: "plots",
+    environmentList: "environment",
+    objectPreview: "environment",
+    gitWorkingFiles: "git-review",
+    gitStagedFiles: "git-review",
+    gitFileActions: "git-review",
+    gitHunkList: "git-review",
+  };
+  for (const [id, lane] of Object.entries(lanes)) {
+    const surface = document.getElementById(id);
+    if (surface) surface.dataset.volatileLane = lane;
+  }
+  document.addEventListener("pointerdown", (event) => {
+    recordWorkbenchInteraction();
+    beginVolatileActivation(volatileLaneForTarget(event.target), "pointer");
+  }, true);
+  document.addEventListener("pointerup", () => {
+    if (state.volatileActivation?.kind === "pointer") {
+      scheduleVolatileActivationFinish(state.volatileActivation.lane);
+    }
+  }, true);
+  document.addEventListener("pointercancel", () => {
+    if (state.volatileActivation?.kind === "pointer") {
+      finishVolatileActivation(state.volatileActivation.lane);
+    }
+  }, true);
+  document.addEventListener("click", (event) => {
+    const lane = volatileLaneForTarget(event.target);
+    if (lane && lane === state.volatileActivation?.lane) scheduleVolatileActivationFinish(lane);
+  });
+  document.addEventListener("keydown", (event) => {
+    recordWorkbenchInteraction();
+    if (["Enter", " "].includes(event.key)) {
+      beginVolatileActivation(volatileLaneForTarget(event.target), "keyboard");
+    }
+  }, true);
+  document.addEventListener("keyup", (event) => {
+    if (["Enter", " "].includes(event.key) && state.volatileActivation?.kind === "keyboard") {
+      scheduleVolatileActivationFinish(state.volatileActivation.lane);
+    }
+  }, true);
+  document.addEventListener("input", recordWorkbenchInteraction, true);
+  window.addEventListener("blur", () => {
+    if (state.volatileActivation) finishVolatileActivation(state.volatileActivation.lane);
+  });
 }
 
 function preferredAgentConversationId(conversations, selectedConversationId) {
@@ -9778,9 +10047,44 @@ function syncAgentPolling() {
   }
 }
 
+function agentTimelineRenderSignature() {
+  const visibleTurns = state.agentTurns.slice(0, 8);
+  return workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    selectedConversationId: state.selectedConversationId,
+    selectedTurnId: state.selectedTurnId,
+    turns: visibleTurns.map((turn) => ({
+      turn_id: turn.turn_id,
+      status: turn.status,
+      terminal_reason: turn.terminal_reason,
+      mode: turn.mode,
+      model: turn.model,
+      retry_of_turn_id: turn.retry_of_turn_id,
+      prompt_preview: turn.prompt_preview,
+      final_message: turn.final_message,
+      error_message: turn.error_message,
+    })),
+    modelLabels: visibleTurns.map((turn) => [turn.model, agentModelDisplayName(turn.model)]),
+    events: state.selectedTurnDetail?.events || [],
+    activityExpanded: Array.from(state.agentActivityExpanded).sort(),
+    runtime: state.agentRuntime ? { available: state.agentRuntime.available, error: state.agentRuntime.error } : null,
+  });
+}
+
 function renderAgentTimeline() {
   const panel = $("#agentTimeline");
-  const viewport = capturePanelViewport(panel, "data-turn-id");
+  return renderVolatileLane(
+    "agent-timeline",
+    [panel],
+    agentTimelineRenderSignature(),
+    renderAgentTimelineContent,
+    { stickToEnd: true },
+  );
+}
+
+function renderAgentTimelineContent() {
+  const panel = $("#agentTimeline");
   panel.replaceChildren();
   if (!state.agentTurns.length) {
     if (state.agentRuntime && !state.agentRuntime.available) {
@@ -9790,7 +10094,6 @@ function renderAgentTimeline() {
     } else {
       addTimeline("R session ready", "Ask Rho about the current project or attach a file for review.", "completed");
     }
-    restorePanelViewport(panel, viewport, "data-turn-id");
     return;
   }
   for (const turn of state.agentTurns.slice(0, 8)) {
@@ -9833,6 +10136,7 @@ function renderAgentTimeline() {
       const copyButton = document.createElement("button");
       copyButton.type = "button";
       copyButton.className = "timeline-copy-output";
+      copyButton.dataset.focusKey = `turn:${turn.turn_id}:copy`;
       copyButton.title = "Copy output";
       copyButton.setAttribute("aria-label", "Copy output");
       const copyIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -9872,6 +10176,7 @@ function renderAgentTimeline() {
       const activityButton = document.createElement("button");
       activityButton.type = "button";
       activityButton.className = "timeline-activity-toggle";
+      activityButton.dataset.focusKey = `turn:${turn.turn_id}:activity`;
       activityButton.setAttribute("aria-expanded", String(activityExpanded));
       activityButton.textContent = `${activityExpanded ? "Hide" : "Show"} activity · ${events.length}`;
       activityButton.addEventListener("click", (event) => {
@@ -9921,12 +10226,31 @@ function renderAgentTimeline() {
       }
     }
   }
-  restorePanelViewport(panel, viewport, "data-turn-id");
 }
 
 function renderTaskRail() {
   const list = $("#taskRailList");
-  const viewport = capturePanelViewport(list, "data-conversation-id");
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    selectedConversationId: state.selectedConversationId,
+    conversationCount: state.agentConversations.length,
+    conversations: state.agentConversations.slice(0, 50).map((conversation) => ({
+      conversation_id: conversation.conversation_id,
+      latest_turn_id: conversation.latest_turn_id,
+      latest_mode: conversation.latest_mode,
+      status: conversation.status,
+      terminal_reason: conversation.terminal_reason,
+      pending_request_id: conversation.pending_request_id,
+      title: conversation.title,
+      latest_prompt_preview: conversation.latest_prompt_preview,
+    })),
+  });
+  return renderVolatileLane("task-rail", [list], signature, renderTaskRailContent);
+}
+
+function renderTaskRailContent() {
+  const list = $("#taskRailList");
   list.replaceChildren();
 
   const conversations = state.agentConversations.slice(0, 50);
@@ -9942,11 +10266,12 @@ function renderTaskRail() {
     description.textContent = "Describe the scientific goal, then review the work beside your source.";
     const start = document.createElement("button");
     start.type = "button";
+    start.dataset.focusKey = "task-rail:new";
+    start.dataset.focusFallback = "true";
     start.textContent = "Ask Rho";
     start.addEventListener("click", startNewAgentTask);
     empty.append(heading, description, start);
     list.append(empty);
-    restorePanelViewport(list, viewport, "data-conversation-id");
     syncAgentWorkSurfaceLayout();
     return;
   }
@@ -9963,6 +10288,8 @@ function renderTaskRail() {
     item.className = `task-rail-item${active ? " active" : ""}`;
     item.dataset.conversationId = conversation.conversation_id;
     item.dataset.turnId = conversation.latest_turn_id || "";
+    item.dataset.focusKey = `conversation:${conversation.conversation_id}`;
+    if (active) item.dataset.focusFallback = "true";
     item.setAttribute("aria-label", conversation.latest_mode
       ? `${modePresentation.label} mode, ${statusLabel} status: ${previewText}`
       : `${statusLabel} conversation: ${previewText}`);
@@ -9982,7 +10309,6 @@ function renderTaskRail() {
     list.append(item);
   }
 
-  restorePanelViewport(list, viewport, "data-conversation-id");
   syncAgentWorkSurfaceLayout();
 }
 
@@ -10231,6 +10557,20 @@ async function submitApproval(decision, approval) {
 
 function renderRuns() {
   const panel = $("#runsPanel");
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    runs: state.runs,
+    compareMode: state.compareMode,
+    compareLeft: state.compareLeft,
+    compareRight: state.compareRight,
+    compareResult: state.compareResult,
+  });
+  return renderVolatileLane("runs", [panel], signature, renderRunsContent);
+}
+
+function renderRunsContent() {
+  const panel = $("#runsPanel");
   panel.replaceChildren();
 
   // compare toggle header
@@ -10242,6 +10582,8 @@ function renderRuns() {
   const toggleBtn = document.createElement("button");
   toggleBtn.type = "button";
   toggleBtn.className = "compare-toggle" + (state.compareMode ? " active" : "");
+  toggleBtn.dataset.focusKey = "runs:compare-toggle";
+  toggleBtn.dataset.focusFallback = "true";
   toggleBtn.textContent = state.compareMode ? "Exit Compare" : "Compare";
   toggleBtn.addEventListener("click", toggleCompareMode);
   header.append(label, toggleBtn);
@@ -10260,6 +10602,8 @@ function renderRuns() {
     const actionRow = document.createElement("div");
     actionRow.className = "compare-action-row";
     const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.focusKey = "runs:compare-submit";
     btn.textContent = "Compare selected runs";
     btn.addEventListener("click", doCompareRuns);
     actionRow.append(btn);
@@ -10276,11 +10620,13 @@ function renderRuns() {
       const leftRadio = document.createElement("input");
       leftRadio.type = "radio";
       leftRadio.name = "compareLeft_" + run.run_id;
+      leftRadio.dataset.focusKey = `run:${run.run_id}:compare-left`;
       leftRadio.checked = state.compareLeft === run.run_id;
       leftRadio.addEventListener("change", () => selectCompareSide("left", run.run_id));
       const rightRadio = document.createElement("input");
       rightRadio.type = "radio";
       rightRadio.name = "compareRight_" + run.run_id;
+      rightRadio.dataset.focusKey = `run:${run.run_id}:compare-right`;
       rightRadio.checked = state.compareRight === run.run_id;
       rightRadio.addEventListener("change", () => selectCompareSide("right", run.run_id));
       select.append(
@@ -10311,6 +10657,7 @@ function renderRuns() {
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.className = "run-action";
+      cancel.dataset.focusKey = `run:${run.run_id}:cancel`;
       cancel.textContent = "Cancel";
       cancel.addEventListener("click", async () => {
         try {
@@ -10373,7 +10720,9 @@ function renderCompareResult() {
 
   // close button
   const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
   closeBtn.className = "compare-close";
+  closeBtn.dataset.focusKey = "runs:compare-close";
   closeBtn.textContent = "\u00d7";
   closeBtn.title = "Close comparison";
   closeBtn.addEventListener("click", () => {
@@ -11034,6 +11383,18 @@ function problemSourceLabel(problem) {
 
 function renderProblems() {
   const list = $("#problemList");
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    problems: state.problems,
+    lint: state.lint,
+    repairRouteReason: problemRepairRouteReason(),
+  });
+  return renderVolatileLane("problems", [list], signature, renderProblemsContent);
+}
+
+function renderProblemsContent() {
+  const list = $("#problemList");
   list.replaceChildren();
   renderLintStatus();
   $("#clearLintResultsButton").disabled = state.lint.status === "idle"
@@ -11085,6 +11446,8 @@ function renderProblems() {
     if (sourceKind === "file" || sourceKind === "console") {
       const openSource = document.createElement("button");
       openSource.type = "button";
+      openSource.dataset.focusKey = `problem:${group.key}:source`;
+      openSource.dataset.focusFallback = "true";
       openSource.textContent = sourceKind === "console" ? "Open Console" : "Go to source";
       openSource.addEventListener("click", async () => {
         try {
@@ -11104,12 +11467,14 @@ function renderProblems() {
     if (problem.origin === "lintr" && problem.quick_fix) {
       const review = document.createElement("button");
       review.type = "button";
+      review.dataset.focusKey = `problem:${group.key}:quick-fix`;
       review.textContent = "Review quick fix";
       review.addEventListener("click", () => reviewLintQuickFix(problem));
       actions.append(review);
     }
     const explain = document.createElement("button");
     explain.type = "button";
+    explain.dataset.focusKey = `problem:${group.key}:explain`;
     explain.textContent = "Explain this problem";
     explain.addEventListener("click", () => {
       applyWorkbenchLayout("agent");
@@ -11119,12 +11484,14 @@ function renderProblems() {
     actions.append(explain);
     if (sourceKind === "file" || sourceKind === "console") {
       const fix = document.createElement("button");
+      fix.dataset.focusKey = `problem:${group.key}:repair`;
       configureProblemRepairButton(fix, problem);
       actions.append(fix);
     }
     if (problem.origin !== "lintr" && problem.run_id && !String(problem.run_id).startsWith("transient_")) {
       const retry = document.createElement("button");
       retry.type = "button";
+      retry.dataset.focusKey = `problem:${group.key}:retry`;
       retry.textContent = "Run again";
       retry.addEventListener("click", async () => {
         try {
@@ -12164,6 +12531,8 @@ function renderArtifactRecords() {
     const row = document.createElement("button");
     row.type = "button";
     row.className = `plot-history-row artifact-row ${selected ? "active" : ""}`;
+    row.dataset.focusKey = `artifact:${artifact.artifact_id}:record`;
+    if (selected) row.dataset.focusFallback = "true";
     const title = document.createElement("strong");
     title.textContent = `${artifactKindLabel(artifact.artifact_kind)} · ${pathFileName(artifact.output_path)}`;
     const line1 = document.createElement("p");
@@ -12190,6 +12559,8 @@ function renderArtifactRecords() {
     const output = document.createElement("button");
     output.type = "button";
     output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
+    output.dataset.focusKey = `artifact:${artifact.artifact_id}:output`;
+    if (selected) output.dataset.focusFallback = "true";
     const outputLabel = document.createElement("span");
     outputLabel.textContent = displayPath(artifact.output_path);
     const outputIndex = document.createElement("small");
@@ -12224,6 +12595,28 @@ function showPlotSurfaceState(stateName, title, detail) {
 }
 
 function renderPlots() {
+  const surfaces = [
+    $("#plotHistory"),
+    $("#plotOutputList"),
+    $("#artifactRecordList"),
+    $("#artifactOutputList"),
+    $("#agentOutputsList"),
+  ];
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    plotScope: state.plotScope,
+    plots: state.plots,
+    artifacts: state.artifacts,
+    selectedPlotId: state.selectedPlotId,
+    selectedArtifactId: state.selectedArtifactId,
+    selectedArtifactDetail: state.selectedArtifactDetail,
+    agentSelectedOutput: state.agentSelectedOutput,
+  });
+  return renderVolatileLane("plots", surfaces, signature, renderPlotsContent);
+}
+
+function renderPlotsContent() {
   const history = $("#plotHistory");
   const outputList = $("#plotOutputList");
   history.replaceChildren();
@@ -12270,6 +12663,8 @@ function renderPlots() {
     const row = document.createElement("button");
     row.type = "button";
     row.className = `plot-history-row ${selected ? "active" : ""}`;
+    row.dataset.focusKey = `plot:${plot.plot_id}:history`;
+    if (selected) row.dataset.focusFallback = "true";
     const thumbnail = document.createElement("span");
     thumbnail.className = "plot-history-thumbnail";
     const thumbnailSource = plotImageSource(parseJsonObject(plot.payload_json));
@@ -12310,6 +12705,8 @@ function renderPlots() {
     const output = document.createElement("button");
     output.type = "button";
     output.className = `tree-item plot-output-item ${selected ? "active" : ""}`;
+    output.dataset.focusKey = `plot:${plot.plot_id}:output`;
+    if (selected) output.dataset.focusFallback = "true";
     const outputLabel = document.createElement("span");
     outputLabel.textContent = !plot.source_path || plot.source_path === "<console>"
       ? `Console plot ${index + 1}`
@@ -12335,6 +12732,7 @@ function renderPlots() {
 
 async function executeCode(request) {
   if (state.busy || !request?.code?.trim()) return;
+  const interactionRevision = state.userInteractionRevision;
   setBusy(true);
   addTerminalCommand(request.code);
   let plotExecutionId = null;
@@ -12368,7 +12766,12 @@ async function executeCode(request) {
       switchDockTab("plots");
     }
     setBusy(false);
-    if (request.type !== "line" && !$("#consolePanel").classList.contains("hidden")) $("#consoleInput").focus();
+    const consoleInput = $("#consoleInput");
+    if (shouldRestoreConsoleFocus(request.type, interactionRevision)
+        && !consoleInput.disabled
+        && !$("#consolePanel").classList.contains("hidden")) {
+      consoleInput.focus();
+    }
   }
 }
 
@@ -16376,10 +16779,12 @@ function renderDataViewer() {
   const rowHeader = document.createElement("th");
   rowHeader.textContent = "#";
   rowHeader.tabIndex = 0;
+  rowHeader.dataset.focusKey = "data-viewer:row-header";
   headerRow.append(rowHeader);
   for (const column of page.columns || []) {
     const cell = document.createElement("th");
     cell.tabIndex = 0;
+    cell.dataset.focusKey = `data-viewer:column:${column.index}`;
     const sorted = state.dataViewer.sortColumn === column.index;
     const label = document.createElement("span");
     label.className = "data-viewer-column-name";
@@ -16412,17 +16817,20 @@ function renderDataViewer() {
   }
   thead.append(headerRow);
 
-  for (const row of page.rows || []) {
+  for (const [rowIndex, row] of (page.rows || []).entries()) {
     const tr = document.createElement("tr");
     const label = document.createElement("th");
     label.scope = "row";
     label.tabIndex = 0;
+    const absoluteRow = (page.row_offset || 0) + rowIndex;
+    label.dataset.focusKey = `data-viewer:row:${absoluteRow}:header`;
     label.textContent = row.row_name || "";
     tr.append(label);
     (row.cells || []).forEach((cellValue, columnIndex) => {
       const cell = document.createElement("td");
       cell.tabIndex = 0;
       const column = page.columns?.[columnIndex] || {};
+      cell.dataset.focusKey = `data-viewer:row:${absoluteRow}:column:${column.index ?? columnIndex}`;
       const fallbackState = cellValue === null || cellValue === undefined ? "na" : cellValue === "" ? "empty" : "value";
       const cellState = row.cell_states?.[columnIndex] || fallbackState;
       const presentation = dataViewerCellPresentation(cellValue, cellState);
@@ -16893,6 +17301,38 @@ async function openEnvironmentObject(name) {
 }
 
 function renderEnvironment() {
+  const list = $("#environmentList");
+  const preview = $("#objectPreview");
+  const query = ($("#variablesSearch")?.value || $("#environmentSearch").value).trim().toLowerCase();
+  const signature = workbenchProjectionSignature({
+    projectRoot: state.project.root,
+    projectRefreshSequence: state.projectRefreshSequence,
+    query,
+    objects: state.objects,
+    environment: state.environment,
+    selectedObjectName: state.selectedObjectName,
+    selectedObjectDetail: state.selectedObjectDetail,
+    selectedDataObjectDetail: state.selectedDataObjectDetail,
+    selectedDataPage: state.selectedDataPage,
+    dataViewer: {
+      busy: state.dataViewer.busy,
+      loadingPage: state.dataViewer.loadingPage,
+      rowOffset: state.dataViewer.rowOffset,
+      rowLimit: state.dataViewer.rowLimit,
+      columnOffset: state.dataViewer.columnOffset,
+      columnLimit: state.dataViewer.columnLimit,
+      query: state.dataViewer.query,
+      error: state.dataViewer.error,
+      viewKind: state.dataViewer.viewKind,
+      viewKey: state.dataViewer.viewKey,
+      sortColumn: state.dataViewer.sortColumn,
+      sortDirection: state.dataViewer.sortDirection,
+    },
+  });
+  return renderVolatileLane("environment", [list, preview], signature, renderEnvironmentContent);
+}
+
+function renderEnvironmentContent() {
   renderEnvironmentSummary();
   const query = ($("#variablesSearch")?.value || $("#environmentSearch").value).trim().toLowerCase();
   const objects = state.objects.filter((object) => object.name.toLowerCase().includes(query));
@@ -16906,9 +17346,13 @@ function renderEnvironment() {
     $("#environmentList").append(empty);
   }
   for (const object of objects) {
-    const row = document.createElement("div");
+    const row = document.createElement("button");
+    row.type = "button";
     row.className = `environment-row${state.selectedObjectName === object.name ? " active" : ""}`;
-    const name = document.createElement("div");
+    row.dataset.focusKey = `environment:${object.name}`;
+    if (state.selectedObjectName === object.name) row.dataset.focusFallback = "true";
+    row.setAttribute("aria-label", `${object.name}, ${object.dimensions?.length ? object.dimensions.join(" by ") : stringValues(object.classes)[0] || object.typeof}`);
+    const name = document.createElement("span");
     name.className = "object-name";
     const symbol = document.createElement("span");
     symbol.className = "object-symbol";
@@ -17272,6 +17716,7 @@ function appendAgentLocalHelpEvidence(container, detail) {
     : "This is installed documentation context supplied to this turn, separate from the model's explanation.";
   const open = document.createElement("button");
   open.type = "button";
+  open.dataset.focusKey = `turn:${state.selectedTurnId || "selected"}:open-help`;
   open.textContent = "Open Help";
   open.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -17663,12 +18108,15 @@ function clearAgentEditHighlight() {
   }
 }
 
-function highlightAgentEdit(path, start, end) {
+function highlightAgentEdit(path, start, end, options = {}) {
+  const { selectEdit = true, revealEdit = true, focusEditor = true } = options;
   if (state.activeDocument !== path) return;
   const documentState = state.documents[path];
-  documentState.cursorStart = end;
-  documentState.cursorEnd = end;
-  applyDocumentSelection(documentState);
+  if (selectEdit) {
+    documentState.cursorStart = end;
+    documentState.cursorEnd = end;
+    applyDocumentSelection(documentState, { focusEditor });
+  }
   if (state.editor.mode !== "monaco" || !state.editor.editor?.getModel()) return;
   const model = state.editor.editor.getModel();
   const startPosition = model.getPositionAt(start);
@@ -17683,24 +18131,43 @@ function highlightAgentEdit(path, start, end) {
     state.editor.highlightDecorations,
     [{ range, options: { inlineClassName: "agent-edit-highlight" } }],
   );
-  state.editor.editor.revealRangeInCenter(range);
+  if (revealEdit) state.editor.editor.revealRangeInCenter(range);
 }
 
-async function updateDocumentAfterFileEdit(path, content, start, end) {
-  if (!state.documents[path]) {
-    await openDocument(path, { forceReload: true });
-  } else {
-    const documentState = state.documents[path];
-    documentState.content = content;
-    documentState.savedContent = content;
-    documentState.conflictDiskContent = null;
+async function updateDocumentAfterFileEdit(path, content, start, end, options = {}) {
+  const { reveal = true, focusEditor = reveal } = options;
+  const documentState = state.documents[path] || {
+    path,
+    content,
+    savedContent: content,
+    language: path.toLowerCase().endsWith(".r") ? "r" : "plaintext",
+    versionId: 0,
+    lastExecutedRange: null,
+    cursorStart: 0,
+    cursorEnd: 0,
+    conflictDiskContent: null,
+  };
+  const previousCursorStart = documentState.cursorStart ?? 0;
+  const previousCursorEnd = documentState.cursorEnd ?? previousCursorStart;
+  state.documents[path] = documentState;
+  documentState.content = content;
+  documentState.savedContent = content;
+  documentState.conflictDiskContent = null;
+  if (reveal) {
     documentState.cursorStart = end;
     documentState.cursorEnd = end;
-    ensureDocumentModel(documentState);
     state.activeDocument = path;
-    renderActiveDocument();
+  } else {
+    documentState.cursorStart = Math.min(previousCursorStart, content.length);
+    documentState.cursorEnd = Math.min(previousCursorEnd, content.length);
   }
-  highlightAgentEdit(path, start, end);
+  ensureDocumentModel(documentState);
+  if (state.activeDocument === path) renderActiveDocument({ focusEditor });
+  highlightAgentEdit(path, start, end, {
+    selectEdit: reveal,
+    revealEdit: reveal,
+    focusEditor,
+  });
   renderProjectFiles();
   renderDocumentTabs();
   scheduleSessionSave();
@@ -17741,7 +18208,10 @@ async function acceptFileEditProposal({ automatic = false } = {}) {
     state.project = response.project;
     updateIdentity(response.workspace);
     delete state.closedDrafts[proposal.path];
-    await updateDocumentAfterFileEdit(proposal.path, content, start, end);
+    await updateDocumentAfterFileEdit(proposal.path, content, start, end, {
+      reveal: !automatic,
+      focusEditor: !automatic,
+    });
     state.fileEditUndo = {
       key: proposal.key,
       turnId: proposal.turnId,
@@ -18858,7 +19328,9 @@ function renderAgentOutputs() {
     const card = document.createElement("button");
     card.type = "button";
     card.dataset.outputKey = agentOutputKey(entry.kind, entry.id);
+    card.dataset.focusKey = `agent-output:${agentOutputKey(entry.kind, entry.id)}`;
     const selected = agentOutputKey(entry.kind, entry.id) === agentOutputKey(state.agentSelectedOutput?.kind, state.agentSelectedOutput?.id);
+    if (selected) card.dataset.focusFallback = "true";
     card.className = `agent-output-card${selected ? " active" : ""}`;
     card.setAttribute("aria-label", `Review ${entry.title}`);
     card.setAttribute("aria-current", selected ? "true" : "false");
@@ -20046,7 +20518,7 @@ async function handleExternalDocumentChange(path) {
     if (!documentIsDirty(document)) {
       document.savedContent = diskContent;
       document.content = diskContent;
-      if (state.activeDocument === path) renderActiveDocument();
+      if (state.activeDocument === path) renderActiveDocument({ focusEditor: false });
       toast(`Reloaded ${path} after an external change.`);
       scheduleSessionSave();
       return;
@@ -20062,7 +20534,7 @@ async function handleExternalDocumentChange(path) {
       document.savedContent = diskContent;
       document.content = diskContent;
       document.conflictDiskContent = null;
-      if (state.activeDocument === path) renderActiveDocument();
+      if (state.activeDocument === path) renderActiveDocument({ focusEditor: false });
       toast(`Reloaded ${path} from disk.`);
     } else {
       toast(`Kept your local draft for ${path}.`);
@@ -20077,6 +20549,7 @@ async function handleExternalDocumentChange(path) {
 
 async function hydrateProject(response) {
   state.projectRefreshSequence += 1;
+  resetVolatileRenderState();
   state.objects = [];
   state.environment = null;
   clearEnvironmentObjectSelection();
@@ -20185,7 +20658,7 @@ async function hydrateProject(response) {
         await openDocument(entry.path, { sessionEntry: entry, revealWorkSurface: false, preserveActive: true });
       }
       if (restoreSequence === state.projectRefreshSequence && target && state.documents[target]) {
-        await openDocument(target, { revealWorkSurface: false });
+        await openDocument(target, { revealWorkSurface: false, focusEditor: false });
       }
     })();
   }
@@ -21239,4 +21712,5 @@ $("#restartButton").addEventListener("click", async () => {
   }
 });
 
+installWorkbenchInteractionCoordinator();
 initialize();
