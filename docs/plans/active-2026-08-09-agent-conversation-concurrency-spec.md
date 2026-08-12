@@ -567,8 +567,10 @@ focused regression passed 20 consecutive executions; Rust formatting, locked
 all-target workspace check, the complete locked workspace test suite, JavaScript
 syntax, every `scripts/test-*.mjs` contract, and `git diff --check` passed. Code
 review confirms every new controller field, type, import, initialization, and
-notification is `cfg(test)`-only. The four-job hosted compatibility matrix and
-protected integration remain open factual gates.
+notification is `cfg(test)`-only. Exact-head Rust Compatibility run
+`31557415624` then passed macOS and Windows on both stable and Rust 1.88.0,
+including the formerly failing Windows/MSRV lane. PR #43 integrated the repair
+as upstream merge commit `3a3546bd76cc11761263a5af8e060ba73a4a0580`.
 
 ## Verification Matrix
 

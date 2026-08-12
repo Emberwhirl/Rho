@@ -204,10 +204,10 @@ do not revoke historical MIT grants or transfer either contributor's
 copyright.
 
 The Draft branch is synchronized through current upstream `main`
-`e630a671a53042e4a1a09962699528707a76d4eb`, preserving the current
+`3a3546bd76cc11761263a5af8e060ba73a4a0580`, preserving the current
 `0.4.0-dev.33` product/release metadata, the integrated editor-envelope and
-deterministic timeout repairs, Resolver 3, the Rust 1.88 MSRV contract, and
-locked candidate validation. Textual conflicts are resolved compositionally:
+deterministic discovery/file-lane test repairs, Resolver 3, the Rust 1.88 MSRV
+contract, and locked candidate validation. Textual conflicts are resolved compositionally:
 the frontend lockfile root retains both version `0.4.0-dev.33` and license
 `AGPL-3.0-only`; `rho.bridge` retains version `0.1.14` and gains the agreed
 AGPL/copyright projection; the workspace manifest retains both
