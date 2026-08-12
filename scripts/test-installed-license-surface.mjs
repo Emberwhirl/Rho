@@ -97,12 +97,24 @@ for (const strictConsumer of [
 }
 
 const sourceCi = read(".github/workflows/rust-compatibility.yml");
-assert.match(sourceCi, /- name: Verify installed license surface\s+if: matrix\.toolchain == 'stable'\s+run: node scripts\/test-installed-license-surface\.mjs/);
+assert.match(sourceCi, /- name: Verify installed license surface\s+if: matrix\.toolchain == 'stable'\s+run: \|\s+node scripts\/test-installed-license-surface\.mjs\s+node scripts\/generate-update-site\.mjs --test true/);
 assert.equal(
   [...sourceCi.matchAll(/- "scripts\/test-installed-license-surface\.mjs"/g)].length,
   2,
   "push and pull-request changes to the contract must trigger source CI",
 );
+for (const sourcePath of [
+  ".github/workflows/candidate-publish.yml",
+  ".github/workflows/update-site-publish.yml",
+  "scripts/candidate-release.mjs",
+  "scripts/generate-update-site.mjs",
+]) {
+  assert.equal(
+    [...sourceCi.matchAll(new RegExp(`- "${sourcePath.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}"`, "g"))].length,
+    2,
+    `${sourcePath} changes must trigger push and pull-request source CI`,
+  );
+}
 
 const news = read("NEWS.md");
 const dev33Start = news.indexOf("## 0.4.0-dev.33");

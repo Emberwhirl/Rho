@@ -138,6 +138,8 @@ compatibility correction: update-site ingestion may exempt only exact
 construction, Draft publication admission, `dev.33`, and every unknown version
 remain strict. Positive legacy regeneration plus `dev.33` and unknown-version
 negative tests are required before the exact-head matrix is accepted.
+The affected candidate/update-site sources and publication workflows must also
+trigger that matrix, and stable jobs must execute the update-site self-test.
 
 ## Remaining Gates
 

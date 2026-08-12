@@ -194,6 +194,9 @@ LIC-2 automated acceptance must additionally prove:
   fail-closed when the check is absent; the compatibility exception is an
   exact version allowlist and is never available to candidate construction or
   publication admission;
+- changes to the candidate-evidence validator, update-site generator, and
+  relevant publication workflows trigger source CI, whose stable jobs execute
+  the generator self-test rather than only inspecting its source text;
 - JavaScript syntax, focused contracts, affected Rust tests, the complete
   deterministic script matrix, and `git diff --check` pass.
 
