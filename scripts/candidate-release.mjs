@@ -41,6 +41,12 @@ const REQUIRED_CHECKS = {
   ],
 };
 
+const PUBLISHED_EVIDENCE_CHECK_EXCEPTIONS = {
+  macos_aarch64: {
+    "0.4.0-dev.24": new Set(["license_boundary"]),
+  },
+};
+
 function fail(message) {
   throw new Error(message);
 }
@@ -114,7 +120,7 @@ function fileRecord(filePath) {
   return { name: path.basename(filePath), size_bytes: stat.size, sha256: sha256File(filePath) };
 }
 
-function validateChecks(platform, checks) {
+function validateChecks(platform, checks, version, publishedCompatibility = false) {
   if (!Array.isArray(checks) || !checks.length || checks.length > 32) fail(`${platform} checks are missing or unbounded`);
   const names = new Set();
   for (const check of checks) {
@@ -125,11 +131,14 @@ function validateChecks(platform, checks) {
     names.add(check.name);
   }
   for (const required of REQUIRED_CHECKS[platform]) {
-    if (!names.has(required)) fail(`${platform} evidence is missing required check ${required}`);
+    if (names.has(required)) continue;
+    const allowedHistoricalOmission = publishedCompatibility
+      && PUBLISHED_EVIDENCE_CHECK_EXCEPTIONS[platform]?.[version]?.has(required);
+    if (!allowedHistoricalOmission) fail(`${platform} evidence is missing required check ${required}`);
   }
 }
 
-export function validatePlatformEvidence(value, expected = {}) {
+function validatePlatformEvidenceWithPolicy(value, expected, publishedCompatibility) {
   assertExactKeys(
     value,
     ["schema_version", "type", "status", "version", "release_tag", "commit", "platform", "artifact", "checks"],
@@ -152,8 +161,16 @@ export function validatePlatformEvidence(value, expected = {}) {
     fail(`${value.platform} artifact size is invalid`);
   }
   if (!/^[0-9a-f]{64}$/.test(value.artifact.sha256)) fail(`${value.platform} artifact SHA-256 is invalid`);
-  validateChecks(value.platform, value.checks);
+  validateChecks(value.platform, value.checks, value.version, publishedCompatibility);
   return value;
+}
+
+export function validatePlatformEvidence(value, expected = {}) {
+  return validatePlatformEvidenceWithPolicy(value, expected, false);
+}
+
+export function validatePublishedPlatformEvidence(value, expected = {}) {
+  return validatePlatformEvidenceWithPolicy(value, expected, true);
 }
 
 export function createPlatformEvidence({ version, releaseTag, commit, platform, artifactPath, outputPath, checks }) {

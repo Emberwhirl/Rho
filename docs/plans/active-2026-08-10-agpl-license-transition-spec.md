@@ -188,6 +188,12 @@ LIC-2 automated acceptance must additionally prove:
 - browser/mock mode handles the same command without host filesystem access;
 - candidate automation verifies the exact signed macOS application-bundle
   copies before notarization submission and again from the mounted final DMG;
+- the update-site validator keeps the immutable published `0.4.0-dev.24`
+  evidence readable even though that historical candidate predates
+  `license_boundary`, while every new `0.4.0-dev.33` candidate remains
+  fail-closed when the check is absent; the compatibility exception is an
+  exact version allowlist and is never available to candidate construction or
+  publication admission;
 - JavaScript syntax, focused contracts, affected Rust tests, the complete
   deterministic script matrix, and `git diff --check` pass.
 

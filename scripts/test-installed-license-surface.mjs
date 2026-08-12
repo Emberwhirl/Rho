@@ -81,6 +81,20 @@ assert.match(workflow, /--checks [^\n]*license_boundary/);
 
 const candidate = read("scripts/candidate-release.mjs");
 assert.match(candidate, /macos_aarch64:[\s\S]*?"license_boundary"/);
+assert.match(candidate, /"0\.4\.0-dev\.24": new Set\(\["license_boundary"\]\)/);
+assert.match(candidate, /export function validatePublishedPlatformEvidence/);
+
+const updateSite = read("scripts/generate-update-site.mjs");
+assert.match(updateSite, /validatePublishedPlatformEvidence\(supplied\.content/);
+assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.24"\)/);
+assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.33"\)/);
+assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.23"\)/);
+for (const strictConsumer of [
+  ".github/workflows/candidate-build-draft.yml",
+  ".github/workflows/candidate-publish.yml",
+]) {
+  assert.doesNotMatch(read(strictConsumer), /validatePublishedPlatformEvidence/);
+}
 
 const sourceCi = read(".github/workflows/rust-compatibility.yml");
 assert.match(sourceCi, /- name: Verify installed license surface\s+if: matrix\.toolchain == 'stable'\s+run: node scripts\/test-installed-license-surface\.mjs/);

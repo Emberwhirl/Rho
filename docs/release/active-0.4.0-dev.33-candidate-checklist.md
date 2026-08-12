@@ -130,6 +130,15 @@ UI, or mutation authority and no blocking contract deviation.
 6. **OPEN** — LIC-2 must pass its exact pushed-head four-identity matrix and
    protected integration before candidate admission.
 
+Pre-merge update-site review found that making `license_boundary` globally
+mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
+break regeneration of the live download page. LIC-2 therefore owns one narrow
+compatibility correction: update-site ingestion may exempt only exact
+`0.4.0-dev.24` macOS evidence from that newly introduced check. Candidate
+construction, Draft publication admission, `dev.33`, and every unknown version
+remain strict. Positive legacy regeneration plus `dev.33` and unknown-version
+negative tests are required before the exact-head matrix is accepted.
+
 ## Remaining Gates
 
 1. **PASS** — implement, review, validate, and protected-integrate the bounded
