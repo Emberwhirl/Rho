@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Admit exact protected main and synchronized dev.35 identity
+      - name: Admit exact protected main and synchronized dev.36 identity
         shell: pwsh
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -48,9 +48,9 @@ jobs:
           $match = [regex]::Match($cargo, '(?m)^version = "([^"]+)"')
           if (-not $match.Success) { throw "Cargo application version is unavailable." }
           $version = $match.Groups[1].Value
-          if ($version -ne "0.4.0-dev.35") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.35, found $version." }
-          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.35-candidate-checklist.md")) {
-            throw "The active dev.35 acceptance checklist is missing."
+          if ($version -ne "0.4.0-dev.36") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.36, found $version." }
+          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.36-candidate-checklist.md")) {
+            throw "The active dev.36 acceptance checklist is missing."
           }
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_COMMIT=$commit"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_VERSION=$version"
@@ -110,7 +110,8 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH="$env:RTOOLS_BIN;$env:PATH"
-          ./scripts/build-windows-installer.ps1
+          ./scripts/build-windows-installer.ps1 `
+            -TauriConfigOverlayPath "desktop\src-tauri\tauri.issue33-acceptance.conf.json"
           $expected = "Rho_$($env:RHO_ACCEPTANCE_VERSION)_x64-setup.exe"
           $installer = @(Get-ChildItem -LiteralPath "target\release\bundle\nsis" -Filter "*-setup.exe")
           if ($installer.Count -ne 1 -or $installer[0].Name -ne $expected) {
@@ -231,7 +232,6 @@ jobs:
       - name: Run six scenarios in the installed Tauri application
         shell: pwsh
         run: |
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222 --remote-allow-origins=*"
           $rho = Start-Process -FilePath $env:RHO_INSTALLED_EXE -PassThru
           try {
             node scripts/windows-installed-focus-acceptance.mjs `

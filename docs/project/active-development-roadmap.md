@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.35`
+Current source baseline: `0.4.0-dev.36`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -92,7 +92,13 @@ four source identities and run `31633600383` built the internal `dev.34` NSIS
 package, but quoted registry `InstallLocation` handling stopped installed-byte
 resolution and cleanup before the scenarios. That artifact-producing run
 rejects `dev.34`; quoted-path normalization and the next acceptance attempt use
-fresh `0.4.0-dev.35`.
+fresh `0.4.0-dev.35`. Exact main run `31635365392` passed all four source
+identities, and run `31635375821` passed NSIS construction, installation,
+installed-byte/runtime resolution, startup, and cleanup. Wry's explicit
+WebView2 browser arguments superseded the workflow's environment-only debug
+request, so no CDP scenario ran and `dev.35` is rejected. The bounded
+acceptance-only Tauri config correction advances to fresh `0.4.0-dev.36`;
+ordinary candidate builds remain debug-port-free.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

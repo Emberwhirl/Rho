@@ -358,14 +358,14 @@ owned Issue #26/SignPath process. That coupling did not add product coverage:
 it delayed the same six interaction checks until an unrelated release gate.
 This amendment separates the facts without weakening release admission.
 
-Issue #33 closure now requires an unsigned internal `0.4.0-dev.35` package
+Issue #33 closure now requires an unsigned internal `0.4.0-dev.36` package
 built from exact protected `main`, silently installed in a clean hosted Windows
 profile, launched from its resolved install directory, and driven through a
 runner-only loopback WebView2 debugging port. The shipped Tauri page must prove
 its embedded version/commit and repeat the five original Issue scenarios plus
 EDITOR-VIEWPORT-R1. The exact workflow, identity, deterministic scenario,
 cleanup, screenshot, and JSON evidence requirements are owned by
-`docs/release/active-0.4.0-dev.35-candidate-checklist.md`.
+`docs/release/active-0.4.0-dev.36-candidate-checklist.md`.
 
 The installed automation may seed bounded Agent/Run presentation records to
 make polling and pointer timing deterministic, but it must use the shipped
@@ -413,7 +413,7 @@ stopped before any interaction scenario. The artifact-producing run rejects
 and consumes `dev.34`; no scenario, screenshot, installed identity, or cleanup
 PASS is claimed.
 
-The corrective D1/R3 workflow slice uses fresh synchronized `0.4.0-dev.35`.
+The corrective D1/R3 workflow slice used fresh synchronized `0.4.0-dev.35`.
 Both the normal resolution path and the `always()` cleanup path remove exactly
 one balanced pair of surrounding quotes before path composition, then require
 a fully qualified path. Unquoted absolute paths remain compatible. Empty,
@@ -423,3 +423,32 @@ coverage rejects any direct `Join-Path $entry.InstallLocation` use and requires
 the same normalization in resolution and recovery. Application behavior,
 installer layout, registry ownership, signing, credentials, publication, and
 release authority do not change.
+
+### WebView2 browser-argument recovery correction
+
+Exact protected-main commit `ab2df2cb0dba37e91692d3f40abcf89085b3f67b`
+passed macOS/Windows stable/MSRV run `31635365392`. Installed run
+`31635375821` then built, installed, resolved, and started the `dev.35` package;
+the installed Ark runtime and exact executable were present, startup reached
+Workspace/project readiness, and the fail-closed uninstall path removed both
+the executable and registry entry. The workflow nevertheless timed out before
+all scenarios because port 9222 was unavailable.
+
+The defect is in acceptance admission rather than product focus behavior.
+Wry supplies `ICoreWebView2EnvironmentOptions::AdditionalBrowserArguments`
+explicitly, so its normal default argument string superseded the workflow's
+process-environment-only `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`. That
+artifact-producing failure consumes and rejects `dev.35`.
+
+The corrective D1/R3 slice uses fresh synchronized `0.4.0-dev.36` and Tauri's
+documented build `--config` merge mechanism. Only the dedicated Issue #33
+workflow passes a checked-in overlay that preserves the complete primary
+window configuration, repeats Wry's normal disabled-feature arguments, and
+adds a fixed port bound to `127.0.0.1`. The generic build script resolves the
+overlay as a repository-owned file and rejects a missing, non-file, or
+out-of-repository path. Ordinary candidate construction passes no overlay; the
+base Tauri configuration and public Windows package therefore gain no debug
+port. Static regression coverage enforces both the positive acceptance path
+and that negative production boundary before the installed workflow proves the
+real CDP session. No application behavior, schema, credentials, runtime,
+installer layout, publication, signing, or release authority changes.
