@@ -20,7 +20,7 @@ function snapshot() {
     updateDesign: read("docs/design/accepted-2026-07-25-about-and-update-check-design.md"),
     docsIndex: read("docs/README.md"),
     activeSpec: read("docs/plans/active-2026-08-11-signpath-application-readiness-spec.md"),
-    checklist: read("docs/release/active-0.4.0-dev.34-candidate-checklist.md"),
+    checklist: read("docs/release/active-0.4.0-dev.35-candidate-checklist.md"),
     news: read("NEWS.md"),
     generator: read("scripts/generate-update-site.mjs"),
     compatibilityWorkflow: read(".github/workflows/rust-compatibility.yml"),

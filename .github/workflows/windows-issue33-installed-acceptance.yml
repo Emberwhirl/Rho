@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Admit exact protected main and synchronized dev.34 identity
+      - name: Admit exact protected main and synchronized dev.35 identity
         shell: pwsh
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -48,9 +48,9 @@ jobs:
           $match = [regex]::Match($cargo, '(?m)^version = "([^"]+)"')
           if (-not $match.Success) { throw "Cargo application version is unavailable." }
           $version = $match.Groups[1].Value
-          if ($version -ne "0.4.0-dev.34") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.34, found $version." }
-          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.34-candidate-checklist.md")) {
-            throw "The active dev.34 acceptance checklist is missing."
+          if ($version -ne "0.4.0-dev.35") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.35, found $version." }
+          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.35-candidate-checklist.md")) {
+            throw "The active dev.35 acceptance checklist is missing."
           }
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_COMMIT=$commit"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_VERSION=$version"
@@ -127,6 +127,24 @@ jobs:
       - name: Silently install exact NSIS package and resolve installed bytes
         shell: pwsh
         run: |
+          function ConvertFrom-RhoRegistryPath {
+            param([AllowNull()][object]$Value)
+            if ($null -eq $Value) { return $null }
+            $pathValue = ([string]$Value).Trim()
+            $startsQuoted = $pathValue.StartsWith('"')
+            $endsQuoted = $pathValue.EndsWith('"')
+            if ($startsQuoted -xor $endsQuoted) {
+              throw "Malformed quoted registry path: $pathValue"
+            }
+            if ($startsQuoted -and $pathValue.Length -ge 2) {
+              $pathValue = $pathValue.Substring(1, $pathValue.Length - 2)
+            }
+            if (-not $pathValue -or -not [System.IO.Path]::IsPathFullyQualified($pathValue)) {
+              throw "Registry path is not fully qualified: $pathValue"
+            }
+            return $pathValue
+          }
+
           $installerProcess = Start-Process -FilePath $env:RHO_ISSUE33_INSTALLER -ArgumentList "/S" -PassThru -Wait
           if ($installerProcess.ExitCode -ne 0) { throw "NSIS silent install failed with $($installerProcess.ExitCode)." }
 
@@ -141,9 +159,10 @@ jobs:
           if (-not $entry) { throw "The installed Rho registry entry was not found." }
 
           $candidates = [System.Collections.Generic.List[string]]::new()
-          if ($entry.InstallLocation) {
-            $candidates.Add((Join-Path $entry.InstallLocation "rho-desktop.exe"))
-            $candidates.Add((Join-Path $entry.InstallLocation "Rho.exe"))
+          $installLocation = ConvertFrom-RhoRegistryPath $entry.InstallLocation
+          if ($installLocation) {
+            $candidates.Add((Join-Path $installLocation "rho-desktop.exe"))
+            $candidates.Add((Join-Path $installLocation "Rho.exe"))
           }
           if ($entry.DisplayIcon) {
             $icon = [regex]::Match([string]$entry.DisplayIcon, '^"?(.+?\.exe)"?(?:,\d+)?$')
@@ -240,6 +259,24 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path "target\issue33" -Force | Out-Null
+          function ConvertFrom-RhoRegistryPath {
+            param([AllowNull()][object]$Value)
+            if ($null -eq $Value) { return $null }
+            $pathValue = ([string]$Value).Trim()
+            $startsQuoted = $pathValue.StartsWith('"')
+            $endsQuoted = $pathValue.EndsWith('"')
+            if ($startsQuoted -xor $endsQuoted) {
+              throw "Malformed quoted registry path: $pathValue"
+            }
+            if ($startsQuoted -and $pathValue.Length -ge 2) {
+              $pathValue = $pathValue.Substring(1, $pathValue.Length - 2)
+            }
+            if (-not $pathValue -or -not [System.IO.Path]::IsPathFullyQualified($pathValue)) {
+              throw "Registry path is not fully qualified: $pathValue"
+            }
+            return $pathValue
+          }
+
           function Get-RhoUninstallEntry {
             $registryPaths = @(
               "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
@@ -255,10 +292,11 @@ jobs:
             Stop-Process -Force -ErrorAction SilentlyContinue
           $entry = Get-RhoUninstallEntry
           $installedExecutable = $env:RHO_INSTALLED_EXE
-          if (-not $installedExecutable -and $entry.InstallLocation) {
+          $installLocation = ConvertFrom-RhoRegistryPath $entry.InstallLocation
+          if (-not $installedExecutable -and $installLocation) {
             $installedExecutable = @(
-              (Join-Path $entry.InstallLocation "rho-desktop.exe"),
-              (Join-Path $entry.InstallLocation "Rho.exe")
+              (Join-Path $installLocation "rho-desktop.exe"),
+              (Join-Path $installLocation "Rho.exe")
             ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
           }
           $uninstall = $env:RHO_UNINSTALL_EXE

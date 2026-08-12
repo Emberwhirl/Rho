@@ -4,6 +4,17 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.35 - 2026-08-12
+
+### Verification
+
+- Exact installed-Windows acceptance now normalizes the quoted installation
+  directory written by the NSIS registry entry before resolving or cleaning up
+  installed files. Malformed or non-absolute registry paths still fail closed.
+
+This identity carries forward the unchanged Issue #33 product repairs from the
+rejected `0.4.0-dev.34` internal review package.
+
 ## 0.4.0-dev.34 - 2026-08-12
 
 ### Fixed
