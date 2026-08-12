@@ -98,7 +98,11 @@ installed-byte/runtime resolution, startup, and cleanup. Wry's explicit
 WebView2 browser arguments superseded the workflow's environment-only debug
 request, so no CDP scenario ran and `dev.35` is rejected. The bounded
 acceptance-only Tauri config correction advances to fresh `0.4.0-dev.36`;
-ordinary candidate builds remain debug-port-free.
+ordinary candidate builds remain debug-port-free. Exact-main run `31638482434`
+then compiled the `dev.36` release executable on two attempts, but official
+Tauri NSIS-tool transport failures stopped both before installer construction;
+the identity remains unconsumed and the active contract now permits only a
+recognized, bounded in-job transport retry.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

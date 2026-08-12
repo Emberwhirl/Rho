@@ -399,6 +399,29 @@ partial file; final failure remains visible and stops the workflow. A successful
 retry may continue the same pre-artifact acceptance run. The source contract
 must reject direct download into the canonical archive and unbounded retry.
 
+### NSIS tool download recovery correction
+
+Exact protected-main run `31638482434` reached a successful release build of
+`rho-desktop.exe` on both attempt 1 and attempt 2, but Tauri could not construct
+an installer because its official NSIS tool download first ended with
+`Peer disconnected` and then returned HTTP `503`. Neither attempt produced or
+uploaded an installer, installed Rho, or entered an interaction scenario, so
+the single-use `dev.36` artifact identity remains unconsumed. The failure is a
+D1 release-tooling reliability defect inside the authorized D4 work package;
+it changes no application bytes, dependency source, signing, credential,
+publication, or release authority.
+
+Regression invariant: only the dedicated Issue #33 workflow may request at
+most three Tauri build attempts. A retry is admitted only when the preceding
+command failed during bundling, no NSIS installer exists, the release
+executable exists, and captured output identifies a bounded transient transport
+class: HTTP 408/425/429/5xx, peer disconnect, connection reset/closure, request
+send failure, or timeout. Cached compilation may then be reused after a bounded
+delay. Compilation/configuration errors, an existing installer, an absent
+release executable, unknown failures, or exhausted attempts fail immediately
+and visibly. The generic build path and candidate workflow retain one attempt
+by default; no mirror, unpinned tool, or indefinite retry is permitted.
+
 ### NSIS registry-path recovery correction
 
 After the Ark recovery merged, exact-main source run `31633585677` passed all

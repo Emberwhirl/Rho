@@ -65,7 +65,11 @@ download page, or publication record. The workflow must:
    from the resolved installation directory rather than `target/release`;
    transient Ark transport failures may use the active Issue #33 contract's
    bounded four-attempt, checksum-before-promotion recovery, but still fail
-   closed before package construction when recovery is exhausted;
+   closed before package construction when recovery is exhausted; the
+   dedicated workflow may also request at most three Tauri invocations for a
+   recognized transient official NSIS-tool transport failure after successful
+   compilation, while unknown failures and ordinary candidate builds remain
+   single-attempt and fail closed;
 3. have that overlay preserve the complete normal window configuration and
    Wry's default security/UX flags while adding only a fixed loopback WebView2
    remote-debugging port for the ephemeral runner; prove the inspected page has
@@ -120,3 +124,10 @@ candidate gate. Those release facts remain open even after Issue #33 closes.
 `GO` for the bounded exact-source Windows Issue #33 acceptance work package.
 `NO-GO` for SignPath production signing, exact candidate construction, human
 installed-candidate acceptance, MAC5, publication, and updater mutation.
+
+Run `31638482434` attempt 1 stopped after the release executable compiled when
+the official Tauri NSIS download disconnected; attempt 2 stopped at the same
+pre-installer boundary on HTTP `503`. Neither attempt constructed or uploaded
+an installer, installed Rho, or ran a scenario, so `dev.36` remains available
+for the bounded recovery specified by WINDOWS-INSTALLED-ISSUE33-A1. This is not
+acceptance evidence and does not change the release `NO-GO`.
