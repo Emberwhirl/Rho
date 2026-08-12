@@ -1515,6 +1515,10 @@ body.resizing-vertical { cursor: col-resize; }
 .product-details { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 7px 12px; margin: 0; font-size: 11px; line-height: 1.45; }
 .product-details dt { color: var(--muted); }
 .product-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text); }
+.about-legal { display: grid; grid-template-columns: minmax(90px, auto) minmax(0, 1fr); gap: 4px 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; line-height: 1.45; }
+.about-legal strong { color: var(--muted); font-weight: 500; }
+.about-legal span { color: var(--text); }
+.about-legal p { grid-column: 1 / -1; margin: 0; color: var(--subtle); }
 .product-dialog-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .product-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .product-dialog-actions button { min-height: 32px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; cursor: pointer; }

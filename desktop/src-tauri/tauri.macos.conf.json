@@ -4,6 +4,8 @@
     "targets": ["app", "dmg"],
     "externalBin": ["binaries/ark"],
     "resources": {
+      "../../LICENSE": "licenses/rho/LICENSE.txt",
+      "../../LICENSES.md": "licenses/rho/THIRD-PARTY-NOTICES.md",
       "../resources/runtime/LICENSE": "licenses/ark/LICENSE",
       "../resources/runtime/NOTICE": "licenses/ark/NOTICE"
     },

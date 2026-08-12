@@ -17,6 +17,13 @@ this file records behavior included in a versioned build candidate.
   response-envelope correction from rejected `0.4.0-dev.32`; no R package,
   settings, persistence, or runtime protocol contract changed.
 
+### Improved
+
+- About now identifies Rho as GNU AGPL v3.0 only, links the corresponding
+  source, and can reveal an offline license file bundled with both desktop
+  installers. Candidate verification rejects a missing or altered macOS
+  license boundary before release admission.
+
 ## 0.4.0-dev.32 - 2026-08-11
 
 ### Fixed

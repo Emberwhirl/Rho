@@ -37,6 +37,7 @@ const REQUIRED_CHECKS = {
     "notary_binding",
     "staple",
     "gatekeeper",
+    "license_boundary",
   ],
 };
 
@@ -505,6 +506,13 @@ export function selfTest() {
         checks: macosEvidence.checks.filter((check) => check.name !== "entitlements"),
       }),
       /missing required check entitlements/,
+    );
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...macosEvidence,
+        checks: macosEvidence.checks.filter((check) => check.name !== "license_boundary"),
+      }),
+      /missing required check license_boundary/,
     );
     const aggregatePath = path.join(root, `rho-${version}-candidate-evidence.json`);
     const candidate = createAggregateEvidence({

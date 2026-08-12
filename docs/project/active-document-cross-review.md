@@ -40,7 +40,7 @@ semantics.
 | Document | Status after review | Owns | May proceed when |
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
-| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 implementation and independent review complete; `Emberwhirl` and `xuzhougeng` additional AGPL grants recorded in PR #30; branch synchronized through current upstream `main` `e630a67` with `dev.33`, Rust 1.88/Resolver 3, all integrated repairs, and complete affected local validation passed; exact-head hosted integration and future distribution acceptance remain open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, and transition gates | contributor and synchronized-tree gates are satisfied; require exact pushed-head hosted validation and protected merge; future distribution requires a separately accepted candidate |
+| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 implementation, contributor consent, hosted validation, and protected integration complete; LIC-2 implementation, affected local validation, local macOS bundle inspection, and UI review complete; exact-head hosted integration remains open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, fixed installed resource copies, About legal notice, and transition gates | LIC-2 may add only the fixed bundled-license resource/reveal surface; About/update retains product-information ownership; Issue #26 retains SignPath and signing; exact candidate and installed acceptance remain release-owned |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-10-rust-msrv-build-contract.md` | active integrated build contract; exact PR #29 head `f022d2c` passed all four jobs in run `31509554882`; merge `9e0b36b` passed all four exact-main jobs in run `31510716448`; Issue #28 closed | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | enforce continuously; any dependency, target, runner, packaging, or MSRV change requires reviewed scope; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
@@ -181,9 +181,22 @@ The source implementation could not merge until required historical
 contributors granted the additional AGPL permission or an authorized
 legal/ownership determination established sufficient inbound permission.
 `Emberwhirl` and `xuzhougeng` have each now supplied the explicit additional
-grant in PR #30, so the contributor gate is closed. Exact synchronized-tree
-validation and protected integration remain engineering gates, while installed
-legal-notice and distribution acceptance remain release gates.
+grant in PR #30, so the contributor gate is closed. LIC-1 exact synchronized-
+tree validation and protected integration are complete. LIC-2 now owns only
+the fixed installed Rho-license resource and About legal notice needed before a
+future candidate. Installed legal-notice and distribution acceptance remain
+release gates.
+
+The accepted About/update design remains the application-information and
+interaction owner. LIC-2 extends its static product information with the
+license identity, corresponding-source statement, existing source link, and a
+fixed bundled-license reveal action; it does not change diagnostics, update
+network behavior, channels, endpoints, or installer execution. The human-
+facing information contract still excludes raw resource paths and internal
+command details. Tauri bundle metadata owns packaging projection only. Issue
+#26 retains privacy, SignPath, Authenticode, credential, signed-byte, and
+publication authority, and the `dev.33` checklist alone may admit an exact
+artifact.
 
 ### Navigation and layout state
 
