@@ -579,6 +579,14 @@ MAC5, publication, or updater evidence. The `0.4.0-dev.34` checklist owns both
 that narrow allowance and the continued release `NO-GO`; no feature document
 may relabel the review artifact as a candidate.
 
+Two pre-artifact Ark download attempts returned GitHub Release `503` responses.
+The bounded recovery amendment remains inside the same acceptance authority:
+four checksum-before-promotion attempts may recover a transient transport
+failure, while exhaustion still fails closed. It adds no credential, mirror,
+runtime-version, installer, signing, release, or publication authority, and a
+run that stops before package construction does not consume the single-use
+`dev.34` artifact identity.
+
 The active release checklist is the sole GO/NO-GO authority for the exact
 `0.2.0-dev.12` candidate. About/update V1 was implemented afterward and has its
 own Pages and installed-app gates. It cannot be included in, block, or validate

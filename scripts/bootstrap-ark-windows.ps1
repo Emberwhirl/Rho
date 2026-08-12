@@ -16,6 +16,8 @@ $manifest = Get-Content (Join-Path $repositoryRoot "runtime\ark.json") -Raw | Co
 $artifact = $manifest.'windows-x64'
 $installRoot = Join-Path $RuntimeRoot ("ark-" + $manifest.version)
 $archive = Join-Path $RuntimeRoot ("ark-" + $manifest.version + "-windows-x64.zip")
+$downloadPath = $archive + ".partial"
+$maximumDownloadAttempts = 4
 $ark = Join-Path $installRoot "ark.exe"
 $kernelSpec = Join-Path $installRoot "kernel.json"
 $log = Join-Path $installRoot "ark.log"
@@ -34,10 +36,37 @@ if (-not $rHome -or -not $rBin -or -not $rLibraries) {
 
 New-Item -ItemType Directory -Path $RuntimeRoot -Force | Out-Null
 if (-not (Test-Path -LiteralPath $ark)) {
-    Invoke-WebRequest -Uri $artifact.url -OutFile $archive
-    $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-    if ($actualHash -ne $artifact.sha256) {
-        throw "Ark archive checksum mismatch: expected $($artifact.sha256), got $actualHash"
+    $downloadSucceeded = $false
+    $lastDownloadFailure = $null
+    for ($attempt = 1; $attempt -le $maximumDownloadAttempts; $attempt += 1) {
+        if (Test-Path -LiteralPath $downloadPath) {
+            Remove-Item -LiteralPath $downloadPath -Force
+        }
+        try {
+            Invoke-WebRequest -Uri $artifact.url -OutFile $downloadPath
+            $actualHash = (Get-FileHash -LiteralPath $downloadPath -Algorithm SHA256).Hash
+            if ($actualHash -ne $artifact.sha256) {
+                throw "Ark archive checksum mismatch: expected $($artifact.sha256), got $actualHash"
+            }
+            Move-Item -LiteralPath $downloadPath -Destination $archive -Force
+            $downloadSucceeded = $true
+            break
+        }
+        catch {
+            $lastDownloadFailure = $_
+            if (Test-Path -LiteralPath $downloadPath) {
+                Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
+            }
+            if ($attempt -lt $maximumDownloadAttempts) {
+                $retryDelaySeconds = 5 * [math]::Pow(2, $attempt - 1)
+                Write-Warning ("Ark download attempt {0}/{1} failed; retrying in {2}s: {3}" -f $attempt, $maximumDownloadAttempts, $retryDelaySeconds, $_.Exception.Message)
+                Start-Sleep -Seconds $retryDelaySeconds
+            }
+        }
+    }
+    if (-not $downloadSucceeded) {
+        $lastMessage = if ($lastDownloadFailure) { $lastDownloadFailure.Exception.Message } else { "unknown download failure" }
+        throw "Unable to download and verify the pinned Ark archive after $maximumDownloadAttempts attempts. Last error: $lastMessage"
     }
     Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
 }
