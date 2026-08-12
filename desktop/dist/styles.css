@@ -1241,7 +1241,7 @@ body.resizing-vertical { cursor: col-resize; }
 .file-edit-panel[data-state="stale"],
 .file-edit-panel[data-state="uncertain"] { border-color: #d1ae68; background: #fffaf0; }
 .file-edit-panel[data-state="mutating"] { border-color: #86aebb; background: #f3f9fb; }
-.file-edit-panel[open] { overflow: auto; }
+.file-edit-panel[open] { overflow: auto; overscroll-behavior: contain; }
 .file-edit-header { display: flex; align-items: center; gap: 8px; padding: 10px; cursor: pointer; list-style: none; }
 .file-edit-header::-webkit-details-marker { display: none; }
 .file-edit-header::before { flex: 0 0 auto; color: var(--subtle); content: ">"; font: 11px var(--mono); transform: rotate(0deg); transition: transform 0.12s ease; }
@@ -1256,7 +1256,7 @@ body.resizing-vertical { cursor: col-resize; }
 .file-edit-diff { display: grid; gap: 6px; }
 .file-edit-diff > div { min-width: 0; }
 .file-edit-diff span { display: block; margin-bottom: 2px; color: var(--subtle); font-size: 10px; text-transform: uppercase; }
-.file-edit-diff pre { max-height: 120px; margin: 0; padding: 7px 8px; overflow: auto; border-left: 2px solid #a6b3b5; color: #344448; background: #fff; font: 10.5px/1.45 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.file-edit-diff pre { max-height: 120px; margin: 0; padding: 7px 8px; overflow: auto; overscroll-behavior: contain; border-left: 2px solid #a6b3b5; color: #344448; background: #fff; font: 10.5px/1.45 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .file-edit-diff > div:last-child pre { border-left-color: var(--accent); background: #edf7f5; }
 .file-edit-actions { display: flex; gap: 6px; margin-top: 8px; }
 .file-edit-actions button { flex: 1 1 0; min-height: 30px; border: 1px solid var(--border-strong); border-radius: 4px; background: #fff; cursor: pointer; }
