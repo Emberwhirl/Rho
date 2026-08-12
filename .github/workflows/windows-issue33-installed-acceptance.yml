@@ -111,7 +111,8 @@ jobs:
         run: |
           $env:PATH="$env:RTOOLS_BIN;$env:PATH"
           ./scripts/build-windows-installer.ps1 `
-            -TauriConfigOverlayPath "desktop\src-tauri\tauri.issue33-acceptance.conf.json"
+            -TauriConfigOverlayPath "desktop\src-tauri\tauri.issue33-acceptance.conf.json" `
+            -MaximumTauriBuildAttempts 3
           $expected = "Rho_$($env:RHO_ACCEPTANCE_VERSION)_x64-setup.exe"
           $installer = @(Get-ChildItem -LiteralPath "target\release\bundle\nsis" -Filter "*-setup.exe")
           if ($installer.Count -ne 1 -or $installer[0].Name -ne $expected) {

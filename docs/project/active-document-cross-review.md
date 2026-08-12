@@ -596,6 +596,13 @@ browser arguments. `dev.36` may use one repository-owned Tauri configuration
 overlay only in the Issue #33 workflow, bound to loopback; ordinary candidate
 builds pass no overlay. Neither correction may guess registry paths or add
 installer, signing, release, publication, credential, or product authority.
+Run `31638482434` then compiled the `dev.36` release executable twice, but the
+official Tauri NSIS-tool transport disconnected and returned HTTP `503` before
+installer construction. The same active checklist owns a three-attempt maximum
+for recognized transient bundler transport failures only; compilation,
+configuration, unknown, exhausted, or ordinary candidate failures remain
+single-attempt and fail closed. No mirror, alternate tool identity, signing,
+publication, credential, or release authority is added.
 
 The active release checklist is the sole GO/NO-GO authority for the exact
 `0.2.0-dev.12` candidate. About/update V1 was implemented afterward and has its
