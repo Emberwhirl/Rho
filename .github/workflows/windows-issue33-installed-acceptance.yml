@@ -103,7 +103,8 @@ jobs:
           node scripts/test-workbench-focus-stability-ui.mjs
           node scripts/test-windows-installed-focus-acceptance.mjs
           node scripts/test-mac4-release-contract.mjs
-          if ((& git status --short).Trim()) { throw "Focused validation changed the exact source tree." }
+          $dirtyPaths = @(& git status --short)
+          if ($dirtyPaths.Count -gt 0) { throw "Focused validation changed the exact source tree: $($dirtyPaths -join ', ')" }
 
       - name: Build exact Windows NSIS review package
         shell: pwsh
