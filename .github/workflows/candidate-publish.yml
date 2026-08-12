@@ -67,6 +67,7 @@ jobs:
             const crypto = require("crypto");
             const fs = require("fs");
             const path = require("path");
+            const { pathToFileURL } = require("url");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const releaseId = Number(process.env.RELEASE_ID);
@@ -76,6 +77,41 @@ jobs:
             if (!release.data.draft || !release.data.prerelease) throw new Error("Only a draft prerelease may enter publish admission.");
             if (release.data.target_commitish !== process.env.EXPECTED_COMMIT) throw new Error("Draft commit changed before admission validation.");
             const version = process.env.RELEASE_TAG.replace(/^v/, "");
+            const releaseNotesPath = path.join(".github", "release-notes", `${process.env.RELEASE_TAG}.md`);
+            const releaseNotesToolPath = path.join(process.cwd(), "scripts", "release-notes.mjs");
+            let expectedReleaseBody;
+            let releaseBodySha256;
+            if (fs.existsSync(releaseNotesPath) && fs.existsSync(releaseNotesToolPath)) {
+              const releaseNotesModule = await import(pathToFileURL(releaseNotesToolPath).href);
+              const releaseNotes = releaseNotesModule.loadReleaseNotes({
+                repositoryRoot: process.cwd(),
+                version,
+                releaseTag: process.env.RELEASE_TAG,
+              });
+              releaseNotesModule.requireExactReleaseBody(releaseNotes, release.data.body || "");
+              expectedReleaseBody = releaseNotes.body;
+              releaseBodySha256 = releaseNotes.sha256;
+            } else {
+              const legacy = {
+                release_id: 367934137,
+                tag_name: "v0.4.0-dev.27",
+                target_commitish: "aff83f01d2db8c241fe794fe5e5e4c80d2baf2a0",
+                body: "Immutable cross-platform candidate built from `aff83f01d2db8c241fe794fe5e5e4c80d2baf2a0`. Publication requires separate MAC5 acceptance evidence and GO.",
+              };
+              if (
+                release.data.id !== legacy.release_id
+                || release.data.tag_name !== legacy.tag_name
+                || release.data.target_commitish !== legacy.target_commitish
+                || release.data.body !== legacy.body
+              ) {
+                throw new Error("The exact candidate commit does not contain its reviewed versioned release notes file.");
+              }
+              expectedReleaseBody = legacy.body;
+              releaseBodySha256 = crypto.createHash("sha256").update(Buffer.from(legacy.body, "utf8")).digest("hex");
+            }
+            if (crypto.createHash("sha256").update(Buffer.from(expectedReleaseBody, "utf8")).digest("hex") !== releaseBodySha256) {
+              throw new Error("Release body digest does not match the reviewed source.");
+            }
             const candidateName = `rho-${version}-candidate-evidence.json`;
             const acceptanceName = `rho-${version}-acceptance.json`;
             const required = new Set([
@@ -138,6 +174,7 @@ jobs:
               release_id: release.data.id,
               tag_name: release.data.tag_name,
               target_commitish: release.data.target_commitish,
+              body_sha256: releaseBodySha256,
               assets: release.data.assets.map((asset) => [asset.id, asset.name, asset.size]).sort((left, right) => left[1].localeCompare(right[1])),
             }, null, 2)}\n`);
             core.setOutput("release_id", String(release.data.id));
@@ -155,6 +192,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const crypto = require("crypto");
             const fs = require("fs");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -162,13 +200,15 @@ jobs:
             const snapshot = JSON.parse(fs.readFileSync("target/publish-release-snapshot.json", "utf8"));
             const before = await github.rest.repos.getRelease({ owner, repo, release_id: releaseId });
             if (!before.data.draft || !before.data.prerelease) throw new Error("Draft state changed after admission validation.");
+            const beforeBodySha256 = crypto.createHash("sha256").update(Buffer.from(before.data.body || "", "utf8")).digest("hex");
             const beforeAssets = before.data.assets.map((asset) => [asset.id, asset.name, asset.size]).sort((left, right) => left[1].localeCompare(right[1]));
             if (
               snapshot.release_id !== releaseId
               || snapshot.tag_name !== before.data.tag_name
               || snapshot.target_commitish !== before.data.target_commitish
+              || snapshot.body_sha256 !== beforeBodySha256
               || JSON.stringify(snapshot.assets) !== JSON.stringify(beforeAssets)
-            ) throw new Error("Draft identity or assets changed after content validation.");
+            ) throw new Error("Draft identity, reviewed body, or assets changed after content validation.");
             await github.rest.repos.updateRelease({
               owner,
               repo,
@@ -177,7 +217,16 @@ jobs:
               prerelease: true,
             });
             const after = await github.rest.repos.getRelease({ owner, repo, release_id: releaseId });
+            const afterBodySha256 = crypto.createHash("sha256").update(Buffer.from(after.data.body || "", "utf8")).digest("hex");
             const afterAssets = after.data.assets.map((asset) => [asset.id, asset.name, asset.size]).sort((left, right) => left[1].localeCompare(right[1]));
-            if (after.data.draft || !after.data.prerelease || JSON.stringify(afterAssets) !== JSON.stringify(beforeAssets)) {
-              throw new Error("Published release state or immutable assets do not match admission.");
+            if (
+              after.data.draft
+              || !after.data.prerelease
+              || after.data.id !== snapshot.release_id
+              || after.data.tag_name !== snapshot.tag_name
+              || after.data.target_commitish !== snapshot.target_commitish
+              || afterBodySha256 !== snapshot.body_sha256
+              || JSON.stringify(afterAssets) !== JSON.stringify(beforeAssets)
+            ) {
+              throw new Error("Published release state, reviewed body, or immutable assets do not match admission.");
             }

@@ -293,6 +293,14 @@ The workflow inputs are:
 - `run_smoke_test`: whether to run `target\release\rho-desktop.exe --smoke-test`
   before publishing.
 
+Before any hosted build begins, the workflow derives
+`.github/release-notes/<release_tag>.md` from the exact checked-out ref and
+validates it with `scripts/release-notes.mjs`. The file's canonical reviewed
+Markdown is the complete GitHub Release body; build paths, hashes, and smoke
+metadata remain in the release evidence/assets rather than being synthesized
+into a second body. A missing, mismatched, malformed, oversized, symlinked, or
+non-UTF-8 notes file fails before publication.
+
 Each run bootstraps Ark, builds the NSIS installer, computes a `.sha256` asset,
 optionally runs the non-Agent smoke test, creates or updates a GitHub Release,
 and uploads both files without using a draft stage.
@@ -390,4 +398,3 @@ An implementation agent handing work back for review must provide:
 - known limitations;
 - an explicit statement that no aisdk family repository was changed, or a
   separately approved explanation if it was.
-

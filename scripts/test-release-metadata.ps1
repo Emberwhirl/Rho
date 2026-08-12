@@ -65,10 +65,16 @@ $requiredFiles = @(
     ".github\workflows\update-site-publish.yml",
     ".github\workflows\candidate-build-draft.yml",
     ".github\workflows\candidate-publish.yml",
+    ".github\release-notes\README.md",
     "scripts\candidate-release.mjs",
+    "scripts\release-notes.mjs",
+    "scripts\test-release-notes-workflow.mjs",
     "scripts\generate-update-site.mjs",
     "docs\design\accepted-2026-07-25-about-and-update-check-design.md"
 )
+if ($ReleaseTag) {
+    $requiredFiles += ".github\release-notes\$ReleaseTag.md"
+}
 $missingFiles = @(
     $requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $repo $_) -PathType Leaf) }
 )

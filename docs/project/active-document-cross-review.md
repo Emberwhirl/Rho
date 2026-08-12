@@ -68,6 +68,7 @@ semantics.
 | `release/historical-0.4.0-dev.35-candidate-checklist.md` | historical rejected internal acceptance package; source matrix, NSIS build/install, installed-byte/runtime resolution, startup, and cleanup passed, but environment-only WebView2 CDP admission failed before all scenarios | immutable `dev.35` source, installer/executable hashes, startup/cleanup pass, CDP failure, and REJECTED/NO-GO evidence | run `31635375821` and artifact `9157190586` remain non-composable; no Issue closure, signing, candidate, MAC5, publication, or updater row may reuse `dev.35` |
 | `release/historical-0.4.0-dev.36-candidate-checklist.md` | historical rejected internal acceptance package; exact installed identity/runtime, five original Issue scenarios, screenshot, and cleanup passed, but the sixth harness waited on a project-lifecycle counter that watcher refresh does not mutate | immutable `dev.36` installer/executable hashes, five PASS results, harness failure, screenshot, cleanup, and REJECTED/NO-GO decision | run `31641866471` and artifact `9159573725` are non-composable; no Issue closure, signing, candidate, MAC5, publication, or updater row may reuse `dev.36` |
 | `release/active-0.4.0-dev.37-candidate-checklist.md` | active accepted Issue #33 source contract; exact protected-main source run `31644418691` and installed run `31644429787` pass all four source legs, all six installed scenarios, identity/runtime, screenshot, and cleanup at `7ab861b` | sole immutable `0.4.0-dev.37` Issue acceptance identity/evidence and any future exact candidate/release ledger | Issue #33 closure GO; artifact `9160516935` is unsigned internal review evidence only; ordinary candidates remain debug-port-free; signing, human installed acceptance, MAC5, publication, and updater gates remain open |
+| `plans/active-2026-08-10-versioned-release-notes-spec.md` | active; RELEASE-NOTES-1 source implementation, complete affected automation, and contract review passed 2026-08-10; first new-candidate hosted acceptance open | reviewed per-tag Markdown as the sole body source for newly constructed Releases, exact-body publication stale guard, and one explicit `dev.27` compatibility bridge | preserve unchanged Draft `367934137`; the next unused candidate must carry and exercise its own reviewed file before hosted acceptance; no asset/evidence, updater, or signing scope |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -669,6 +670,24 @@ hashes, and fail-closed uninstall cleanup; artifact `9160516935` is the bounded
 evidence. Issue #33 closure is GO. This does not satisfy or authorize Windows
 signing, candidate construction, human installed-candidate acceptance, MAC5,
 publication, or updater mutation.
+
+RELEASE-NOTES-1 owns only the reviewed GitHub Release body source and its
+exact-commit stale guard. The exact-candidate checklist retains identity,
+artifact/evidence, installed acceptance, and GO/NO-GO authority; About/update
+V1 retains channel, schema, endpoint, summary projection, and Pages authority;
+Apple and Windows signing lanes retain installer trust. `NEWS.md` remains the
+installed-behavior ledger and cannot be replaced by curated release prose.
+
+The existing accepted `v0.4.0-dev.27` Draft predates the notes-file contract.
+Its release ID, tag, commit, and generic body form one explicit compatibility
+tuple. The implementation may validate that tuple during a later publication
+attempt but cannot add a historical file to its commit, rewrite its body,
+replace assets, or infer that any other missing file is legacy. Newly
+constructed candidates must carry `.github/release-notes/v<version>.md` in the
+exact source commit. The first canonical body line remains a bounded plain-text
+summary so the existing update-site projection does not gain a competing
+summary owner. Tauri updater/signing and Issue #26 Authenticode work remain
+separate.
 
 The active release checklist is the sole GO/NO-GO authority for the exact
 `0.2.0-dev.12` candidate. About/update V1 was implemented afterward and has its

@@ -71,6 +71,11 @@ jobs:
           test "$INPUT_RELEASE_NAME" = "Rho $version"
           node scripts/candidate-release.mjs --mode identity --version "$version" --tag "$INPUT_RELEASE_TAG" --commit "$commit"
           node scripts/candidate-release.mjs --test true
+          node scripts/release-notes.mjs --test true
+          if [[ "$BUILD_MODE" == "candidate" ]]; then
+            node scripts/release-notes.mjs --mode validate --version "$version" --tag "$INPUT_RELEASE_TAG"
+          fi
+          node scripts/test-release-notes-workflow.mjs
           node scripts/generate-update-site.mjs --test true
           node scripts/test-macos-notary.mjs
           node scripts/test-mac4-release-contract.mjs
@@ -700,6 +705,15 @@ jobs:
           set -euo pipefail
           node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json"
 
+      - name: Prepare reviewed release notes from the exact candidate commit
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs --mode prepare --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --output target/candidate/release-notes.json
+
       - name: Create single-use draft and upload assets once
         id: draft
         uses: actions/github-script@v7
@@ -713,6 +727,7 @@ jobs:
           script: |
             const fs = require("fs");
             const path = require("path");
+            const { pathToFileURL } = require("url");
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             try {
@@ -728,6 +743,11 @@ jobs:
               if (error.status !== 404) throw error;
             }
             const version = process.env.CANDIDATE_VERSION;
+            const releaseNotesModule = await import(pathToFileURL(path.join(process.cwd(), "scripts", "release-notes.mjs")).href);
+            const releaseNotes = releaseNotesModule.validateReleaseNotesRecord(
+              JSON.parse(fs.readFileSync(path.join("target", "candidate", "release-notes.json"), "utf8")),
+              { version, release_tag: process.env.CANDIDATE_TAG },
+            );
             const requiredNames = [
               `Rho_${version}_x64-setup.exe`,
               `Rho_${version}_x64-setup.exe.sha256`,
@@ -749,7 +769,7 @@ jobs:
               tag_name: process.env.CANDIDATE_TAG,
               target_commitish: process.env.CANDIDATE_COMMIT,
               name: process.env.CANDIDATE_NAME,
-              body: `Immutable cross-platform candidate built from \`${process.env.CANDIDATE_COMMIT}\`. Publication requires separate MAC5 acceptance evidence and GO.`,
+              body: releaseNotes.body,
               draft: true,
               prerelease: true,
             });
@@ -764,7 +784,14 @@ jobs:
               });
             }
             const checked = await github.rest.repos.getRelease({ owner, repo, release_id: release.data.id });
-            if (!checked.data.draft || !checked.data.prerelease || checked.data.target_commitish !== process.env.CANDIDATE_COMMIT) {
+            if (
+              !checked.data.draft
+              || !checked.data.prerelease
+              || checked.data.tag_name !== process.env.CANDIDATE_TAG
+              || checked.data.target_commitish !== process.env.CANDIDATE_COMMIT
+              || checked.data.name !== process.env.CANDIDATE_NAME
+              || checked.data.body !== releaseNotes.body
+            ) {
               throw new Error("Draft release identity changed during assembly.");
             }
             const actual = new Map(checked.data.assets.map((asset) => [asset.name, asset.size]));
