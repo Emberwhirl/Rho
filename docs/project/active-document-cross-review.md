@@ -40,7 +40,8 @@ semantics.
 | Document | Status after review | Owns | May proceed when |
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
-| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 implementation, contributor consent, hosted validation, and protected integration complete; LIC-2 implementation, affected local validation, local macOS bundle inspection, and UI review complete; exact-head hosted integration remains open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, fixed installed resource copies, About legal notice, and transition gates | LIC-2 may add only the fixed bundled-license resource/reveal surface; About/update retains product-information ownership; Issue #26 retains SignPath and signing; exact candidate and installed acceptance remain release-owned |
+| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 and LIC-2 implementation, affected validation, UI/bundle review, exact-head hosted validation, and protected integration complete; exact candidate and installed distribution acceptance remain open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, fixed installed resource copies, About legal notice, and transition gates | preserve the integrated license/resource boundary; SignPath readiness may reference but not redefine it; exact candidate and installed acceptance remain release-owned |
+| `plans/active-2026-08-11-signpath-application-readiness-spec.md` | active; SP-READY1 authorized and cross-reviewed; implementation, verification, protected integration, external application, and production signing open | manual-only update admission, public privacy/security/code-signing policies, policy links, CODEOWNERS, and deterministic readiness enforcement | implement only SP-READY1; do not create guessed SignPath policy/workflow configuration, construct a candidate, or claim Windows signing before external identifiers and approval exist |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-10-rust-msrv-build-contract.md` | active integrated build contract; exact PR #29 head `f022d2c` passed all four jobs in run `31509554882`; merge `9e0b36b` passed all four exact-main jobs in run `31510716448`; Issue #28 closed | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | enforce continuously; any dependency, target, runner, packaging, or MSRV change requires reviewed scope; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
@@ -191,12 +192,19 @@ The accepted About/update design remains the application-information and
 interaction owner. LIC-2 extends its static product information with the
 license identity, corresponding-source statement, existing source link, and a
 fixed bundled-license reveal action; it does not change diagnostics, update
-network behavior, channels, endpoints, or installer execution. The human-
-facing information contract still excludes raw resource paths and internal
-command details. Tauri bundle metadata owns packaging projection only. Issue
-#26 retains privacy, SignPath, Authenticode, credential, signed-byte, and
-publication authority, and the `dev.33` checklist alone may admit an exact
-artifact.
+channels, endpoints, or installer execution. The human-facing information
+contract still excludes raw resource paths and internal command details.
+Tauri bundle metadata owns packaging projection only.
+
+SP-READY1 owns one later Issue #26 privacy amendment: update discovery becomes
+manual-only, so startup performs no automatic request and no longer persists
+background-check throttling/dismissal state. The accepted design retains the
+manual UI, endpoint, channel, allowlist, bounds, timeout, failure, and Pages
+contracts. Provider, Agent, DOI, environment, R execution, and external-tool
+documents retain their existing explicit user-action or approval boundaries;
+the public privacy summary creates no new network authority. Issue #26 retains
+SignPath, Authenticode, credential, signed-byte, and publication authority, and
+the `dev.33` checklist alone may admit an exact artifact.
 
 ### Navigation and layout state
 

@@ -1,0 +1,211 @@
+# SignPath Application Readiness Contract
+
+Status: active; SP-READY1 authorized, specification and cross-review complete;
+implementation, verification, protected integration, external application, and
+production signing remain open
+
+Date: 2026-08-11 EDT / 2026-08-12 UTC
+Authorization: after directing the next version to be merged and published,
+the project owner instructed the agent to complete every remaining required
+item. This activates only the bounded SP-READY1 repository-readiness package;
+it does not waive SignPath's approval, organization-owner actions, exact signed
+candidate acceptance, or the release GO gate.
+Owning issue: GitHub Issue #26
+Change class: D4 public policy, release supply chain, and application-readiness
+work; the update behavior correction is D3 network/privacy behavior
+Risk: R4 overall; R3 for user-initiated network admission
+Work package: SP-READY1
+
+## Problem And Current Evidence
+
+Rho's macOS candidate path uses Developer ID signing and notarization, while
+the Windows candidate path currently produces an unsigned Rho executable and
+NSIS installer. SignPath Foundation application readiness requires truthful
+public license, privacy, security, and code-signing information plus protected
+source/build ownership. The repository currently lacks `PRIVACY.md`,
+`CODE_SIGNING_POLICY.md`, `SECURITY.md`, and `.github/CODEOWNERS`.
+
+The accepted About/update design also admits one automatic update request after
+startup at most every 24 hours. That conflicts with Issue #26's approved
+privacy principle that Rho has no background telemetry and that product-owned
+remote requests are initiated by a user. The implementation stores the last
+automatic-check time and dismissed version in WebView local storage and calls
+`maybeCheckForUpdates()` after Workspace R starts.
+
+SP-READY1 resolves that conflict before an external application or a signed
+candidate is attempted. It creates no SignPath project, signing request,
+signature, candidate, tag, Release, or updater mutation.
+
+## Decisions
+
+1. Update discovery is manual-only. Rho contacts the fixed
+   `https://yulab-smu.top/Rho/` update endpoint only after the user selects
+   **Help > Check for Updates...** or **Try Again** in the open update dialog.
+2. Startup never schedules an update request. The background option,
+   notification, 24-hour timestamp, and dismissed-version persistence are
+   removed. Existing legacy local-storage values are inert and require no
+   migration or deletion authority.
+3. Manual update behavior, endpoint/channel policy, bounds, timeout, URL
+   allowlists, structured failure states, and user-initiated external browser
+   navigation remain unchanged.
+4. `PRIVACY.md` is the public data/network contract. It must distinguish local
+   project/application data from user-initiated remote operations, describe OS
+   credential storage and custom Base URL risk, state retention/deletion
+   limits truthfully, and provide a private security-reporting path.
+5. `CODE_SIGNING_POLICY.md` is the public signing contract. It must use the
+   required SignPath attribution, identify the current unsigned Windows state,
+   define the eventual two-stage Rho-binary/NSIS scope, exclude third-party
+   upstream binaries, require manual approval, and describe verification and
+   incident response.
+6. `SECURITY.md` routes confidential reports to GitHub private vulnerability
+   reporting. No public Issue should contain credentials, private project
+   content, or unredacted diagnostics.
+7. `.github/CODEOWNERS` assigns the two current repository administrators to
+   policy, workflow, SignPath policy, release-script, and ownership changes.
+   Enforcement remains a repository-ruleset gate and is not claimed by the
+   file alone.
+8. The README and generated download page link License, Privacy, Security, and
+   the exact phrase **Code signing policy**. The page remains truthful that
+   listed macOS packages are Developer ID signed/notarized and that Windows is
+   not Authenticode-signed until the SignPath chain actually passes.
+9. No `.signpath/policies/` source/build policy or production signing workflow
+   is created with guessed slugs. Those become authorized only after SignPath
+   supplies the real organization, project, policy, and artifact-configuration
+   identifiers and the organization owner installs/configures the GitHub App.
+
+## Ownership And Cross-Review
+
+- Issue #26 retains SignPath eligibility, external application, GitHub App,
+  organization MFA, Authenticode architecture, signing credentials, approval,
+  signed-byte evidence, and Windows release admission.
+- The accepted About/update design retains manifest schema, channel, endpoint,
+  allowlist, bounds, manual UI, and Pages ownership. SP-READY1 narrows only its
+  request admission from manual-plus-background to manual-only.
+- The system-credential and Provider contracts retain key storage, custom Base
+  URL, model discovery, connection testing, and Agent request authority.
+- Scientific environment, DOI, R execution, and external-tool contracts retain
+  their existing explicit user action/approval boundaries. This policy does
+  not grant new network or execution authority.
+- BH4 retains project-scoped retention and deletion semantics. A public privacy
+  summary cannot imply deletion beyond implemented local records, project
+  files, application data, logs, or operating-system credential storage.
+- The AGPL contract owns license identity and installed license bytes, not
+  signing or privacy. LIC-2 protected integration is a prerequisite.
+- The `0.4.0-dev.33` checklist alone owns exact candidate identity, artifact
+  construction, installed acceptance, MAC5, publication, and update-site
+  mutation. SP-READY1 cannot satisfy those gates.
+
+No schema, project identity, approval table, Provider format, credential
+format, R package contract, or public updater manifest changes. Cross-review
+found no unresolved state, persistence, approval, or mutation ownership
+collision after the manual-only amendment above.
+
+## Public Privacy Contract
+
+The policy must state, at minimum:
+
+- Rho has no first-party analytics, advertising, telemetry upload, or automatic
+  crash-report submission;
+- project files and scientific outputs remain local unless the user explicitly
+  directs an operation that sends selected content elsewhere;
+- application state, Agent history, evidence metadata, approvals, and logs are
+  local, with bounded diagnostics that can contain paths, error text, stdout,
+  or stderr and must be reviewed before sharing;
+- API keys saved through Rho use the operating-system credential store and are
+  sent only to the configured Provider endpoint for an explicit model action;
+- a custom Base URL changes the data recipient and trust boundary;
+- manual update checks, Provider/model discovery, connection tests, Agent
+  requests, DOI resolution, package/environment operations, user code, and
+  external tools are user-initiated network-capable lanes with their respective
+  prompts, previews, or approvals;
+- ordinary HTTPS metadata such as IP address, time, TLS/HTTP headers, and user
+  agent is visible to the selected remote service;
+- local records persist until removed through an available Rho or operating-
+  system mechanism, and uninstalling the app may leave application data or
+  credential-store entries; and
+- security reports use the private reporting path and never include secrets in
+  a public Issue.
+
+## Public Code-Signing Contract
+
+The policy must state, at minimum:
+
+- `Free code signing provided by SignPath.io, certificate by SignPath Foundation`;
+- macOS uses Apple's Developer ID/notarization path independently;
+- Windows artifacts are currently unsigned and cannot be represented as
+  Authenticode-signed until the production workflow and exact evidence pass;
+- the future publisher shown by Windows is SignPath Foundation, and a valid
+  signature does not guarantee immediate SmartScreen reputation;
+- only the Rho-authored `rho-desktop.exe` and Rho NSIS wrapper are in signing
+  scope; Ark, Jet, WebView2Loader, system, and other upstream binaries are not
+  re-signed with the Rho/SignPath certificate;
+- authoritative production requests originate from the upstream default branch
+  on GitHub-hosted runners, bind exact run/source/artifact identities, and are
+  manually approved for each request;
+- Authors/Reviewers are YuLab-SMU organization members, Approvers are
+  organization owners, and all signing-team participants must use MFA;
+- the eventual order is build Rho binary, sign/verify it, bundle NSIS, then
+  sign/verify the installer; verification includes Authenticode validity,
+  expected publisher, RFC 3161 timestamp, installed payload, and final hash;
+- fork, pull-request, rehearsal, rerun-substitution, missing configuration, and
+  legacy manual publication paths fail closed; and
+- compromise or signing-policy failure stops signing/publication, preserves
+  evidence, invokes revocation/support as appropriate, and removes affected
+  releases/update entries rather than silently replacing bytes.
+
+## Verification Matrix
+
+SP-READY1 automated evidence must prove:
+
+1. the frontend has no startup/background update scheduler, background option,
+   update-throttle/dismiss persistence, or background notification path;
+2. Help and dialog Retry still invoke the one manual checker, which preserves
+   loading, success, failure, duplicate suppression, and allowlisted backend
+   behavior;
+3. the four public policies/surfaces contain consistent links, exact SignPath
+   attribution, truthful current platform status, role/scope rules, privacy
+   disclosures, and private reporting;
+4. the generated download page contains the public policy links and does not
+   claim Windows signing before evidence exists;
+5. CODEOWNERS covers itself, workflows, future SignPath policy files, signing
+   policy, privacy/security policy, and release/signing scripts;
+6. a deterministic negative self-test rejects a missing attribution, hidden
+   background update path, missing manual entry, missing owner, absent policy
+   link, or false Windows-signing claim;
+7. both stable CI jobs execute the readiness contract while policy, frontend,
+   generator, workflow, and owning-document changes trigger the four-leg
+   macOS/Windows stable/MSRV matrix;
+8. Node syntax, all deterministic JavaScript contracts, update-site generation,
+   focused affected Rust tests, and `git diff --check` pass.
+
+Manual review must confirm that Help still exposes **Check for Updates...** and
+that opening it is the first network action. No installed-candidate claim is
+made by browser/mock review.
+
+## Version, NEWS, And Release Decision
+
+SP-READY1 changes user-visible update behavior and therefore amends the
+`0.4.0-dev.33` NEWS entry. That identity is already synchronized, has never
+produced an artifact, tag, or Release, and remains the single active source
+candidate; no additional application-version bump is required for this
+pre-candidate integration. R package versions and store schema remain fixed.
+
+The release decision remains `NO-GO`. After SP-READY1 protected integration,
+the mandatory stop is external readiness: enable private vulnerability
+reporting and protected default-branch review, obtain organization-owner MFA
+verification and GitHub App configuration, and submit/receive the SignPath
+Foundation decision. Production two-stage signing is a later D4/R4 package
+using real identifiers. Only a new exact signed candidate with two-platform
+installed acceptance and explicit MAC5 GO can proceed to publication.
+
+## SP-READY1 Definition Of Done
+
+- accepted About/update and cross-review documents reflect manual-only network
+  admission and the ownership rules above;
+- policies, CODEOWNERS, README, generated page, regression contract, NEWS, and
+  CI enforcement are implemented as one reviewable slice;
+- affected local verification and a separate post-test contract/security review
+  have no blocking finding;
+- the exact PR head and exact merged `main` pass the four-leg hosted matrix;
+- repository/external gates are reported separately and no signing, candidate,
+  installed, or release claim exceeds the evidence.

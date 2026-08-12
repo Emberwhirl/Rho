@@ -1,11 +1,10 @@
 # Rho 0.4.0-dev.33 Cross-Platform Candidate Checklist
 
 Status: active replacement source contract; deterministic Provider-discovery
-repair, file-lane test repair, and AGPL LIC-1 are protected-integrated; LIC-2
-installed-license surface implementation, complete local validation, local
-macOS bundle inspection, and UI review pass; LIC-2 exact-head hosted CI and
-integration, exact candidate, installed acceptance, Windows signing
-disposition, MAC5, publication, and updater evidence remain open
+repair, file-lane test repair, AGPL LIC-1, and LIC-2 are protected-integrated;
+SP-READY1 SignPath application readiness is active; exact candidate, installed
+acceptance, Windows signing, MAC5, publication, and updater evidence remain
+open
 
 Date: 2026-08-11
 Last updated: 2026-08-12
@@ -41,6 +40,14 @@ It does not authorize candidate construction before all source and Windows-
 signing gates pass, and it does not waive installed, MAC5, publication, or
 updater acceptance.
 
+The owner's instruction to complete every remaining required item also
+activates SP-READY1 under
+`docs/plans/active-2026-08-11-signpath-application-readiness-spec.md`: remove
+automatic update-network admission, add the truthful public policy and
+ownership surfaces required before a SignPath application, validate them, and
+stop at protected integration/external readiness. It does not authorize a
+candidate or represent SignPath approval.
+
 `0.4.0-dev.32` is immutable and rejected. Its Windows artifact, source checks,
 and failed macOS candidate result cannot be relabelled or composed into this
 identity.
@@ -55,7 +62,7 @@ identity.
 | Store schema | `12` | unchanged; no persistence schema changes |
 | Release tag/name | `v0.4.0-dev.33` / `Rho 0.4.0-dev.33` | reserved replacement identity only; no tag, artifact, or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Candidate source | future exact upstream default-branch commit after LIC-2 integration | upstream `main` `f37276940499d80b4898f630d3c683e13a554a3f` contains the integrated source repairs and AGPL LIC-1; LIC-2 remains a reviewed local source change; no candidate exists |
+| Candidate source | future exact upstream default-branch commit after SP-READY1 integration and external signing readiness | upstream `main` `39701241206df2e4492d1539e725500c6795c09e` contains the integrated source repairs and AGPL LIC-1/LIC-2; SP-READY1 remains open; no candidate exists |
 | Windows/macOS artifacts | exact `dev.33` candidate only | not built |
 | Release decision | source repair authorized; release `NO-GO` | every downstream artifact and acceptance gate remains open |
 
@@ -127,8 +134,9 @@ UI, or mutation authority and no blocking contract deviation.
    run `31557415624` and merged as `3a3546bd76cc11761263a5af8e060ba73a4a0580`;
    AGPL PR #30 exact head passed the same four identities in run `31558086732`
    and merged as `f37276940499d80b4898f630d3c683e13a554a3f`.
-6. **OPEN** — LIC-2 must pass its exact pushed-head four-identity matrix and
-   protected integration before candidate admission.
+6. **PASS** — LIC-2 exact head `bffc0a2ecbd6c05778e1b4d3de42c4b07dbd58f5`
+   passed all four hosted identities in run `31560071505` and merged to
+   upstream `main` as `39701241206df2e4492d1539e725500c6795c09e`.
 
 Pre-merge update-site review found that making `license_boundary` globally
 mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
@@ -145,9 +153,10 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 
 1. **PASS** — implement, review, validate, and protected-integrate the bounded
    Provider and file-lane source repairs plus AGPL LIC-1.
-2. Push LIC-2 as one scoped Draft PR and require its exact-head four-identity
-   source matrix and protected integration without bypass.
-3. After LIC-2 integration and Windows-signing disposition, run one protected
+2. Implement and protected-integrate SP-READY1, then complete its external
+   private-reporting, branch-review, MFA, SignPath application, and GitHub App
+   readiness gates without guessing configuration.
+3. After SP-READY1 and Windows-signing disposition, run one protected
    candidate workflow against the exact current upstream default-branch commit and
    independently verify Draft assets, hashes, identities, macOS trust evidence,
    and Draft-only state.
@@ -166,9 +175,9 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 ## Current Decision
 
 The original source repair, version synchronization, complete validation,
-hosted matrices, AGPL LIC-1, and protected integration pass. LIC-2 local source,
-bundle-byte, Workspace smoke, and UI review pass. Current decision remains
-`NO-GO` for candidate construction until LIC-2 exact-head hosted CI/protected
-integration and Issue #26's Windows-signing disposition pass. Exact candidate,
-installed acceptance, acceptance upload, MAC5, public publication, and update-
-site mutation remain open.
+hosted matrices, AGPL LIC-1/LIC-2, and their protected integration pass.
+Current decision remains `NO-GO` for candidate construction while SP-READY1,
+external SignPath readiness, production two-stage Windows signing, and Issue
+#26's signing disposition remain open. Exact candidate, installed acceptance,
+acceptance upload, MAC5, public publication, and update-site mutation remain
+open.
