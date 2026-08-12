@@ -1,12 +1,13 @@
 # Rho 0.4.0-dev.33 Cross-Platform Candidate Checklist
 
-Status: active replacement source contract; deterministic Provider-discovery
-repair, file-lane test repair, AGPL LIC-1, and LIC-2 are protected-integrated;
-SP-READY1 SignPath repository readiness, hosted validation, integration,
-public policy deployment, private reporting, and default-branch rules pass;
-owner MFA audit, external application/GitHub App configuration, exact
-candidate, installed acceptance, Windows signing, MAC5, publication, and
-candidate updater evidence remain open
+Status: historical superseded source-only contract; deterministic Provider-
+discovery repair, file-lane test repair, AGPL LIC-1/LIC-2, and SP-READY1 were
+protected-integrated, but no `0.4.0-dev.33` candidate, tag, Release, or public
+artifact was created. PR #48 and PR #50 subsequently changed user-visible
+focus and reading-position behavior, so the next installed acceptance package
+uses the fresh `0.4.0-dev.34` identity. All uncompleted signing, candidate,
+installed-release, MAC5, publication, and updater gates remain open and are
+non-composable with this historical record.
 
 Date: 2026-08-11
 Last updated: 2026-08-12

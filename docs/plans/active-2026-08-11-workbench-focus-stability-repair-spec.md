@@ -341,3 +341,41 @@ returns the source editor to its cursor/selection. The user accepted the local
 behavior for contribution on 2026-08-12. This is implementation evidence only,
 not a signed candidate or distribution acceptance; exact installed Windows
 acceptance remains open.
+
+## WINDOWS-INSTALLED-ISSUE33-A1 Closure Amendment
+
+Authorization: on 2026-08-12 the project owner instructed `尽快修复和关闭`
+after reviewing the still-open Windows acceptance gap.
+
+Change class: D4 exact-source installed acceptance tooling
+
+Risk: R4 installer identity, installed-process automation, and evidence/release
+boundary integrity
+
+The earlier wording coupled product-Issue closure to a future signed release
+candidate even though Windows signing is externally blocked by the separately
+owned Issue #26/SignPath process. That coupling did not add product coverage:
+it delayed the same six interaction checks until an unrelated release gate.
+This amendment separates the facts without weakening release admission.
+
+Issue #33 closure now requires an unsigned internal `0.4.0-dev.34` package
+built from exact protected `main`, silently installed in a clean hosted Windows
+profile, launched from its resolved install directory, and driven through a
+runner-only loopback WebView2 debugging port. The shipped Tauri page must prove
+its embedded version/commit and repeat the five original Issue scenarios plus
+EDITOR-VIEWPORT-R1. The exact workflow, identity, deterministic scenario,
+cleanup, screenshot, and JSON evidence requirements are owned by
+`docs/release/active-0.4.0-dev.34-candidate-checklist.md`.
+
+The installed automation may seed bounded Agent/Run presentation records to
+make polling and pointer timing deterministic, but it must use the shipped
+render/focus helpers, real Workspace R execution, real project watcher, real
+Monaco editor, and the installed Tauri bridge. Browser/mock mode, the build-
+tree executable, and source-only assertions cannot satisfy this gate. Any
+failed or incomplete scenario leaves the Issue open.
+
+Passing this exact-source installed check may close the reproduced product
+defect. It does not claim Authenticode, signed-candidate, broad human installed
+acceptance, MAC5, publication, or updater readiness. Those stricter release
+gates remain unchanged and must still be run against a future exact signed
+candidate.

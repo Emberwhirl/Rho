@@ -87,7 +87,7 @@ assert.match(candidate, /export function validatePublishedPlatformEvidence/);
 const updateSite = read("scripts/generate-update-site.mjs");
 assert.match(updateSite, /validatePublishedPlatformEvidence\(supplied\.content/);
 assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.24"\)/);
-assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.33"\)/);
+assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.34"\)/);
 assert.match(updateSite, /fakeCandidateRecord\("0\.4\.0-dev\.23"\)/);
 for (const strictConsumer of [
   ".github/workflows/candidate-build-draft.yml",
