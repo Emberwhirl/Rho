@@ -5,7 +5,8 @@ replacement-candidate browser interaction complete; exact `0.4.0-dev.31`
 installed acceptance rejected the production response projection;
 RENAME-RECOVERY-R1 implemented; automated validation, post-verification
 contract review, and exact four-identity hosted source matrix pass; upstream
-integration and exact `dev.32` installed acceptance open
+PR #41 integration complete; exact `dev.33` installed acceptance open after
+the unrelated `dev.32` candidate-fixture failure
 
 Date: 2026-08-07
 Authorization: user requested implementation of GitHub Issue #8
@@ -110,5 +111,8 @@ matrix, version checks, and `git diff --check` pass. Post-verification review
 found no ownership, persistence, project, approval, filesystem, or mutation
 deviation. Exact implementation head `111c911d516413408f8315199c63379ba16844d8`
 passed macOS-26 stable/1.88.0 and Windows stable/1.88.0 in Rust Compatibility
-run `31550939335`. Upstream integration and fresh installed `dev.32`
-Review/Cancel/failure-recovery evidence remain required.
+run `31550939335`. Final head `565e08a` passed the same four identities in run
+`31551676391` and integrated through PR #41 at merge `29faba2`. The later
+`dev.32` candidate was rejected by an unrelated Provider-discovery timeout
+test fixture before macOS packaging; fresh installed `dev.33`
+Review/Cancel/failure-recovery evidence remains required.

@@ -4,6 +4,19 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.33 - 2026-08-11
+
+### Fixed
+
+- Cross-platform candidate validation now verifies Provider-discovery timeout
+  handling against a server that cannot return a competing successful model
+  list. This removes a scheduler-sensitive CI race while retaining the same
+  15-second production timeout, bounded response, credential-redaction, and
+  manual-model fallback behavior.
+- This replacement identity carries forward the installed editor-intelligence
+  response-envelope correction from rejected `0.4.0-dev.32`; no R package,
+  settings, persistence, or runtime protocol contract changed.
+
 ## 0.4.0-dev.32 - 2026-08-11
 
 ### Fixed

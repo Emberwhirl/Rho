@@ -4,7 +4,8 @@ Status: active; WS2-R1 source/browser implementation complete; exact
 `0.4.0-dev.31` installed acceptance rejected the desktop response projection;
 WS2-R1-R1 envelope correction implemented, automated validation, post-
 verification contract review, and exact four-identity hosted source matrix
-pass; upstream integration and exact `dev.32` installed acceptance open
+pass; PR #41 upstream integration complete; exact `dev.33` installed
+acceptance open after the unrelated `dev.32` candidate-fixture failure
 
 Date: 2026-08-03
 Authorization: user requested that every remaining package proceed one at a
