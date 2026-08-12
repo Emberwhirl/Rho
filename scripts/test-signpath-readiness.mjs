@@ -106,12 +106,16 @@ function validate(value) {
   assert.match(value.checklist, /owner MFA audit,[\s\S]{0,320}remain open/);
   assert.match(value.news, /Update checks are now user-initiated only/i);
 
-  for (const constant of ["PRIVACY_POLICY", "SECURITY_POLICY", "CODE_SIGNING_POLICY", "LICENSE_URL"]) {
+  for (const constant of ["PRIVACY_POLICY", "SECURITY_POLICY", "CODE_SIGNING_POLICY", "LICENSE_URL", "SIGNPATH_IO", "SIGNPATH_FOUNDATION"]) {
     assert.match(value.generator, new RegExp(`const ${constant} =`));
   }
-  assert.equal(occurrences(value.generator, />Code signing policy<\/a>/g), 2, "generated page and its self-test must require Code signing policy");
+  assert.equal(occurrences(value.generator, />Code signing policy<\/a>/g), 3, "generated page disclosure, footer, and self-test must require Code signing policy");
   assert.match(value.generator, /Windows downloads are currently not Authenticode-signed/);
   assert.match(value.generator, /generated page omitted Code signing policy/);
+  assert.equal(occurrences(value.generator, /<h2>Windows code-signing application<\/h2>/g), 2, "generated page and its self-test must disclose the pending SignPath application");
+  assert.match(value.generator, /Rho is applying to SignPath Foundation for Windows code signing/);
+  assert.match(value.generator, /Current Windows downloads are not Authenticode-signed/);
+  assert.match(value.generator, /generated page omitted SignPath Foundation attribution link/);
   assert.equal(occurrences(value.generator, /<h2>Uninstall Rho<\/h2>/g), 2, "generated page and its self-test must require Uninstall Rho guidance");
   assert.equal(occurrences(value.generator, /Settings &gt; Apps &gt; Installed apps/g), 2, "generated page and its self-test must require Windows uninstall guidance");
   assert.match(value.generator, /generated page omitted uninstall instructions/);
@@ -168,6 +172,9 @@ if (process.argv.includes("--self-test")) {
   expectRejected(current, "missing download-page uninstall guidance", (value) => {
     value.generator = value.generator.replace("<h2>Uninstall Rho</h2>", "<h2>Remove Rho</h2>");
   }, /Uninstall Rho/);
+  expectRejected(current, "missing download-page SignPath disclosure", (value) => {
+    value.generator = value.generator.replace("<h2>Windows code-signing application</h2>", "<h2>Windows trust</h2>");
+  }, /pending SignPath application/);
 }
 
 process.stdout.write(`SignPath readiness contract is valid${process.argv.includes("--self-test") ? " (negative self-tests passed)" : ""}.\n`);

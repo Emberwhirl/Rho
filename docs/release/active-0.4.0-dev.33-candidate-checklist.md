@@ -149,9 +149,10 @@ UI, or mutation authority and no blocking contract deviation.
    development manifest identity.
 8. **IN REVIEW** — PR #46 records the integrated evidence and closes two
    application-form conformance gaps with linked SignPath attribution plus
-   visible Windows/macOS uninstall instructions and negative regression
-   coverage. Protected integration, regenerated-site deployment, and live
-   verification remain open and cannot be preclaimed.
+   an explicit pending-application disclosure, visible Windows/macOS uninstall
+   instructions, and negative regression coverage. Protected integration,
+   regenerated-site deployment, and live verification remain open and cannot
+   be preclaimed.
 
 Pre-merge update-site review found that making `license_boundary` globally
 mandatory also rejected immutable published `0.4.0-dev.24` evidence and would

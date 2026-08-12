@@ -206,15 +206,17 @@ the public privacy summary creates no new network authority. Issue #26 retains
 SignPath, Authenticode, credential, signed-byte, and publication authority, and
 the `dev.33` checklist alone may admit an exact artifact.
 
-The 2026-08-12 application-form audit found two bounded public-guidance gaps
+The 2026-08-12 application-form audit found bounded public-guidance gaps
 inside SP-READY1 rather than a new product or release authority: the required
 SignPath attribution named its parties without linking them, and users could
 see uninstall-retention behavior but not executable Windows/macOS uninstall
-steps. PR #46 owns the linked attribution, README/download-page instructions,
-and deterministic positive/negative enforcement. It changes no installer,
-credential, updater, signing, candidate, schema, or application-version
-behavior. Deployment and live-page verification remain distinct from source
-presence.
+steps. The application also requires the Download URL itself to mention
+SignPath Foundation, so a policy link alone is insufficient. PR #46 owns the
+linked attribution, explicit pending-application disclosure, README/download-
+page instructions, and deterministic positive/negative enforcement. It changes
+no installer, credential, updater, signing, candidate, schema, or application-
+version behavior. Deployment and live-page verification remain distinct from
+source presence.
 
 ### Navigation and layout state
 

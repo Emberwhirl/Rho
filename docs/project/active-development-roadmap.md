@@ -69,7 +69,8 @@ head run `31561610111` and merge-main run `31562213275` pass all four
 macOS/Windows stable/MSRV identities; public policy deployment run
 `31562817460`, private vulnerability reporting, and default-branch ruleset
 `20728497` pass. A 2026-08-12 application-form audit then found that the public
-attribution needed official links and that executable uninstall instructions
+attribution needed official links, the Download URL needed an explicit
+truthful pending-application disclosure, and executable uninstall instructions
 needed to be visible on the README/download page; PR #46 carries that bounded
 SP-READY1 conformance follow-up and its regression enforcement. Organization-
 owner MFA audit, SignPath application/approval, GitHub App configuration,

@@ -170,9 +170,10 @@ SP-READY1 automated evidence must prove:
    SignPath attribution, truthful current platform status, role/scope rules,
    privacy disclosures, private reporting, and user-executable Windows/macOS
    uninstall guidance;
-4. the generated download page contains the public policy links and visible
-   Windows/macOS uninstall instructions, and does not claim Windows signing
-   before evidence exists;
+4. the generated download page contains the public policy links, explicitly
+   names the pending SignPath Foundation application with official attribution
+   links, supplies visible Windows/macOS uninstall instructions, and does not
+   claim Windows signing before evidence exists;
 5. CODEOWNERS covers itself, workflows, future SignPath policy files, signing
    policy, privacy/security policy, and release/signing scripts;
 6. a deterministic negative self-test rejects a missing attribution, hidden
@@ -272,11 +273,13 @@ SignPath.io and SignPath Foundation without the official links required by the
 Foundation terms, while the privacy policy described retained data after
 uninstall but no public surface supplied executable Windows/macOS uninstall
 steps. PR #46 amends this contract and carries linked attribution, README and
-download-page instructions, generator assertions, and separate negative tests
-for loss of either public uninstall surface. On the amended local tree, all 60
-deterministic JavaScript contracts, both focused readiness modes, Node syntax,
-and `git diff --check` pass. Protected integration, public-site deployment,
-and live verification remain open facts and are not inferred from local tests.
+download-page instructions and pending-application disclosure, generator
+assertions, and separate negative tests for loss of either public uninstall
+surface or the download-page SignPath disclosure. On the amended local tree,
+all 60 deterministic JavaScript contracts, both focused readiness modes, Node
+syntax, and `git diff --check` pass. Protected integration, public-site
+deployment, and live verification remain open facts and are not inferred from
+local tests.
 
 ## Version, NEWS, And Release Decision
 
