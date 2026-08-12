@@ -4,7 +4,10 @@ Status: active; ISSUE-33-INTERACTION-1 authorized 2026-08-11; source
 implementation, automated verification, and post-verification contract review
 complete; exact hosted source matrix and upstream source integration complete
 at `1b3f522`; replacement-candidate browser/mock and exact installed macOS
-interaction pass; installed Windows acceptance open
+interaction pass; EDITOR-VIEWPORT-R1 implementation, full frontend validation,
+Apple Silicon local build, and installed local verification complete
+2026-08-12; user acceptance complete 2026-08-12; installed Windows acceptance
+open
 
 Date: 2026-08-11
 Authorization: user requested verification and repair of GitHub Issue #33 on
@@ -261,3 +264,80 @@ long streamed R expression continued. Candidate `dev.31` was later rejected by
 the separately owned installed References/Rename defect, not by Issue #33.
 Exact installed Windows reproduction remains open and continues to block Issue
 closure; this macOS pass cannot be relabelled as `dev.32` candidate evidence.
+
+## EDITOR-VIEWPORT-R1 Background Refresh Amendment
+
+Authorization: after installed local trial on 2026-08-12, the user reported
+that the Monaco source editor still returned to the selected range's end after
+an upward wheel or scrollbar movement and explicitly requested a repair.
+
+Change class: D1 presentation defect repair
+
+Risk: R1 local user-visible reading position
+
+The installed reproduction used `iris_ggsci.R` under the user's project root.
+With the selection ending at line 53, dragging the editor upward returned to
+the bottom. Collapsing the selection left the cursor at line 53 and did not
+stop the return; moving the cursor to line 41 moved the forced reveal anchor
+with it. No file content changed during diagnosis.
+
+The remaining gap is distinct from focus acquisition. The recursive project
+watcher emits `project://files-changed`; `listenForProjectChanges()` invokes
+`refreshProject()`, which reopens the active document with `focusEditor: false`.
+That flag prevents `.focus()` but `applyDocumentSelection()` still calls
+`revealPositionInCenterIfOutsideViewport()` unconditionally. The existing
+Issue #33 regression asserted the focus guard but did not execute or reject the
+background reveal path.
+
+Regression invariant: a background refresh may synchronize truthful document
+state and a saved cursor/selection, but it may not reveal that cursor/selection
+or revoke the user's Monaco viewport. Explicit file activation, source
+navigation, manual Agent acceptance, and other caller-owned navigation retain
+reveal authority. This amendment changes no watcher cadence, project file
+truth, document content, cursor persistence, execution, schema, backend, or
+filesystem authority.
+
+Add a deterministic regression at the real `applyDocumentSelection()` seam
+that proves `focusEditor: false` neither focuses nor reveals, while the default
+explicit activation still does both. Run the focused Issue #33 contract,
+editor/modal/current-line and adjacent file-edit contracts, all frontend
+contracts, JavaScript syntax, and `git diff --check`, then build and verify the
+installed Apple Silicon local trial. The application version and `NEWS.md`
+entry are deferred to the next maintainer-named integration candidate; this
+repair does not construct or distribute a candidate. The unchanged desktop-
+only contract requires no `rho.bridge` or `rho.agent` package-version bump.
+
+Implementation and local evidence on 2026-08-12:
+
+- `applyDocumentSelection()` now exposes `revealSelection` separately from
+  focus intent and defaults it to `focusEditor`; explicit activation therefore
+  retains existing focus/reveal behavior, while the established
+  `focusEditor: false` background paths neither focus nor reveal.
+- The Issue #33 regression executes the real function seam and first failed on
+  the unconditional reveal. The modal-focus contract was corrected from its
+  former requirement that background renders still reveal.
+- `node --check desktop/dist/app.js`, the focused workbench/modal/current-line
+  and File proposal contracts, all `scripts/test-*.mjs` frontend contracts, and
+  `git diff --check` passed.
+- `cargo fmt --all -- --check`,
+  `cargo check --workspace --all-targets --locked`, and
+  `cargo test --workspace --locked --no-fail-fast` passed. The Rust test suite
+  required local loopback access for its transport and Provider-discovery
+  fixtures; the unrestricted rerun passed.
+- `rho.agent` and `rho.bridge` complete `testthat::test_local()` suites passed
+  with user startup files disabled. `rho.bridge` used a temporary writable R
+  cache and skipped its optional `SingleCellExperiment` fixture because that
+  package is not installed.
+- `cargo tauri build --target aarch64-apple-darwin --bundles app` completed and
+  the ad-hoc unsigned local bundle was copied to `/Applications/Rho.app`.
+- Installed verification kept the cursor at `Ln 49, Col 48`, scrolled the
+  `iris_ggsci.R` viewport to lines 11-36, then changed a supported `.md` file
+  inside the recursively watched project tree. After the watcher's 500ms
+  coalescing window and a 3.5-second observation interval, the viewport remained
+  on lines 11-36 while the cursor remained at line 49.
+
+This proves the original installed background-refresh reproduction no longer
+returns the source editor to its cursor/selection. The user accepted the local
+behavior for contribution on 2026-08-12. This is implementation evidence only,
+not a signed candidate or distribution acceptance; exact installed Windows
+acceptance remains open.
