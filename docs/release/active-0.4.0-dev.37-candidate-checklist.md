@@ -1,11 +1,12 @@
 # Rho 0.4.0-dev.37 Source And Windows Issue #33 Acceptance Checklist
 
-Status: active replacement source contract; the five original installed Issue
-#33 scenarios passed on `dev.36`; the Monaco watcher evidence predicate is
-corrected to observe actual background-document reload and project revision;
-exact-source installed Windows acceptance is authorized and open; SignPath,
-production Windows signing, exact cross-platform candidate, human installed-
-candidate acceptance, MAC5, publication, and updater mutation remain open
+Status: active accepted Issue #33 source contract; exact protected-main source
+run `31644418691` and clean-profile installed Windows run `31644429787` pass at
+`7ab861b01a36313150988b1e2fa8fdc2056325d9`; all six scenarios, exact installed
+identity/runtime, screenshot, and fail-closed cleanup are recorded; Issue #33
+closure is GO; SignPath, production Windows signing, exact cross-platform
+candidate, human installed-candidate acceptance, MAC5, publication, and updater
+mutation remain open
 
 Date: 2026-08-12
 
@@ -14,6 +15,11 @@ identity
 
 Risk: R4 installer construction, installed desktop automation, evidence binding,
 cleanup recovery, and strict separation from release acceptance
+
+Closure evidence update: D0/R0 documentation-only ledger update after the
+facts became true. It changes no application behavior or bytes, package
+contract, schema, workflow, credential, artifact, tag, Release, or update site;
+`0.4.0-dev.37` and `NEWS.md` therefore remain unchanged.
 
 Authorization: after reviewing Issue #33 and its remaining Windows evidence
 gap, the project owner instructed `尽快修复和关闭` on 2026-08-12. This
@@ -37,8 +43,8 @@ Windows signing, and signed-candidate evidence remain open.
 | Store schema | `12` | unchanged; no persistence migration |
 | Review tag/name | `v0.4.0-dev.37` / `Rho 0.4.0-dev.37` | identity only; the Issue #33 workflow creates no tag or Release |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Windows acceptance source | exact current protected `main` commit selected by the workflow | must match installed `app_info.commit` |
-| Release decision | Issue acceptance may proceed; release remains `NO-GO` | signing and all candidate/publication gates remain open |
+| Windows acceptance source | `7ab861b01a36313150988b1e2fa8fdc2056325d9` | exact protected `main`; source matrix and installed `app_info.commit` match |
+| Release decision | Issue #33 acceptance `PASS`; Issue closure `GO`; release remains `NO-GO` | signing and all candidate/publication gates remain open |
 
 `dev.34`, `dev.35`, and `dev.36` are historical and rejected. Run
 `31633600383` consumed `dev.34` on quoted registry-path handling. Run
@@ -46,8 +52,9 @@ Windows signing, and signed-candidate evidence remain open.
 consumed `dev.36`: installer identity, installation, installed runtime, five
 scenarios, screenshot, and cleanup passed, but the sixth harness waited on a
 counter that `refreshProject()` does not mutate. None may be reused or
-relabelled. `dev.37` is single-use: any later user-visible source change or
-artifact-producing failed run requires a new identity.
+relabelled. `dev.37` was consumed by the passing exact-source artifact and is
+now immutable. Any later user-visible source change or new candidate requires a
+fresh identity; this evidence cannot be composed with a different commit.
 
 ## Windows Issue #33 Acceptance Contract
 
@@ -111,8 +118,42 @@ verification, but it cannot replace the human workflow in
 `test/acceptance-project/MANUAL-ACCEPTANCE.md` or satisfy a future signed exact-
 candidate gate.
 
+## Exact Acceptance Evidence
+
+- Protected-main source run
+  [`31644418691`](https://github.com/YuLab-SMU/Rho/actions/runs/31644418691)
+  passed macOS and Windows on Rust stable and `1.88.0` at exact commit
+  `7ab861b01a36313150988b1e2fa8fdc2056325d9`.
+- Installed run
+  [`31644429787`](https://github.com/YuLab-SMU/Rho/actions/runs/31644429787)
+  passed in 13m35s at the same commit. Artifact `9160516935`, named
+  `rho-0.4.0-dev.37-issue33-windows-installed-7ab861b01a36313150988b1e2fa8fdc2056325d9-31644429787`,
+  contains the installer, machine-readable acceptance/install/cleanup records,
+  startup log, acceptance summary, and screenshot.
+- `Rho_0.4.0-dev.37_x64-setup.exe` is 18,315,177 bytes with SHA-256
+  `a8fa9ad2628590c9c12e176f22930d971fd8d2572dc606b52b55e38abb41bda6`.
+  The resolved installed executable at
+  `C:\Users\runneradmin\AppData\Local\Rho\rho-desktop.exe` is 50,478,631
+  bytes with SHA-256
+  `69bc24e5190ecceebddd8b0d9ea0eaac7f4e33bfed6eda43ded30a262dd05376`;
+  installed Ark is present, and embedded version/commit/platform are
+  `0.4.0-dev.37`, the exact commit above, and `windows-x86_64`.
+- `agent_refresh_focus`, `run_refresh_and_execution_focus`,
+  `automatic_edit_and_external_reload_focus`, `runs_pointer_activation`,
+  `console_reading_position`, and `monaco_watcher_viewport` all report `PASS`.
+  In the sixth scenario the real watcher reloads the marker, project revision
+  advances `3 -> 4`, `analysis.R` remains active, visible start remains line 1,
+  and the cursor remains line 242.
+- `installed.png` is 107,402 bytes with SHA-256
+  `3b36b5bc604f3fe16790146117d8e541e82e00ccbbe22110eb0baa2d72fa2faf`.
+  Independent download verification reproduced both installer and screenshot
+  hashes. Cleanup reports exit code 0 and verifies both the installed
+  executable and uninstall registry entry were removed.
+- No tag, GitHub Release, update manifest, public download, signing claim, or
+  candidate acceptance was created by this workflow.
+
 ## Current Decision
 
-`GO` for the bounded exact-source Windows Issue #33 acceptance work package.
+`GO` to close Issue #33 as an exact-source installed product defect.
 `NO-GO` for SignPath production signing, exact candidate construction, human
 installed-candidate acceptance, MAC5, publication, and updater mutation.

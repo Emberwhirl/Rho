@@ -107,7 +107,13 @@ built and installed `dev.36`, proved installed identity/runtime, passed the
 five original Issue scenarios, and cleaned up. The sixth harness timed out on
 `projectRefreshSequence`, which real `refreshProject()` does not increment, so
 the artifact is rejected. Fresh `dev.37` observes real background-document
-reload plus project revision before checking the Monaco viewport.
+reload plus project revision before checking the Monaco viewport. PR #61
+integrated that evidence correction at exact protected-main commit
+`7ab861b01a36313150988b1e2fa8fdc2056325d9`; source run `31644418691` passed
+macOS/Windows stable/MSRV, and installed run `31644429787` passed exact
+identity/runtime, all six scenarios, screenshot, and uninstall cleanup.
+Issue #33 closure is GO, while signing, candidate, human installed acceptance,
+MAC5, publication, and updater gates remain open.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
