@@ -55,9 +55,11 @@ Issue #33, live-Provider Problem repair, file-proposal Accept, and verified Undo
 pass. Installed References and Rename reject `dev.31`: the Tauri command
 returns the standard broker envelope while those consumers read it as the
 inner record. WS2-R1-R1 and RENAME-RECOVERY-R1 advance the correction to fresh
-identity `0.4.0-dev.32`; post-verification review, hosted source integration,
-candidate construction, installed acceptance, Windows signing disposition,
-MAC5, and publication remain open.
+identity `0.4.0-dev.32`; local validation/review and exact implementation-head
+Rust Compatibility run `31550939335` pass all four macOS/Windows stable/MSRV
+identities. The evidence-record commit still requires exact-head CI; upstream
+integration, candidate construction, installed acceptance, Windows signing
+disposition, MAC5, and publication remain open.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

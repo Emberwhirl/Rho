@@ -2,9 +2,9 @@
 
 Status: active replacement source-candidate contract; installed Workspace
 probe response-envelope correction implemented; automated validation and post-
-verification contract review pass; hosted integration, exact candidate,
-installed acceptance, Windows signing disposition, MAC5, publication, and
-updater evidence open
+verification contract review plus exact four-identity hosted source matrix
+pass; upstream integration, exact candidate, installed acceptance, Windows
+signing disposition, MAC5, publication, and updater evidence open
 
 Date: 2026-08-11
 Last updated: 2026-08-11
@@ -46,7 +46,7 @@ failed installed evidence cannot be relabelled or composed into this identity.
 | Store schema | `12` | unchanged; no persistence schema changed |
 | Release tag/name | `v0.4.0-dev.32` / `Rho 0.4.0-dev.32` | reserved workflow defaults only; no tag, artifact, or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Candidate source | future exact upstream default-branch commit | not integrated or built |
+| Candidate source | future exact upstream default-branch commit | implementation head `111c911d516413408f8315199c63379ba16844d8` passes hosted source CI; not integrated or built |
 | Windows/macOS artifacts | exact `dev.32` candidate only | not built |
 | Release decision | source repair active; release `NO-GO` | every hosted, artifact, installed, signing, acceptance, MAC5, publication, and updater gate remains open |
 
@@ -100,17 +100,23 @@ Post-verification review found every listed mock and consumer uses the shared
 projection before field access, malformed envelopes fail through existing
 paths, and no backend, response schema, request, project, persistence,
 credential, execution, approval, filesystem, or mutation authority changed.
-No blocking deviation remains. Hosted source verification remains a separate
-gate. No browser/mock or installed `dev.32` result is claimed from source
-automation.
+No blocking deviation remains. No browser/mock or installed `dev.32` result is
+claimed from source automation.
+
+Exact implementation head `111c911d516413408f8315199c63379ba16844d8`
+passed all four Rust Compatibility identities in run `31550939335`: macOS-26
+stable and 1.88.0 plus Windows stable and 1.88.0. GitHub's Node 20 deprecation
+annotation was informational; all jobs concluded success. This is hosted
+source evidence only. The evidence-record commit requires its own exact-head
+matrix before merge.
 
 ## Remaining Gates
 
 1. **PASS** — implementation review against WS2-R1-R1 and RENAME-RECOVERY-R1
    found no blocking deviation.
-2. Commit only the reviewed isolated-worktree files, push one scoped branch,
-   pass hosted source checks, and integrate the exact reviewed head without
-   bypass.
+2. **PARTIAL** — reviewed implementation head `111c911` passes all four hosted
+   source identities; commit this evidence, require the resulting exact-head
+   matrix, then integrate without bypass.
 3. Run one protected candidate workflow against the exact current upstream
    default-branch commit and independently verify the seven-asset Draft,
    hashes, identities, macOS signature/entitlements/notarization/staple/

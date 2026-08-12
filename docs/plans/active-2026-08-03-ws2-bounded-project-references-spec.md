@@ -2,9 +2,9 @@
 
 Status: active; WS2-R1 source/browser implementation complete; exact
 `0.4.0-dev.31` installed acceptance rejected the desktop response projection;
-WS2-R1-R1 envelope correction implemented, automated validation and post-
-verification contract review pass; hosted integration and exact `dev.32`
-installed acceptance open
+WS2-R1-R1 envelope correction implemented, automated validation, post-
+verification contract review, and exact four-identity hosted source matrix
+pass; upstream integration and exact `dev.32` installed acceptance open
 
 Date: 2026-08-03
 Authorization: user requested that every remaining package proceed one at a
@@ -258,4 +258,7 @@ locked Rust format/check/tests, complete `rho.bridge` and `rho.agent` suites,
 and `git diff --check` pass. Post-verification review found no response guessing,
 backend/schema/request change, new mutation path, project-identity bypass, or
 consumer-policy transfer; the implementation matches this contract with no
-blocking deviation. Hosted source and fresh installed evidence remain open.
+blocking deviation. Exact implementation head
+`111c911d516413408f8315199c63379ba16844d8` passed macOS-26 stable/1.88.0 and
+Windows stable/1.88.0 in Rust Compatibility run `31550939335`. Upstream
+integration and fresh installed evidence remain open.

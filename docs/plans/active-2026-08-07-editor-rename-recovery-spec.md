@@ -3,9 +3,9 @@
 Status: active; original implementation, automated verification, and
 replacement-candidate browser interaction complete; exact `0.4.0-dev.31`
 installed acceptance rejected the production response projection;
-RENAME-RECOVERY-R1 implemented, automated validation and post-verification
-contract review pass; hosted integration and exact `dev.32` installed
-acceptance open
+RENAME-RECOVERY-R1 implemented; automated validation, post-verification
+contract review, and exact four-identity hosted source matrix pass; upstream
+integration and exact `dev.32` installed acceptance open
 
 Date: 2026-08-07
 Authorization: user requested implementation of GitHub Issue #8
@@ -108,5 +108,7 @@ unchanged. The dedicated envelope regression, refactor and Rename recovery
 contracts, every compatible frontend/release contract, complete Rust/R source
 matrix, version checks, and `git diff --check` pass. Post-verification review
 found no ownership, persistence, project, approval, filesystem, or mutation
-deviation. Fresh installed `dev.32` Review/Cancel/failure-recovery evidence
-remains required.
+deviation. Exact implementation head `111c911d516413408f8315199c63379ba16844d8`
+passed macOS-26 stable/1.88.0 and Windows stable/1.88.0 in Rust Compatibility
+run `31550939335`. Upstream integration and fresh installed `dev.32`
+Review/Cancel/failure-recovery evidence remain required.
