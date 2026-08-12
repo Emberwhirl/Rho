@@ -379,3 +379,21 @@ defect. It does not claim Authenticode, signed-candidate, broad human installed
 acceptance, MAC5, publication, or updater readiness. Those stricter release
 gates remain unchanged and must still be run against a future exact signed
 candidate.
+
+### Ark download recovery correction
+
+The first two exact-main acceptance attempts on 2026-08-12 both stopped before
+package construction when GitHub Release returned `503 Service Unavailable` to
+the pinned Windows Ark download. Neither attempt created an installer, so the
+single-use `0.4.0-dev.34` artifact identity remains unconsumed. This is a D1
+release-tooling reliability defect inside the already authorized D4 work
+package; it changes no application bytes, runtime version, source behavior,
+credential authority, publication state, or release decision.
+
+Regression invariant: a transient or corrupt Ark response must never become
+the canonical archive. Bootstrap downloads to one explicit `.partial` path,
+verifies the pinned SHA-256 before promotion, and performs at most four attempts
+with bounded exponential delay. Each failed attempt removes only that explicit
+partial file; final failure remains visible and stops the workflow. A successful
+retry may continue the same pre-artifact acceptance run. The source contract
+must reject direct download into the canonical archive and unbounded retry.

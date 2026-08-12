@@ -8,6 +8,7 @@ import { parseOptions } from "./windows-installed-focus-acceptance.mjs";
 const source = fs.readFileSync("scripts/windows-installed-focus-acceptance.mjs", "utf8");
 const workflow = fs.readFileSync(".github/workflows/windows-issue33-installed-acceptance.yml", "utf8");
 const sourceMatrix = fs.readFileSync(".github/workflows/rust-compatibility.yml", "utf8");
+const windowsArkBootstrap = fs.readFileSync("scripts/bootstrap-ark-windows.ps1", "utf8");
 const spec = fs.readFileSync("docs/plans/active-2026-08-11-workbench-focus-stability-repair-spec.md", "utf8");
 const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.34-candidate-checklist.md", "utf8");
 
@@ -93,8 +94,26 @@ assert.match(workflow, /Get-RhoUninstallEntry/);
 assert.match(workflow, /actions\/upload-artifact@v4/);
 assert.doesNotMatch(workflow, /releases:\s*write|contents:\s*write/);
 
+assert.match(windowsArkBootstrap, /\$downloadPath = \$archive \+ "\.partial"/);
+assert.match(windowsArkBootstrap, /\$maximumDownloadAttempts = 4/);
+assert.match(windowsArkBootstrap, /for \(\$attempt = 1; \$attempt -le \$maximumDownloadAttempts; \$attempt \+= 1\)/);
+assert.match(windowsArkBootstrap, /Invoke-WebRequest -Uri \$artifact\.url -OutFile \$downloadPath/);
+assert.doesNotMatch(windowsArkBootstrap, /Invoke-WebRequest[^\n]+-OutFile \$archive/);
+assert.match(windowsArkBootstrap, /Get-FileHash -LiteralPath \$downloadPath -Algorithm SHA256/);
+assert.match(windowsArkBootstrap, /Move-Item -LiteralPath \$downloadPath -Destination \$archive -Force/);
+assert.match(windowsArkBootstrap, /Remove-Item -LiteralPath \$downloadPath -Force -ErrorAction SilentlyContinue/);
+assert.match(windowsArkBootstrap, /Start-Sleep -Seconds \$retryDelaySeconds/);
+assert.match(windowsArkBootstrap, /Unable to download and verify the pinned Ark archive after \$maximumDownloadAttempts attempts/);
+
+const downloadIndex = windowsArkBootstrap.indexOf("Invoke-WebRequest -Uri $artifact.url -OutFile $downloadPath");
+const hashIndex = windowsArkBootstrap.indexOf("Get-FileHash -LiteralPath $downloadPath");
+const promoteIndex = windowsArkBootstrap.indexOf("Move-Item -LiteralPath $downloadPath -Destination $archive");
+assert.ok(downloadIndex >= 0 && downloadIndex < hashIndex && hashIndex < promoteIndex,
+  "Ark bytes must be downloaded to a partial path, verified, then promoted atomically");
+
 for (const matrixTrigger of [
   ".github/workflows/windows-issue33-installed-acceptance.yml",
+  "scripts/bootstrap-ark-windows.ps1",
   "scripts/windows-installed-focus-acceptance.mjs",
   "scripts/test-windows-installed-focus-acceptance.mjs",
 ]) {

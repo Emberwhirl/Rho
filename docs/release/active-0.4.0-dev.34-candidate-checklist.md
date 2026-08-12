@@ -58,6 +58,9 @@ download page, or publication record. The workflow must:
 2. build the normal NSIS package with the pinned GNU/Rtools/Ark path, install it
    silently into a clean hosted Windows profile, and launch the executable from
    the resolved installation directory rather than `target/release`;
+   transient Ark transport failures may use the active Issue #33 contract's
+   bounded four-attempt, checksum-before-promotion recovery, but still fail
+   closed before package construction when recovery is exhausted;
 3. enable WebView2 remote debugging only through the launched process's runner-
    scoped environment, bind it to loopback, and prove the inspected page has the
    Tauri bridge and Windows desktop identity;
