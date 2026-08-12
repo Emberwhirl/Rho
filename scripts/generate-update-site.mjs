@@ -308,7 +308,7 @@ function selfTest() {
     historical.platform_evidence.macos_aarch64.content.checks =
       historical.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");
     generate([historical], temp);
-    const strictCandidate = fakeCandidateRecord("0.4.0-dev.33");
+    const strictCandidate = fakeCandidateRecord("0.4.0-dev.34");
     strictCandidate.platform_evidence.macos_aarch64.content.checks =
       strictCandidate.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");
     expectFailure(() => generate([strictCandidate], temp), /missing required check license_boundary/);

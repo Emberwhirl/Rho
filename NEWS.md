@@ -4,6 +4,24 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.34 - 2026-08-12
+
+### Fixed
+
+- Background project-watcher refreshes no longer reveal the saved Monaco
+  cursor or selection, so a user reading an earlier part of a source file keeps
+  the same viewport until an explicit navigation action.
+- Agent file-proposal updates preserve the reviewer's expanded Before/After
+  reading position instead of returning the proposal surface to its top.
+
+### Verification
+
+- A dedicated clean-profile Windows workflow installs the exact-source NSIS
+  package and repeats Issue #33's focus, activation, Console reading-position,
+  external-reload, automatic-edit, and Monaco viewport scenarios. This is
+  product-defect evidence only and does not claim Windows signing or release
+  acceptance.
+
 ## 0.4.0-dev.33 - 2026-08-11
 
 ### Fixed

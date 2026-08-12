@@ -93,7 +93,7 @@ signature, candidate, tag, Release, or updater mutation.
   files, application data, logs, or operating-system credential storage.
 - The AGPL contract owns license identity and installed license bytes, not
   signing or privacy. LIC-2 protected integration is a prerequisite.
-- The `0.4.0-dev.33` checklist alone owns exact candidate identity, artifact
+- The current `0.4.0-dev.34` checklist alone owns exact candidate identity, artifact
   construction, installed acceptance, MAC5, publication, and update-site
   mutation. SP-READY1 cannot satisfy those gates.
 
@@ -285,9 +285,10 @@ local tests.
 
 SP-READY1 changes user-visible update behavior and therefore amends the
 `0.4.0-dev.33` NEWS entry. That identity is already synchronized, has never
-produced an artifact, tag, or Release, and remains the single active source
-candidate; no additional application-version bump is required for this
-pre-candidate integration. R package versions and store schema remain fixed.
+produced an artifact, tag, or Release. Later PR #48/#50 user-visible focus and
+reading-position repairs supersede it with `0.4.0-dev.34`; all SP-READY1 and
+SignPath prerequisites carry forward unchanged. R package versions and store
+schema remain fixed.
 
 The release decision remains `NO-GO`. SP-READY1 PR-gated integration, private
 vulnerability reporting, default-branch review enforcement, and public policy

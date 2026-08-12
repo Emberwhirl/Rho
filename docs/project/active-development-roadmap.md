@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.33`
+Current source baseline: `0.4.0-dev.34`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -79,6 +79,15 @@ acceptance, MAC5, and publication remain open. The
 exact timeout regression passed 51 local executions; the locked Rust
 workspace, frontend/release contracts, both R packages, release dry runs, and
 independent production-boundary review pass.
+
+PR #48 then integrated the remaining Issue #33 Monaco viewport repair at
+`45b362d`, and PR #50 integrated the adjacent file-proposal reading-position
+repair at `485e528`. Because those user-visible changes followed the reserved
+but unbuilt `dev.33` source identity, the exact-source Windows Issue #33
+acceptance package advances to fresh `0.4.0-dev.34`. Its narrow installed
+automation may close Issue #33 after the six named interactions pass, while
+SignPath, signed candidate, broad human acceptance, MAC5, publication, and
+updater gates remain separately open.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
