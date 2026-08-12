@@ -59,6 +59,19 @@ for platform-specific status and prerequisites.
 5. Use Ask or Plan for read-only help, or Act for actions that require review
    and approval.
 
+## Uninstallation
+
+- **Windows:** Open **Settings > Apps > Installed apps**, find **Rho**, choose
+  **Uninstall**, and follow the installer prompts.
+- **macOS:** Quit Rho, then move **Rho.app** from **Applications** to the
+  Trash.
+
+Uninstalling the application does not automatically delete project files,
+local application data, logs, or operating-system credential-store entries.
+Remove Provider credentials from Model settings before uninstalling when
+possible, and review the [Privacy policy](PRIVACY.md) before deleting retained
+data manually.
+
 ## Architecture
 
 Workspace R is authoritative for project execution and scientific objects.

@@ -2,10 +2,11 @@
 
 Status: active replacement source contract; deterministic Provider-discovery
 repair, file-lane test repair, AGPL LIC-1, and LIC-2 are protected-integrated;
-SP-READY1 SignPath application-readiness implementation, affected local
-automation, mock UI review, and post-test review pass; hosted validation,
-integration, external application, exact candidate, installed acceptance,
-Windows signing, MAC5, publication, and updater evidence remain open
+SP-READY1 SignPath repository readiness, hosted validation, integration,
+public policy deployment, private reporting, and default-branch rules pass;
+owner MFA audit, external application/GitHub App configuration, exact
+candidate, installed acceptance, Windows signing, MAC5, publication, and
+candidate updater evidence remain open
 
 Date: 2026-08-11
 Last updated: 2026-08-12
@@ -63,7 +64,7 @@ identity.
 | Store schema | `12` | unchanged; no persistence schema changes |
 | Release tag/name | `v0.4.0-dev.33` / `Rho 0.4.0-dev.33` | reserved replacement identity only; no tag, artifact, or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Candidate source | future exact upstream default-branch commit after SP-READY1 integration and external signing readiness | upstream `main` `39701241206df2e4492d1539e725500c6795c09e` contains the integrated source repairs and AGPL LIC-1/LIC-2; SP-READY1 remains open; no candidate exists |
+| Candidate source | future exact upstream default-branch commit after external signing readiness and production signing integration | upstream `main` `e6fec3ecc286db93aa38c227e896ef077bdf17bd` contains the integrated source repairs, AGPL LIC-1/LIC-2, and SP-READY1; no candidate exists |
 | Windows/macOS artifacts | exact `dev.33` candidate only | not built |
 | Release decision | source repair authorized; release `NO-GO` | every downstream artifact and acceptance gate remains open |
 
@@ -138,6 +139,20 @@ UI, or mutation authority and no blocking contract deviation.
 6. **PASS** — LIC-2 exact head `bffc0a2ecbd6c05778e1b4d3de42c4b07dbd58f5`
    passed all four hosted identities in run `31560071505` and merged to
    upstream `main` as `39701241206df2e4492d1539e725500c6795c09e`.
+7. **PASS** — SP-READY1 exact head
+   `ee7100866d547c0a43ba814464a960e29846fa43` passed all four hosted
+   identities in run `31561610111`, merged through PR #45 as
+   `e6fec3ecc286db93aa38c227e896ef077bdf17bd`, and passed all four exact-main
+   identities in run `31562213275`. Update-site run `31562817460`, private
+   vulnerability reporting, and no-bypass default-branch ruleset `20728497`
+   pass without creating a candidate or changing the published `dev.24`
+   development manifest identity.
+8. **IN REVIEW** — PR #46 records the integrated evidence and closes two
+   application-form conformance gaps with linked SignPath attribution plus
+   an explicit pending-application disclosure, visible Windows/macOS uninstall
+   instructions, and negative regression coverage. Protected integration,
+   regenerated-site deployment, and live verification remain open and cannot
+   be preclaimed.
 
 Pre-merge update-site review found that making `license_boundary` globally
 mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
@@ -154,32 +169,41 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 
 1. **PASS** — implement, review, validate, and protected-integrate the bounded
    Provider and file-lane source repairs plus AGPL LIC-1.
-2. Implement and protected-integrate SP-READY1, then complete its external
-   private-reporting, branch-review, MFA, SignPath application, and GitHub App
-   readiness gates without guessing configuration.
-3. After SP-READY1 and Windows-signing disposition, run one protected
+2. **PASS** — implement and integrate SP-READY1, publish its policy links,
+   enable private vulnerability reporting, and apply a no-bypass default-
+   branch review ruleset.
+3. Protected-integrate PR #46, regenerate the public site, and verify its
+   linked policy and visible uninstall guidance.
+4. Obtain organization-owner MFA verification, submit and receive the SignPath
+   Foundation decision, and install/configure the GitHub App without guessing
+   organization, project, policy, or artifact-configuration identifiers.
+5. Implement and validate the production two-stage executable/NSIS signing
+   package with the real configuration and fail-closed negative/recovery paths.
+6. After Windows-signing disposition, run one protected
    candidate workflow against the exact current upstream default-branch commit and
    independently verify Draft assets, hashes, identities, macOS trust evidence,
    and Draft-only state.
-4. Perform exact installed `dev.33` References/Rename/editor-intelligence,
+7. Perform exact installed `dev.33` References/Rename/editor-intelligence,
    Data Viewer, Issue #33, live-Provider repair, proposal Accept/verified Undo,
    startup, update, upgrade, uninstall, and Windows acceptance in proportion to
    the carried release risk.
-5. Resolve Issue #26's Windows signing disposition without treating an
+8. Resolve Issue #26's Windows signing disposition without treating an
    unsigned installer as a public-release pass.
-6. Prove the exact root `LICENSE` and `LICENSES.md` are bundled under the fixed
+9. Prove the exact root `LICENSE` and `LICENSES.md` are bundled under the fixed
    Rho resource path, the About action reveals the installed license offline,
    and the installed bytes match the candidate source on both platforms.
-7. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
+10. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
    and updater mutation remain separate actions.
 
 ## Current Decision
 
 The original source repair, version synchronization, complete validation,
 hosted matrices, AGPL LIC-1/LIC-2, and their protected integration pass.
-SP-READY1 implementation and local evidence pass, while exact-head hosted
-validation and integration remain open. Current decision remains `NO-GO` for
-candidate construction while those gates, external SignPath readiness,
-production two-stage Windows signing, and Issue #26's signing disposition
-remain open. Exact candidate, installed acceptance, acceptance upload, MAC5,
-public publication, and update-site mutation remain open.
+SP-READY1 implementation, review, exact-head/main hosted validation,
+integration, initial public policy deployment, private reporting, and default-
+branch rules pass. PR #46 public-guidance integration/deployment, organization-
+owner MFA review, SignPath approval/GitHub App configuration, production two-
+stage Windows signing, and Issue #26's signing disposition remain open.
+Current decision remains `NO-GO` for candidate construction. Exact candidate,
+installed acceptance, acceptance upload, MAC5, public publication, and
+candidate update-site mutation remain open.
