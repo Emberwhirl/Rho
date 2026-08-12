@@ -1,11 +1,11 @@
 # Rho 0.4.0-dev.35 Source And Windows Issue #33 Acceptance Checklist
 
-Status: active replacement source contract; Issue #33 source repair, editor-
-viewport follow-up, and file-proposal reading-position follow-up are integrated;
-quoted NSIS registry-path normalization is implemented; exact-source installed
-Windows Issue #33 acceptance is authorized and open; SignPath approval,
-production Windows signing, exact cross-platform candidate, human installed-
-candidate acceptance, MAC5, publication, and updater mutation remain open
+Status: historical rejected internal acceptance package; exact-source build,
+NSIS installation, installed-byte/runtime resolution, application startup, and
+fail-closed uninstall cleanup passed, but WebView2 CDP admission failed before
+all six interaction scenarios; SignPath approval, production Windows signing,
+exact cross-platform candidate, human installed-candidate acceptance, MAC5,
+publication, and updater mutation were not attempted
 
 Date: 2026-08-12
 
@@ -109,8 +109,31 @@ verification, but it cannot replace the human workflow in
 `test/acceptance-project/MANUAL-ACCEPTANCE.md` or satisfy a future signed exact-
 candidate gate. Those release facts remain open even after Issue #33 closes.
 
+## Rejection Evidence
+
+Exact protected-main commit `ab2df2cb0dba37e91692d3f40abcf89085b3f67b`
+passed all four macOS/Windows stable/MSRV jobs in Rust Compatibility run
+`31635365392`. Installed run `31635375821` built and installed
+`Rho_0.4.0-dev.35_x64-setup.exe`, SHA-256
+`8c44f4841451908cf644bafb43d9d1283b9e63e87fb2de63c1b235c74e0e1f02`.
+The resolved installed executable was outside the build tree and had SHA-256
+`137c36a309c5693e2dd7c5a1bcd1b58e0ef53c510e6bf069c86c0ad2c85b8416`;
+the installed Ark runtime and exact uninstaller were present. Startup logs
+recorded successful runtime probe, schema 12, Workspace start, project switch,
+and Agent retry.
+
+The runner-set `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` did not expose port 9222.
+Wry creates WebView2 with explicit `AdditionalBrowserArguments`, so its default
+argument string superseded the environment-only attempt. The driver timed out
+before opening a CDP session; no interaction scenario or screenshot ran. The
+`always()` recovery path then invoked the exact uninstaller and verified both
+the executable and registry entry were removed. Artifact `9157190586` is
+short-lived internal failure evidence only and cannot be relabelled or reused.
+
 ## Current Decision
 
-`GO` for the bounded exact-source Windows Issue #33 acceptance work package.
-`NO-GO` for SignPath production signing, exact candidate construction, human
-installed-candidate acceptance, MAC5, publication, and updater mutation.
+`REJECTED` for Issue #33 closure and every release use. The bounded acceptance
+work package advances to `0.4.0-dev.36` with an acceptance-build-only Tauri
+configuration overlay. `NO-GO` remains for SignPath production signing, exact
+candidate construction, human installed-candidate acceptance, MAC5,
+publication, and updater mutation.

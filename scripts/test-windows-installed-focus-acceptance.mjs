@@ -9,8 +9,15 @@ const source = fs.readFileSync("scripts/windows-installed-focus-acceptance.mjs",
 const workflow = fs.readFileSync(".github/workflows/windows-issue33-installed-acceptance.yml", "utf8");
 const sourceMatrix = fs.readFileSync(".github/workflows/rust-compatibility.yml", "utf8");
 const windowsArkBootstrap = fs.readFileSync("scripts/bootstrap-ark-windows.ps1", "utf8");
+const windowsBuild = fs.readFileSync("scripts/build-windows-installer.ps1", "utf8");
+const candidateWorkflow = fs.readFileSync(".github/workflows/candidate-build-draft.yml", "utf8");
+const baseTauriConfig = JSON.parse(fs.readFileSync("desktop/src-tauri/tauri.conf.json", "utf8"));
+const acceptanceTauriConfig = JSON.parse(fs.readFileSync(
+  "desktop/src-tauri/tauri.issue33-acceptance.conf.json",
+  "utf8",
+));
 const spec = fs.readFileSync("docs/plans/active-2026-08-11-workbench-focus-stability-repair-spec.md", "utf8");
-const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.35-candidate-checklist.md", "utf8");
+const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.36-candidate-checklist.md", "utf8");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rho-issue33-options-"));
 const project = path.join(root, "project");
@@ -23,14 +30,14 @@ fs.writeFileSync(path.join(buildRoot, "rho-desktop.exe"), "build executable", "u
 for (const fixture of ["analysis.R", "helper.R", "watch.md"]) {
   fs.writeFileSync(path.join(project, fixture), `${fixture}\n`, "utf8");
 }
-const installer = path.join(root, "Rho_0.4.0-dev.35_x64-setup.exe");
+const installer = path.join(root, "Rho_0.4.0-dev.36_x64-setup.exe");
 const executable = path.join(installRoot, "rho-desktop.exe");
 fs.writeFileSync(installer, "installer", "utf8");
 fs.writeFileSync(executable, "executable", "utf8");
 
 const options = parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.35",
+  "--expected-version", "0.4.0-dev.36",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -39,13 +46,13 @@ const options = parseOptions([
   "--output", path.join(root, "evidence", "result.json"),
   "--screenshot", path.join(root, "evidence", "screen.png"),
 ]);
-assert.equal(options.expectedVersion, "0.4.0-dev.35");
+assert.equal(options.expectedVersion, "0.4.0-dev.36");
 assert.equal(options.expectedCommit, "a".repeat(40));
 assert.equal(options.port, 9222);
 
 assert.throws(() => parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.35",
+  "--expected-version", "0.4.0-dev.36",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -82,8 +89,8 @@ assert.match(source, /installed_executable_sha256/);
 
 assert.match(workflow, /^name: Issue 33 Windows Installed Acceptance$/m);
 assert.match(workflow, /runs-on: windows-latest/);
-assert.match(workflow, /--remote-debugging-port=9222/);
-assert.match(workflow, /--remote-allow-origins=\*/);
+assert.match(workflow, /-TauriConfigOverlayPath\s+"desktop\\src-tauri\\tauri\.issue33-acceptance\.conf\.json"/);
+assert.doesNotMatch(workflow, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
 assert.match(workflow, /windows-installed-focus-acceptance\.mjs/);
 assert.match(workflow, /\$dirtyPaths = @\(& git status --short\)/);
 assert.match(workflow, /\$dirtyPaths\.Count -gt 0/);
@@ -102,6 +109,22 @@ assert.doesNotMatch(workflow, /Join-Path \$entry\.InstallLocation/);
 assert.equal((workflow.match(/Join-Path \$installLocation/g) || []).length, 4);
 assert.match(workflow, /actions\/upload-artifact@v4/);
 assert.doesNotMatch(workflow, /releases:\s*write|contents:\s*write/);
+
+const acceptanceWindow = acceptanceTauriConfig.app?.windows?.[0];
+assert.ok(acceptanceWindow, "acceptance overlay must preserve the complete primary window configuration");
+const { additionalBrowserArgs, ...acceptanceWindowWithoutArgs } = acceptanceWindow;
+assert.deepEqual(acceptanceWindowWithoutArgs, baseTauriConfig.app.windows[0]);
+assert.match(additionalBrowserArgs, /--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection/);
+assert.match(additionalBrowserArgs, /--remote-debugging-port=9222/);
+assert.match(additionalBrowserArgs, /--remote-debugging-address=127\.0\.0\.1/);
+assert.match(additionalBrowserArgs, /--remote-allow-origins=\*/);
+assert.doesNotMatch(JSON.stringify(baseTauriConfig), /remote-debugging/);
+
+assert.match(windowsBuild, /\[string\]\$TauriConfigOverlayPath/);
+assert.match(windowsBuild, /\[System\.IO\.Path\]::IsPathFullyQualified\(\$TauriConfigOverlayPath\)/);
+assert.match(windowsBuild, /Resolved Tauri config overlay must be inside the repository/);
+assert.match(windowsBuild, /\$tauriArguments \+= @\("--config", \$resolvedTauriConfigOverlayPath\)/);
+assert.doesNotMatch(candidateWorkflow, /TauriConfigOverlayPath|tauri\.issue33-acceptance\.conf\.json/);
 
 assert.match(windowsArkBootstrap, /\$downloadPath = \$archive \+ "\.partial"/);
 assert.match(windowsArkBootstrap, /\$maximumDownloadAttempts = 4/);
@@ -123,6 +146,7 @@ assert.ok(downloadIndex >= 0 && downloadIndex < hashIndex && hashIndex < promote
 for (const matrixTrigger of [
   ".github/workflows/windows-issue33-installed-acceptance.yml",
   "scripts/bootstrap-ark-windows.ps1",
+  "scripts/build-windows-installer.ps1",
   "scripts/windows-installed-focus-acceptance.mjs",
   "scripts/test-windows-installed-focus-acceptance.mjs",
 ]) {

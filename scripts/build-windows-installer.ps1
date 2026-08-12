@@ -4,7 +4,8 @@ param(
     [string]$RtoolsBin = $env:RTOOLS_BIN,
     [string]$RustupToolchain = $env:RUSTUP_TOOLCHAIN,
     [string]$RuntimeRoot = (Join-Path $PSScriptRoot "..\.rho\runtime"),
-    [string]$TauriCliVersion = "2.11.4"
+    [string]$TauriCliVersion = "2.11.4",
+    [string]$TauriConfigOverlayPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,11 +59,37 @@ $tauriConfig = Get-Content $tauriConfigPath -Raw | ConvertFrom-Json
 $productName = $tauriConfig.productName
 $version = $tauriConfig.version
 
+$resolvedTauriConfigOverlayPath = $null
+if ($TauriConfigOverlayPath) {
+    $overlayCandidate = if ([System.IO.Path]::IsPathFullyQualified($TauriConfigOverlayPath)) {
+        $TauriConfigOverlayPath
+    } else {
+        Join-Path $repo $TauriConfigOverlayPath
+    }
+    $resolvedTauriConfigOverlayPath = (Resolve-Path -LiteralPath $overlayCandidate -ErrorAction Stop).Path
+    if (-not (Test-Path -LiteralPath $resolvedTauriConfigOverlayPath -PathType Leaf)) {
+        throw "Tauri config overlay is not a file: $resolvedTauriConfigOverlayPath"
+    }
+    $separator = [System.IO.Path]::DirectorySeparatorChar.ToString()
+    $trimCharacters = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $repoPrefix = $repo.TrimEnd($trimCharacters) + $separator
+    if (-not $resolvedTauriConfigOverlayPath.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Resolved Tauri config overlay must be inside the repository: $resolvedTauriConfigOverlayPath"
+    }
+}
+
 & (Join-Path $PSScriptRoot "prepare-runtime-resources.ps1") -RuntimeRoot $RuntimeRoot
 
 Push-Location (Join-Path $repo "desktop\src-tauri")
 try {
-    & npx.cmd -y "@tauri-apps/cli@$TauriCliVersion" build
+    $tauriArguments = @("-y", "@tauri-apps/cli@$TauriCliVersion", "build")
+    if ($resolvedTauriConfigOverlayPath) {
+        $tauriArguments += @("--config", $resolvedTauriConfigOverlayPath)
+    }
+    & npx.cmd @tauriArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Tauri build failed with exit code $LASTEXITCODE."
     }

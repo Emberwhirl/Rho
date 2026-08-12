@@ -4,6 +4,18 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.36 - 2026-08-12
+
+### Verification
+
+- The internal installed-Windows Issue #33 workflow now supplies its loopback
+  WebView2 debugging arguments through a Tauri build-only configuration
+  overlay, matching Wry's explicit environment construction. Normal candidate
+  builds do not use the overlay and remain free of remote-debugging arguments.
+
+This identity carries forward the unchanged Issue #33 product repairs from the
+rejected `0.4.0-dev.35` internal review package.
+
 ## 0.4.0-dev.35 - 2026-08-12
 
 ### Verification
