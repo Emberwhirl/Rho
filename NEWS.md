@@ -23,6 +23,13 @@ this file records behavior included in a versioned build candidate.
   source, and can reveal an offline license file bundled with both desktop
   installers. Candidate verification rejects a missing or altered macOS
   license boundary before release admission.
+- Update checks are now user-initiated only through Help or the dialog retry
+  action. Startup no longer schedules an update request or stores background-
+  check throttle/dismiss state; the existing bounded endpoint, result states,
+  and user-initiated release-page action remain unchanged.
+- Public privacy, security, and code-signing policies now document local data,
+  network-capable actions, credential storage, current platform trust status,
+  signing scope, private reporting, and release-supply-chain ownership.
 
 ## 0.4.0-dev.32 - 2026-08-11
 

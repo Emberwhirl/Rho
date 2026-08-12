@@ -40,7 +40,10 @@ It requires:
   Moonshot, Kimi Code, Stepfun, Volcengine, AiHubMix, xAI, OpenRouter, Bailian,
   or NVIDIA.
 
-Unsigned local builds are for development review only. See the
+Listed Apple Silicon macOS packages use Developer ID signing and notarization.
+Current Windows downloads are not Authenticode-signed and must not be treated
+as public-release-ready merely because a checksum is available. Unsigned local
+builds are for development review only. See the
 [Windows prototype guide](docs/implementation/implemented-windows-prototype.md)
 and the [macOS support specification](docs/plans/active-2026-08-05-macos-arm64-support-spec.md)
 for platform-specific status and prerequisites.
@@ -71,6 +74,20 @@ Rho is under active development. Windows packaging, Apple Silicon macOS
 packaging, and the core project workflow are implemented; installed-candidate
 acceptance, release signing/publication, macOS x64, and Linux packaging remain
 in progress.
+
+## Security, Privacy, And Signing
+
+Rho does not perform automatic update checks or first-party background
+telemetry. Network-capable operations follow an explicit user action, such as
+checking for updates, connecting a model Provider, resolving a DOI, operating
+on a package environment, or running user/approved code. Review the complete
+[Privacy policy](PRIVACY.md), especially before configuring a custom Base URL
+or sharing diagnostics.
+
+Report vulnerabilities through the private process in the
+[Security policy](SECURITY.md), not through a public Issue. Windows and macOS
+trust status, signing scope, manual approval, and incident handling are defined
+in the [Code signing policy](CODE_SIGNING_POLICY.md).
 
 ## License
 

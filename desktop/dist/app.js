@@ -20190,31 +20190,23 @@ function renderUpdateFailure(error) {
   $("#updateDone").disabled = false;
 }
 
-async function checkForUpdates({ background = false } = {}) {
+async function checkForUpdates() {
   if (state.product.updateBusy) return;
   state.product.updateBusy = true;
-  if (!background) {
-    openProductDialog("update");
-    $("#updateStatusIcon").className = "update-status-icon";
-    $("#updateStatusIcon").textContent = "...";
-    $("#updateStatusTitle").textContent = "Checking for updates...";
-    $("#updateStatusMessage").textContent = "Contacting the Rho update service.";
-    $("#updateVersions").classList.add("hidden");
-    $("#updateRetry").classList.add("hidden");
-    $("#updateView").classList.add("hidden");
-    $("#updateDone").disabled = true;
-  }
-  localStorage.setItem("rho.update.lastCheck", String(Date.now()));
+  openProductDialog("update");
+  $("#updateStatusIcon").className = "update-status-icon";
+  $("#updateStatusIcon").textContent = "...";
+  $("#updateStatusTitle").textContent = "Checking for updates...";
+  $("#updateStatusMessage").textContent = "Contacting the Rho update service.";
+  $("#updateVersions").classList.add("hidden");
+  $("#updateRetry").classList.add("hidden");
+  $("#updateView").classList.add("hidden");
+  $("#updateDone").disabled = true;
   try {
     const result = await invoke("check_for_updates");
-    if (!background) renderUpdateResult(result);
-    if (background && result.status === "update_available" && localStorage.getItem("rho.update.dismissed") !== result.available_version) {
-      actionToast(`Rho ${result.available_version} is available.`, "View Update", async () => {
-        await invoke("open_rho_website", { url: result.release_page_url });
-      }, () => localStorage.setItem("rho.update.dismissed", result.available_version));
-    }
+    renderUpdateResult(result);
   } catch (error) {
-    if (!background) renderUpdateFailure(error);
+    renderUpdateFailure(error);
   } finally {
     state.product.updateBusy = false;
   }
@@ -20222,11 +20214,6 @@ async function checkForUpdates({ background = false } = {}) {
 
 function openUpdateDialog() {
   checkForUpdates();
-}
-
-function maybeCheckForUpdates() {
-  const lastCheck = Number(localStorage.getItem("rho.update.lastCheck")) || 0;
-  if (Date.now() - lastCheck >= 24 * 60 * 60 * 1000) setTimeout(() => checkForUpdates({ background: true }), 1500);
 }
 
 const panelDefaults = {
@@ -20456,35 +20443,6 @@ function toast(message, error = false) {
   element.textContent = message;
   $("#toastRegion").append(element);
   setTimeout(() => element.remove(), 4500);
-}
-
-function actionToast(message, label, action, dismiss = null) {
-  const element = document.createElement("div");
-  element.className = "toast";
-  const text = document.createElement("div");
-  text.textContent = message;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "toast-action";
-  button.textContent = label;
-  button.addEventListener("click", async () => {
-    try { await action(); } catch (error) { toast(reportUiFailure("complete requested action", error, "The requested action could not be completed. Refresh the view and try again."), true); }
-    element.remove();
-  });
-  element.append(text, button);
-  if (dismiss) {
-    const dismissButton = document.createElement("button");
-    dismissButton.type = "button";
-    dismissButton.className = "toast-action secondary";
-    dismissButton.textContent = "Dismiss";
-    dismissButton.addEventListener("click", () => {
-      dismiss();
-      element.remove();
-    });
-    element.append(dismissButton);
-  }
-  $("#toastRegion").append(element);
-  setTimeout(() => element.remove(), 12000);
 }
 
 async function listenForProjectChanges() {
@@ -20819,7 +20777,6 @@ async function finishWorkbenchStartup(startupView) {
         addLog("SYSTEM", "Agent runtime check completed");
       })
       .catch((error) => addLog("SYSTEM", `Agent runtime check failed: ${String(error)}`, "warning"));
-    maybeCheckForUpdates();
     const agentSettings = loadAgentLlmSettings();
     const response = await invoke("project_restore_session");
     await agentSettings;
@@ -21139,7 +21096,6 @@ $("#updateRetry").addEventListener("click", () => checkForUpdates());
 $("#updateView").addEventListener("click", async () => {
   const result = state.product.updateResult;
   if (!result) return;
-  localStorage.setItem("rho.update.dismissed", result.available_version);
   await invoke("open_rho_website", { url: result.release_page_url });
 });
 $("#agentLlmAddProvider").addEventListener("click", openAgentLlmProviderWizard);

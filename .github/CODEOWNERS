@@ -1,0 +1,23 @@
+# Default ownership keeps every repository change reviewable by a current Rho
+# administrator. Sensitive release and policy paths are repeated explicitly so
+# their ownership remains visible when this file evolves.
+* @GuangchuangYu @xiayh17
+
+/.github/CODEOWNERS @GuangchuangYu @xiayh17
+/.github/workflows/ @GuangchuangYu @xiayh17
+/.signpath/policies/ @GuangchuangYu @xiayh17
+
+/CODE_SIGNING_POLICY.md @GuangchuangYu @xiayh17
+/PRIVACY.md @GuangchuangYu @xiayh17
+/SECURITY.md @GuangchuangYu @xiayh17
+/LICENSE @GuangchuangYu @xiayh17
+/LICENSES.md @GuangchuangYu @xiayh17
+
+/scripts/build-windows-installer.ps1 @GuangchuangYu @xiayh17
+/scripts/candidate-release.mjs @GuangchuangYu @xiayh17
+/scripts/generate-update-site.mjs @GuangchuangYu @xiayh17
+/scripts/test-signpath-readiness.mjs @GuangchuangYu @xiayh17
+/scripts/windows-release-evidence.ps1 @GuangchuangYu @xiayh17
+
+/docs/plans/active-2026-08-11-signpath-application-readiness-spec.md @GuangchuangYu @xiayh17
+/docs/release/ @GuangchuangYu @xiayh17

@@ -11,6 +11,10 @@ import {
 
 const WEBSITE = "https://yulab-smu.top/Rho/";
 const REPOSITORY = "https://github.com/YuLab-SMU/Rho";
+const PRIVACY_POLICY = `${REPOSITORY}/blob/main/PRIVACY.md`;
+const SECURITY_POLICY = `${REPOSITORY}/blob/main/SECURITY.md`;
+const CODE_SIGNING_POLICY = `${REPOSITORY}/blob/main/CODE_SIGNING_POLICY.md`;
+const LICENSE_URL = `${REPOSITORY}/blob/main/LICENSE`;
 const PRERELEASE_IDENTIFIER = "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
 const VERSION_PATTERN = new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-(${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*))?$`);
 
@@ -179,7 +183,7 @@ function releaseBlock(title, release) {
 }
 
 function page(stable, development) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rho Downloads</title><style>body{margin:0;color:#203033;background:#f5f7f7;font:15px/1.55 system-ui,sans-serif}header,main,footer{max-width:760px;margin:auto;padding:28px 22px}header{padding-top:64px}h1{margin:0;font:700 42px Georgia,serif}header p{color:#526568}section{padding:24px 0;border-top:1px solid #cbd4d5}h2{font-size:18px}.version{font-size:24px;font-weight:700}.artifact{margin:16px 0}.download{display:inline-block;padding:9px 13px;border-radius:5px;color:white;background:#167568;text-decoration:none}details{margin-top:8px;color:#526568}code{display:block;margin-top:8px;overflow-wrap:anywhere}footer{color:#657679;font-size:13px}a{color:#126b61}</style></head><body><header><h1>Rho</h1><p>An agent-native scientific workbench for R.</p></header><main>${releaseBlock("Stable", stable)}${releaseBlock("Development", development)}<p>Installers are hosted by GitHub Releases. In some networks a download may be unavailable even when this page is reachable.</p></main><footer><a href="${REPOSITORY}">Source repository</a> · Listed macOS builds are Developer ID signed and notarized; verify every download with its SHA-256 checksum.</footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rho Downloads</title><style>body{margin:0;color:#203033;background:#f5f7f7;font:15px/1.55 system-ui,sans-serif}header,main,footer{max-width:760px;margin:auto;padding:28px 22px}header{padding-top:64px}h1{margin:0;font:700 42px Georgia,serif}header p{color:#526568}section{padding:24px 0;border-top:1px solid #cbd4d5}h2{font-size:18px}.version{font-size:24px;font-weight:700}.artifact{margin:16px 0}.download{display:inline-block;padding:9px 13px;border-radius:5px;color:white;background:#167568;text-decoration:none}details{margin-top:8px;color:#526568}code{display:block;margin-top:8px;overflow-wrap:anywhere}footer{color:#657679;font-size:13px}a{color:#126b61}</style></head><body><header><h1>Rho</h1><p>An agent-native scientific workbench for R.</p></header><main>${releaseBlock("Stable", stable)}${releaseBlock("Development", development)}<p>Installers are hosted by GitHub Releases. In some networks a download may be unavailable even when this page is reachable.</p></main><footer><p>Listed macOS builds are Developer ID signed and notarized. Windows downloads are currently not Authenticode-signed. Verify every download with its SHA-256 checksum.</p><p><a href="${REPOSITORY}">Source repository</a> · <a href="${LICENSE_URL}">License</a> · <a href="${PRIVACY_POLICY}">Privacy policy</a> · <a href="${SECURITY_POLICY}">Security</a> · <a href="${CODE_SIGNING_POLICY}">Code signing policy</a></p></footer></body></html>`;
 }
 
 export function generate(records, outputDirectory) {
@@ -284,7 +288,13 @@ function selfTest() {
     if (fs.existsSync(path.join(temp, "updates", "stable.json"))) throw new Error("Stale stable manifest was retained");
     const candidateManifest = JSON.parse(fs.readFileSync(path.join(temp, "updates", "development.json"), "utf8"));
     if (!candidateManifest.artifacts.windows_x86_64 || !candidateManifest.artifacts.macos_aarch64) throw new Error("Candidate manifest omitted a platform");
-    if (!fs.readFileSync(path.join(temp, "index.html"), "utf8").includes("Download for macOS (Apple Silicon)")) throw new Error("Candidate page omitted macOS");
+    const candidatePage = fs.readFileSync(path.join(temp, "index.html"), "utf8");
+    if (!candidatePage.includes("Download for macOS (Apple Silicon)")) throw new Error("Candidate page omitted macOS");
+    if (!candidatePage.includes(">Code signing policy</a>")) throw new Error("generated page omitted Code signing policy");
+    if (!candidatePage.includes(">Privacy policy</a>")) throw new Error("generated page omitted Privacy policy");
+    if (!candidatePage.includes(">Security</a>")) throw new Error("generated page omitted Security policy");
+    if (!candidatePage.includes(">License</a>")) throw new Error("generated page omitted License");
+    if (!candidatePage.includes("Windows downloads are currently not Authenticode-signed")) throw new Error("generated page overstated Windows signing");
     const historical = fakeCandidateRecord("0.4.0-dev.24");
     historical.platform_evidence.macos_aarch64.content.checks =
       historical.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");

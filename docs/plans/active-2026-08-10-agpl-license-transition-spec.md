@@ -1,10 +1,8 @@
 # AGPL License Transition Contract
 
-Status: active; LIC-1 implementation, contributor consent, validation, and
-protected integration are complete; LIC-2 installed-license distribution
-surface implementation, affected local validation, local macOS bundle review,
-and UI review complete; exact-head hosted integration, exact candidate, and
-installed-app acceptance remain open
+Status: active; LIC-1 and LIC-2 implementation, validation, review, exact-head
+hosted validation, and protected integration are complete; exact candidate and
+installed-app distribution acceptance remain open
 
 Date: 2026-08-10
 Authorization: project owner directed that Rho use AGPL instead of MIT to
