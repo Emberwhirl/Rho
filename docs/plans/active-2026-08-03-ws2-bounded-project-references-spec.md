@@ -1,6 +1,11 @@
 # WS2 Bounded Project References
 
-Status: active implementation contract
+Status: active; WS2-R1 source/browser implementation complete; exact
+`0.4.0-dev.31` installed acceptance rejected the desktop response projection;
+WS2-R1-R1 envelope correction implemented, automated validation, post-
+verification contract review, and exact four-identity hosted source matrix
+pass; PR #41 upstream integration complete; exact `dev.33` installed
+acceptance open after the unrelated `dev.32` candidate-fixture failure
 
 Date: 2026-08-03
 Authorization: user requested that every remaining package proceed one at a
@@ -207,3 +212,54 @@ reconciled to 14 open / 35 completed. Exact installed-app/manual acceptance,
 including the staged example and narrow installed window, remains open; this
 contract therefore stays active and no milestone or release-readiness claim is
 made.
+
+## WS2-R1-R1 Installed Response-Envelope Correction
+
+Exact signed `0.4.0-dev.31` installed acceptance on 2026-08-11 rejected the
+frontend transport projection. Workspace R returned three exact references
+for a clean top-level fixture and one exact reference for a clean nested file,
+but the installed References panel rendered `undefined`, zero files, and zero
+matches. F2 Rename consequently reopened `Rename symbol - try again` without
+ever opening Review. The same source passed browser/mock because its
+`editor_find_project_references` fixture returned the inner reference record
+directly.
+
+The production Tauri command truthfully returns the standard broker envelope
+whose `execution` member is the command record. The frontend consumed that
+envelope as though it were the record. Cross-review found the same mock/desktop
+shape drift in the read-only editor consumers for package-function completion,
+hover Help, chunk discovery, and lint diagnostics. This correction therefore
+owns one shared, non-guessing transport projection rule for these editor probes:
+accept the production envelope by selecting its object-valued `execution`,
+while retaining the direct record form used by deterministic fixtures.
+References, Rename, Go to Definition, package functions, hover Help, chunks,
+and lint must consume the projected record before validating fields. The
+existing Local Help projection delegates to the same helper; Format retains its
+typed Rust projection. Malformed or missing records continue through their
+existing empty/error or fallback paths; no backend response, request, project,
+scan, diagnostics, Help, chunk, persistence, or mutation authority changes.
+
+Browser/mock parity must use the production envelope for References, Go to
+Definition, package functions, Help, chunks, and lint. A deterministic frontend
+regression must prove direct, enveloped, and malformed forms; assert that every
+listed consumer projects before field access; assert production-shaped mocks;
+and prevent the installed `undefined`/zero-match regression. JavaScript syntax,
+bounded References, refactor, Rename recovery, Local Help, chunks, lint, and all
+compatible frontend contracts must pass before review. A fresh installed
+candidate must show three exact fixture references and a nonempty Rename
+Review, then smoke one completion/hover result, chunk record, and lint response;
+`dev.31` evidence cannot satisfy that gate.
+
+Implementation uses one pure direct-or-object-valued-`execution` projection and
+applies it before field access in every listed consumer. Production-shaped mock
+envelopes cover all listed commands. The dedicated regression executes direct,
+enveloped, null, and array-valued cases and statically binds every consumer and
+mock to the projection. JavaScript syntax, all 56 frontend/release contracts,
+locked Rust format/check/tests, complete `rho.bridge` and `rho.agent` suites,
+and `git diff --check` pass. Post-verification review found no response guessing,
+backend/schema/request change, new mutation path, project-identity bypass, or
+consumer-policy transfer; the implementation matches this contract with no
+blocking deviation. Exact implementation head
+`111c911d516413408f8315199c63379ba16844d8` passed macOS-26 stable/1.88.0 and
+Windows stable/1.88.0 in Rust Compatibility run `31550939335`. Upstream
+integration and fresh installed evidence remain open.

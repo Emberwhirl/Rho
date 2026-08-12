@@ -1840,3 +1840,25 @@ creation but does not convert local development-app or rehearsal review into
 installed-DMG acceptance. MAC5 GO, the `Publish Rho Candidate` workflow,
 update-site mutation, and public publication remain blocked until the owner
 installs and accepts the exact draft candidate.
+
+## `dev.32` Candidate Failure And `dev.33` Replacement — 2026-08-11
+
+Protected candidate run `31552396659` selected exact current upstream
+`main@29faba2b4d08bbebb4d9e2e251e7e1d69d393d6f`. Identity resolution passed.
+The Windows lane passed complete validation and Workspace smoke, built
+`Rho_0.4.0-dev.32_x64-setup.exe`, and uploaded immutable run artifact
+`9125093343`. The macOS arm64 lane failed a Provider-discovery timeout unit-test
+fixture during complete source validation, before credentials were imported,
+an application or DMG was built, or Apple notarization was submitted. Draft
+assembly was skipped, and no tag, Release, publication, or updater mutation
+exists for `dev.32`.
+
+The run-scoped Windows artifact consumes the single-use `dev.32` identity and
+is non-composable. The owner explicitly authorized the bounded deterministic
+test repair and push. The replacement identity is `0.4.0-dev.33`; it carries
+the already integrated editor-envelope repair without changing macOS runtime,
+Ark/R discovery, Keychain, entitlements, signing/notarization, artifact schema,
+update schema, or MAC4/MAC5 authority. The active `dev.33` checklist owns every
+future source, candidate, installed, acceptance, MAC5, publication, and updater
+fact. A new candidate remains blocked until its exact source is integrated and
+passes the complete protected source gates.

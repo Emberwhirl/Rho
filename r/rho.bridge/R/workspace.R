@@ -1976,8 +1976,8 @@ rho_viewer_rows_payload <- function(data, row_indices, column_indices, row_names
     }
     list(
       row_name = bounded_text((row_names %||% character())[[row_index]] %||% as.character(row_index), max_chars = 256L),
-      cells = row_values,
-      cell_states = lapply(source_values, rho_viewer_cell_state)
+      cells = unname(row_values),
+      cell_states = unname(lapply(source_values, rho_viewer_cell_state))
     )
   })
 }

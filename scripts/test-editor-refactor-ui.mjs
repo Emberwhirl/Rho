@@ -13,6 +13,7 @@ assert.match(js, /id: "rho\.renameSymbol"[\s\S]+keybindings: \[KeyCode\.F2\]/);
 assert.match(js, /id: "rho\.extractFunction"[\s\S]+KeyMod\.CtrlCmd \| KeyMod\.Shift \| KeyCode\.KeyE/);
 assert.match(js, /kind: "rho\.editor_refactor_proposal\.v1"/);
 assert.match(js, /editor_find_project_references/);
+assert.match(js, /const response = workspaceProbeRecordFromResponse\([\s\S]+editor_find_project_references/);
 assert.match(js, /limit: 200/);
 assert.match(js, /response\.incomplete \|\| response\.truncated/);
 assert.match(js, /REFACTOR_MAX_TARGET_FILES = 20/);

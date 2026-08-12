@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.30`
+Current source baseline: `0.4.0-dev.33`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -32,15 +32,42 @@ readiness. PR #24 integrated the reviewed source at merge `f05315c` and closed
 Issue #2. Every exact `dev.29` artifact, installed, MAC5, and publication gate
 remains open.
 
-Issue #33 advances the reviewed source to `0.4.0-dev.30`. Unchanged
+Issue #33 advanced the reviewed source to `0.4.0-dev.30`. Unchanged
 poll projections no longer rebuild volatile workbench surfaces, required
 refreshes preserve user-owned focus/activation/scroll state, and background
 editor/Console paths require explicit focus authority. This source depends on
 upstream PR #24 established `dev.29` at `f05315c`, and the branch is refreshed
 through MSRV merge `9e0b36b`. Exact PR #34 head `83e2719d` passed hosted run
-`31511253088` and integrated at `1b3f522`. Browser/mock, installed Windows,
-candidate, MAC5, and publication gates remain open and continue to block Issue
-#33 closure and release acceptance.
+`31511253088` and integrated at `1b3f522`. On 2026-08-11 the owner authorized
+one exact current-main `dev.30` candidate/Draft construction. Run `31515775702`
+and independently verified seven-asset Draft `368736031` passed at `bcc8e1c`.
+Exact installed macOS acceptance subsequently rejected that candidate because
+valid Data Viewer pages encoded named R lists as JSON objects and the frontend
+required ordered arrays. `DATA-VIEWER-ROW-SHAPE-R1` repairs the existing WP2
+contract, advances the replacement source to `0.4.0-dev.31` with
+`rho.bridge 0.1.14`, passed four-platform Rust Compatibility run `31523265847`,
+and integrated through PR #39 at `a54fa2c`. Exact current-main candidate run
+`31524766123`
+and independently verified seven-asset unpublished Draft `368795113` now pass
+at `7b52e827`; macOS trust, mounted Workspace smoke, and installed startup also
+pass. Connected Chromium reconfirmation and exact installed macOS Data Viewer,
+Issue #33, live-Provider Problem repair, file-proposal Accept, and verified Undo
+pass. Installed References and Rename reject `dev.31`: the Tauri command
+returns the standard broker envelope while those consumers read it as the
+inner record. WS2-R1-R1 and RENAME-RECOVERY-R1 advance the correction to fresh
+identity `0.4.0-dev.32`; local validation/review and exact implementation-head
+Rust Compatibility runs `31550939335` and `31551676391` pass all four
+macOS/Windows stable/MSRV identities. PR #41 integrated the exact source at
+merge `29faba2`. Candidate run `31552396659` then produced a passing Windows
+installer artifact but failed a nondeterministic macOS timeout fixture before
+packaging, so Draft assembly was skipped and `dev.32` was rejected. Authorized
+CRED-UX3-R1 removes the competing delayed-success response from that fixture
+without changing product behavior and advances the replacement source to
+`0.4.0-dev.33`. Source verification, push/PR, integration, candidate
+construction, installed acceptance, Windows signing disposition, MAC5, and
+publication remain open. The exact timeout regression now passes 51 local
+executions; the locked Rust workspace, 56 frontend/release contracts, both R
+packages, release dry runs, and independent production-boundary review pass.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

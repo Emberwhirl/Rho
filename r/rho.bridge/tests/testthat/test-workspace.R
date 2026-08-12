@@ -1050,6 +1050,15 @@ test_that("data viewer pages return bounded rows and token mismatch is stale", {
   expect_equal(length(page$page$rows), 5L)
   expect_equal(length(page$page$columns), 2L)
   expect_identical(page$page$rows[[1L]]$row_name, "cell_1")
+  expect_null(names(page$page$rows[[1L]]$cells))
+  expect_null(names(page$page$rows[[1L]]$cell_states))
+  encoded_row <- jsonlite::toJSON(
+    page$page$rows[[1L]],
+    auto_unbox = TRUE,
+    null = "null"
+  )
+  expect_match(encoded_row, '"cells":\\[')
+  expect_match(encoded_row, '"cell_states":\\[')
   expect_lte(page$page$payload_bytes, 1024L * 1024L)
 
   stale <- rho_read_data_view(
@@ -1126,6 +1135,12 @@ test_that("data viewer sorts filtered rows stably by absolute duplicate-name ind
   expect_true(ascending$ok)
   expect_identical(ascending$page$columns[[1L]]$index, 0L)
   expect_identical(ascending$page$columns[[2L]]$index, 1L)
+  expect_null(names(ascending$page$rows[[1L]]$cells))
+  expect_null(names(ascending$page$rows[[1L]]$cell_states))
+  expect_identical(
+    unlist(ascending$page$rows[[1L]]$cells, use.names = FALSE),
+    c("group", "1")
+  )
   expect_equal(vapply(ascending$page$rows, `[[`, character(1), "row_name"), c("r3", "r1"))
   expect_equal(vapply(descending$page$rows, `[[`, character(1), "row_name"), c("r1", "r5", "r3", "r2"))
   expect_identical(descending$page$sort_column, 1L)

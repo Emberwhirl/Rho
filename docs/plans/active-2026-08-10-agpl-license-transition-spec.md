@@ -1,9 +1,10 @@
 # AGPL License Transition Contract
 
 Status: active; LIC-1 implementation, affected automated verification, and
-independent contract review complete 2026-08-10; `Emberwhirl` relicensing
-consent recorded; `xuzhougeng` consent or an authorized legal determination
-and future distribution acceptance remain open
+independent contract review complete 2026-08-10; `Emberwhirl` and
+`xuzhougeng` relicensing consents recorded; current-main synchronization and
+complete affected local verification pass; exact-head hosted integration and
+future distribution acceptance remain open
 
 Date: 2026-08-10
 Authorization: project owner directed that Rho use AGPL instead of MIT to
@@ -71,8 +72,9 @@ paths must be recorded in the pull request:
 At minimum, the commits attributed to `Emberwhirl` and `xuzhougeng` must be
 covered by that review. An engineering instruction is authorization to prepare
 the change; it is not evidence that another contributor has granted copyright
-permission. Merge remains blocked until the gate is satisfied; the
-implementation remains a Draft pull request and must not merge.
+permission. Both named contributors have now supplied the required additional
+grant in PR #30, satisfying this external merge gate without revoking any
+earlier permission or transferring copyright.
 
 New contributions accepted after the transition use the same
 inbound-as-outbound `AGPL-3.0-only` terms. Contributors must have the right to
@@ -113,9 +115,8 @@ and compatible licensing.
 - Third-party manifests and license files remain upstream-owned. A Rho contract
   test may inventory their boundaries but may not replace or reinterpret them.
 - No schema, persistence, project, approval, credential, network, execution,
-  or application behavior changes. No unresolved ownership conflict remains
-  inside the engineering scope; contributor relicensing remains an explicit
-  merge gate.
+  or application behavior changes. No unresolved ownership or contributor-
+  permission conflict remains inside LIC-1.
 
 ## Acceptance And Verification
 
@@ -145,9 +146,9 @@ behavior. It creates no application candidate and therefore does not change
 the application version, R package versions, schema, or `NEWS.md`.
 
 Stop after the source-license files, metadata, contract test, verification,
-contract review, scoped commit, pushed branch, and Draft pull request. Do not
-merge before the contributor relicensing gate, and do not expand LIC-1 into
-SignPath or release implementation.
+contract review, scoped commit, pushed branch, required contributor grants,
+and protected merge. Do not expand LIC-1 into SignPath or release
+implementation.
 
 ## Implementation And Review Evidence
 
@@ -192,27 +193,30 @@ complete diff, public Issue text, dependency-license inventory, contributor
 history, historical candidate boundary, and version/release scope. It removed
 an unnecessary CLA/DCO policy assertion and changed Viewer synchronization to
 fail before mutation when a notice is missing. No blocking engineering finding
-remains. Contributor permission or an authorized legal/ownership determination
-is still external and unresolved, so merge, installed-app claims, SignPath
-acceptance, and public release remain blocked and unrun.
+remains. Installed-app legal-notice claims, SignPath acceptance, and public
+release remain separate and unrun.
 
 On 2026-08-11, `Emberwhirl` explicitly consented in PR #30 to license the
 identified contribution under `AGPL-3.0-only` in addition to existing grants.
-No equivalent consent from `xuzhougeng`, and no substitute authorized
-legal/ownership determination, has been recorded; the merge gate therefore
-remains closed.
+On 2026-08-12, `xuzhougeng` supplied the same explicit additional grant in PR
+#30. These contributor-authored records satisfy LIC-1's relicensing gate; they
+do not revoke historical MIT grants or transfer either contributor's
+copyright.
 
-The Draft branch was synchronized through upstream `main`
-`50ac11974f06b8941eed4591ccc6e042f9e9421b`, preserving the current
-`0.4.0-dev.30` product metadata, Issue #33 focus-stability source and final
-integration evidence, Resolver 3, the Rust 1.88 MSRV contract, and locked
-candidate validation. Successive
-textual conflicts were resolved compositionally: the frontend lockfile root
-retains both version `0.4.0-dev.30` and license `AGPL-3.0-only`, while the
-workspace manifest retains both `rust-version = "1.88"` and license
-`AGPL-3.0-only`. The exact synchronized tree passed all 56 JavaScript
-contracts, license negative tests and the real
-repository contract, both vendor-notice failure/recovery matrices, Rust
-formatting/check and 364 workspace tests (zero failed, one opt-in Keychain
-smoke ignored), both focused R package suites, and `git diff --check`. This
-engineering refresh does not satisfy or weaken the remaining contributor gate.
+The Draft branch is synchronized through current upstream `main`
+`e630a671a53042e4a1a09962699528707a76d4eb`, preserving the current
+`0.4.0-dev.33` product/release metadata, the integrated editor-envelope and
+deterministic timeout repairs, Resolver 3, the Rust 1.88 MSRV contract, and
+locked candidate validation. Textual conflicts are resolved compositionally:
+the frontend lockfile root retains both version `0.4.0-dev.33` and license
+`AGPL-3.0-only`; `rho.bridge` retains version `0.1.14` and gains the agreed
+AGPL/copyright projection; the workspace manifest retains both
+`rust-version = "1.88"` and license `AGPL-3.0-only`.
+
+The exact synchronized tree passes the canonical/negative license contract,
+vendor-notice failure/recovery tests, all 56 JavaScript contracts, JavaScript
+syntax, Rust formatting, locked all-target workspace check, complete locked
+workspace tests (desktop 176 passed with one opt-in Keychain smoke ignored;
+server 59; store 108; all other suites passed), both focused R package suites,
+and `git diff --check`. Exact pushed-head hosted source CI remains required
+before protected merge.

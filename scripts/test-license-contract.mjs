@@ -75,7 +75,7 @@ function validateContract(snapshot) {
   assert.match(snapshot.licensing, /Third-party work is not relicensed/u);
   assert.match(snapshot.licensing, /historical Rho versions[\s\S]*not revoked/u);
 
-  assert.match(snapshot.contract, /merge remains[\s\S]*blocked/iu);
+  assert.match(snapshot.contract, /Both named contributors[\s\S]*satisfying this external merge gate/iu);
   assert.match(snapshot.contract, /Emberwhirl/u);
   assert.match(snapshot.contract, /xuzhougeng/u);
   assert.match(snapshot.contract, /does not revoke[\s\S]*MIT/u);
@@ -102,7 +102,7 @@ function runNegativeSelfTests() {
     readme: "GNU Affero General Public License version 3 only. Commercial use is permitted. historical Rho copies remain valid. third-party components retain their own licenses. Rho does not offer a proprietary dual license.",
     contributing: "the same `AGPL-3.0-only` terms; you have the right to provide it; does not transfer your copyright without a written assignment",
     licensing: "Third-party work is not relicensed. historical Rho versions are not revoked. vendor/jet/LICENSE desktop/dist/vendor/lucide/LICENSE desktop/dist/vendor/monaco/LICENSE LICENSE.dompurify.txt LICENSE.marked.txt LICENSE.papaparse.txt LICENSE.katex.txt runtime/ark.json",
-    contract: "merge remains blocked for Emberwhirl and xuzhougeng; this does not revoke MIT",
+    contract: "Both named contributors Emberwhirl and xuzhougeng supplied the required grants, satisfying this external merge gate; this does not revoke MIT",
     missingVendorNotices: [],
     monacoSync: 'monaco-editor", "LICENSE',
     viewerSync: "katex/LICENSE",
@@ -118,7 +118,7 @@ function runNegativeSelfTests() {
     ["missing historical boundary", (value) => { value.readme = value.readme.replace("historical Rho copies remain valid.", ""); }],
     ["missing third-party inventory", (value) => { value.licensing = value.licensing.replace("vendor/jet/LICENSE", ""); }],
     ["missing contribution permission", (value) => { value.contributing = value.contributing.replace("right to provide it", ""); }],
-    ["missing merge gate", (value) => { value.contract = value.contract.replace("merge remains blocked", "review pending"); }],
+    ["missing contributor gate evidence", (value) => { value.contract = value.contract.replace("satisfying this external merge gate", "review pending"); }],
     ["missing vendored notice", (value) => { value.missingVendorNotices.push("desktop/dist/vendor/monaco/LICENSE"); }],
   ];
 

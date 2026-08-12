@@ -2970,21 +2970,7 @@ mod tests {
             .collect::<Vec<_>>();
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(2)))
-                .unwrap();
-            let mut request = Vec::new();
-            let mut chunk = [0_u8; 1024];
-            while request.len() < 16 * 1024 {
-                let count = stream.read(&mut chunk).unwrap_or(0);
-                if count == 0 {
-                    break;
-                }
-                request.extend_from_slice(&chunk[..count]);
-                if request.windows(4).any(|window| window == b"\r\n\r\n") {
-                    break;
-                }
-            }
+            let request = read_discovery_request(&mut stream);
             if !delay.is_zero() {
                 thread::sleep(delay);
             }
@@ -2998,6 +2984,41 @@ mod tests {
             response.push_str("\r\n");
             let _ = stream.write_all(response.as_bytes());
             let _ = stream.write_all(body.as_bytes());
+            String::from_utf8_lossy(&request).into_owned()
+        });
+        (format!("http://{address}/v1"), handle)
+    }
+
+    fn read_discovery_request(stream: &mut std::net::TcpStream) -> Vec<u8> {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut request = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        while request.len() < 16 * 1024 {
+            let count = stream.read(&mut chunk).unwrap_or(0);
+            if count == 0 {
+                break;
+            }
+            request.extend_from_slice(&chunk[..count]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        request
+    }
+
+    fn spawn_stalled_discovery_server() -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_discovery_request(&mut stream);
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut closed = [0_u8; 1];
+            let _ = stream.read(&mut closed);
             String::from_utf8_lossy(&request).into_owned()
         });
         (format!("http://{address}/v1"), handle)
@@ -4532,15 +4553,10 @@ mod tests {
         assert_eq!(response.error_class.as_deref(), Some("response"));
         assert!(response.message.contains("1 MiB"));
 
-        let (base_url, server) = spawn_discovery_server(
-            "200 OK",
-            &[],
-            r#"{"data":[]}"#.to_string(),
-            Duration::from_millis(150),
-        );
+        let (base_url, server) = spawn_stalled_discovery_server();
         save_custom_discovery_provider(&directory, base_url);
         let short_client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_millis(40))
+            .timeout(Duration::from_millis(250))
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
             .build()
@@ -4552,9 +4568,11 @@ mod tests {
             &short_client,
         )
         .unwrap();
-        server.join().unwrap();
         assert_eq!(response.error_class.as_deref(), Some("timeout"));
         assert!(!serde_json::to_string(&response).unwrap().contains(secret));
+        drop(short_client);
+        let request = server.join().unwrap();
+        assert!(request.starts_with("GET /v1/models HTTP/1.1\r\n"));
     }
 
     #[test]

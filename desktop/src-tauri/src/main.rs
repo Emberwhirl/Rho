@@ -10651,6 +10651,24 @@ async fn smoke_test(include_agent: bool) -> Result<Value> {
         page_row_count > 0,
         "desktop smoke data viewer returned no rows"
     );
+    let page_columns = page["execution"]["page"]["columns"]
+        .as_array()
+        .context("desktop smoke data viewer columns were not an array")?;
+    let first_page_row = page["execution"]["page"]["rows"]
+        .as_array()
+        .and_then(|rows| rows.first())
+        .context("desktop smoke data viewer did not return a first row")?;
+    let first_page_cells = first_page_row["cells"]
+        .as_array()
+        .context("desktop smoke data viewer cells were not an array")?;
+    let first_page_cell_states = first_page_row["cell_states"]
+        .as_array()
+        .context("desktop smoke data viewer cell states were not an array")?;
+    ensure!(
+        first_page_cells.len() == page_columns.len()
+            && first_page_cell_states.len() == page_columns.len(),
+        "desktop smoke data viewer row arrays were not aligned with columns"
+    );
     let mutate_payload = json!({
         "arguments": {
             "code": "rho_desktop_smoke$z <- rho_desktop_smoke$x + rho_desktop_smoke$y"

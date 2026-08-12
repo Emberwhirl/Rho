@@ -1,6 +1,7 @@
 # File Proposal Completion State
 
-Status: active implementation contract
+Status: active; implementation, automated verification, replacement-candidate
+browser interaction, and exact `dev.31` installed acceptance pass
 
 Date: 2026-08-07
 Authorization: user requested implementation of GitHub Issue #7
@@ -50,5 +51,18 @@ retain disclosure state and new proposals still open automatically.
 
 Verified with JavaScript syntax, file-proposal collapse, scientific Agent
 surface, Agent-first, Problems/Lint, Outputs, and human-facing UI contracts;
-`rho-server` format and all 47 tests also pass. Installed-app acceptance remains
-open.
+`rho-server` format and all 47 tests also pass.
+
+Replacement `0.4.0-dev.31` Chromium interaction generated an append proposal
+through the normal composer against a clean active file. Accept collapsed the
+native disclosure, hid Accept/Reject, and exposed Undo only after verification.
+Expanding the summary and invoking Undo restored the prior source and rendered
+the proposal as `Undone`.
+
+Computer Use against the exact installed signed `0.4.0-dev.31` bundle repeated
+the state transition with a live DeepSeek repair proposal: the file remained
+unchanged before review; Accept fixed it and collapsed the disclosure; Undo was
+absent until verification, then appeared; and Undo restored the original
+malformed fixture with state `Undone`. Candidate `dev.31` was later rejected by
+the separately owned References/Rename envelope defect, not by this behavior;
+the passing slice cannot be relabelled as `dev.32` candidate evidence.
