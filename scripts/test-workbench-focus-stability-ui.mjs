@@ -222,10 +222,47 @@ assert.match(acceptSource, /reveal: !automatic/);
 assert.match(acceptSource, /focusEditor: !automatic/);
 
 const selectionSource = between(
-  "function applyDocumentSelection(documentState, { focusEditor = true } = {})",
+  "function applyDocumentSelection(",
   "\nasync function initializeEditor",
 );
 assert.match(selectionSource, /focusEditor\s*&&\s*!modalDialogIsOpen\(\)/);
+
+// A background project refresh may synchronize the saved selection, but it
+// must not reveal that selection and revoke the user's editor viewport.
+const selectionCalls = [];
+const selectionModel = {
+  getPositionAt(offset) {
+    return { lineNumber: offset + 1, column: 1 };
+  },
+};
+const selectionEditor = {
+  setModel: () => selectionCalls.push("set-model"),
+  updateOptions: () => selectionCalls.push("update-options"),
+  setSelection: () => selectionCalls.push("set-selection"),
+  revealPositionInCenterIfOutsideViewport: () => selectionCalls.push("reveal"),
+  focus: () => selectionCalls.push("focus"),
+};
+const selectionContext = {
+  state: {
+    projectStatus: "ready",
+    editor: { mode: "monaco", editor: selectionEditor },
+  },
+  ensureDocumentModel: () => selectionModel,
+  updateEditorChrome: () => {},
+  modalDialogIsOpen: () => false,
+  fallbackEditor: () => ({ value: "", selectionStart: 0, selectionEnd: 0 }),
+  ensureFallbackEditorHistory: () => {},
+};
+vm.runInNewContext(`${selectionSource}\nthis.applyDocumentSelection = applyDocumentSelection;`, selectionContext);
+selectionContext.applyDocumentSelection({ cursorStart: 2, cursorEnd: 8 }, { focusEditor: false });
+assert.ok(selectionCalls.includes("set-selection"), "background refresh may synchronize the saved selection");
+assert.ok(!selectionCalls.includes("reveal"), "background refresh must preserve the user's editor viewport");
+assert.ok(!selectionCalls.includes("focus"), "background refresh must not focus the editor");
+
+selectionCalls.length = 0;
+selectionContext.applyDocumentSelection({ cursorStart: 2, cursorEnd: 8 });
+assert.ok(selectionCalls.includes("reveal"), "explicit document activation still reveals its selection");
+assert.ok(selectionCalls.includes("focus"), "explicit document activation still focuses the editor");
 
 const externalReloadSource = between(
   "async function handleExternalDocumentChange(path)",
