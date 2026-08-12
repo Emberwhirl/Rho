@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.34`
+Current source baseline: `0.4.0-dev.35`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -87,7 +87,12 @@ but unbuilt `dev.33` source identity, the exact-source Windows Issue #33
 acceptance package advances to fresh `0.4.0-dev.34`. Its narrow installed
 automation may close Issue #33 after the six named interactions pass, while
 SignPath, signed candidate, broad human acceptance, MAC5, publication, and
-updater gates remain separately open.
+updater gates remain separately open. Exact main run `31633585677` passed all
+four source identities and run `31633600383` built the internal `dev.34` NSIS
+package, but quoted registry `InstallLocation` handling stopped installed-byte
+resolution and cleanup before the scenarios. That artifact-producing run
+rejects `dev.34`; quoted-path normalization and the next acceptance attempt use
+fresh `0.4.0-dev.35`.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

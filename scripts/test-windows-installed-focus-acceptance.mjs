@@ -10,7 +10,7 @@ const workflow = fs.readFileSync(".github/workflows/windows-issue33-installed-ac
 const sourceMatrix = fs.readFileSync(".github/workflows/rust-compatibility.yml", "utf8");
 const windowsArkBootstrap = fs.readFileSync("scripts/bootstrap-ark-windows.ps1", "utf8");
 const spec = fs.readFileSync("docs/plans/active-2026-08-11-workbench-focus-stability-repair-spec.md", "utf8");
-const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.34-candidate-checklist.md", "utf8");
+const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.35-candidate-checklist.md", "utf8");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rho-issue33-options-"));
 const project = path.join(root, "project");
@@ -23,14 +23,14 @@ fs.writeFileSync(path.join(buildRoot, "rho-desktop.exe"), "build executable", "u
 for (const fixture of ["analysis.R", "helper.R", "watch.md"]) {
   fs.writeFileSync(path.join(project, fixture), `${fixture}\n`, "utf8");
 }
-const installer = path.join(root, "Rho_0.4.0-dev.34_x64-setup.exe");
+const installer = path.join(root, "Rho_0.4.0-dev.35_x64-setup.exe");
 const executable = path.join(installRoot, "rho-desktop.exe");
 fs.writeFileSync(installer, "installer", "utf8");
 fs.writeFileSync(executable, "executable", "utf8");
 
 const options = parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.34",
+  "--expected-version", "0.4.0-dev.35",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -39,13 +39,13 @@ const options = parseOptions([
   "--output", path.join(root, "evidence", "result.json"),
   "--screenshot", path.join(root, "evidence", "screen.png"),
 ]);
-assert.equal(options.expectedVersion, "0.4.0-dev.34");
+assert.equal(options.expectedVersion, "0.4.0-dev.35");
 assert.equal(options.expectedCommit, "a".repeat(40));
 assert.equal(options.port, 9222);
 
 assert.throws(() => parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.34",
+  "--expected-version", "0.4.0-dev.35",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -91,6 +91,15 @@ assert.doesNotMatch(workflow, /git status --short\)\.Trim\(\)/);
 assert.match(workflow, /Start-Process[\s\S]*\/S/);
 assert.match(workflow, /if: always\(\)/);
 assert.match(workflow, /Get-RhoUninstallEntry/);
+assert.equal((workflow.match(/function ConvertFrom-RhoRegistryPath/g) || []).length, 2,
+  "install resolution and fail-closed cleanup must both normalize registry paths");
+assert.equal((workflow.match(/\$startsQuoted = \$pathValue\.StartsWith\('\"'\)/g) || []).length, 2);
+assert.equal((workflow.match(/\$endsQuoted = \$pathValue\.EndsWith\('\"'\)/g) || []).length, 2);
+assert.equal((workflow.match(/\$startsQuoted -xor \$endsQuoted/g) || []).length, 2);
+assert.equal((workflow.match(/\$pathValue\.Substring\(1, \$pathValue\.Length - 2\)/g) || []).length, 2);
+assert.equal((workflow.match(/\[System\.IO\.Path\]::IsPathFullyQualified\(\$pathValue\)/g) || []).length, 2);
+assert.doesNotMatch(workflow, /Join-Path \$entry\.InstallLocation/);
+assert.equal((workflow.match(/Join-Path \$installLocation/g) || []).length, 4);
 assert.match(workflow, /actions\/upload-artifact@v4/);
 assert.doesNotMatch(workflow, /releases:\s*write|contents:\s*write/);
 

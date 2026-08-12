@@ -1,11 +1,11 @@
 # Rho 0.4.0-dev.34 Source And Windows Issue #33 Acceptance Checklist
 
-Status: active replacement source contract; Issue #33 source repair, editor-
-viewport follow-up, and file-proposal reading-position follow-up are integrated;
-exact-source installed Windows Issue #33 acceptance is authorized and open;
+Status: historical rejected internal acceptance package; Issue #33 source
+repair, editor-viewport follow-up, and file-proposal reading-position follow-up
+are integrated, but exact installed Windows interaction acceptance did not run;
 SignPath approval, production Windows signing, exact cross-platform candidate,
 human installed-candidate acceptance, MAC5, publication, and updater mutation
-remain open
+were not attempted
 
 Date: 2026-08-12
 
@@ -106,8 +106,26 @@ verification, but it cannot replace the human workflow in
 `test/acceptance-project/MANUAL-ACCEPTANCE.md` or satisfy a future signed exact-
 candidate gate. Those release facts remain open even after Issue #33 closes.
 
-## Current Decision
+## Rejection Evidence
 
-`GO` for the bounded exact-source Windows Issue #33 acceptance work package.
+Exact protected-main commit `d0d1d5813dde69199a3e9463eac53ca41812585a`
+passed all four macOS/Windows stable/MSRV jobs in Rust Compatibility run
+`31633585677`. Installed-acceptance run `31633600383` then built and uploaded
+the unsigned internal installer
+`Rho_0.4.0-dev.34_x64-setup.exe`, SHA-256
+`cc693a691e0c2da435824de272ac955af6fdeea5a5b844072f1a37fbea48b801`.
+
+The NSIS process installed successfully, but Tauri's registry
+`InstallLocation` included surrounding quotes. The workflow passed that raw
+value to `Join-Path`, which rejected drive `"C`; installed-byte resolution and
+the fail-closed cleanup path both stopped before the six interaction scenarios.
+No scenario, screenshot, installed identity, or cleanup PASS is claimed. The
+artifact-producing failed run consumes `0.4.0-dev.34`; the corrective acceptance
+must use a fresh synchronized identity.
+
+## Final Decision
+
+`REJECTED` for Issue #33 closure and every release use. The bounded acceptance
+work package advances to `0.4.0-dev.35` with quoted-registry-path normalization.
 `NO-GO` for SignPath production signing, exact candidate construction, human
 installed-candidate acceptance, MAC5, publication, and updater mutation.

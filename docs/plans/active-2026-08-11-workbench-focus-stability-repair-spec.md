@@ -358,14 +358,14 @@ owned Issue #26/SignPath process. That coupling did not add product coverage:
 it delayed the same six interaction checks until an unrelated release gate.
 This amendment separates the facts without weakening release admission.
 
-Issue #33 closure now requires an unsigned internal `0.4.0-dev.34` package
+Issue #33 closure now requires an unsigned internal `0.4.0-dev.35` package
 built from exact protected `main`, silently installed in a clean hosted Windows
 profile, launched from its resolved install directory, and driven through a
 runner-only loopback WebView2 debugging port. The shipped Tauri page must prove
 its embedded version/commit and repeat the five original Issue scenarios plus
 EDITOR-VIEWPORT-R1. The exact workflow, identity, deterministic scenario,
 cleanup, screenshot, and JSON evidence requirements are owned by
-`docs/release/active-0.4.0-dev.34-candidate-checklist.md`.
+`docs/release/active-0.4.0-dev.35-candidate-checklist.md`.
 
 The installed automation may seed bounded Agent/Run presentation records to
 make polling and pointer timing deterministic, but it must use the shipped
@@ -384,8 +384,9 @@ candidate.
 
 The first two exact-main acceptance attempts on 2026-08-12 both stopped before
 package construction when GitHub Release returned `503 Service Unavailable` to
-the pinned Windows Ark download. Neither attempt created an installer, so the
-single-use `0.4.0-dev.34` artifact identity remains unconsumed. This is a D1
+the pinned Windows Ark download. Neither attempt created an installer, so at
+that checkpoint the single-use `0.4.0-dev.34` artifact identity remained
+unconsumed. This is a D1
 release-tooling reliability defect inside the already authorized D4 work
 package; it changes no application bytes, runtime version, source behavior,
 credential authority, publication state, or release decision.
@@ -397,3 +398,28 @@ with bounded exponential delay. Each failed attempt removes only that explicit
 partial file; final failure remains visible and stops the workflow. A successful
 retry may continue the same pre-artifact acceptance run. The source contract
 must reject direct download into the canonical archive and unbounded retry.
+
+### NSIS registry-path recovery correction
+
+After the Ark recovery merged, exact-main source run `31633585677` passed all
+four macOS/Windows stable/MSRV jobs at
+`d0d1d5813dde69199a3e9463eac53ca41812585a`. Installed run `31633600383`
+then built and uploaded the `0.4.0-dev.34` NSIS package, SHA-256
+`cc693a691e0c2da435824de272ac955af6fdeea5a5b844072f1a37fbea48b801`.
+NSIS installed successfully, but its registry `InstallLocation` contained
+balanced surrounding quotes. Both installed-byte resolution and fail-closed
+cleanup passed that raw value to `Join-Path`, which treated `"C` as a drive and
+stopped before any interaction scenario. The artifact-producing run rejects
+and consumes `dev.34`; no scenario, screenshot, installed identity, or cleanup
+PASS is claimed.
+
+The corrective D1/R3 workflow slice uses fresh synchronized `0.4.0-dev.35`.
+Both the normal resolution path and the `always()` cleanup path remove exactly
+one balanced pair of surrounding quotes before path composition, then require
+a fully qualified path. Unquoted absolute paths remain compatible. Empty,
+partially quoted, or relative values fail visibly; the workflow does not guess
+an install root or weaken installed-versus-build-tree separation. Regression
+coverage rejects any direct `Join-Path $entry.InstallLocation` use and requires
+the same normalization in resolution and recovery. Application behavior,
+installer layout, registry ownership, signing, credentials, publication, and
+release authority do not change.
