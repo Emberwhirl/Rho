@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Admit exact protected main and synchronized dev.36 identity
+      - name: Admit exact protected main and synchronized dev.37 identity
         shell: pwsh
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -48,9 +48,9 @@ jobs:
           $match = [regex]::Match($cargo, '(?m)^version = "([^"]+)"')
           if (-not $match.Success) { throw "Cargo application version is unavailable." }
           $version = $match.Groups[1].Value
-          if ($version -ne "0.4.0-dev.36") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.36, found $version." }
-          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.36-candidate-checklist.md")) {
-            throw "The active dev.36 acceptance checklist is missing."
+          if ($version -ne "0.4.0-dev.37") { throw "Issue #33 acceptance requires fresh 0.4.0-dev.37, found $version." }
+          if (-not (Test-Path -LiteralPath "docs\release\active-0.4.0-dev.37-candidate-checklist.md")) {
+            throw "The active dev.37 acceptance checklist is missing."
           }
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_COMMIT=$commit"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_ACCEPTANCE_VERSION=$version"

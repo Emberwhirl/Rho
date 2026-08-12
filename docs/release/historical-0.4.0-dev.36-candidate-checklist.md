@@ -1,10 +1,11 @@
 # Rho 0.4.0-dev.36 Source And Windows Issue #33 Acceptance Checklist
 
-Status: active replacement source contract; Issue #33 source repair, editor-
+Status: historical rejected internal acceptance package; Issue #33 source repair, editor-
 viewport follow-up, and file-proposal reading-position follow-up are integrated;
 quoted NSIS registry-path normalization and acceptance-only WebView2 argument
-injection are implemented; exact-source installed Windows Issue #33 acceptance
-is authorized and open; SignPath approval,
+injection are implemented; exact-source installed Windows run `31641866471`
+built, installed, proved five scenarios, and cleaned up, but the sixth harness
+waited on a counter the real watcher refresh does not change; SignPath approval,
 production Windows signing, exact cross-platform candidate, human installed-
 candidate acceptance, MAC5, publication, and updater mutation remain open
 
@@ -46,8 +47,8 @@ signing, candidate construction, MAC5, publication, or updater mutation.
 `31635375821` consumed `dev.35` after build, installation, startup, installed
 identity, runtime, and cleanup passed but WebView2 CDP remained unavailable;
 no interaction scenario ran. Neither artifact can be reused or relabelled.
-`0.4.0-dev.36` is single-use: any later user-visible source change or
-artifact-producing failed run requires a new version.
+`0.4.0-dev.36` was consumed and rejected by artifact-producing run
+`31641866471`; it cannot be reused or relabelled.
 
 ## Windows Issue #33 Acceptance Contract
 
@@ -121,13 +122,32 @@ candidate gate. Those release facts remain open even after Issue #33 closes.
 
 ## Current Decision
 
-`GO` for the bounded exact-source Windows Issue #33 acceptance work package.
+`REJECTED` for Issue #33 closure because all six scenarios did not complete.
 `NO-GO` for SignPath production signing, exact candidate construction, human
 installed-candidate acceptance, MAC5, publication, and updater mutation.
 
 Run `31638482434` attempt 1 stopped after the release executable compiled when
 the official Tauri NSIS download disconnected; attempt 2 stopped at the same
 pre-installer boundary on HTTP `503`. Neither attempt constructed or uploaded
-an installer, installed Rho, or ran a scenario, so `dev.36` remains available
-for the bounded recovery specified by WINDOWS-INSTALLED-ISSUE33-A1. This is not
-acceptance evidence and does not change the release `NO-GO`.
+an installer, installed Rho, or ran a scenario, so `dev.36` remained available
+at that checkpoint for the bounded recovery specified by
+WINDOWS-INSTALLED-ISSUE33-A1.
+
+Protected-main run `31641866471` at
+`4d687b2f8354f7af71fa52512111068c3ea5480e` then constructed and installed
+`Rho_0.4.0-dev.36_x64-setup.exe`, SHA-256
+`fa141bd8e0533f84345d919b57567309b7eba64ac9494b916c39edf4a716fbda`.
+The installed executable SHA-256 was
+`dde318af23a47d50ac10a50f0173b35c6fda7f85010c4a9252b349eddd9aa433`;
+embedded version/commit/platform and the installed Ark runtime matched.
+`agent_refresh_focus`, `run_refresh_and_execution_focus`,
+`automatic_edit_and_external_reload_focus`, `runs_pointer_activation`, and
+`console_reading_position` passed. `monaco_watcher_viewport` timed out because
+the harness required `state.projectRefreshSequence` to advance even though the
+real watcher calls `refreshProject()`, which does not mutate that counter. The
+screenshot SHA-256 was
+`c834ba4d6e9611e75c689c4a7bbbc31158ab4f3d7bb5c1f28c06933a6f00fbb2`,
+cleanup removed the installed executable and registry entry, and artifact
+`9159573725` preserves the bounded evidence. This is rejected partial evidence:
+it does not prove the sixth scenario, close Issue #33, or change release
+`NO-GO`.

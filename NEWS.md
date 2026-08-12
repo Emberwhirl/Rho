@@ -4,6 +4,20 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.37 - 2026-08-12
+
+### Verification
+
+- Exact installed-Windows Issue #33 acceptance now proves a project-watcher
+  refresh through the reloaded contents of a clean background document and a
+  higher project revision before checking that Monaco preserves the active
+  document, viewport, and cursor. It no longer waits on the unrelated project
+  hydration sequence, which real watcher refresh does not change.
+
+This fresh identity replaces the rejected `0.4.0-dev.36` internal package; its
+five passing original scenarios and cleanup evidence remain historical and are
+not composed into the new acceptance result.
+
 ## 0.4.0-dev.36 - 2026-08-12
 
 ### Verification

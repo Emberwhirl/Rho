@@ -93,7 +93,7 @@ signature, candidate, tag, Release, or updater mutation.
   files, application data, logs, or operating-system credential storage.
 - The AGPL contract owns license identity and installed license bytes, not
   signing or privacy. LIC-2 protected integration is a prerequisite.
-- The current `0.4.0-dev.36` checklist alone owns exact candidate identity, artifact
+- The current `0.4.0-dev.37` checklist alone owns exact candidate identity, artifact
   construction, installed acceptance, MAC5, publication, and update-site
   mutation. SP-READY1 cannot satisfy those gates.
 

@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.36`
+Current source baseline: `0.4.0-dev.37`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -101,8 +101,13 @@ acceptance-only Tauri config correction advances to fresh `0.4.0-dev.36`;
 ordinary candidate builds remain debug-port-free. Exact-main run `31638482434`
 then compiled the `dev.36` release executable on two attempts, but official
 Tauri NSIS-tool transport failures stopped both before installer construction;
-the identity remains unconsumed and the active contract now permits only a
-recognized, bounded in-job transport retry.
+the identity remained unconsumed at that checkpoint and the contract added
+only a recognized, bounded in-job transport retry. Run `31641866471` then
+built and installed `dev.36`, proved installed identity/runtime, passed the
+five original Issue scenarios, and cleaned up. The sixth harness timed out on
+`projectRefreshSequence`, which real `refreshProject()` does not increment, so
+the artifact is rejected. Fresh `dev.37` observes real background-document
+reload plus project revision before checking the Monaco viewport.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
