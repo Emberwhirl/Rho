@@ -500,3 +500,33 @@ unchanged. Regression coverage rejects the impossible
 `projectRefreshSequence` predicate. No mock/browser path, timing-only success,
 schema, persistence, credential, signing, publication, or release authority is
 added.
+
+### Exact installed acceptance result
+
+PR #61 integrated the corrected harness into protected `main` as
+`7ab861b01a36313150988b1e2fa8fdc2056325d9`. Exact-main source run
+`31644418691` passed all four macOS/Windows stable/MSRV jobs. Installed run
+`31644429787` then built `Rho_0.4.0-dev.37_x64-setup.exe`, silently installed
+it in a clean Windows profile, resolved and launched only
+`C:\Users\runneradmin\AppData\Local\Rho\rho-desktop.exe`, proved the embedded
+`0.4.0-dev.37`/commit/`windows-x86_64` identity and installed Ark runtime, and
+passed all six scenarios.
+
+The corrected `monaco_watcher_viewport` evidence shows project revision
+advancing from 3 to 4 after the unique `watch.md` marker was reloaded. The
+active document remained `analysis.R`; its visible start remained line 1 and
+its cursor remained line 242. The other five scenarios also report `PASS`.
+The installer SHA-256 is
+`a8fa9ad2628590c9c12e176f22930d971fd8d2572dc606b52b55e38abb41bda6`,
+installed executable SHA-256 is
+`69bc24e5190ecceebddd8b0d9ea0eaac7f4e33bfed6eda43ded30a262dd05376`,
+and screenshot SHA-256 is
+`3b36b5bc604f3fe16790146117d8e541e82e00ccbbe22110eb0baa2d72fa2faf`.
+Artifact `9160516935` preserves the bounded records. Cleanup exited 0 and
+verified removal of both installed executable and registry entry.
+
+WINDOWS-INSTALLED-ISSUE33-A1 is accepted and the reproduced product defect may
+close. The artifact remains an unsigned internal review package, not a release
+candidate. Authenticode, exact signed-candidate construction, broad human
+installed acceptance, MAC5, publication, and updater readiness remain open and
+cannot consume this product-Issue acceptance as their evidence.
