@@ -71,9 +71,13 @@ macOS/Windows stable/MSRV identities; public policy deployment run
 `20728497` pass. A 2026-08-12 application-form audit then found that the public
 attribution needed official links, the Download URL needed an explicit
 truthful pending-application disclosure, and executable uninstall instructions
-needed to be visible on the README/download page; PR #46 carries that bounded
-SP-READY1 conformance follow-up and its regression enforcement. Organization-
-owner MFA audit, SignPath application/approval, GitHub App configuration,
+needed to be visible on the README/download page. PR #46 exact head `0e618c8`
+passed run `31563972114`, received independent latest-push CODEOWNER approval,
+merged as `71dfd3a`, and passed exact-main run `31576354218`. Update-site run
+`31646300758` published and live-verified that bounded SP-READY1 conformance
+follow-up from current main without changing the published `dev.24` identity or
+artifact hashes. Organization-owner MFA audit, SignPath Foundation
+application/approval, approved-project GitHub App/trusted-build configuration,
 production two-stage Windows signing, candidate construction, installed
 acceptance, MAC5, and publication remain open. The
 exact timeout regression passed 51 local executions; the locked Rust

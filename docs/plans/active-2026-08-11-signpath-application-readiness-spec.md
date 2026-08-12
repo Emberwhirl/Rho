@@ -1,10 +1,11 @@
 # SignPath Application Readiness Contract
 
 Status: active; SP-READY1 repository-readiness package, exact-head and merged-
-main hosted validation, upstream integration, public policy deployment, private
-reporting, and default-branch ruleset complete; organization-owner MFA audit,
-external application/GitHub App configuration, and production signing remain
-open
+main hosted validation, upstream integration, linked SignPath attribution,
+public uninstall guidance, live policy deployment, private reporting, and
+default-branch ruleset complete; organization-owner MFA audit, Foundation
+application/decision, approved-project GitHub App configuration, and production
+signing remain open
 
 Date: 2026-08-11 EDT / 2026-08-12 UTC
 Authorization: after directing the next version to be merged and published,
@@ -272,14 +273,45 @@ The 2026-08-12 application-form audit found that the public attribution named
 SignPath.io and SignPath Foundation without the official links required by the
 Foundation terms, while the privacy policy described retained data after
 uninstall but no public surface supplied executable Windows/macOS uninstall
-steps. PR #46 amends this contract and carries linked attribution, README and
+steps. PR #46 amended this contract with linked attribution, README and
 download-page instructions and pending-application disclosure, generator
 assertions, and separate negative tests for loss of either public uninstall
-surface or the download-page SignPath disclosure. On the amended local tree,
-all 60 deterministic JavaScript contracts, both focused readiness modes, Node
-syntax, and `git diff --check` pass. Protected integration, public-site
-deployment, and live verification remain open facts and are not inferred from
-local tests.
+surface or the download-page SignPath disclosure.
+
+Its exact head `0e618c8eda9f9dcfe43ac95669d16fc27791cb6f` passed all four
+macOS/Windows stable/MSRV jobs in run `31563972114`. Organization owner and
+CODEOWNER `GuangchuangYu` approved that exact latest push; PR #46 then merged
+as `71dfd3a442a3a22abacd8a49e400ff8deae1760a`, whose exact-main run
+`31576354218` passed the same four identities. No rerun or approval from an
+older commit was composed into these results.
+
+The output-producing public-guidance source remained unchanged while later
+accepted work advanced the current main to
+`b6bc441f521c8ed905cda78ea429f102460d04e6`; only the update-site strict
+self-test identity and the readiness test's active-checklist reference moved
+forward. Update-site run `31646300758` checked out that exact main, revalidated
+published Release evidence, passed generator self-tests, published orphan
+`gh-pages` commit `76d463a61c9f4e6d70f208f7b8c3808ef147afea`, and verified the
+deployed development manifest.
+
+Independent live review found the explicit pending Foundation application,
+official SignPath.io/Foundation links, visible Windows and macOS uninstall
+steps, retained-data warning, policy links, and truthful unsigned-Windows
+statement. The live HTML SHA-256 was
+`ae1b27acccce7b63240ae28014d83b55df100421d40db090f8b95714ef524fed`;
+the manifest SHA-256 was
+`ccb2612d996433abd1ee2873383b2179b2579eb145d009e1a22c4681c3a0805e`.
+The manifest remains immutable published `0.4.0-dev.24` with Windows bytes
+18,148,181 / SHA-256
+`114389aa675045beddb58c01dc7c4a0aec5936081b04018456694c770ae0b774`
+and macOS bytes 20,967,631 / SHA-256
+`f24982a616b1695621cdb7f9b9c8d001083926fb77a975c6f582b339da50c34f`.
+No candidate, tag, Release, signing request, or update identity changed.
+
+This post-deployment reconciliation is a documentation-only evidence update.
+It changes no application, workflow, artifact, credential, signing, candidate,
+Release, or update-site bytes, so the application version and `NEWS.md` remain
+unchanged.
 
 ## Version, NEWS, And Release Decision
 
@@ -297,11 +329,15 @@ package versions and store schema remain fixed.
 The release decision remains `NO-GO`. SP-READY1 PR-gated integration, private
 vulnerability reporting, default-branch review enforcement, and public policy
 deployment pass. The mandatory stop is now external readiness: obtain the
-organization-owner MFA verification and GitHub App configuration, then submit
-and receive the SignPath Foundation decision. Production two-stage signing is
-a later D4/R4 package using real identifiers. Only a new exact signed candidate
-with two-platform installed acceptance and explicit MAC5 GO can proceed to
-publication.
+organization-owner signing-role MFA verification, submit the SignPath
+Foundation application, and receive its decision. Only after acceptance and
+provisioning of a real SignPath organization/project may the organization owner
+install/configure the SignPath GitHub App, add the predefined GitHub.com trusted
+build system, link it to the actual project, and supply the real organization,
+project, policy, and artifact-configuration identifiers. Production two-stage
+signing is a later D4/R4 package using those identifiers. Only a new exact
+signed candidate with two-platform installed acceptance and explicit MAC5 GO
+can proceed to publication.
 
 ## SP-READY1 Definition Of Done
 
