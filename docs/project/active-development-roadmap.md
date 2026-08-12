@@ -63,11 +63,17 @@ installer artifact but failed a nondeterministic macOS timeout fixture before
 packaging, so Draft assembly was skipped and `dev.32` was rejected. Authorized
 CRED-UX3-R1 removes the competing delayed-success response from that fixture
 without changing product behavior and advances the replacement source to
-`0.4.0-dev.33`. Source verification, push/PR, integration, candidate
-construction, installed acceptance, Windows signing disposition, MAC5, and
-publication remain open. The exact timeout regression now passes 51 local
-executions; the locked Rust workspace, 56 frontend/release contracts, both R
-packages, release dry runs, and independent production-boundary review pass.
+`0.4.0-dev.33`. Source repair, AGPL LIC-1/LIC-2, and SP-READY1 repository
+readiness are integrated through PRs #43, #30, #44, and #45. SP-READY1 exact
+head run `31561610111` and merge-main run `31562213275` pass all four
+macOS/Windows stable/MSRV identities; public policy deployment run
+`31562817460`, private vulnerability reporting, and default-branch ruleset
+`20728497` pass. Organization-owner MFA audit, SignPath application/approval,
+GitHub App configuration, production two-stage Windows signing, candidate
+construction, installed acceptance, MAC5, and publication remain open. The
+exact timeout regression passed 51 local executions; the locked Rust
+workspace, frontend/release contracts, both R packages, release dry runs, and
+independent production-boundary review pass.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

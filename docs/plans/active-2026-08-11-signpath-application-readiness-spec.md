@@ -1,9 +1,10 @@
 # SignPath Application Readiness Contract
 
-Status: active; SP-READY1 implementation, affected local automation, mock UI
-review, and post-test policy/security review complete; exact-head hosted
-validation, upstream integration, external application, and production signing
-remain open
+Status: active; SP-READY1 repository-readiness package, exact-head and merged-
+main hosted validation, upstream integration, public policy deployment, private
+reporting, and default-branch ruleset complete; organization-owner MFA audit,
+external application/GitHub App configuration, and production signing remain
+open
 
 Date: 2026-08-11 EDT / 2026-08-12 UTC
 Authorization: after directing the next version to be merged and published,
@@ -232,6 +233,36 @@ slice changes no Rust/R source or package contract. Exact PR and merged-main
 hosted stable/MSRV matrices remain required and execute the full locked Rust
 workspace on macOS and Windows.
 
+## Hosted Integration And Repository Evidence
+
+SP-READY1 exact head `ee7100866d547c0a43ba814464a960e29846fa43`
+passed all four macOS/Windows stable and Rust 1.88.0 jobs in run
+`31561610111`. PR #45 merged as
+`e6fec3ecc286db93aa38c227e896ef077bdf17bd`, whose exact-main run
+`31562213275` passed the same four identities. No rerun substituted for either
+exact result.
+
+Update-site run `31562817460` regenerated and deployed the public page from
+that exact `main`. Live verification found the License, Privacy, Security, and
+Code signing policy links, the truthful unsigned-Windows statement, and the
+unchanged published development identity `0.4.0-dev.24` with both existing
+platform artifacts.
+
+GitHub private vulnerability reporting is enabled. Repository ruleset
+`20728497` is active on `~DEFAULT_BRANCH` with no bypass actors. Its applied
+rules require a pull request, one approving review, CODEOWNER review, dismissal
+of stale approvals, approval of the latest push by someone other than its
+pusher, and resolution of review threads; deletion and non-fast-forward pushes
+are blocked.
+
+The authenticated maintainer `xiayh17` is an active YuLab-SMU member and Rho
+repository administrator. `GuangchuangYu` is the organization owner and a Rho
+repository administrator. GitHub rejected the authenticated member's
+organization-wide `2fa_disabled` audit because only organization owners may
+use that filter, so MFA compliance for every future signing role remains an
+explicit owner-owned gate rather than a claimed pass. No SignPath application
+or GitHub App installation/configuration has occurred.
+
 ## Version, NEWS, And Release Decision
 
 SP-READY1 changes user-visible update behavior and therefore amends the
@@ -240,13 +271,14 @@ produced an artifact, tag, or Release, and remains the single active source
 candidate; no additional application-version bump is required for this
 pre-candidate integration. R package versions and store schema remain fixed.
 
-The release decision remains `NO-GO`. After SP-READY1 protected integration,
-the mandatory stop is external readiness: enable private vulnerability
-reporting and protected default-branch review, obtain organization-owner MFA
-verification and GitHub App configuration, and submit/receive the SignPath
-Foundation decision. Production two-stage signing is a later D4/R4 package
-using real identifiers. Only a new exact signed candidate with two-platform
-installed acceptance and explicit MAC5 GO can proceed to publication.
+The release decision remains `NO-GO`. SP-READY1 PR-gated integration, private
+vulnerability reporting, default-branch review enforcement, and public policy
+deployment pass. The mandatory stop is now external readiness: obtain the
+organization-owner MFA verification and GitHub App configuration, then submit
+and receive the SignPath Foundation decision. Production two-stage signing is
+a later D4/R4 package using real identifiers. Only a new exact signed candidate
+with two-platform installed acceptance and explicit MAC5 GO can proceed to
+publication.
 
 ## SP-READY1 Definition Of Done
 
