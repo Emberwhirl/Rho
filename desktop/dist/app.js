@@ -18034,6 +18034,26 @@ function contextualFileEditPreview(proposal) {
   };
 }
 
+function setScrollableTextContent(element, content, { reset = false } = {}) {
+  if (!element) return false;
+  const value = String(content ?? "");
+  if (element.textContent === value) {
+    if (reset) {
+      element.scrollTop = 0;
+      element.scrollLeft = 0;
+    }
+    return false;
+  }
+  const previousTop = element.scrollTop;
+  const previousLeft = element.scrollLeft;
+  element.textContent = value;
+  const maximumTop = Math.max(0, element.scrollHeight - element.clientHeight);
+  const maximumLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+  element.scrollTop = reset ? 0 : Math.min(previousTop, maximumTop);
+  element.scrollLeft = reset ? 0 : Math.min(previousLeft, maximumLeft);
+  return true;
+}
+
 function renderFileEditPanel() {
   const proposal = selectedFileEditProposal();
   state.fileEditProposal = proposal;
@@ -18047,6 +18067,9 @@ function renderFileEditPanel() {
     return;
   }
   const proposalChanged = panel.dataset.proposalKey !== proposal.key;
+  const panelViewport = proposalChanged
+    ? null
+    : { top: panel.scrollTop, left: panel.scrollLeft };
   panel.dataset.proposalKey = proposal.key;
   if (proposalChanged) panel.open = true;
   panel.dataset.state = decision || "waiting";
@@ -18070,8 +18093,16 @@ function renderFileEditPanel() {
       : "Review before applying";
   $("#fileEditSummary").textContent = `${fileEditOperationLabel(proposal.operation)} · ${summaryState}`;
   const preview = contextualFileEditPreview(proposal);
-  $("#fileEditBefore").textContent = boundedFileEditPreview(preview.before, 4000);
-  $("#fileEditAfter").textContent = boundedFileEditPreview(preview.after, 8000);
+  setScrollableTextContent(
+    $("#fileEditBefore"),
+    boundedFileEditPreview(preview.before, 4000),
+    { reset: proposalChanged },
+  );
+  setScrollableTextContent(
+    $("#fileEditAfter"),
+    boundedFileEditPreview(preview.after, 8000),
+    { reset: proposalChanged },
+  );
   const accepted = decision === "accepted";
   const undoAvailable = accepted
     && state.fileEditUndo?.key === proposal.key
@@ -18081,6 +18112,13 @@ function renderFileEditPanel() {
   $("#fileEditAccept").classList.toggle("hidden", !reviewable);
   $("#fileEditReject").classList.toggle("hidden", !reviewable);
   $("#fileEditUndo").classList.toggle("hidden", !undoAvailable);
+  if (panelViewport) {
+    panel.scrollTop = panelViewport.top;
+    panel.scrollLeft = panelViewport.left;
+  } else {
+    panel.scrollTop = 0;
+    panel.scrollLeft = 0;
+  }
 }
 
 async function verifyFileEditUndo() {
