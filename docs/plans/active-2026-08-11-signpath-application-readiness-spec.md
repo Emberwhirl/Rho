@@ -132,7 +132,9 @@ The policy must state, at minimum:
 
 The policy must state, at minimum:
 
-- `Free code signing provided by SignPath.io, certificate by SignPath Foundation`;
+- `Free code signing provided by SignPath.io, certificate by SignPath
+  Foundation`, with `SignPath.io` linked to <https://about.signpath.io> and
+  `SignPath Foundation` linked to <https://signpath.org>;
 - macOS uses Apple's Developer ID/notarization path independently;
 - Windows artifacts are currently unsigned and cannot be represented as
   Authenticode-signed until the production workflow and exact evidence pass;
@@ -164,16 +166,18 @@ SP-READY1 automated evidence must prove:
 2. Help and dialog Retry still invoke the one manual checker, which preserves
    loading, success, failure, duplicate suppression, and allowlisted backend
    behavior;
-3. the four public policies/surfaces contain consistent links, exact SignPath
-   attribution, truthful current platform status, role/scope rules, privacy
-   disclosures, and private reporting;
-4. the generated download page contains the public policy links and does not
-   claim Windows signing before evidence exists;
+3. the four public policies/surfaces contain consistent links, linked exact
+   SignPath attribution, truthful current platform status, role/scope rules,
+   privacy disclosures, private reporting, and user-executable Windows/macOS
+   uninstall guidance;
+4. the generated download page contains the public policy links and visible
+   Windows/macOS uninstall instructions, and does not claim Windows signing
+   before evidence exists;
 5. CODEOWNERS covers itself, workflows, future SignPath policy files, signing
    policy, privacy/security policy, and release/signing scripts;
 6. a deterministic negative self-test rejects a missing attribution, hidden
    background update path, missing manual entry, missing owner, absent policy
-   link, or false Windows-signing claim;
+   link, missing uninstall guidance, or false Windows-signing claim;
 7. both stable CI jobs execute the readiness contract while policy, frontend,
    generator, workflow, and owning-document changes trigger the four-leg
    macOS/Windows stable/MSRV matrix;
@@ -262,6 +266,17 @@ organization-wide `2fa_disabled` audit because only organization owners may
 use that filter, so MFA compliance for every future signing role remains an
 explicit owner-owned gate rather than a claimed pass. No SignPath application
 or GitHub App installation/configuration has occurred.
+
+The 2026-08-12 application-form audit found that the public attribution named
+SignPath.io and SignPath Foundation without the official links required by the
+Foundation terms, while the privacy policy described retained data after
+uninstall but no public surface supplied executable Windows/macOS uninstall
+steps. PR #46 amends this contract and carries linked attribution, README and
+download-page instructions, generator assertions, and separate negative tests
+for loss of either public uninstall surface. On the amended local tree, all 60
+deterministic JavaScript contracts, both focused readiness modes, Node syntax,
+and `git diff --check` pass. Protected integration, public-site deployment,
+and live verification remain open facts and are not inferred from local tests.
 
 ## Version, NEWS, And Release Decision
 

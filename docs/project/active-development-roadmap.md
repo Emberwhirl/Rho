@@ -68,9 +68,13 @@ readiness are integrated through PRs #43, #30, #44, and #45. SP-READY1 exact
 head run `31561610111` and merge-main run `31562213275` pass all four
 macOS/Windows stable/MSRV identities; public policy deployment run
 `31562817460`, private vulnerability reporting, and default-branch ruleset
-`20728497` pass. Organization-owner MFA audit, SignPath application/approval,
-GitHub App configuration, production two-stage Windows signing, candidate
-construction, installed acceptance, MAC5, and publication remain open. The
+`20728497` pass. A 2026-08-12 application-form audit then found that the public
+attribution needed official links and that executable uninstall instructions
+needed to be visible on the README/download page; PR #46 carries that bounded
+SP-READY1 conformance follow-up and its regression enforcement. Organization-
+owner MFA audit, SignPath application/approval, GitHub App configuration,
+production two-stage Windows signing, candidate construction, installed
+acceptance, MAC5, and publication remain open. The
 exact timeout regression passed 51 local executions; the locked Rust
 workspace, frontend/release contracts, both R packages, release dry runs, and
 independent production-boundary review pass.

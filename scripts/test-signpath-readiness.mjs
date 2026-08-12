@@ -42,7 +42,7 @@ function validate(value) {
   assert.match(value.privacy, /security\/advisories\/new/);
 
   assert.match(value.signing, /^# Rho Code Signing Policy$/m);
-  assert.match(value.signing, /Free code signing provided by SignPath\.io, certificate by SignPath Foundation/);
+  assert.match(value.signing, /Free code signing provided by \[SignPath\.io\]\(https:\/\/about\.signpath\.io\),\s+certificate by \[SignPath Foundation\]\(https:\/\/signpath\.org\)/);
   assert.match(value.signing, /Windows downloads are currently not Authenticode-signed/i);
   assert.doesNotMatch(value.signing, /Windows downloads are Authenticode-signed/i, "unsigned Windows status must not be overstated");
   assert.match(value.signing, /rho-desktop\.exe/);
@@ -76,6 +76,10 @@ function validate(value) {
   }
   assert.match(value.readme, /Code signing policy/);
   assert.match(value.readme, /does not perform automatic update checks/i);
+  assert.match(value.readme, /^## Uninstallation$/m);
+  assert.match(value.readme, /Settings > Apps > Installed apps/);
+  assert.match(value.readme, /move \*\*Rho\.app\*\* from \*\*Applications\*\* to the\s+Trash/i);
+  assert.match(value.readme, /Uninstalling the application does not automatically delete project files/i);
 
   assert.match(value.html, /data-menu-command="check-updates"/);
   assert.match(value.frontend, /"check-updates": \(\) => openUpdateDialog\(\)/);
@@ -108,6 +112,9 @@ function validate(value) {
   assert.equal(occurrences(value.generator, />Code signing policy<\/a>/g), 2, "generated page and its self-test must require Code signing policy");
   assert.match(value.generator, /Windows downloads are currently not Authenticode-signed/);
   assert.match(value.generator, /generated page omitted Code signing policy/);
+  assert.equal(occurrences(value.generator, /<h2>Uninstall Rho<\/h2>/g), 2, "generated page and its self-test must require Uninstall Rho guidance");
+  assert.equal(occurrences(value.generator, /Settings &gt; Apps &gt; Installed apps/g), 2, "generated page and its self-test must require Windows uninstall guidance");
+  assert.match(value.generator, /generated page omitted uninstall instructions/);
 
   assert.equal(occurrences(value.compatibilityWorkflow, /node scripts\/test-signpath-readiness\.mjs --self-test/g), 1);
   assert.equal(occurrences(value.compatibilityWorkflow, /node scripts\/test-signpath-readiness\.mjs(?:\s|$)/g), 2);
@@ -138,7 +145,7 @@ validate(current);
 
 if (process.argv.includes("--self-test")) {
   expectRejected(current, "missing attribution", (value) => {
-    value.signing = value.signing.replace("Free code signing provided by SignPath.io, certificate by SignPath Foundation", "Signing provider attribution unavailable");
+    value.signing = value.signing.replace("Free code signing provided by [SignPath.io](https://about.signpath.io)", "Signing provider attribution unavailable");
   }, /Free code signing/);
   expectRejected(current, "background update scheduler", (value) => {
     value.frontend += "\nfunction maybeCheckForUpdates() { checkForUpdates({ background: true }); }\n";
@@ -155,6 +162,12 @@ if (process.argv.includes("--self-test")) {
   expectRejected(current, "false Windows signing claim", (value) => {
     value.signing = value.signing.replace("Windows downloads are currently not Authenticode-signed", "Windows downloads are Authenticode-signed");
   }, /currently not Authenticode-signed/);
+  expectRejected(current, "missing README uninstall guidance", (value) => {
+    value.readme = value.readme.replace("## Uninstallation", "## Removal notes");
+  }, /Uninstallation/);
+  expectRejected(current, "missing download-page uninstall guidance", (value) => {
+    value.generator = value.generator.replace("<h2>Uninstall Rho</h2>", "<h2>Remove Rho</h2>");
+  }, /Uninstall Rho/);
 }
 
 process.stdout.write(`SignPath readiness contract is valid${process.argv.includes("--self-test") ? " (negative self-tests passed)" : ""}.\n`);

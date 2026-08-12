@@ -1,8 +1,9 @@
 # Rho Code Signing Policy
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
 
 Rho publishes its source at <https://github.com/YuLab-SMU/Rho> under
 `AGPL-3.0-only`. This policy defines which Rho artifacts may be signed, who may

@@ -147,6 +147,11 @@ UI, or mutation authority and no blocking contract deviation.
    vulnerability reporting, and no-bypass default-branch ruleset `20728497`
    pass without creating a candidate or changing the published `dev.24`
    development manifest identity.
+8. **IN REVIEW** — PR #46 records the integrated evidence and closes two
+   application-form conformance gaps with linked SignPath attribution plus
+   visible Windows/macOS uninstall instructions and negative regression
+   coverage. Protected integration, regenerated-site deployment, and live
+   verification remain open and cannot be preclaimed.
 
 Pre-merge update-site review found that making `license_boundary` globally
 mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
@@ -166,25 +171,27 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 2. **PASS** — implement and integrate SP-READY1, publish its policy links,
    enable private vulnerability reporting, and apply a no-bypass default-
    branch review ruleset.
-3. Obtain organization-owner MFA verification, submit and receive the SignPath
+3. Protected-integrate PR #46, regenerate the public site, and verify its
+   linked policy and visible uninstall guidance.
+4. Obtain organization-owner MFA verification, submit and receive the SignPath
    Foundation decision, and install/configure the GitHub App without guessing
    organization, project, policy, or artifact-configuration identifiers.
-4. Implement and validate the production two-stage executable/NSIS signing
+5. Implement and validate the production two-stage executable/NSIS signing
    package with the real configuration and fail-closed negative/recovery paths.
-5. After Windows-signing disposition, run one protected
+6. After Windows-signing disposition, run one protected
    candidate workflow against the exact current upstream default-branch commit and
    independently verify Draft assets, hashes, identities, macOS trust evidence,
    and Draft-only state.
-6. Perform exact installed `dev.33` References/Rename/editor-intelligence,
+7. Perform exact installed `dev.33` References/Rename/editor-intelligence,
    Data Viewer, Issue #33, live-Provider repair, proposal Accept/verified Undo,
    startup, update, upgrade, uninstall, and Windows acceptance in proportion to
    the carried release risk.
-7. Resolve Issue #26's Windows signing disposition without treating an
+8. Resolve Issue #26's Windows signing disposition without treating an
    unsigned installer as a public-release pass.
-8. Prove the exact root `LICENSE` and `LICENSES.md` are bundled under the fixed
+9. Prove the exact root `LICENSE` and `LICENSES.md` are bundled under the fixed
    Rho resource path, the About action reveals the installed license offline,
    and the installed bytes match the candidate source on both platforms.
-9. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
+10. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
    and updater mutation remain separate actions.
 
 ## Current Decision
@@ -192,9 +199,10 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 The original source repair, version synchronization, complete validation,
 hosted matrices, AGPL LIC-1/LIC-2, and their protected integration pass.
 SP-READY1 implementation, review, exact-head/main hosted validation,
-integration, public policy deployment, private reporting, and default-branch
-rules pass. Current decision remains `NO-GO` for candidate construction while
-organization-owner MFA review, SignPath approval/GitHub App configuration,
-production two-stage Windows signing, and Issue #26's signing disposition
-remain open. Exact candidate, installed acceptance, acceptance upload, MAC5,
-public publication, and candidate update-site mutation remain open.
+integration, initial public policy deployment, private reporting, and default-
+branch rules pass. PR #46 public-guidance integration/deployment, organization-
+owner MFA review, SignPath approval/GitHub App configuration, production two-
+stage Windows signing, and Issue #26's signing disposition remain open.
+Current decision remains `NO-GO` for candidate construction. Exact candidate,
+installed acceptance, acceptance upload, MAC5, public publication, and
+candidate update-site mutation remain open.
