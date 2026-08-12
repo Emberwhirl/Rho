@@ -148,12 +148,16 @@ UI, or mutation authority and no blocking contract deviation.
    vulnerability reporting, and no-bypass default-branch ruleset `20728497`
    pass without creating a candidate or changing the published `dev.24`
    development manifest identity.
-8. **IN REVIEW** — PR #46 records the integrated evidence and closes two
-   application-form conformance gaps with linked SignPath attribution plus
-   an explicit pending-application disclosure, visible Windows/macOS uninstall
-   instructions, and negative regression coverage. Protected integration,
-   regenerated-site deployment, and live verification remain open and cannot
-   be preclaimed.
+8. **PASS** — PR #46 exact head
+   `0e618c8eda9f9dcfe43ac95669d16fc27791cb6f` passed all four hosted
+   identities in run `31563972114`, received independent latest-push CODEOWNER
+   approval, merged as `71dfd3a442a3a22abacd8a49e400ff8deae1760a`, and
+   passed all four exact-main identities in run `31576354218`. Update-site run
+   `31646300758` published and live-verified the linked attribution, pending-
+   application disclosure, visible Windows/macOS uninstall instructions, and
+   truthful unsigned-Windows state from current main. Published `dev.24`
+   identity, platform sizes, and hashes remained unchanged; no candidate, tag,
+   Release, or signing request was created.
 
 Pre-merge update-site review found that making `license_boundary` globally
 mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
@@ -173,8 +177,10 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 2. **PASS** — implement and integrate SP-READY1, publish its policy links,
    enable private vulnerability reporting, and apply a no-bypass default-
    branch review ruleset.
-3. Protected-integrate PR #46, regenerate the public site, and verify its
-   linked policy and visible uninstall guidance.
+3. **PASS** — protected-integrate PR #46, regenerate the public site, and
+   verify its linked policy, pending-application disclosure, and visible
+   uninstall guidance. Exact head/main runs `31563972114`/`31576354218` and
+   deployment run `31646300758` bind this evidence.
 4. Obtain organization-owner MFA verification, submit and receive the SignPath
    Foundation decision, and install/configure the GitHub App without guessing
    organization, project, policy, or artifact-configuration identifiers.
@@ -202,9 +208,10 @@ The original source repair, version synchronization, complete validation,
 hosted matrices, AGPL LIC-1/LIC-2, and their protected integration pass.
 SP-READY1 implementation, review, exact-head/main hosted validation,
 integration, initial public policy deployment, private reporting, and default-
-branch rules pass. PR #46 public-guidance integration/deployment, organization-
-owner MFA review, SignPath approval/GitHub App configuration, production two-
-stage Windows signing, and Issue #26's signing disposition remain open.
+branch rules pass. PR #46 public-guidance integration and live deployment also
+pass. Organization-owner MFA review, SignPath Foundation application/decision,
+approved-project GitHub App/trusted-build configuration, production two-stage
+Windows signing, and Issue #26's signing disposition remain open.
 Current decision remains `NO-GO` for candidate construction. Exact candidate,
 installed acceptance, acceptance upload, MAC5, public publication, and
 candidate update-site mutation remain open.

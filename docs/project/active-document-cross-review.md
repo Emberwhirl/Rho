@@ -41,7 +41,7 @@ semantics.
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 and LIC-2 implementation, affected validation, UI/bundle review, exact-head hosted validation, and protected integration complete; exact candidate and installed distribution acceptance remain open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, fixed installed resource copies, About legal notice, and transition gates | preserve the integrated license/resource boundary; SignPath readiness may reference but not redefine it; exact candidate and installed acceptance remain release-owned |
-| `plans/active-2026-08-11-signpath-application-readiness-spec.md` | active; SP-READY1 implementation, affected validation/review, exact-head and merged-main hosted matrices, PR #45 integration, initial public policy deployment, private reporting, and no-bypass default-branch ruleset complete; linked attribution and visible uninstall-guidance follow-up is in PR #46; owner MFA audit, external application/GitHub App, and production signing open | manual-only update admission, public privacy/security/code-signing policies, policy links and uninstall guidance, CODEOWNERS, and deterministic readiness enforcement | merge, deploy, and verify the PR #46 public-guidance follow-up; organization owner must verify signing-role MFA and configure the approved GitHub App; do not create guessed SignPath policy/workflow configuration, construct a candidate, or claim Windows signing before external identifiers and approval exist |
+| `plans/active-2026-08-11-signpath-application-readiness-spec.md` | active; SP-READY1 implementation, exact-head/main hosted matrices, PR #45/#46 integration, linked attribution, public uninstall guidance, live policy deployment, private reporting, and no-bypass default-branch ruleset complete; owner MFA audit, Foundation application/decision, approved-project GitHub App configuration, and production signing open | manual-only update admission, public privacy/security/code-signing policies, policy links and uninstall guidance, CODEOWNERS, and deterministic readiness enforcement | organization owner verifies signing-role MFA; submit and receive the Foundation decision; only after accepted project provisioning configure the GitHub App/trusted build with real identifiers; do not create guessed SignPath policy/workflow configuration, construct a candidate, or claim Windows signing before those gates pass |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-10-rust-msrv-build-contract.md` | active integrated build contract; exact PR #29 head `f022d2c` passed all four jobs in run `31509554882`; merge `9e0b36b` passed all four exact-main jobs in run `31510716448`; Issue #28 closed | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | enforce continuously; any dependency, target, runner, packaging, or MSRV change requires reviewed scope; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
@@ -219,8 +219,17 @@ SignPath Foundation, so a policy link alone is insufficient. PR #46 owns the
 linked attribution, explicit pending-application disclosure, README/download-
 page instructions, and deterministic positive/negative enforcement. It changes
 no installer, credential, updater, signing, candidate, schema, or application-
-version behavior. Deployment and live-page verification remain distinct from
-source presence.
+version behavior. Exact head `0e618c8` passed run `31563972114`, received
+independent latest-push CODEOWNER approval, and merged as `71dfd3a`; exact-main
+run `31576354218` passed all four source legs. Update-site run `31646300758`
+then published `gh-pages@76d463a` from exact current main `b6bc441` without
+changing the published `dev.24` identity or artifact hashes. Independent live
+review confirmed the pending-application disclosure, both official attribution
+links, both uninstall instructions, retention warning, policy links, and
+unsigned-Windows statement. PR #46 integration/deployment is accepted. The
+owner MFA audit, Foundation decision, approved-project GitHub App/trusted-build
+configuration, real identifiers, production signing, candidate, and release
+gates remain external or later-owned facts.
 
 ### Navigation and layout state
 
