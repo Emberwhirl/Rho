@@ -3,7 +3,8 @@
 Status: active; ISSUE-33-INTERACTION-1 authorized 2026-08-11; source
 implementation, automated verification, and post-verification contract review
 complete; exact hosted source matrix and upstream source integration complete
-at `1b3f522`; browser/mock interaction and installed Windows acceptance open
+at `1b3f522`; replacement-candidate browser/mock and exact installed macOS
+interaction pass; installed Windows acceptance open
 
 Date: 2026-08-11
 Authorization: user requested verification and repair of GitHub Issue #33 on
@@ -241,8 +242,22 @@ package suites, and `git diff --check`. Exact PR head
 compatibility identities in run `31511253088`, and PR #34 merged to upstream
 `main` as `1b3f522a48bced21bda52769aefd836ac4494334`.
 
-Browser/mock interaction and installed Windows reproduction remain open after
-source integration and continue to block Issue closure and candidate/release
-acceptance; they do not become passing evidence merely because source is
-integrated. The required browser workflow was retried, but the environment
-exposed zero connected browser instances, so no browser result is claimed.
+The earlier source-integration environment exposed zero connected browser
+instances, so it produced no browser result. A later connected Chromium review
+against exact `0.4.0-dev.31` candidate source passed the required interaction
+slice: Agent activity retained mouse and Enter activation across more than two
+poll cycles; an Agent composer draft, Environment row, and selected Plot each
+retained focus/state across 4.5 seconds of refresh; and a Console reading at
+scroll offset 284 retained that exact offset while a failed source run appended
+new output. The Data Viewer refresh probe also preserved its query, descending
+sort, and row window while token/revision advanced, then cleared a disappeared
+object and ignored a foreign-project late response.
+
+Computer Use against the exact installed signed `0.4.0-dev.31` bundle passed
+the representative macOS slice: an Agent composer draft and focus, an
+Environment row focus, and selected Plot 2 survived more than two refresh
+cycles; Console content stayed at the user's older reading position while a
+long streamed R expression continued. Candidate `dev.31` was later rejected by
+the separately owned installed References/Rename defect, not by Issue #33.
+Exact installed Windows reproduction remains open and continues to block Issue
+closure; this macOS pass cannot be relabelled as `dev.32` candidate evidence.

@@ -2157,6 +2157,15 @@ function mockConsoleHelpTarget(code) {
   return { topic: match[2], package: packageName };
 }
 
+function mockWorkspaceResponse(executionId, execution) {
+  return {
+    execution_id: executionId,
+    execution,
+    events: [],
+    workspace: structuredClone(state.revision),
+  };
+}
+
 async function mockInvoke(command, args) {
   if (mockGitFailureCommand === command) {
     throw new Error(`Injected ${command} preview failure`);
@@ -2164,7 +2173,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.31",
+      version: "0.4.0-dev.32",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -2182,8 +2191,8 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.31",
-      available_version: "0.4.0-dev.31",
+      installed_version: "0.4.0-dev.32",
+      available_version: "0.4.0-dev.32",
       published_at: "2026-07-22T14:45:23Z",
       summary: "Rho is current for the development channel.",
       release_page_url: "https://yulab-smu.top/Rho/",
@@ -2791,7 +2800,7 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "editor_package_functions") {
-    return {
+    return mockWorkspaceResponse("mock_editor_package_functions", {
       functions: [
         { name: "c", package: "base", signature: "function (..., recursive = FALSE, use.names = TRUE)" },
         { name: "list", package: "base", signature: "function (...)" },
@@ -2819,7 +2828,7 @@ async function mockInvoke(command, args) {
         { name: "subset", package: "base", signature: "function (x, ...)" },
         { name: "merge", package: "base", signature: "function (x, y, ...)" },
       ]
-    };
+    });
   }
   if (command === "editor_function_help") {
     const name = args.name || "";
@@ -2829,7 +2838,11 @@ async function mockInvoke(command, args) {
       || "found";
     if (previewState === "error") throw new Error("Local Help bridge is unavailable.");
     if (previewState === "unavailable") {
-      return { name, found: false, package: null, signature: null, help_topic: null, help_record: null, package_root: null, library_root: null, source_path: null, source_line: null, ambiguous: false, truncated: false };
+      return mockWorkspaceResponse("mock_editor_function_help", {
+        name, found: false, package: null, signature: null, help_topic: null,
+        help_record: null, package_root: null, library_root: null,
+        source_path: null, source_line: null, ambiguous: false, truncated: false,
+      });
     }
     const longRoot = previewState === "long"
       ? `C:/Users/scientist/Documents/Unicode project/packages/${"nested-location/".repeat(9)}stats`
@@ -2842,7 +2855,7 @@ async function mockInvoke(command, args) {
       "read.csv": { package: "utils", signature: "function (file, header = TRUE, sep = \",\", quote = \"\\\"\", dec = \".\", fill = TRUE, comment.char = \"\", ...)", root: "C:/R/library/utils" },
     };
     const item = mockHelp[name] || { package: "base", signature: `function ${name}(...)`, root: "C:/R/library/base" };
-    return {
+    return mockWorkspaceResponse("mock_editor_function_help", {
       name, found: true, package: item.package, signature: item.signature,
       help_topic: name, help_record: `${item.root}/help/${name}`,
       package_root: item.root, library_root: item.root.slice(0, item.root.lastIndexOf("/")),
@@ -2850,7 +2863,7 @@ async function mockInvoke(command, args) {
       source_line: name === "lm" ? 20 : null,
       ambiguous: previewState === "ambiguous", truncated: previewState === "long",
       help_title: null, help_text: null,
-    };
+    });
   }
   if (command === "editor_function_documentation") {
     const name = args.name || "lm";
@@ -2860,7 +2873,13 @@ async function mockInvoke(command, args) {
       || "found";
     if (previewState === "error") throw new Error("Installed Rd documentation could not be read.");
     if (previewState === "unavailable") {
-      return { name, package: packageName, package_version: "4.6.0", help_topic: null, found: false, title: null, description: null, usage: null, arguments: [], details: null, value: null, example: { code: null, executable: false, omitted_tags: [], parse_error: null }, vignettes: [], truncated: false, incomplete: false, notices: [] };
+      return mockWorkspaceResponse("mock_editor_function_documentation", {
+        name, package: packageName, package_version: "4.6.0", help_topic: null,
+        found: false, title: null, description: null, usage: null, arguments: [],
+        details: null, value: null,
+        example: { code: null, executable: false, omitted_tags: [], parse_error: null },
+        vignettes: [], truncated: false, incomplete: false, notices: [],
+      });
     }
     const empty = previewState === "empty";
     const truncated = previewState === "truncated";
@@ -2871,7 +2890,7 @@ async function mockInvoke(command, args) {
     const exampleCode = executionError
       ? 'stop("boom")'
       : meanTopic ? "mean(c(2, 4, 6, 8))" : "fit <- lm(mpg ~ wt, data = mtcars)\nsummary(fit)";
-    return {
+    return mockWorkspaceResponse("mock_editor_function_documentation", {
       name,
       package: packageName,
       package_version: "4.6.0",
@@ -2900,7 +2919,7 @@ async function mockInvoke(command, args) {
       truncated,
       incomplete: truncated || omitted,
       notices: truncated ? ["example_byte_limit"] : omitted ? ["example_tags_omitted"] : [],
-    };
+    });
   }
   if (command === "editor_lint_file") {
     const path = args.path || "examples/editor-intelligence.R";
@@ -2908,13 +2927,13 @@ async function mockInvoke(command, args) {
     const previewState = previewParams.get("state") || "found";
     const provider = { name: "lintr", version: "3.4.0", available: previewState !== "unavailable" };
     if (previewState === "unavailable" || previewState === "error") {
-      return {
+      return mockWorkspaceResponse("mock_editor_lint_file", {
         provider, source_path: path, source_digest: previewState === "error" ? "md5:mock" : null,
         document_version: documentVersion, scan_scope: "file", diagnostics: [],
         truncated: false, incomplete: true,
         notices: [previewState === "error" ? "provider_error" : "provider_unavailable"],
         error: previewState === "error" ? "lintr could not parse the file." : "lintr package is not installed.",
-      };
+      });
     }
     const expectedLine = previewState === "changed-line"
       ? "example_value <- stats::median(c(1, 3, 5))"
@@ -2943,12 +2962,12 @@ async function mockInvoke(command, args) {
     };
     const diagnostics = previewState === "empty" ? [] : [primary, secondary];
     if (previewState === "duplicate") diagnostics.push({ ...primary, diagnostic_id: `${primary.diagnostic_id}:duplicate` });
-    return {
+    return mockWorkspaceResponse("mock_editor_lint_file", {
       provider, source_path: path, source_digest: "md5:mock", document_version: documentVersion,
       scan_scope: "file", diagnostics,
       truncated: previewState === "truncated", incomplete: previewState === "truncated",
       notices: previewState === "truncated" ? ["diagnostic_count_limit"] : [], error: null,
-    };
+    });
   }
   if (command === "editor_format_source") {
     const request = args.request || args;
@@ -3730,14 +3749,20 @@ async function mockInvoke(command, args) {
     return structuredClone(filtered.slice(0, args.limit || 50));
   }
   if (command === "editor_goto_definition") {
-    return { file: "analysis.R", line: 42, column: 1 };
+    return mockWorkspaceResponse(
+      "mock_editor_definition",
+      { file: "analysis.R", line: 42, column: 1 },
+    );
   }
   if (command === "editor_find_project_references") {
     const name = args.name || "flag_low_quality";
     const previewState = previewParams.get("state") || "found";
     if (previewState === "error") throw new Error("Workspace reference search is unavailable.");
     if (previewState === "empty") {
-      return { name, references: [], matched_count: 0, files_scanned: 4, bytes_scanned: 1200, truncated: false, incomplete: false, notices: [] };
+      return mockWorkspaceResponse("mock_editor_references", {
+        name, references: [], matched_count: 0, files_scanned: 4,
+        bytes_scanned: 1200, truncated: false, incomplete: false, notices: [],
+      });
     }
     const longPath = `analysis/${"\u5206\u6790\u7ed3\u679c/".repeat(10)}editor-intelligence.R`;
     const references = [
@@ -3745,16 +3770,16 @@ async function mockInvoke(command, args) {
       { file: "examples/editor-intelligence.R", line: 5, column: 22, kind: "reference", preview: `data$needs_review <- ${name}(` },
       { file: "examples/editor-refactor-use.R", line: 1, column: 18, kind: "reference", preview: `review_subset <- ${name}(` },
     ];
-    return {
-      name,
-      references,
-      matched_count: previewState === "truncated" ? 243 : references.length,
-      files_scanned: 12,
-      bytes_scanned: 48210,
-      truncated: previewState === "truncated",
-      incomplete: previewState === "incomplete" || previewState === "long",
-      notices: previewState === "incomplete" || previewState === "long" ? ["parse_incomplete"] : [],
-    };
+    return mockWorkspaceResponse("mock_editor_references", {
+        name,
+        references,
+        matched_count: previewState === "truncated" ? 243 : references.length,
+        files_scanned: 12,
+        bytes_scanned: 48210,
+        truncated: previewState === "truncated",
+        incomplete: previewState === "incomplete" || previewState === "long",
+        notices: previewState === "incomplete" || previewState === "long" ? ["parse_incomplete"] : [],
+    });
   }
   if (command === "list_installed_packages") {
     return {
@@ -3877,7 +3902,7 @@ async function mockInvoke(command, args) {
     return true;
   }
   if (command === "editor_discover_chunks") {
-    return {
+    return mockWorkspaceResponse("mock_editor_discover_chunks", {
       chunks: [
         { label: "setup",     engine: "r", options: "include=FALSE", start_line: 3,  end_line: 8,  code: 'library(dplyr)\nlibrary(ggplot2)\ntheme_set(theme_minimal())', code_preview: 'library(dplyr)\nlibrary(ggplot2)\ntheme_set(theme_minimal())' },
         { label: "load-data", engine: "r", options: "",               start_line: 10, end_line: 14, code: 'data <- read.csv("input.csv")\nsummary(data)',            code_preview: 'data <- read.csv("input.csv")\nsummary(data)' },
@@ -3887,7 +3912,7 @@ async function mockInvoke(command, args) {
       total_count: 4,
       truncated: false,
       unsupported: false,
-    };
+    });
   }
   if (command === "get_environment_operation_request") {
     const requestId = args.requestId ?? args.request_id;
@@ -4175,7 +4200,9 @@ importScripts("./vendor/monaco/vs/base/worker/workerMain.js");
 async function loadEditorFunctions() {
   if (state.editorFunctionsLoaded) return;
   try {
-    const result = await invoke("editor_package_functions", { limit: 500 });
+    const result = workspaceProbeRecordFromResponse(
+      await invoke("editor_package_functions", { limit: 500 }),
+    );
     state.editorFunctions = result.functions || [];
   } catch {
     state.editorFunctions = [];
@@ -4324,7 +4351,9 @@ function registerRLanguage(monaco) {
       // Try Air-backed help
       if (state.editorFunctionsLoaded) {
         try {
-          const help = await invoke("editor_function_help", { name: word.word });
+          const help = workspaceProbeRecordFromResponse(
+            await invoke("editor_function_help", { name: word.word }),
+          );
           if (help && help.signature) {
             const contents = [
               { value: `**${help.package || "R"}::${help.name}**` },
@@ -11727,12 +11756,21 @@ function applyRenameLocations(content, locations, oldName, newName, path) {
   return result;
 }
 
+function workspaceProbeRecordFromResponse(response) {
+  const execution = response?.execution;
+  return execution && typeof execution === "object" && !Array.isArray(execution)
+    ? execution
+    : response;
+}
+
 async function buildRenameRefactorProposal(oldName, newName) {
   if (!validRefactorSymbol(oldName)) throw new Error("Place the cursor on one ordinary R identifier to rename it.");
   if (!validRefactorSymbol(newName)) throw new Error("Enter an ordinary R identifier with at most 128 UTF-8 bytes.");
   if (oldName === newName) throw new Error("Choose a different name for the symbol.");
   const projectRoot = state.project.root;
-  const response = await invoke("editor_find_project_references", { name: oldName, limit: 200 });
+  const response = workspaceProbeRecordFromResponse(
+    await invoke("editor_find_project_references", { name: oldName, limit: 200 }),
+  );
   if (state.project.root !== projectRoot) throw new Error("The active project changed while References was running.");
   if (!response || response.name !== oldName) throw new Error("References returned a mismatched symbol. Refresh and try again.");
   if (response.incomplete || response.truncated) {
@@ -12787,7 +12825,7 @@ async function gotoDefinitionAtCursor() {
   const name = word.word;
 
   try {
-    const result = await invoke("editor_goto_definition", { name });
+    const result = workspaceProbeRecordFromResponse(await invoke("editor_goto_definition", { name }));
     if (result?.file) {
       // Open the file and jump to the definition line
       await openDocument(result.file);
@@ -13085,11 +13123,7 @@ async function showLocalHelp(name, packageName = null) {
 }
 
 function helpRecordFromResponse(response) {
-  const execution = response?.execution;
-  if (execution && typeof execution === "object" && ("found" in execution || "help_topic" in execution || "package" in execution)) {
-    return execution;
-  }
-  return response;
+  return workspaceProbeRecordFromResponse(response);
 }
 
 async function openProjectReference(reference) {
@@ -13179,7 +13213,9 @@ async function showProjectReferences(name) {
   renderProjectReferences();
   $("#projectReferencesHeading").focus();
   try {
-    const record = await invoke("editor_find_project_references", { name, limit: 100 });
+    const record = workspaceProbeRecordFromResponse(
+      await invoke("editor_find_project_references", { name, limit: 100 }),
+    );
     state.projectReferences = {
       status: record?.incomplete
         ? "incomplete"
@@ -13974,7 +14010,9 @@ async function loadChunks() {
   const filePath = state.activeFilePath;
   if (!filePath || !/\\.(Rmd|qmd)$/i.test(filePath)) return;
   try {
-    state.chunks = await invoke("editor_discover_chunks", { path: filePath });
+    state.chunks = workspaceProbeRecordFromResponse(
+      await invoke("editor_discover_chunks", { path: filePath }),
+    );
   } catch {
     state.chunks = null;
   }
@@ -19619,7 +19657,9 @@ async function lintCurrentFile() {
   state.lint = { status: "running", response: null, proposal: null, projectRoot: state.project.root, error: null };
   renderProblems();
   try {
-    const result = await invoke("editor_lint_file", { path: doc.path, documentVersion: doc.versionId ?? 0 });
+    const result = workspaceProbeRecordFromResponse(
+      await invoke("editor_lint_file", { path: doc.path, documentVersion: doc.versionId ?? 0 }),
+    );
     state.lint = {
       status: result.error ? (result.provider?.available ? "error" : "unavailable") : result.incomplete ? "incomplete" : "complete",
       response: result,

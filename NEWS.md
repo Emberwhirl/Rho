@@ -4,6 +4,17 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.32 - 2026-08-11
+
+### Fixed
+
+- Installed References, Rename Symbol, Go to Definition, package-function
+  completion, hover/Local Help, chunk discovery, and lint diagnostics now
+  consume their Workspace probe result inside the standard broker response
+  envelope. Browser mocks use that production shape as well, preventing
+  installed builds from reporting an undefined symbol with zero files, sending
+  every valid rename back to retry, or silently losing editor intelligence.
+
 ## 0.4.0-dev.31 - 2026-08-11
 
 ### Fixed
