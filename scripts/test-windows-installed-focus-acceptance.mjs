@@ -7,6 +7,7 @@ import { parseOptions } from "./windows-installed-focus-acceptance.mjs";
 
 const source = fs.readFileSync("scripts/windows-installed-focus-acceptance.mjs", "utf8");
 const workflow = fs.readFileSync(".github/workflows/windows-issue33-installed-acceptance.yml", "utf8");
+const sourceMatrix = fs.readFileSync(".github/workflows/rust-compatibility.yml", "utf8");
 const spec = fs.readFileSync("docs/plans/active-2026-08-11-workbench-focus-stability-repair-spec.md", "utf8");
 const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.34-candidate-checklist.md", "utf8");
 
@@ -91,6 +92,18 @@ assert.match(workflow, /if: always\(\)/);
 assert.match(workflow, /Get-RhoUninstallEntry/);
 assert.match(workflow, /actions\/upload-artifact@v4/);
 assert.doesNotMatch(workflow, /releases:\s*write|contents:\s*write/);
+
+for (const matrixTrigger of [
+  ".github/workflows/windows-issue33-installed-acceptance.yml",
+  "scripts/windows-installed-focus-acceptance.mjs",
+  "scripts/test-windows-installed-focus-acceptance.mjs",
+]) {
+  assert.equal(
+    [...sourceMatrix.matchAll(new RegExp(`- "${matrixTrigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "g"))].length,
+    2,
+    `${matrixTrigger} must trigger both push and pull-request source matrices`,
+  );
+}
 
 assert.match(spec, /WINDOWS-INSTALLED-ISSUE33-A1/);
 assert.match(spec, /five original Issue scenarios plus\s+EDITOR-VIEWPORT-R1/);
