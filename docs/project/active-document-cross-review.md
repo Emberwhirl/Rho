@@ -40,6 +40,7 @@ semantics.
 | Document | Status after review | Owns | May proceed when |
 | --- | --- | --- | --- |
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
+| `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 implementation and independent review complete; `Emberwhirl` and `xuzhougeng` additional AGPL grants recorded in PR #30; branch synchronized through current upstream `main` `e630a67` with `dev.33`, Rust 1.88/Resolver 3, all integrated repairs, and complete affected local validation passed; exact-head hosted integration and future distribution acceptance remain open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, and transition gates | contributor and synchronized-tree gates are satisfied; require exact pushed-head hosted validation and protected merge; future distribution requires a separately accepted candidate |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-10-rust-msrv-build-contract.md` | active integrated build contract; exact PR #29 head `f022d2c` passed all four jobs in run `31509554882`; merge `9e0b36b` passed all four exact-main jobs in run `31510716448`; Issue #28 closed | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | enforce continuously; any dependency, target, runner, packaging, or MSRV change requires reviewed scope; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
@@ -76,7 +77,7 @@ semantics.
 | `plans/active-2026-08-02-agent-first-intuitive-modernization-spec.md` | active; implementation and automated/browser verification complete 2026-08-02 | second-round Agent-first navigation, progressive activity disclosure, and presentation density | internal posture/surface values and all authority boundaries preserved; installed-app acceptance remains open |
 | `plans/active-2026-08-03-agent-first-adaptive-work-surface-spec.md` | active; UX4-AWS1 implementation and automated/browser verification complete 2026-08-03 | simple default Agent-first Task surface and explicitly opened file/run/Artifact/audit work surfaces over existing entities | installed-app acceptance remains open; no new Task schema or audit scope |
 | `plans/active-2026-08-08-task-rail-mode-status-semantics-spec.md` | active; Issue #9 TASK-RAIL-SEMANTICS-1 implementation, complete affected validation/review, `dev.24` installed acceptance, publication, and update evidence pass | Task Rail-only separation of mode shape/accessibility, status color/name, and risk ownership over existing turn data | immutable `dev.24` evidence is historical; UX4-P2 and Agent/broker authority remain unchanged under Issue #5 Conversation rows |
-| `plans/active-2026-08-09-agent-conversation-concurrency-spec.md` | active; Issue #5 authorized end-to-end; CONV-1 through CONV-3-R1, exact `dev.27` candidate, seven installed workflows, acceptance asset, and MAC5 GO pass; CONV-3-R2 deterministic file-lane test repair implemented, locally verified/reviewed, hosted matrix pending | durable project-scoped Agent Conversation identity, exact-thread context, bounded multi-turn admission, exact-turn cancellation/approval isolation, broker resource scheduling, Retry/Delete, project-transition ordering, selected-session recovery, and test-only verification of the different-file/global-context lock boundary | final evidence comment/Issue closure and public publication remain; CONV-3-R2 changes no non-test runtime, version, schema, file-edit authority, AFO-1, BH4, Workspace, environment, release, or credential authority |
+| `plans/active-2026-08-09-agent-conversation-concurrency-spec.md` | active; Issue #5 authorized end-to-end; CONV-1 through CONV-3-R1, exact `dev.27` candidate, seven installed workflows, acceptance asset, and MAC5 GO pass; CONV-3-R2 deterministic file-lane test repair locally and host-matrix verified, integrated through PR #43 | durable project-scoped Agent Conversation identity, exact-thread context, bounded multi-turn admission, exact-turn cancellation/approval isolation, broker resource scheduling, Retry/Delete, project-transition ordering, selected-session recovery, and test-only verification of the different-file/global-context lock boundary | final evidence comment/Issue closure and public publication remain; CONV-3-R2 changes no non-test runtime, version, schema, file-edit authority, AFO-1, BH4, Workspace, environment, release, or credential authority |
 | `plans/active-2026-08-04-interface-modernization-foundation-shell-spec.md` | active; M1 implementation and automated/browser verification complete 2026-08-04 | presentation-only semantic tokens, shared controls, local icons, shell hierarchy, tab roles, focus, and responsive geometry | installed-app/display-scale acceptance open; themes and workflow-surface redesign remain proposed |
 | `plans/active-2026-08-04-interface-modernization-workbench-hierarchy-spec.md` | active; M2 implementation and automated/browser verification complete 2026-08-04 | Human-first editor hierarchy, existing tab and panel geometry presentation, and correct restoration of the existing `human_preset` value | installed-app/display-scale acceptance remains separate; themes remain proposed |
 | `plans/active-2026-08-05-workbench-menu-command-organization-spec.md` | active; UX-MENU-1 implementation and automated/browser verification complete 2026-08-05; installed acceptance open | five-menu command organization, truthful local command state, and keyboard menu traversal over existing actions | M2 retains layout/panel authority; editor shortcuts retain command ownership; Format/Render retain behavior; Viewer/Outputs is a later independent package |
@@ -155,6 +156,34 @@ semantics.
   states.
 
 ## Resolved Cross-Document Conflicts
+
+### AGPL license transition ownership
+
+The active AGPL transition contract owns only the prospective license and
+repository metadata for Rho-original source. Issue #26 retains all SignPath,
+Authenticode, privacy, code-signing-policy, credential, approval, signed-byte,
+and public-release authority. An OSI-approved AGPL license satisfies a license
+category prerequisite but does not establish SignPath Foundation acceptance.
+
+Historical releases and candidates retain the grant and exact bytes that
+applied when they were distributed. In particular, the existing
+`v0.4.0-dev.27` candidate cannot be relabelled or used as AGPL evidence; a
+future distributable AGPL candidate requires its own license/notice packaging,
+interactive legal-notice review, exact-candidate validation, and release gate.
+
+Rho-original content may adopt `AGPL-3.0-only`, while Jet, Ark, frontend vendor
+assets, dependency-manager content, and other third-party works remain under
+their own licenses. The transition does not reinterpret or relicense those
+components. Cargo, frontend, and R package metadata project the same Rho
+decision using each ecosystem's recognized identifier.
+
+The source implementation could not merge until required historical
+contributors granted the additional AGPL permission or an authorized
+legal/ownership determination established sufficient inbound permission.
+`Emberwhirl` and `xuzhougeng` have each now supplied the explicit additional
+grant in PR #30, so the contributor gate is closed. Exact synchronized-tree
+validation and protected integration remain engineering gates, while installed
+legal-notice and distribution acceptance remain release gates.
 
 ### Navigation and layout state
 

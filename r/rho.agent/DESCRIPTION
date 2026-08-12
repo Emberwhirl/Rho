@@ -1,10 +1,13 @@
 Package: rho.agent
 Title: Rho Agent Process Adapter
 Version: 0.1.5
-Authors@R: person("Rho", "Contributors", email = "rho@example.com", role = c("aut", "cre"))
+Authors@R: c(
+    person("Rho", "Contributors", email = "rho@example.com", role = c("aut", "cre", "cph")),
+    person("YuLab-SMU", role = "cph")
+    )
 Description: Authenticated framed transport and structured event helpers for
     the Rho Agent R process powered by aisdk.
-License: MIT + file LICENSE
+License: AGPL-3
 Encoding: UTF-8
 RoxygenNote: 7.3.3
 Imports:

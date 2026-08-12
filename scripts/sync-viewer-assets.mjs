@@ -14,23 +14,34 @@ const assets = [
   ["katex/dist/katex.min.js", "katex.min.js"],
   ["katex/dist/contrib/auto-render.min.js", "katex-auto-render.min.js"],
   ["katex/dist/katex.min.css", "katex.min.css"],
+  ["katex/LICENSE", "LICENSE.katex.txt"],
 ];
+const resolvedAssets = assets.map(([source, target]) => [
+  path.join(desktopRoot, "node_modules", source),
+  path.join(targetDir, target),
+]);
+const katexFontsSource = path.join(desktopRoot, "node_modules", "katex", "dist", "fonts");
 
-fs.rmSync(targetDir, { recursive: true, force: true });
-fs.mkdirSync(targetDir, { recursive: true });
-for (const [source, target] of assets) {
-  const sourcePath = path.join(desktopRoot, "node_modules", source);
+for (const [sourcePath] of resolvedAssets) {
   if (!fs.existsSync(sourcePath)) {
     console.error(`Viewer dependency asset was not found: ${sourcePath}`);
     process.exit(1);
   }
-  fs.copyFileSync(sourcePath, path.join(targetDir, target));
 }
+if (!fs.existsSync(katexFontsSource)) {
+  console.error(`KaTeX fonts directory was not found: ${katexFontsSource}`);
+  process.exit(1);
+}
+const katexFonts = fs.readdirSync(katexFontsSource).filter((name) => name.endsWith(".woff2"));
 
-const katexFontsSource = path.join(desktopRoot, "node_modules", "katex", "dist", "fonts");
+fs.rmSync(targetDir, { recursive: true, force: true });
+fs.mkdirSync(targetDir, { recursive: true });
+for (const [sourcePath, targetPath] of resolvedAssets) {
+  fs.copyFileSync(sourcePath, targetPath);
+}
 const katexFontsTarget = path.join(targetDir, "fonts");
 fs.mkdirSync(katexFontsTarget, { recursive: true });
-for (const font of fs.readdirSync(katexFontsSource).filter((name) => name.endsWith(".woff2"))) {
+for (const font of katexFonts) {
   fs.copyFileSync(path.join(katexFontsSource, font), path.join(katexFontsTarget, font));
 }
 
