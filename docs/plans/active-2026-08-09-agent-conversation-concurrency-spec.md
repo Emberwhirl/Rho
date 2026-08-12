@@ -535,6 +535,41 @@ normal quit/reopen restores an explicitly non-first selected Conversation.
 asset. The replacement identity is `0.4.0-dev.27`; no `dev.26` artifact,
 receipt, hash, or hosted evidence may be relabelled or composed into it.
 
+### CONV-3-R2: deterministic different-file lane verification amendment
+
+PR #30 exact-head Rust Compatibility run `31556192887` exposed a test-only
+portability defect on Windows with Rust 1.88.0. Three matrix jobs passed, while
+`different_agent_files_reach_disk_without_waiting_for_the_global_context_lock`
+used a two-second filesystem polling deadline and treated runner scheduling
+latency as proof that the global context lock serialized the file lanes. The
+PR #30 diff does not change the affected Rust source, and the same exact commit
+passed the Windows stable job, so retrying the failed job would not establish a
+deterministic gate.
+
+The bounded correction replaces filesystem polling with a test-only completion
+counter and notification emitted immediately after each successful atomic
+Apply write. The regression holds the global context lock, waits for both
+different-path completion signals under one 30-second deadlock watchdog, then
+verifies both exact disk contents before releasing the lock. A lost notification
+cannot create a false failure because the counter is authoritative. The
+control, field, imports, and notification compile only under `cfg(test)`; the
+production mutation path, persistence, schema, scheduling, approval, recovery,
+UI, R packages, version metadata, and release identity remain unchanged.
+
+Acceptance requires Rust formatting, repeated focused execution, the complete
+locked Rust workspace tests, `git diff --check`, review that the non-test build
+contains no test-control state, and a fresh macOS/Windows × stable/1.88.0 hosted
+matrix. This R2 validation repair has no application or R package version impact
+and does not require a `NEWS.md` entry.
+
+Local implementation and post-test contract review passed on 2026-08-12. The
+focused regression passed 20 consecutive executions; Rust formatting, locked
+all-target workspace check, the complete locked workspace test suite, JavaScript
+syntax, every `scripts/test-*.mjs` contract, and `git diff --check` passed. Code
+review confirms every new controller field, type, import, initialization, and
+notification is `cfg(test)`-only. The four-job hosted compatibility matrix and
+protected integration remain open factual gates.
+
 ## Verification Matrix
 
 ### Migration and store

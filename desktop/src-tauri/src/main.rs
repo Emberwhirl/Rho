@@ -13,6 +13,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, RwLock as SyncRwLock};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -53,6 +55,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(test)]
+use tokio::sync::Notify;
 use tokio::sync::{Mutex, RwLock, oneshot};
 use uuid::Uuid;
 
@@ -227,6 +231,8 @@ struct AppState {
     agent_tasks: Arc<Mutex<HashMap<String, AgentTaskEntry>>>,
     agent_workspace_lane: Arc<AgentWorkspaceLane>,
     agent_file_mutations: Arc<AgentFileMutationRegistry>,
+    #[cfg(test)]
+    agent_file_apply_test_control: AgentFileApplyTestControl,
     agent_llm_test_control: AgentModelTestControl,
     switch_test_control: SwitchTestControl,
     shutdown_started: AtomicBool,
@@ -259,6 +265,31 @@ struct AgentFileMutationClaim {
 struct AgentFileMutationClaimGuard {
     registry: Arc<AgentFileMutationRegistry>,
     claim_id: String,
+}
+
+#[cfg(test)]
+#[derive(Clone, Default)]
+struct AgentFileApplyTestControl {
+    completed_disk_writes: Arc<AtomicUsize>,
+    completed_disk_write_notify: Arc<Notify>,
+}
+
+#[cfg(test)]
+impl AgentFileApplyTestControl {
+    fn record_completed_disk_write(&self) {
+        self.completed_disk_writes.fetch_add(1, Ordering::SeqCst);
+        self.completed_disk_write_notify.notify_waiters();
+    }
+
+    async fn wait_for_completed_disk_writes(&self, expected: usize) {
+        loop {
+            let notified = self.completed_disk_write_notify.notified();
+            if self.completed_disk_writes.load(Ordering::SeqCst) >= expected {
+                return;
+            }
+            notified.await;
+        }
+    }
 }
 
 impl AgentFileMutationRegistry {
@@ -2050,6 +2081,10 @@ async fn apply_agent_file_edit_state(
             &error,
         ));
     }
+    #[cfg(test)]
+    state
+        .agent_file_apply_test_control
+        .record_completed_disk_write();
     let identity = match record_agent_file_project_change(state).await {
         Ok(identity) => identity,
         Err(error) => {
@@ -7168,15 +7203,15 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentFileApplyRequest, AgentFileMutationRegistry, AgentFileUndoRequest,
-        AgentModelTestControl, AgentRuntimeStatus, AgentTaskEntry, AppState, ExecuteRequest,
-        ExecuteSourceRange, MINIMUM_AGENT_AISDK_VERSION, ProbeProcessOutput, RUNTIME_CACHE_VERSION,
-        RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig, StartupView,
-        SwitchTestControl, SwitchTestStep, active_context, agent_file_postwrite_failure,
-        agent_file_write_failure, agent_retry_source, agent_runtime_probe_expression,
-        agent_runtime_status_from_probe, agent_turn_admission_error,
-        append_agent_file_mutation_event, apply_agent_file_edit_state, ark_candidate_paths,
-        attach_render_artifact, bounded_diagnostic, cancel_agent_turn_state,
+        AgentFileApplyRequest, AgentFileApplyTestControl, AgentFileMutationRegistry,
+        AgentFileUndoRequest, AgentModelTestControl, AgentRuntimeStatus, AgentTaskEntry, AppState,
+        ExecuteRequest, ExecuteSourceRange, MINIMUM_AGENT_AISDK_VERSION, ProbeProcessOutput,
+        RUNTIME_CACHE_VERSION, RUserStartupFiles, RenderJobState, RuntimeCacheFile, RuntimeConfig,
+        StartupView, SwitchTestControl, SwitchTestStep, active_context,
+        agent_file_postwrite_failure, agent_file_write_failure, agent_retry_source,
+        agent_runtime_probe_expression, agent_runtime_status_from_probe,
+        agent_turn_admission_error, append_agent_file_mutation_event, apply_agent_file_edit_state,
+        ark_candidate_paths, attach_render_artifact, bounded_diagnostic, cancel_agent_turn_state,
         classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         deferred_agent_runtime_status, delete_agent_conversation_state, durable_project_root,
@@ -7736,6 +7771,7 @@ mod tests {
             agent_tasks: Arc::new(Mutex::new(HashMap::new())),
             agent_workspace_lane: Arc::new(AgentWorkspaceLane::default()),
             agent_file_mutations: Arc::new(AgentFileMutationRegistry::default()),
+            agent_file_apply_test_control: AgentFileApplyTestControl::default(),
             agent_llm_test_control: AgentModelTestControl::default(),
             switch_test_control: SwitchTestControl::default(),
             shutdown_started: AtomicBool::new(false),
@@ -8285,23 +8321,24 @@ mod tests {
                 .await
             });
 
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            loop {
-                let first_written = std::fs::read_to_string(&first_path)
+            tokio::time::timeout(
+                Duration::from_secs(30),
+                state
+                    .agent_file_apply_test_control
+                    .wait_for_completed_disk_writes(2),
+            )
+            .await
+            .expect("different file lanes were serialized behind the global context lock");
+            assert!(
+                std::fs::read_to_string(&first_path)
                     .unwrap()
-                    .contains("first_done");
-                let second_written = std::fs::read_to_string(&second_path)
+                    .contains("first_done")
+            );
+            assert!(
+                std::fs::read_to_string(&second_path)
                     .unwrap()
-                    .contains("second_done");
-                if first_written && second_written {
-                    break;
-                }
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "different file lanes were serialized behind the global context lock"
-                );
-                tokio::time::sleep(Duration::from_millis(2)).await;
-            }
+                    .contains("second_done")
+            );
 
             drop(context_guard);
             assert!(first.await.unwrap().is_ok());
@@ -10984,6 +11021,8 @@ fn main() {
                 agent_tasks: Arc::new(Mutex::new(HashMap::new())),
                 agent_workspace_lane: Arc::new(AgentWorkspaceLane::default()),
                 agent_file_mutations: Arc::new(AgentFileMutationRegistry::default()),
+                #[cfg(test)]
+                agent_file_apply_test_control: AgentFileApplyTestControl::default(),
                 agent_llm_test_control: AgentModelTestControl::default(),
                 switch_test_control: SwitchTestControl::default(),
                 shutdown_started: AtomicBool::new(false),
