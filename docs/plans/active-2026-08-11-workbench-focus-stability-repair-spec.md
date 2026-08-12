@@ -358,14 +358,14 @@ owned Issue #26/SignPath process. That coupling did not add product coverage:
 it delayed the same six interaction checks until an unrelated release gate.
 This amendment separates the facts without weakening release admission.
 
-Issue #33 closure now requires an unsigned internal `0.4.0-dev.36` package
+Issue #33 closure now requires an unsigned internal `0.4.0-dev.37` package
 built from exact protected `main`, silently installed in a clean hosted Windows
 profile, launched from its resolved install directory, and driven through a
 runner-only loopback WebView2 debugging port. The shipped Tauri page must prove
 its embedded version/commit and repeat the five original Issue scenarios plus
 EDITOR-VIEWPORT-R1. The exact workflow, identity, deterministic scenario,
 cleanup, screenshot, and JSON evidence requirements are owned by
-`docs/release/active-0.4.0-dev.36-candidate-checklist.md`.
+`docs/release/active-0.4.0-dev.37-candidate-checklist.md`.
 
 The installed automation may seed bounded Agent/Run presentation records to
 make polling and pointer timing deterministic, but it must use the shipped
@@ -475,3 +475,28 @@ port. Static regression coverage enforces both the positive acceptance path
 and that negative production boundary before the installed workflow proves the
 real CDP session. No application behavior, schema, credentials, runtime,
 installer layout, publication, signing, or release authority changes.
+
+### Installed watcher-evidence correction
+
+Protected-main run `31641866471` at
+`4d687b2f8354f7af71fa52512111068c3ea5480e` constructed and installed the
+`dev.36` NSIS package. Embedded version/commit/platform, installed executable,
+Ark runtime, the five original Issue #33 scenarios, screenshot capture, and
+fail-closed cleanup all passed. `monaco_watcher_viewport` timed out because its
+harness waited for `state.projectRefreshSequence` to exceed the prepared
+value. That counter describes project hydration/lifecycle changes; the real
+watcher calls `refreshProject()`, which deliberately does not mutate it. The
+predicate therefore could not prove success even when a watcher refresh ran.
+The artifact-producing failure consumes and rejects `dev.36`.
+
+Fresh synchronized `dev.37` corrects the D1/R3 evidence harness without
+changing product behavior. Before the external write it opens `watch.md` as a
+clean background document while retaining `analysis.R` as the active Monaco
+model. After writing a unique marker, it waits for the shipped watcher path to
+reload that marker into `state.documents["watch.md"].savedContent` and advance
+the broker-owned project revision. Only then does it assert that `analysis.R`
+remains active and that Monaco scroll position, visible range, and cursor are
+unchanged. Regression coverage rejects the impossible
+`projectRefreshSequence` predicate. No mock/browser path, timing-only success,
+schema, persistence, credential, signing, publication, or release authority is
+added.

@@ -65,7 +65,8 @@ semantics.
 | `release/historical-0.4.0-dev.33-candidate-checklist.md` | historical superseded source-only contract; deterministic source repairs, AGPL LIC-1/LIC-2, and SP-READY1 integrated, but no candidate, tag, Release, or public artifact was created before PR #48/#50 changed user-visible behavior | immutable `dev.33` source and NO-GO ledger only | cannot authorize or satisfy `dev.34` artifact, installed acceptance, signing, MAC5, publication, or updater rows |
 | `release/historical-0.4.0-dev.34-candidate-checklist.md` | historical rejected internal acceptance package; source matrix and unsigned NSIS construction passed, but quoted registry `InstallLocation` handling stopped installed-byte resolution and cleanup before all scenarios | immutable `dev.34` source, installer hash, failed installed-resolution/cleanup evidence, and REJECTED/NO-GO decision | run `31633600383` and its artifact remain non-composable; no Issue closure, signing, candidate, MAC5, publication, or updater row may reuse `dev.34` |
 | `release/historical-0.4.0-dev.35-candidate-checklist.md` | historical rejected internal acceptance package; source matrix, NSIS build/install, installed-byte/runtime resolution, startup, and cleanup passed, but environment-only WebView2 CDP admission failed before all scenarios | immutable `dev.35` source, installer/executable hashes, startup/cleanup pass, CDP failure, and REJECTED/NO-GO evidence | run `31635375821` and artifact `9157190586` remain non-composable; no Issue closure, signing, candidate, MAC5, publication, or updater row may reuse `dev.35` |
-| `release/active-0.4.0-dev.36-candidate-checklist.md` | active replacement source contract; acceptance-build-only Tauri WebView2 argument overlay and Issue #33 exact-source installed Windows acceptance authorized; SignPath and every public-release gate remain open | sole `0.4.0-dev.36` source identity, bounded Issue #33 Windows installed-automation evidence, and any future exact candidate/release ledger | ordinary candidate builds must remain debug-port-free; run the protected source matrix and same-commit installed Windows six-scenario workflow before Issue closure; no candidate/publication before SignPath production signing and the separate human installed, MAC5, and updater gates |
+| `release/historical-0.4.0-dev.36-candidate-checklist.md` | historical rejected internal acceptance package; exact installed identity/runtime, five original Issue scenarios, screenshot, and cleanup passed, but the sixth harness waited on a project-lifecycle counter that watcher refresh does not mutate | immutable `dev.36` installer/executable hashes, five PASS results, harness failure, screenshot, cleanup, and REJECTED/NO-GO decision | run `31641866471` and artifact `9159573725` are non-composable; no Issue closure, signing, candidate, MAC5, publication, or updater row may reuse `dev.36` |
+| `release/active-0.4.0-dev.37-candidate-checklist.md` | active replacement source contract; watcher proof now observes clean background-document reload and project revision before Monaco viewport assertions; Issue #33 exact-source installed Windows acceptance authorized | sole `0.4.0-dev.37` source identity, bounded six-scenario Windows installed evidence, and any future exact candidate/release ledger | run protected source matrix and same-commit installed workflow before Issue closure; ordinary candidates remain debug-port-free; signing, human installed acceptance, MAC5, publication, and updater gates remain open |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -577,7 +578,7 @@ update contract overlaps this build-only authority.
 release admission. An unsigned, exact-source, clean-profile Windows package may
 prove Issue #33's six named interactions and close that Issue, but it cannot
 satisfy Authenticode, exact signed-candidate, broad human installed acceptance,
-MAC5, publication, or updater evidence. The `0.4.0-dev.36` checklist owns both
+MAC5, publication, or updater evidence. The `0.4.0-dev.37` checklist owns both
 that narrow allowance and the continued release `NO-GO`; no feature document
 may relabel the review artifact as a candidate.
 
@@ -603,6 +604,15 @@ for recognized transient bundler transport failures only; compilation,
 configuration, unknown, exhausted, or ordinary candidate failures remain
 single-attempt and fail closed. No mirror, alternate tool identity, signing,
 publication, credential, or release authority is added.
+Run `31641866471` then built and installed `dev.36`, proved exact installed
+identity/runtime, passed the five original scenarios, captured a screenshot,
+and cleaned up. Its sixth harness predicate waited on
+`projectRefreshSequence`, although real watcher refresh does not change that
+counter, so the artifact is rejected and Issue #33 remains open. `dev.37`
+instead observes reloaded content in a clean background document plus a higher
+project revision before asserting the active Monaco model, viewport, and cursor
+are unchanged. This evidence correction owns no product behavior, schema,
+persistence, signing, publication, credential, or candidate authority.
 
 The active release checklist is the sole GO/NO-GO authority for the exact
 `0.2.0-dev.12` candidate. About/update V1 was implemented afterward and has its

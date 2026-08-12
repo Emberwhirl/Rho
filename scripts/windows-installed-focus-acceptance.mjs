@@ -414,6 +414,7 @@ async function runInstalledScenarios(session, options, evidence) {
   await runScenario("monaco_watcher_viewport", async () => {
     const prepared = await session.evaluate(`(async () => {
       await openDocument("analysis.R", { revealWorkSurface: false });
+      await openDocument("watch.md", { revealWorkSurface: false, preserveActive: true, focusEditor: false });
       const editor = state.editor.editor;
       const model = editor?.getModel();
       ${pageAssertion("editor && model", "Installed Monaco editor is unavailable")}
@@ -429,7 +430,9 @@ async function runInstalledScenarios(session, options, evidence) {
         scroll_top: editor.getScrollTop(),
         visible_start: editor.getVisibleRanges()[0]?.startLineNumber || null,
         cursor_line: editor.getPosition()?.lineNumber || null,
-        project_refresh_sequence: state.projectRefreshSequence
+        active_document: state.activeDocument,
+        project_revision: Number(state.revision?.project_revision || 0),
+        watch_saved_content: state.documents["watch.md"]?.savedContent || null
       };
     })()`);
     const watchPath = path.join(options.project, "watch.md");
@@ -442,15 +445,18 @@ async function runInstalledScenarios(session, options, evidence) {
           scroll_top: editor?.getScrollTop() ?? null,
           visible_start: editor?.getVisibleRanges()?.[0]?.startLineNumber || null,
           cursor_line: editor?.getPosition()?.lineNumber || null,
-          project_refresh_sequence: state.projectRefreshSequence,
-          watch_file_seen: state.project.files.some((file) => file.path === "watch.md")
+          active_document: state.activeDocument,
+          project_revision: Number(state.revision?.project_revision || 0),
+          watch_saved_contains_marker: Boolean(state.documents["watch.md"]?.savedContent?.includes(${JSON.stringify(marker)}))
         };
       })()`);
-      return detail.project_refresh_sequence > prepared.project_refresh_sequence && detail.watch_file_seen ? detail : null;
+      return detail.project_revision > prepared.project_revision && detail.watch_saved_contains_marker ? detail : null;
     }, { timeoutMs: 30_000, intervalMs: 300 });
     if (Math.abs(after.scroll_top - prepared.scroll_top) > 1
         || after.visible_start !== prepared.visible_start
-        || after.cursor_line !== prepared.cursor_line) {
+        || after.cursor_line !== prepared.cursor_line
+        || prepared.active_document !== "analysis.R"
+        || after.active_document !== "analysis.R") {
       throw new Error("Background watcher refresh moved the Monaco viewport or cursor");
     }
     return { prepared, after };

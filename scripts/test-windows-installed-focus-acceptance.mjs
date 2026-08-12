@@ -17,7 +17,7 @@ const acceptanceTauriConfig = JSON.parse(fs.readFileSync(
   "utf8",
 ));
 const spec = fs.readFileSync("docs/plans/active-2026-08-11-workbench-focus-stability-repair-spec.md", "utf8");
-const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.36-candidate-checklist.md", "utf8");
+const checklist = fs.readFileSync("docs/release/active-0.4.0-dev.37-candidate-checklist.md", "utf8");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "rho-issue33-options-"));
 const project = path.join(root, "project");
@@ -30,14 +30,14 @@ fs.writeFileSync(path.join(buildRoot, "rho-desktop.exe"), "build executable", "u
 for (const fixture of ["analysis.R", "helper.R", "watch.md"]) {
   fs.writeFileSync(path.join(project, fixture), `${fixture}\n`, "utf8");
 }
-const installer = path.join(root, "Rho_0.4.0-dev.36_x64-setup.exe");
+const installer = path.join(root, "Rho_0.4.0-dev.37_x64-setup.exe");
 const executable = path.join(installRoot, "rho-desktop.exe");
 fs.writeFileSync(installer, "installer", "utf8");
 fs.writeFileSync(executable, "executable", "utf8");
 
 const options = parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.36",
+  "--expected-version", "0.4.0-dev.37",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -46,13 +46,13 @@ const options = parseOptions([
   "--output", path.join(root, "evidence", "result.json"),
   "--screenshot", path.join(root, "evidence", "screen.png"),
 ]);
-assert.equal(options.expectedVersion, "0.4.0-dev.36");
+assert.equal(options.expectedVersion, "0.4.0-dev.37");
 assert.equal(options.expectedCommit, "a".repeat(40));
 assert.equal(options.port, 9222);
 
 assert.throws(() => parseOptions([
   "--port", "9222",
-  "--expected-version", "0.4.0-dev.36",
+  "--expected-version", "0.4.0-dev.37",
   "--expected-commit", "a".repeat(40),
   "--project", project,
   "--installer", installer,
@@ -86,6 +86,10 @@ assert.match(source, /getScrollTop\(\)/);
 assert.match(source, /Page\.captureScreenshot/);
 assert.match(source, /screenshot_sha256/);
 assert.match(source, /installed_executable_sha256/);
+assert.match(source, /openDocument\("watch\.md", \{ revealWorkSurface: false, preserveActive: true, focusEditor: false \}\)/);
+assert.match(source, /watch_saved_contains_marker/);
+assert.match(source, /detail\.project_revision > prepared\.project_revision && detail\.watch_saved_contains_marker/);
+assert.doesNotMatch(source, /detail\.project_refresh_sequence > prepared\.project_refresh_sequence/);
 
 assert.match(workflow, /^name: Issue 33 Windows Installed Acceptance$/m);
 assert.match(workflow, /runs-on: windows-latest/);
