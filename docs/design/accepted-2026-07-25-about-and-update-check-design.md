@@ -5,7 +5,9 @@ Date: 2026-07-25
 Status: implementation active; MAC4 macOS artifact extension implemented and
 locally verified on 2026-08-05; LIC-2 About legal notice and fixed bundled-
 license reveal implemented and locally reviewed on 2026-08-12; exact hosted
-candidate, live Pages deployment, and installed-app acceptance pending
+candidate, live Pages deployment, and installed-app acceptance pending;
+SP-READY1 manual-only network admission implemented and locally verified on
+2026-08-11, with hosted integration and installed acceptance pending
 
 Release inclusion boundary: this feature was implemented after the locked
 `0.2.0-dev.12` candidate baseline. It is not retroactively part of that
@@ -101,8 +103,8 @@ timeout, proxy failure, HTTP error, invalid JSON, invalid metadata, or an
 unavailable GitHub download must not prevent Rho startup, Workspace R startup,
 Agent startup, or normal use.
 
-Manual checks show an actionable result. Background checks remain silent when
-they fail.
+Manual checks show an actionable result. Update discovery is manual-only;
+startup does not schedule or perform an update request.
 
 ## 3. Scope And Non-goals
 
@@ -112,8 +114,8 @@ they fail.
 - About dialog with installed build and runtime information;
 - one-click copying of bounded support diagnostics;
 - manual update checks;
-- at most one non-blocking background check per 24 hours after the workbench is
-  ready;
+- no automatic or startup update request, notification, throttle, or dismissed-
+  version persistence;
 - stable and development static manifests;
 - a small Rho release/download page on the existing GitHub Pages custom domain;
 - GitHub Actions publication of the page and manifests after a validated Rho
@@ -231,9 +233,8 @@ The terminal states are:
 system browser. The update modal must not navigate the workbench WebView away
 from Rho.
 
-When a background check finds an update, Rho shows one restrained notification
-with `View Update` and `Dismiss`. Up-to-date and failed background checks do not
-show a notification.
+Rho does not check automatically. The update service is first contacted only
+after the user selects `Check for Updates...` or `Try Again` in this dialog.
 
 ## 5. Application Information Contract
 
@@ -369,18 +370,19 @@ The frontend owns:
 
 - Help menu behavior;
 - About and update modal rendering;
-- loading, success, failure, retry, and notification states;
-- storing the last background-check timestamp and dismissed available version.
+- loading, success, failure, and retry states.
 
 The frontend must not fetch the manifest directly, compare versions, accept an
-arbitrary URL from JSON, or interpolate raw network errors into HTML.
+arbitrary URL from JSON, interpolate raw network errors into HTML, or schedule
+an update request outside the explicit manual commands.
 
 ## 9. Privacy And Security
 
-Update requests disclose the normal network metadata of an HTTPS request,
-including IP address, request time, and user agent. Rho must not append project,
-user, R, Agent, provider, or credential information to the request URL or
-headers.
+User-initiated update requests disclose the normal network metadata of an
+HTTPS request, including IP address, request time, and user agent. Rho must not
+append project, user, R, Agent, provider, or credential information to the
+request URL or headers. Startup and ordinary workbench use make no update
+request.
 
 The V1 update checker does not execute remote content. All external navigation
 is user initiated and constrained to the allowlisted product and repository
@@ -410,7 +412,8 @@ must not describe an unsigned installer as cryptographically authenticated.
 ### WP3: Update user interface
 
 - add manual checking, retry, terminal states, and external navigation;
-- add the bounded once-per-24-hours background check;
+- keep update discovery manual-only with no startup scheduler or update-
+  throttle/dismiss persistence;
 - ensure dialogs are keyboard accessible and fit the minimum desktop window;
 - implement all update states in mock mode.
 
@@ -472,7 +475,8 @@ Static/mock verification must cover:
 - diagnostic copy success and failure feedback;
 - every update modal terminal state;
 - duplicate-check suppression;
-- background-check throttling and dismissed-version behavior;
+- absence of startup/background scheduling and update-throttle/dismiss
+  persistence;
 - safe text rendering for release summaries;
 - keyboard focus entry, containment, Escape, and restoration.
 
@@ -499,7 +503,8 @@ Against the exact installed candidate:
 - manual check reports the correct state when current and when older;
 - stable does not offer a prerelease;
 - offline and blocked-network checks are recoverable and do not affect Rho;
-- the background check neither delays startup nor repeats within 24 hours;
+- startup and ordinary workbench use make no update request, and the first
+  request follows the explicit manual command;
 - `View Update` opens the Rho page in the system browser;
 - the Rho page is understandable without GitHub knowledge;
 - the GitHub-hosted installer limitation is visible;
@@ -515,7 +520,8 @@ V1 is implementation-complete only when all of the following are true:
    the existing three-source version-agreement check;
 3. manual update checks use the correct `yulab-smu.top` channel endpoint and
    produce every specified terminal state;
-4. update checking cannot block startup or Workspace/Agent operation;
+4. startup performs no update request, and a manual update failure cannot block
+   Workspace/Agent operation;
 5. stable installations never offer prereleases;
 6. manifest parsing, URL allowlisting, response bounds, timeout, and SemVer
    behavior have automated regression coverage;

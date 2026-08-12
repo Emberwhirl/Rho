@@ -2,9 +2,10 @@
 
 Status: active replacement source contract; deterministic Provider-discovery
 repair, file-lane test repair, AGPL LIC-1, and LIC-2 are protected-integrated;
-SP-READY1 SignPath application readiness is active; exact candidate, installed
-acceptance, Windows signing, MAC5, publication, and updater evidence remain
-open
+SP-READY1 SignPath application-readiness implementation, affected local
+automation, mock UI review, and post-test review pass; hosted validation,
+integration, external application, exact candidate, installed acceptance,
+Windows signing, MAC5, publication, and updater evidence remain open
 
 Date: 2026-08-11
 Last updated: 2026-08-12
@@ -176,8 +177,9 @@ trigger that matrix, and stable jobs must execute the update-site self-test.
 
 The original source repair, version synchronization, complete validation,
 hosted matrices, AGPL LIC-1/LIC-2, and their protected integration pass.
-Current decision remains `NO-GO` for candidate construction while SP-READY1,
-external SignPath readiness, production two-stage Windows signing, and Issue
-#26's signing disposition remain open. Exact candidate, installed acceptance,
-acceptance upload, MAC5, public publication, and update-site mutation remain
-open.
+SP-READY1 implementation and local evidence pass, while exact-head hosted
+validation and integration remain open. Current decision remains `NO-GO` for
+candidate construction while those gates, external SignPath readiness,
+production two-stage Windows signing, and Issue #26's signing disposition
+remain open. Exact candidate, installed acceptance, acceptance upload, MAC5,
+public publication, and update-site mutation remain open.

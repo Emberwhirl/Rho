@@ -3057,8 +3057,6 @@ body.resizing-vertical { cursor: col-resize; }
 .toast-region { position: fixed; right: 12px; bottom: 36px; z-index: 20; display: flex; flex-direction: column; gap: 7px; width: min(360px, calc(100vw - 24px)); }
 .toast { padding: 10px 12px; border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 5px; background: #fff; box-shadow: 0 8px 24px #1b2b2d22; }
 .toast.error { border-left-color: var(--danger); }
-.toast-action { margin: 7px 0 0; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 4px; color: var(--accent-strong); background: #fff; cursor: pointer; }
-.toast-action.secondary { margin-left: 6px; border-color: var(--border-strong); color: var(--muted); }
 .toast { animation: toast-in 0.25s ease-out; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes dialog-in { from { opacity: 0; } to { opacity: 1; } }

@@ -1,8 +1,9 @@
 # SignPath Application Readiness Contract
 
-Status: active; SP-READY1 authorized, specification and cross-review complete;
-implementation, verification, protected integration, external application, and
-production signing remain open
+Status: active; SP-READY1 implementation, affected local automation, mock UI
+review, and post-test policy/security review complete; exact-head hosted
+validation, upstream integration, external application, and production signing
+remain open
 
 Date: 2026-08-11 EDT / 2026-08-12 UTC
 Authorization: after directing the next version to be merged and published,
@@ -22,15 +23,15 @@ Rho's macOS candidate path uses Developer ID signing and notarization, while
 the Windows candidate path currently produces an unsigned Rho executable and
 NSIS installer. SignPath Foundation application readiness requires truthful
 public license, privacy, security, and code-signing information plus protected
-source/build ownership. The repository currently lacks `PRIVACY.md`,
+source/build ownership. At activation, the repository lacked `PRIVACY.md`,
 `CODE_SIGNING_POLICY.md`, `SECURITY.md`, and `.github/CODEOWNERS`.
 
-The accepted About/update design also admits one automatic update request after
-startup at most every 24 hours. That conflicts with Issue #26's approved
-privacy principle that Rho has no background telemetry and that product-owned
-remote requests are initiated by a user. The implementation stores the last
-automatic-check time and dismissed version in WebView local storage and calls
-`maybeCheckForUpdates()` after Workspace R starts.
+At activation, the accepted About/update design also admitted one automatic
+update request after startup at most every 24 hours. That conflicted with Issue
+#26's approved privacy principle that Rho has no background telemetry and that
+product-owned remote requests are initiated by a user. The implementation
+stored the last automatic-check time and dismissed version in WebView local
+storage and called `maybeCheckForUpdates()` after Workspace R started.
 
 SP-READY1 resolves that conflict before an external application or a signed
 candidate is attempted. It creates no SignPath project, signing request,
@@ -181,6 +182,55 @@ SP-READY1 automated evidence must prove:
 Manual review must confirm that Help still exposes **Check for Updates...** and
 that opening it is the first network action. No installed-candidate claim is
 made by browser/mock review.
+
+## SP-READY1 Implementation And Local Evidence
+
+The implementation removes the startup scheduler, background option,
+notification helper, update timestamp/dismissed-version writes, and their dead
+styles. The one Help/Retry path still opens the existing modal, suppresses a
+duplicate request, invokes the bounded backend checker, renders every terminal
+state, and opens only the validated release-page URL after another user action.
+
+Repository readiness adds `PRIVACY.md`, `CODE_SIGNING_POLICY.md`, `SECURITY.md`,
+and `.github/CODEOWNERS`; links them from the README and generated download
+page; corrects the documentation index; and runs the positive/negative
+readiness contract in both stable compatibility jobs. No `.signpath` policy,
+secret, signing request, artifact, candidate, tag, Release, or Pages mutation
+was created.
+
+Local evidence on 2026-08-11 EDT:
+
+- `node --check` passed for `desktop/dist/app.js`, the update-site generator,
+  and the readiness contract;
+- all 60 `scripts/test-*.mjs` contracts passed once, including the readiness
+  negative self-tests, updater historical-compatibility self-test, installed-
+  license contract, MAC4 release contract, AGPL/license inventory, MSRV, and
+  frontend/mock suites;
+- `cargo test -p rho-desktop update::tests --locked -- --nocapture` passed all
+  eight update tests after the isolated worktree bootstrapped the repository-
+  pinned macOS Ark sidecar; the first attempt failed before tests exactly
+  because that required sidecar was absent and is not counted as a pass;
+- `git diff --check` passed;
+- Computer Use browser/mock review observed a ready workbench with no automatic
+  update dialog, exposed **Help > Check for Updates...**, observed the explicit
+  `Checking...` state and `up to date` terminal state only after clicking it,
+  then reloaded and observed no automatic dialog; and
+- a separate post-test review compared the public documents and ownership
+  boundaries with the current SignPath Foundation terms and GitHub trusted-
+  build documentation. It confirmed the required attribution, OSI/open-source
+  boundary, own-binaries-only scope, role links, MFA, per-release manual
+  approval, GitHub-hosted artifact origin, policy-file ownership, and truthful
+  unsigned Windows status. No blocking contract deviation was found.
+
+The public privacy inventory names the already implemented, explicitly user-
+initiated DOI, package/environment, R-code, and external-tool lanes in addition
+to Issue #26's update/Provider/Agent examples. This is a truthfulness
+clarification, not expanded network or execution authority.
+
+Full local Rust workspace and R package suites were not rerun because this
+slice changes no Rust/R source or package contract. Exact PR and merged-main
+hosted stable/MSRV matrices remain required and execute the full locked Rust
+workspace on macOS and Windows.
 
 ## Version, NEWS, And Release Decision
 
