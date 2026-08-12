@@ -2199,6 +2199,7 @@ async function mockInvoke(command, args) {
     };
   }
   if (command === "open_rho_website") return null;
+  if (command === "show_rho_license") return null;
   if (["startup_bootstrap", "startup_choose_rscript", "startup_status"].includes(command)) {
     return {
       phase: "runtime_ready",
@@ -21127,6 +21128,13 @@ $("#aboutCopyDiagnostics").addEventListener("click", async () => {
 });
 $("#aboutWebsite").addEventListener("click", async () => invoke("open_rho_website", { url: (await loadAppInfo()).website_url }));
 $("#aboutSource").addEventListener("click", async () => invoke("open_rho_website", { url: (await loadAppInfo()).source_url }));
+$("#aboutLicense").addEventListener("click", async () => {
+  try {
+    await invoke("show_rho_license");
+  } catch (error) {
+    toast(reportUiFailure("show bundled license", error, "The bundled license file could not be shown. Reinstall Rho and try again."), true);
+  }
+});
 $("#updateRetry").addEventListener("click", () => checkForUpdates());
 $("#updateView").addEventListener("click", async () => {
   const result = state.product.updateResult;

@@ -326,6 +326,18 @@ jobs:
           test -d "$app_path"
           test -f "$built_dmg"
           codesign --verify --deep --strict --verbose=4 "$app_path"
+          verify_rho_license_resources() {
+            local app_path="$1"
+            local license_path="$app_path/Contents/Resources/licenses/rho/LICENSE.txt"
+            local notices_path="$app_path/Contents/Resources/licenses/rho/THIRD-PARTY-NOTICES.md"
+            test -f "$license_path"
+            test ! -L "$license_path"
+            test -f "$notices_path"
+            test ! -L "$notices_path"
+            cmp -s LICENSE "$license_path"
+            cmp -s LICENSES.md "$notices_path"
+          }
+          verify_rho_license_resources "$app_path"
           require_exact_arm64() {
             local label="$1"
             local binary_path="$2"
@@ -532,6 +544,18 @@ jobs:
           app_path="$mount_point/Rho.app"
           test -d "$app_path"
           codesign --verify --deep --strict --verbose=4 "$app_path"
+          verify_rho_license_resources() {
+            local app_path="$1"
+            local license_path="$app_path/Contents/Resources/licenses/rho/LICENSE.txt"
+            local notices_path="$app_path/Contents/Resources/licenses/rho/THIRD-PARTY-NOTICES.md"
+            test -f "$license_path"
+            test ! -L "$license_path"
+            test -f "$notices_path"
+            test ! -L "$notices_path"
+            cmp -s LICENSE "$license_path"
+            cmp -s LICENSES.md "$notices_path"
+          }
+          verify_rho_license_resources "$app_path"
           require_exact_arm64() {
             local label="$1"
             local binary_path="$2"
@@ -581,7 +605,7 @@ jobs:
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
-          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper
+          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper,license_boundary
 
       - name: Upload immutable final macOS candidate inputs
         uses: actions/upload-artifact@v4

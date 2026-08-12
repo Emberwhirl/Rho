@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { CANDIDATE_PLATFORMS, validateAggregateEvidence, validatePlatformEvidence } from "./candidate-release.mjs";
+import {
+  CANDIDATE_PLATFORMS,
+  validateAggregateEvidence,
+  validatePublishedPlatformEvidence,
+} from "./candidate-release.mjs";
 
 const WEBSITE = "https://yulab-smu.top/Rho/";
 const REPOSITORY = "https://github.com/YuLab-SMU/Rho";
@@ -94,7 +98,7 @@ function validatedCandidateArtifacts(record, evidence, version) {
       || supplied.size_bytes !== platformEvidence.evidence.size_bytes
       || supplied.sha256 !== platformEvidence.evidence.sha256
     ) throw new Error(`Platform evidence content mismatch for ${platform}`);
-    validatePlatformEvidence(supplied.content, {
+    validatePublishedPlatformEvidence(supplied.content, {
       version: evidence.version,
       release_tag: evidence.release_tag,
       commit: evidence.commit,
@@ -237,7 +241,7 @@ function fakeCandidateRecord(version) {
   };
   const checks = {
     windows_x86_64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke"],
-    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "notary_binding", "staple", "gatekeeper"],
+    macos_aarch64: ["release_metadata", "rust_workspace", "rho_bridge", "rho_agent", "frontend", "workspace_smoke", "arm64", "codesign", "entitlements", "notarization", "notary_binding", "staple", "gatekeeper", "license_boundary"],
   };
   record.platform_evidence = Object.fromEntries(CANDIDATE_PLATFORMS.map((platform) => [platform, {
     size_bytes: platforms[platform].evidence.size_bytes,
@@ -281,6 +285,18 @@ function selfTest() {
     const candidateManifest = JSON.parse(fs.readFileSync(path.join(temp, "updates", "development.json"), "utf8"));
     if (!candidateManifest.artifacts.windows_x86_64 || !candidateManifest.artifacts.macos_aarch64) throw new Error("Candidate manifest omitted a platform");
     if (!fs.readFileSync(path.join(temp, "index.html"), "utf8").includes("Download for macOS (Apple Silicon)")) throw new Error("Candidate page omitted macOS");
+    const historical = fakeCandidateRecord("0.4.0-dev.24");
+    historical.platform_evidence.macos_aarch64.content.checks =
+      historical.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");
+    generate([historical], temp);
+    const strictCandidate = fakeCandidateRecord("0.4.0-dev.33");
+    strictCandidate.platform_evidence.macos_aarch64.content.checks =
+      strictCandidate.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");
+    expectFailure(() => generate([strictCandidate], temp), /missing required check license_boundary/);
+    const unknownHistorical = fakeCandidateRecord("0.4.0-dev.23");
+    unknownHistorical.platform_evidence.macos_aarch64.content.checks =
+      unknownHistorical.platform_evidence.macos_aarch64.content.checks.filter((check) => check.name !== "license_boundary");
+    expectFailure(() => generate([unknownHistorical], temp), /missing required check license_boundary/);
     expectFailure(() => generate([{ ...fakeRecord("0.3.0"), draft: true }], temp), /Draft release/);
     const missingMac = fakeCandidateRecord("0.4.0-dev.1");
     delete missingMac.evidence.platforms.macos_aarch64;

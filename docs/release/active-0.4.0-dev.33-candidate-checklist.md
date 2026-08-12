@@ -1,13 +1,14 @@
 # Rho 0.4.0-dev.33 Cross-Platform Candidate Checklist
 
 Status: active replacement source contract; deterministic Provider-discovery
-timeout-fixture repair, dev.33 identity synchronization, complete local source
-verification, and post-test contract review pass; push, exact-head hosted CI,
+repair, file-lane test repair, and AGPL LIC-1 are protected-integrated; LIC-2
+installed-license surface implementation, complete local validation, local
+macOS bundle inspection, and UI review pass; LIC-2 exact-head hosted CI and
 integration, exact candidate, installed acceptance, Windows signing
-disposition, MAC5, publication, and updater evidence open
+disposition, MAC5, publication, and updater evidence remain open
 
 Date: 2026-08-11
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 Change class: D1 correction of a nondeterministic test fixture plus the
 required D4 single-use replacement development identity
@@ -30,6 +31,16 @@ synchronized replacement identity, complete affected validation, scoped
 commit, upstream branch push, and Draft PR. It does not waive protected merge,
 candidate, installed, Windows-signing, MAC5, publication, or updater gates.
 
+After subsequently directing the next version to be merged and published, the
+project owner instructed the agent to complete all remaining required work on
+2026-08-12. That activates the bounded AGPL LIC-2 prerequisite: fixed
+cross-platform license resources, About legal notice/reveal action, deterministic
+contracts, and fail-closed macOS candidate resource verification. It authorizes
+source implementation, validation, review, a scoped PR, and protected merge.
+It does not authorize candidate construction before all source and Windows-
+signing gates pass, and it does not waive installed, MAC5, publication, or
+updater acceptance.
+
 `0.4.0-dev.32` is immutable and rejected. Its Windows artifact, source checks,
 and failed macOS candidate result cannot be relabelled or composed into this
 identity.
@@ -44,7 +55,7 @@ identity.
 | Store schema | `12` | unchanged; no persistence schema changes |
 | Release tag/name | `v0.4.0-dev.33` / `Rho 0.4.0-dev.33` | reserved replacement identity only; no tag, artifact, or Release exists |
 | Source repository | `YuLab-SMU/Rho` | authoritative integration target |
-| Candidate source | future exact upstream default-branch commit | reviewed local branch only; no pushed/integrated `dev.33` source or candidate exists yet |
+| Candidate source | future exact upstream default-branch commit after LIC-2 integration | upstream `main` `f37276940499d80b4898f630d3c683e13a554a3f` contains the integrated source repairs and AGPL LIC-1; LIC-2 remains a reviewed local source change; no candidate exists |
 | Windows/macOS artifacts | exact `dev.33` candidate only | not built |
 | Release decision | source repair authorized; release `NO-GO` | every downstream artifact and acceptance gate remains open |
 
@@ -112,17 +123,32 @@ UI, or mutation authority and no blocking contract deviation.
    both R package suites, and `git diff --check` pass.
 4. **PASS** — separate post-test review proves production discovery source is
    byte-identical and finds no blocking deviation.
-5. **OPEN** — the exact pushed head must pass macOS/Windows stable and Rust
-   1.88.0 hosted source identities before protected integration.
+5. **PASS** — PR #43 exact head passed macOS/Windows stable and Rust 1.88.0 in
+   run `31557415624` and merged as `3a3546bd76cc11761263a5af8e060ba73a4a0580`;
+   AGPL PR #30 exact head passed the same four identities in run `31558086732`
+   and merged as `f37276940499d80b4898f630d3c683e13a554a3f`.
+6. **OPEN** — LIC-2 must pass its exact pushed-head four-identity matrix and
+   protected integration before candidate admission.
+
+Pre-merge update-site review found that making `license_boundary` globally
+mandatory also rejected immutable published `0.4.0-dev.24` evidence and would
+break regeneration of the live download page. LIC-2 therefore owns one narrow
+compatibility correction: update-site ingestion may exempt only exact
+`0.4.0-dev.24` macOS evidence from that newly introduced check. Candidate
+construction, Draft publication admission, `dev.33`, and every unknown version
+remain strict. Positive legacy regeneration plus `dev.33` and unknown-version
+negative tests are required before the exact-head matrix is accepted.
+The affected candidate/update-site sources and publication workflows must also
+trigger that matrix, and stable jobs must execute the update-site self-test.
 
 ## Remaining Gates
 
-1. **PASS** — implement and locally verify the bounded test fixture and version
-   metadata.
-2. Push one scoped Draft PR and require its exact-head four-identity source
-   matrix without bypass.
-3. After separately authorized integration, run one protected candidate
-   workflow against the exact current upstream default-branch commit and
+1. **PASS** — implement, review, validate, and protected-integrate the bounded
+   Provider and file-lane source repairs plus AGPL LIC-1.
+2. Push LIC-2 as one scoped Draft PR and require its exact-head four-identity
+   source matrix and protected integration without bypass.
+3. After LIC-2 integration and Windows-signing disposition, run one protected
+   candidate workflow against the exact current upstream default-branch commit and
    independently verify Draft assets, hashes, identities, macOS trust evidence,
    and Draft-only state.
 4. Perform exact installed `dev.33` References/Rename/editor-intelligence,
@@ -131,14 +157,18 @@ UI, or mutation authority and no blocking contract deviation.
    the carried release risk.
 5. Resolve Issue #26's Windows signing disposition without treating an
    unsigned installer as a public-release pass.
-6. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
+6. Prove the exact root `LICENSE` and `LICENSES.md` are bundled under the fixed
+   Rho resource path, the About action reveals the installed license offline,
+   and the installed bytes match the candidate source on both platforms.
+7. Reconcile candidate evidence, then stop for explicit MAC5 GO. Publication
    and updater mutation remain separate actions.
 
 ## Current Decision
 
-The focused repair, version synchronization, complete local validation, and
-post-test review pass. Current decision remains `NO-GO` for candidate
-construction until push, exact-head hosted source CI, protected integration,
-and current-default-branch identity checks pass. Installed acceptance,
-acceptance upload, MAC5, public publication, and update-site mutation remain
-open and unauthorized by this source handoff.
+The original source repair, version synchronization, complete validation,
+hosted matrices, AGPL LIC-1, and protected integration pass. LIC-2 local source,
+bundle-byte, Workspace smoke, and UI review pass. Current decision remains
+`NO-GO` for candidate construction until LIC-2 exact-head hosted CI/protected
+integration and Issue #26's Windows-signing disposition pass. Exact candidate,
+installed acceptance, acceptance upload, MAC5, public publication, and update-
+site mutation remain open.

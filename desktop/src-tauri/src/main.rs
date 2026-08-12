@@ -54,7 +54,7 @@ use rho_store::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, path::BaseDirectory};
 #[cfg(test)]
 use tokio::sync::Notify;
 use tokio::sync::{Mutex, RwLock, oneshot};
@@ -72,6 +72,7 @@ const BRIDGE_FORMATTING: &str = include_str!("../../../r/rho.bridge/R/formatting
 const AGENT_STATE: &str = include_str!("../../../r/rho.agent/R/aaa-state.R");
 const AGENT_TRANSPORT: &str = include_str!("../../../r/rho.agent/R/transport.R");
 const AGENT_ADAPTER: &str = include_str!("../../../r/rho.agent/R/aisdk_adapter.R");
+const RHO_LICENSE_RESOURCE: &str = "licenses/rho/LICENSE.txt";
 #[derive(Clone)]
 struct RuntimeConfig {
     data_dir: PathBuf,
@@ -847,6 +848,35 @@ async fn open_rho_website(url: String) -> Result<(), String> {
     let mut command = platform::open_url_command(&url);
     hide_console_window(&mut command);
     command.spawn().map_err(display_error)?;
+    Ok(())
+}
+
+fn ensure_bundled_license_file(path: &Path) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path).context("checking bundled Rho license")?;
+    ensure!(
+        metadata.is_file() && !metadata.file_type().is_symlink(),
+        "bundled Rho license is not a regular file"
+    );
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_rho_license(app: AppHandle) -> Result<(), String> {
+    let path = app
+        .path()
+        .resolve(RHO_LICENSE_RESOURCE, BaseDirectory::Resource)
+        .map_err(|_| {
+            "The bundled Rho license file could not be located. Reinstall Rho and try again."
+                .to_string()
+        })?;
+    ensure_bundled_license_file(&path).map_err(|_| {
+        "The bundled Rho license file is unavailable. Reinstall Rho and try again.".to_string()
+    })?;
+    let mut command = platform::reveal_path_command(&path);
+    hide_console_window(&mut command);
+    command
+        .spawn()
+        .map_err(|_| "The bundled Rho license file could not be shown.".to_string())?;
     Ok(())
 }
 
@@ -7215,16 +7245,16 @@ mod tests {
         classify_startup_error, configure_user_startup, contain_audit_panic,
         data_view_artifact_metadata, data_view_delimited_text, decode_plot_png_base64,
         deferred_agent_runtime_status, delete_agent_conversation_state, durable_project_root,
-        editor_format_result, ensure_artifact_export_target, ensure_supported_r_architecture,
-        ensure_supported_r_version, existing_startup_file, find_executable_on_path,
-        finish_render_job, has_png_signature, interrupt_all_agent_tasks, load_runtime_cache,
-        locate_ark_from_candidates, locate_rscript, lockfile_inventory_arguments,
-        parse_r_runtime_probe, project_switch_blocker, r_architecture_supported,
-        reconcile_render_job, recover_incomplete_agent_file_mutations, render_job_is_terminal,
-        retry_run_arguments, run_is_retryable, runtime_file_signature, safe_delete_project_file,
-        save_runtime_cache, source_claim_snapshot, switch_project_with_watcher_factory,
-        text_sha256, undo_agent_file_edit_state, validate_execute_source_range_shape,
-        workspace_project_root_code, write_r_probe_script,
+        editor_format_result, ensure_artifact_export_target, ensure_bundled_license_file,
+        ensure_supported_r_architecture, ensure_supported_r_version, existing_startup_file,
+        find_executable_on_path, finish_render_job, has_png_signature, interrupt_all_agent_tasks,
+        load_runtime_cache, locate_ark_from_candidates, locate_rscript,
+        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
+        r_architecture_supported, reconcile_render_job, recover_incomplete_agent_file_mutations,
+        render_job_is_terminal, retry_run_arguments, run_is_retryable, runtime_file_signature,
+        safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
+        switch_project_with_watcher_factory, text_sha256, undo_agent_file_edit_state,
+        validate_execute_source_range_shape, workspace_project_root_code, write_r_probe_script,
     };
     use crate::platform;
 
@@ -7285,6 +7315,23 @@ mod tests {
         );
         assert!(validate_execute_source_range_shape(&single_line).is_ok());
         assert!(validate_execute_source_range_shape(&execute_request("summary(qc)", None)).is_ok());
+    }
+
+    #[test]
+    fn bundled_license_boundary_accepts_only_a_regular_file() {
+        let root = TempDir::new().unwrap();
+        let license = root.path().join("LICENSE.txt");
+        std::fs::write(&license, "license").unwrap();
+        assert!(ensure_bundled_license_file(&license).is_ok());
+        assert!(ensure_bundled_license_file(&root.path().join("missing")).is_err());
+        assert!(ensure_bundled_license_file(root.path()).is_err());
+
+        #[cfg(unix)]
+        {
+            let link = root.path().join("license-link");
+            std::os::unix::fs::symlink(&license, &link).unwrap();
+            assert!(ensure_bundled_license_file(&link).is_err());
+        }
     }
 
     #[test]
@@ -11035,6 +11082,7 @@ fn main() {
             app_info,
             check_for_updates,
             open_rho_website,
+            show_rho_license,
             startup_status,
             startup_bootstrap,
             startup_choose_rscript,

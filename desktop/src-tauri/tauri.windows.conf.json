@@ -3,6 +3,8 @@
   "bundle": {
     "targets": ["nsis"],
     "resources": {
+      "../../LICENSE": "licenses/rho/LICENSE.txt",
+      "../../LICENSES.md": "licenses/rho/THIRD-PARTY-NOTICES.md",
       "../resources/runtime/": "resources/runtime/",
       "../resources/WebView2Loader.dll": "WebView2Loader.dll"
     },

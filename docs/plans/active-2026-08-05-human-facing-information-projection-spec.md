@@ -103,8 +103,11 @@ to raw enum values, raw JSON, or `String(error)`.
   internally for selection and commands.
 - Startup diagnostics and About diagnostics remain available for support via
   copy/log actions; this package does not weaken diagnostic capture.
-- No schema, Rust command, R package, public protocol, credential authority,
-  filesystem authority, or persistence changes are authorized.
+- No schema, R package, public protocol, credential authority, project-file
+  authority, or persistence changes are authorized. The separately active
+  AGPL LIC-2 contract may add one no-input Rust command that resolves and
+  reveals only the fixed bundled Rho license resource. Its UI must expose the
+  friendly legal action and failure, never the internal command or raw path.
 
 ## Verification
 
@@ -197,3 +200,14 @@ updated. Application and R package versions remain unchanged because this work
 joins the existing `0.4.0-dev.0` candidate and changes no R package contract.
 Installed-app and display-scale acceptance remain `NOT RUN`; no release
 readiness decision is made.
+
+### LIC-2 About Legal Notice Extension
+
+Implemented and locally reviewed 2026-08-12 under the active AGPL transition
+contract. About now projects the static `GNU AGPL v3.0 only` identity and
+corresponding-source statement, keeps Source Repository and Show License File
+as accessible buttons, and exposes no resource path. The real command returns
+fixed friendly failures and browser/mock mode performs no filesystem access.
+Computer Use confirmed the notice and exact bundled-license reveal action in a
+local macOS `.app`. Exact candidate and installed-app acceptance remain
+`NOT RUN`.

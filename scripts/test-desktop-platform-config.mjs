@@ -20,6 +20,12 @@ const arkManifest = JSON.parse(
 for (const key of ["targets", "resources", "icon", "windows", "macOS"]) {
   assert.equal(base.bundle[key], undefined, `base bundle must not own ${key}`);
 }
+assert.equal(base.bundle.license, "AGPL-3.0-only");
+assert.equal(
+  base.bundle.licenseFile,
+  undefined,
+  "AGPL notice is a bundled resource, not an installer click-through EULA",
+);
 
 assert.deepEqual(windows.bundle.targets, ["nsis"]);
 assert.equal(
@@ -30,11 +36,18 @@ assert.equal(
   windows.bundle.resources["../resources/runtime/"],
   "resources/runtime/",
 );
+assert.equal(windows.bundle.resources["../../LICENSE"], "licenses/rho/LICENSE.txt");
+assert.equal(
+  windows.bundle.resources["../../LICENSES.md"],
+  "licenses/rho/THIRD-PARTY-NOTICES.md",
+);
 assert.ok(windows.bundle.icon.includes("icons/icon.ico"));
 
 assert.deepEqual(macos.bundle.targets, ["app", "dmg"]);
 assert.deepEqual(macos.bundle.externalBin, ["binaries/ark"]);
 assert.deepEqual(macos.bundle.resources, {
+  "../../LICENSE": "licenses/rho/LICENSE.txt",
+  "../../LICENSES.md": "licenses/rho/THIRD-PARTY-NOTICES.md",
   "../resources/runtime/LICENSE": "licenses/ark/LICENSE",
   "../resources/runtime/NOTICE": "licenses/ark/NOTICE",
 });

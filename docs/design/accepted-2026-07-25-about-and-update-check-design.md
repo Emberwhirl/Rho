@@ -3,8 +3,9 @@
 Date: 2026-07-25
 
 Status: implementation active; MAC4 macOS artifact extension implemented and
-locally verified on 2026-08-05; hosted candidate, live Pages deployment, and
-installed-app acceptance pending
+locally verified on 2026-08-05; LIC-2 About legal notice and fixed bundled-
+license reveal implemented and locally reviewed on 2026-08-12; exact hosted
+candidate, live Pages deployment, and installed-app acceptance pending
 
 Release inclusion boundary: this feature was implemented after the locked
 `0.2.0-dev.12` candidate baseline. It is not retroactively part of that
@@ -179,12 +180,25 @@ behavior of the other workbench menus.
 - Windows architecture;
 - R version and selected `Rscript.exe` path when runtime bootstrap succeeded;
 - Agent runtime status and `aisdk` version when available;
+- the Rho license identity, a short corresponding-source statement, and an
+  offline action that reveals the fixed bundled license file;
 - links to the Rho website and source repository;
 - `Copy Diagnostics` and `Close` commands.
 
 Unavailable runtime facts must render as `Unavailable` or `Not started`, not as
 blank text and not as a dialog failure. No credential value, environment value,
 project content, user name, or model prompt may appear in copied diagnostics.
+
+The legal notice is static product information, not part of `app_info` or the
+copied diagnostics payload. It must identify Rho as `GNU AGPL v3.0 only`, say
+that corresponding source is available from the Source Repository, and keep
+both Source Repository and bundled-license actions keyboard/focus reachable.
+The bundled-license action invokes a no-input desktop command that resolves a
+constant Tauri resource; the WebView never supplies or displays a filesystem
+path. Missing-resource failure is shown truthfully and does not close About.
+
+This LIC-2 extension does not change the update endpoint, channel policy,
+network allowlist, diagnostics schema, or user-initiated installation rule.
 
 The copied text uses a stable, support-friendly shape:
 
