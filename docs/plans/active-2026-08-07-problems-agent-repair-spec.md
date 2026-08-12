@@ -1,8 +1,9 @@
 # Problems To Agent Repair Entry
 
 Status: active; R5 implementation and complete affected automated/browser
-verification pass; `dev.23` is historical superseded before artifact
-production; exact combined `dev.24` artifact and installed acceptance open
+verification pass, including replacement-candidate browser reconfirmation and
+exact `dev.31` installed live-Provider Repair/Accept/verified-Undo pass;
+`dev.23` is historical superseded before artifact production
 
 Date: 2026-08-07; amended 2026-08-08
 Authorization: user approved implementation of GitHub Issue #6 after review and
@@ -663,3 +664,21 @@ before the successor source change and remains an open combined `dev.24`
 candidate gate. Owner-installed/live-Provider acceptance remains separate. No tag,
 Release/draft, Developer ID signing, notarization, staple, Gatekeeper candidate,
 MAC5, Pages, update publication, or release GO is authorized.
+
+Replacement `0.4.0-dev.31` Chromium reconfirmation passed the deterministic
+repair probe. Exact parse-token, file-expression, Console, and manual-selection
+routes each created one typed read-only repair turn with bounded diagnostic/run
+context; file-backed routes produced one reviewable proposal without applying
+it. Foreign-project, stale-source, failed-request, project-switch, and route
+guards created no unauthorized turn, and source remained unchanged. This does
+not replace the separately required Reject recovery exercise.
+
+Computer Use against the exact installed signed `0.4.0-dev.31` bundle then
+triggered the Console repair entry for a file-backed parse failure and completed
+one live DeepSeek turn. The response diagnosed the exact malformed range and
+created one reviewable file proposal without pre-accept mutation. Accept fixed
+the file, the native proposal collapsed, verified-only Undo appeared, and Undo
+restored the original malformed fixture. Candidate `dev.31` was later rejected
+by the separately owned installed References/Rename defect; no Problem-repair
+failure caused that rejection, and this slice cannot be relabelled as `dev.32`
+candidate evidence.

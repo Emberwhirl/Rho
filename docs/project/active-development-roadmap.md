@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.31`
+Current source baseline: `0.4.0-dev.32`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -46,9 +46,20 @@ valid Data Viewer pages encoded named R lists as JSON objects and the frontend
 required ordered arrays. `DATA-VIEWER-ROW-SHAPE-R1` repairs the existing WP2
 contract, advances the replacement source to `0.4.0-dev.31` with
 `rho.bridge 0.1.14`, passed four-platform Rust Compatibility run `31523265847`,
-and integrated through PR #39 at `a54fa2c`. Browser/mock, installed
-Windows/macOS, Windows signing disposition, acceptance-evidence, MAC5, and
-publication gates remain open.
+and integrated through PR #39 at `a54fa2c`. Exact current-main candidate run
+`31524766123`
+and independently verified seven-asset unpublished Draft `368795113` now pass
+at `7b52e827`; macOS trust, mounted Workspace smoke, and installed startup also
+pass. Connected Chromium reconfirmation and exact installed macOS Data Viewer,
+Issue #33, live-Provider Problem repair, file-proposal Accept, and verified Undo
+pass. Installed References and Rename reject `dev.31`: the Tauri command
+returns the standard broker envelope while those consumers read it as the
+inner record. WS2-R1-R1 and RENAME-RECOVERY-R1 advance the correction to fresh
+identity `0.4.0-dev.32`; local validation/review and exact implementation-head
+Rust Compatibility run `31550939335` pass all four macOS/Windows stable/MSRV
+identities. The evidence-record commit still requires exact-head CI; upstream
+integration, candidate construction, installed acceptance, Windows signing
+disposition, MAC5, and publication remain open.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

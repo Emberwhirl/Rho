@@ -11,6 +11,8 @@ assert.match(html, /id="projectReferencesContent"[^>]+aria-live="polite"/);
 assert.match(js, /editor_find_project_references/);
 assert.match(js, /KeyMod\.Shift \| KeyCode\.F12/);
 assert.match(js, /async function showProjectReferences\(name\)/);
+assert.match(js, /function workspaceProbeRecordFromResponse\(response\)/);
+assert.match(js, /const record = workspaceProbeRecordFromResponse\([\s\S]+editor_find_project_references/);
 assert.match(js, /location\.textContent = `\$\{reference\.file\}:\$\{reference\.line\}`/);
 assert.match(js, /preview\.textContent = reference\.preview/);
 assert.match(js, /state\.project\.files\.some\(\(file\) => file\.path === reference\.file\)/);

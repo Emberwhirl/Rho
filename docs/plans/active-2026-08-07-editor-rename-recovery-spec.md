@@ -1,7 +1,11 @@
 # Editor Rename Proposal Recovery
 
-Status: active; implementation and automated verification complete 2026-08-07;
-installed acceptance open
+Status: active; original implementation, automated verification, and
+replacement-candidate browser interaction complete; exact `0.4.0-dev.31`
+installed acceptance rejected the production response projection;
+RENAME-RECOVERY-R1 implemented; automated validation, post-verification
+contract review, and exact four-identity hosted source matrix pass; upstream
+integration and exact `dev.32` installed acceptance open
 
 Date: 2026-08-07
 Authorization: user requested implementation of GitHub Issue #8
@@ -62,4 +66,49 @@ added.
 The dedicated recovery contract, existing refactor/reference contracts, full
 frontend contract matrix, JavaScript syntax check, `rho-server` tests (47
 passed), release metadata check, and `git diff --check` passed on 2026-08-07.
-Installed-app acceptance remains open.
+Replacement `0.4.0-dev.31` Chromium interaction opened a nonempty Review for
+two files and three exact locations. An injected reference-lookup failure kept
+Review closed and opened `Rename symbol - try again` with
+`flag_low_quality_qc` prefilled; Cancel closed the retry surface with the
+visible source unchanged. A stale apply separately remained unapplied with an
+actionable error. Installed-app acceptance remains open.
+
+## RENAME-RECOVERY-R1 Installed Envelope Correction
+
+Exact signed `0.4.0-dev.31` installed acceptance on 2026-08-11 exercised F2
+against a clean top-level R file containing three exact occurrences. Rename
+preserved the requested replacement and stayed out of empty Review on failure,
+so the original recovery behavior held, but every attempt returned to
+`Rename symbol - try again`. The installed References surface simultaneously
+reported an undefined symbol and zero scanned files. Direct execution of the
+same reviewed Workspace R function returned the expected three complete
+records.
+
+Cross-review assigns broker-envelope projection to WS2-R1-R1. Rename retains
+proposal construction, clean-source, exact-location, review-before-apply, and
+retry ownership. `buildRenameRefactorProposal()` must validate the projected
+reference record rather than the outer broker envelope. This changes no
+reference semantics, refactor bounds, editor-buffer mutation, Save behavior,
+approval, persistence, project, or execution authority.
+
+Acceptance requires a deterministic production-envelope regression plus a
+fresh exact installed candidate. F2 must open Review only after a non-null
+proposal exists, show the expected file/location counts, and leave every
+buffer unchanged when Cancel is selected. The existing injected lookup
+failure must still keep Review closed, preserve the requested name, and cancel
+without mutation. Because this is user-visible installed behavior, the repair
+requires a fresh application development-candidate identity and NEWS entry;
+`0.4.0-dev.31` is rejected and non-composable.
+
+Rename now projects the reference command's standard broker envelope before
+symbol and completeness validation. The existing proposal-first flow,
+incomplete/truncated rejection, retry-name preservation, Review boundary,
+clean-source checks, target limits, Cancel path, apply, and Undo code are
+unchanged. The dedicated envelope regression, refactor and Rename recovery
+contracts, every compatible frontend/release contract, complete Rust/R source
+matrix, version checks, and `git diff --check` pass. Post-verification review
+found no ownership, persistence, project, approval, filesystem, or mutation
+deviation. Exact implementation head `111c911d516413408f8315199c63379ba16844d8`
+passed macOS-26 stable/1.88.0 and Windows stable/1.88.0 in Rust Compatibility
+run `31550939335`. Upstream integration and fresh installed `dev.32`
+Review/Cancel/failure-recovery evidence remain required.

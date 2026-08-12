@@ -2,8 +2,10 @@
 
 Status: active; DATA-VIEWER-ROW-SHAPE-R1 authorized and implemented 2026-08-11;
 focused and complete affected source validation plus post-verification contract
-review pass; exact hosted matrix and upstream PR #39 integration pass;
-replacement candidate construction and installed acceptance open
+review pass; exact hosted matrix, upstream PR #39 integration, replacement
+candidate construction, independent asset/trust verification, browser/mock
+interaction, and exact installed macOS Data Viewer acceptance pass; candidate
+later rejected by an unrelated installed References/Rename defect
 
 Date: 2026-08-11
 Authorization: the project owner's standing instruction to continue repairing
@@ -148,6 +150,16 @@ codes. No blocking deviation remains.
 
 Application identity is synchronized at `0.4.0-dev.31`; `rho.bridge` is
 synchronized at `0.1.14`; `rho.agent 0.1.5` and store schema 12 remain
-unchanged. These are source facts only. Browser/mock review, exact installed
-Windows/macOS acceptance, Windows signing disposition, MAC5, publication, and
-update-site mutation remain open and non-composable.
+unchanged. Exact candidate run `31524766123` and independently verified
+seven-asset Draft `368795113` pass at commit `7b52e827`; the exact signed macOS
+bundle also starts Workspace R against the existing schema-12 store. Connected
+Chromium review passed 60-row rendering, pagination, exact filtering, three-
+state sort, automatic token/revision refresh with view state preserved,
+disappearance cleanup, and foreign-project late-response isolation. Exact
+installed macOS `dev.31` review then passed a 120-row frame, pagination,
+filtering, sorting, automatic live-mutation refresh, genuine delayed structural
+stale-token rejection, and explicit-refresh recovery to 121 rows. The Data
+Viewer repair gate is accepted. Candidate `dev.31` was subsequently rejected
+by the separately owned References/Rename envelope defect; Windows installed,
+Windows signing, MAC5, publication, and updater facts remain separate and this
+passing slice cannot be relabelled as `dev.32` candidate evidence.
