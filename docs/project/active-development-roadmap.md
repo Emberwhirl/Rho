@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.32`
+Current source baseline: `0.4.0-dev.33`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -56,10 +56,18 @@ pass. Installed References and Rename reject `dev.31`: the Tauri command
 returns the standard broker envelope while those consumers read it as the
 inner record. WS2-R1-R1 and RENAME-RECOVERY-R1 advance the correction to fresh
 identity `0.4.0-dev.32`; local validation/review and exact implementation-head
-Rust Compatibility run `31550939335` pass all four macOS/Windows stable/MSRV
-identities. The evidence-record commit still requires exact-head CI; upstream
-integration, candidate construction, installed acceptance, Windows signing
-disposition, MAC5, and publication remain open.
+Rust Compatibility runs `31550939335` and `31551676391` pass all four
+macOS/Windows stable/MSRV identities. PR #41 integrated the exact source at
+merge `29faba2`. Candidate run `31552396659` then produced a passing Windows
+installer artifact but failed a nondeterministic macOS timeout fixture before
+packaging, so Draft assembly was skipped and `dev.32` was rejected. Authorized
+CRED-UX3-R1 removes the competing delayed-success response from that fixture
+without changing product behavior and advances the replacement source to
+`0.4.0-dev.33`. Source verification, push/PR, integration, candidate
+construction, installed acceptance, Windows signing disposition, MAC5, and
+publication remain open. The exact timeout regression now passes 51 local
+executions; the locked Rust workspace, 56 frontend/release contracts, both R
+packages, release dry runs, and independent production-boundary review pass.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

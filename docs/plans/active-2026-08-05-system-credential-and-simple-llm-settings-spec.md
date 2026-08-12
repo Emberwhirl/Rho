@@ -1771,3 +1771,52 @@ JavaScript syntax and `git diff --check`. The first frontend matrix run
 truthfully rejected stale escaped `dev.27` cache-version fixtures; those
 fixtures were synchronized to `dev.28`, and the complete 52-script matrix
 then passed. No implementation behavior changed during that correction.
+
+## CRED-UX3-R1 Deterministic Timeout Verification Repair — 2026-08-11
+
+Candidate run `31552396659` against exact upstream source
+`29faba2b4d08bbebb4d9e2e251e7e1d69d393d6f` failed only the macOS execution of
+`agent_llm::tests::discovery_bounds_oversized_responses_and_timeouts`. The
+fixture configured a 40 ms client timeout but also returned a fully valid
+response after 150 ms. Under hosted parallel load, delayed timeout scheduling
+allowed that valid response to become observable, producing no error class
+where the assertion required `timeout`. The same exact test passed 20
+consecutive local executions, confirming nondeterminism rather than a stable
+product failure. Governance treats this flake as a release-blocking defect;
+rerunning until green is not an acceptance path.
+
+CRED-UX3 remains the sole owner of production Provider discovery. Its
+15-second total request timeout, one-request limit, no redirect/retry policy,
+literal-endpoint authority, response bounds, credential lookup/redaction,
+read-only settings behavior, and bounded error classes do not change.
+CRED-UX3-R1 owns only the test seam: the timeout server accepts and records the
+request but never sends a valid HTTP response. The short-timeout client can
+therefore complete only through its timeout or through a bounded watchdog
+failure; a competing delayed success is impossible. The server watchdog must
+remain longer than the client limit and prevent a broken client from hanging
+CI. The regression continues to verify `timeout` classification and absence of
+the injected credential from serialized output.
+
+This package is D1/R1 because production code, protocol, network authority,
+credentials, persistence, and user-visible behavior are unchanged. The
+project owner reviewed the reproduction and explicitly authorized the repair
+and push on 2026-08-11. The exact test, repeated focused execution, complete
+locked Rust workspace, all deterministic frontend/release contracts, both R
+package suites, format/check, and diff validation are required before handoff.
+A separate post-test review must confirm no production discovery line changed.
+
+The failed run produced an exact Windows installer artifact, consuming the
+single-use `0.4.0-dev.32` identity. The replacement source advances only the
+application/release identity to `0.4.0-dev.33`; `rho.bridge 0.1.14`,
+`rho.agent 0.1.5`, settings schema V2, and store schema 12 remain unchanged.
+No `dev.32` source result or artifact may satisfy a `dev.33` candidate,
+installed, signing, MAC5, publication, or updater gate.
+
+CRED-UX3-R1 is now implemented locally. The exact regression passed once with
+visible output and 50 more independent Cargo-process repetitions. The locked
+full Rust workspace, all 56 frontend/release contracts, both R package suites,
+candidate/update-site dry runs, macOS Ark bootstrap fixtures, formatting, and
+diff validation pass. An independent post-test comparison hashes every
+production line before `#[cfg(test)]` identically to upstream `main`, confirming
+the change is confined to test support. Push, exact-head hosted source CI,
+integration, and every candidate or installed gate remain separate.
