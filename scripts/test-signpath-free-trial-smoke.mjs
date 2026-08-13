@@ -115,7 +115,10 @@ function validate(value) {
   assert.doesNotMatch(workflow, /actions\/checkout|createRelease|updateRelease|uploadReleaseAsset|createRef|gh release|candidate-publish|generate-update-site|update-site-publish/i, "the smoke lane must not execute source or mutate release/update state");
 
   assert.match(value.spec, /^# SignPath Free Trial Windows Smoke Contract$/m);
-  assert.match(value.spec, /Status: active; FT-SIGN1/);
+  assert.match(value.spec, /Status: active durable smoke contract; FT-SIGN1/);
+  assert.match(value.spec, /run `31675464182`/);
+  assert.match(value.spec, /Hosted acceptance and cleanup evidence/);
+  assert.match(value.spec, /obsolete repository variables and predecessor run/);
   assert.match(value.spec, /继续，使用Free trial\s+subscription/);
   assert.match(value.spec, /must not merge/);
   assert.match(value.parent, /active-2026-08-12-signpath-free-trial-smoke-spec\.md/);

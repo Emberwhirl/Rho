@@ -1,10 +1,10 @@
 # SignPath Free Trial Windows Smoke Contract
 
-Status: active; FT-SIGN1 source implementation, dedicated least-privilege CI
-identity, official PowerShell/REST transport, and one successful signing request
-complete; hosted evidence reconciliation is blocked by a pre-mask Runner
-environment-log exposure and requires the protected deployment-configuration
-secret repair plus one clean replacement run
+Status: active durable smoke contract; FT-SIGN1 source implementation,
+dedicated least-privilege CI identity, protected deployment configuration,
+official PowerShell/REST transport, clean hosted request, downloaded evidence
+reconciliation, and privacy cleanup complete; returned bytes remain test-only
+and grant no candidate, production-signing, or publication authority
 
 Date: 2026-08-12 EDT
 
@@ -60,12 +60,13 @@ JSON object has exactly these keys:
 The five values were first configured as repository variables on 2026-08-12
 after the current certificate page independently confirmed a
 self-signed RSA-4096 Code Signing certificate whose subject and issuer are both
-`CN=Rho Test Signing`. Hosted run `31674347116` proved that a step-level
-repository-variable environment is rendered before the step can issue an
-`add-mask` command. Therefore the variable interface is rejected and all five
-values must be migrated atomically to the protected JSON secret before the
-replacement hosted request. Repository source records only the secret name and
-the expected JSON keys, never configured values.
+`CN=Rho Test Signing`. Deleted predecessor run `31674347116` proved that a
+step-level repository-variable environment is rendered before the step can
+issue an `add-mask` command. Therefore the variable interface was rejected, all
+five values were migrated atomically to the protected JSON secret, and the
+obsolete repository variables were removed after clean replacement run
+`31675464182`. Repository source records only the secret name and the expected
+JSON keys, never configured values.
 
 The organization identifier must not be copied into repository source, Issues,
 pull-request discussion, or public evidence. The configured slugs are not
@@ -143,8 +144,7 @@ verified returned installer and bounded evidence may leave the job.
 
 Missing or malformed deployment configuration or token, an unavailable or
 expired source artifact, source identity/hash/signature mismatch, zero or
-multiple installers, SignPath
-rejection/timeout, an unexpected returned filename, signer/thumbprint failure,
+multiple installers, SignPath rejection/timeout, an unexpected returned filename, signer/thumbprint failure,
 or unsupported/corrupt signature status fails before the final artifact upload.
 Reruns create a new signing request and new run-scoped artifacts; their evidence
 must never be composed. A failed request changes no repository, Release, or
@@ -192,6 +192,20 @@ secret above, remove the obsolete variables after a clean replacement run, and
 retain this run only as failure evidence. No API-token rotation is required
 because GitHub masked that separate secret throughout the run.
 
+Protected-config repair commit `6714e73` completed the recovery. Hosted run
+`31675464182` at that exact commit completed the SignPath request in 29 seconds;
+the configured project's request list independently showed the request as
+`Completed` under the dedicated `Rho GitHub Actions` CI identity. Its downloaded
+artifact contains only the expected installer and bounded evidence. The
+installer is 18,323,344 bytes with SHA-256
+`a317b8aeba77a716b60e0018c9fc3c98fb1905cd0b5e6d62a892069c52d5672a`,
+which differs from the immutable unsigned input. Windows reported the truthful
+`UnknownError` status for the untrusted self-signed Free Trial chain; the
+workflow separately proved the signer exists, subject equals issuer, the
+embedded signer thumbprint matches the protected configuration, and none of
+`NotSigned`, `HashMismatch`, `NotSupported`, or `Incompatible` occurred. It
+does not relabel the test certificate as publicly valid.
+
 ## Cross-Review And Non-Goals
 
 SP-READY1 retains privacy, manual update admission, public policy, Foundation
@@ -230,13 +244,14 @@ Deterministic verification must prove:
 - Node syntax, affected readiness contracts, workflow parsing by GitHub, and
   `git diff --check`.
 
-Hosted acceptance is a separate fact. After protected integration, one manual
-run must finish successfully and its SignPath request must be visible in the
-configured project. The downloaded result must reproduce the workflow evidence
-for installer name, signer subject/thumbprint/status, unsigned and signed
-SHA-256, and `public_release_authorized: false`. No installation is required
-because this package already passed Issue #33 installation before signing and
-the smoke gate owns only transport/signature integrity.
+Hosted acceptance is recorded separately from source verification. Run
+`31675464182` finished successfully, its request is visible as `Completed` in
+the configured project, and independently downloaded bytes reproduce the
+workflow evidence for installer name, signer subject/issuer/thumbprint/status,
+unsigned and signed SHA-256, and false candidate/public-release authority. No
+installation is required because this package already passed Issue #33
+installation before signing and the smoke gate owns only transport/signature
+integrity.
 
 ## Implementation And Local Evidence
 
@@ -260,8 +275,10 @@ Local evidence on 2026-08-12:
 - a fresh authenticated download of source artifact `9160516935` reproduced
   the one expected installer at 18,315,177 bytes and the required unsigned
   SHA-256; and
-- repository settings expose the five required variable names and the existing
-  `SIGNPATH_API_TOKEN` secret name without reading or logging its value.
+- the initial repository settings exposed the five required variable names and
+  the existing `SIGNPATH_API_TOKEN` secret name without reading or logging its
+  value; the accepted state now exposes only the API-token and protected-
+  configuration secret names, and the obsolete variables have been deleted.
 
 Transport-correction evidence on 2026-08-13:
 
@@ -276,13 +293,31 @@ Transport-correction evidence on 2026-08-13:
   and the returned archive/signature path remain intentionally owned by the
   protected hosted smoke rather than being claimed from source inspection.
 
+Hosted acceptance and cleanup evidence on 2026-08-13:
+
+- PR #68 exact head `c023c63` passed macOS and Windows on stable and Rust
+  `1.88.0` in run `31674768700`, then merged as `6714e73` with the original
+  protected-main rules restored and verified;
+- run `31675464182` passed immutable admission, protected-config parsing,
+  official-module integrity, real signing, returned-archive cardinality,
+  Authenticode/signer/thumbprint/self-signed checks, changed-byte verification,
+  and seven-day bounded upload;
+- a complete hosted-log scan found neither the organization identifier nor the
+  unique policy/configuration/thumbprint values, and confirmed both protected
+  secrets were rendered only as `***`;
+- independent artifact download reproduced the signed installer size/hash and
+  all false authority fields; and
+- the five obsolete repository variables and predecessor run containing the
+  pre-mask environment log were deleted after the clean replacement passed.
+
 A separate post-test supply-chain review found no checkout/execution of
 downloaded source, write-scoped token permission, Release/tag/update-site call,
 candidate/manual-publish modification, committed organization identifier or
 certificate thumbprint, token reference outside the bounded module step, or
 path that uploads the unsigned installer as the final result. The exact certificate
 page independently confirmed self-signed subject/issuer equality and the
-thumbprint stored in the repository variable. No blocking finding remains.
+thumbprint stored in the protected deployment configuration. No blocking
+finding remains.
 
 Rust/R/application suites were not rerun locally because FT-SIGN1 changes no
 Rust, R, frontend, package, schema, or installer-construction source. The
@@ -299,7 +334,7 @@ acceptance, MAC5, publication, and updater mutation.
 
 ## Stop Point
 
-Stop after one successful hosted Free Trial request and evidence reconciliation.
+FT-SIGN1 stops complete after run `31675464182` and evidence reconciliation.
 Any use of returned bytes in a candidate or Release, any production certificate
 or trusted-build integration, or any public wording change requires a separate
 active D4/R4 contract and explicit authorization.
