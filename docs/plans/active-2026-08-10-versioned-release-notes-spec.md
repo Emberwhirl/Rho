@@ -328,7 +328,7 @@ prose as artifact/signature/MAC5 evidence or modify the exact `dev.27` bridge.
 ## 15. CPREL1 Consumer Cross-Review
 
 The owner-authorized
-`active-2026-08-13-conditional-prerelease-policy-spec.md` changes public
+`implemented-2026-08-13-conditional-prerelease-policy-spec.md` changes public
 acceptance semantics after the `dev.38` Draft body was reviewed and locked.
 RELEASE-NOTES-1 therefore prohibits rewriting that Draft. CPREL1 advances to
 fresh `dev.39` and supplies `.github/release-notes/v0.4.0-dev.39.md` in the

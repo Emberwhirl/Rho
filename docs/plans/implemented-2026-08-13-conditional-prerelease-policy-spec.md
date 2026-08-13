@@ -2,10 +2,9 @@
 
 Date: 2026-08-13
 
-Status: active; CPREL1 authorized by the project owner on 2026-08-13 for one
-public conditional prerelease with Windows human installation and macOS
-Gatekeeper human launch explicitly recorded as not run; CPREL1A passed local
-review and CPREL1B protected integration is in progress
+Status: implemented; CPREL1A-CPREL1D completed on 2026-08-13 for the exact
+public `0.4.0-dev.39` conditional prerelease, with Windows human installation
+and enabled-Gatekeeper macOS human launch preserved as `NOT RUN`
 
 Change class: D4
 
@@ -147,6 +146,10 @@ negative tests, update-site validation/disclosure, reviewed `dev.39` notes, and
 synchronized version metadata. Stop after focused and complete affected local
 validation.
 
+Completed. All 66 fail-fast JavaScript contracts, the complete locked Rust
+workspace, Rust 1.88, both R package suites, syntax, YAML, release-note,
+candidate, update-site, SignPath, and schema-v1 compatibility checks passed.
+
 ### CPREL1B — protected integration
 
 Authorized after 1A passes. Open a reviewable PR, pass macOS/Windows stable and
@@ -154,12 +157,24 @@ Rust 1.88 matrices, merge through the protected branch process, restore every
 branch rule, and pass the exact merged-main matrix. Stop before candidate
 construction.
 
+Completed through PR #73. PR run `31730361098` and exact merged-main run
+`31731476659` passed all four macOS/Windows stable/MSRV jobs. The protected
+source commit is `579d6dc0d64e770aea14b2282e75ccde2076b345`, and ruleset
+`20728497` was restored to its one-approval, CODEOWNERS, last-push approval,
+thread-resolution, deletion, and non-fast-forward protections.
+
 ### CPREL1C — exact candidate and independent audit
 
 Authorized after 1B. Build one candidate from exact protected `main`, create
 one seven-asset Draft, verify final hashes/signatures/notarization/stapling,
 SignPath request binding, evidence, reviewed body, asset set, and log privacy.
 Stop with the Draft unpublished.
+
+Completed by candidate run `31732445952`. The exact seven-asset Draft was
+downloaded independently and passed schema/file/sidecar binding, Windows PE
+certificate-table and signer-thumbprint inspection, macOS DMG verification,
+staple, Developer ID, arm64, entitlement, license, and mounted Workspace smoke
+checks. The hosted-log privacy scan found no unmasked protected SignPath value.
 
 ### CPREL1D — conditional decision, publication, and live verification
 
@@ -185,6 +200,12 @@ The generator validates the candidate schema and byte budget, requires the
 canonical input/output names in one directory, binds the exact input bytes by
 SHA-256, emits only the allowlisted risks and limitations, validates the result,
 and creates rather than replaces the output file.
+
+Completed. Acceptance SHA-256
+`7812015d69dac1c88e27dae023260c8b913fad701c7d944dc128534c165d6ba5`
+was uploaded once, publish run `31734766000` performed the only Draft-to-public
+transition, and update-site run `31734975029` deployed and verified the live
+conditional warning and exact development-manifest artifact hashes.
 
 ## Verification Matrix
 
@@ -212,10 +233,10 @@ semantics and release presentation change. `rho.bridge` and `rho.agent` remain
 unchanged because their package contracts do not change. `NEWS.md` records the
 conditional-prerelease policy and explicit limitations.
 
-Current decision: `PASS` for CPREL1A and `GO` for CPREL1B protected
-integration. Candidate construction remains `NO-GO` until exact merged-main
-verification passes. Publication remains `NO-GO` until CPREL1C passes and an
-exact schema-v2 `CONDITIONAL_GO` is bound to the resulting `dev.39` candidate.
+Final decision: `CONDITIONAL_GO` for exact `0.4.0-dev.39`, scoped to a public
+prerelease only. Release `370143482` was published on 2026-08-13. This decision
+does not convert either human limitation into a pass and does not authorize a
+stable or production-ready claim.
 
 ## Definition Of Done
 
@@ -225,3 +246,8 @@ asset truthfully records both missing human observations, publication occurs
 without rebuilding or replacing artifacts, the public Release and update site
 show the conditional warning and exact hashes, branch protection is restored,
 and related implementation branches are merged or removed.
+
+Result: implementation, release, and live verification are satisfied. The
+merged implementation branch was removed; the documentation-only evidence
+reconciliation branch is removed after its protected merge. The immutable
+`dev.38` Draft remains unpublished and unchanged.
