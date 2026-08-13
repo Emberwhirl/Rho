@@ -33,7 +33,7 @@ checksums, not by this policy alone.
 
 ## Free Trial test-signed prerelease boundary
 
-The bounded `0.4.0-dev.38` candidate contract may submit only its final Rho NSIS
+The bounded `0.4.0-dev.39` candidate contract may submit only its final Rho NSIS
 installer to the existing SignPath Free Trial test policy after complete build
 and smoke validation. Fork rehearsal remains unsigned and cannot create a
 Release. The workflow must prove the input was unsigned, use the pinned official
@@ -50,7 +50,10 @@ the result appear publicly valid.
 
 This lane signs only the outer test candidate installer. It is not the future
 production two-stage procedure below and creates no exception to Foundation,
-MFA, trusted-build, per-request approval, installed-payload, or release gates.
+MFA, trusted-build, per-request approval, or installed-payload gates. The
+`0.4.0-dev.39` release contract separately permits one public conditional
+prerelease that truthfully records Windows human installation and enabled-
+Gatekeeper macOS human launch as not run; it does not make either check pass.
 
 ## Signing scope
 

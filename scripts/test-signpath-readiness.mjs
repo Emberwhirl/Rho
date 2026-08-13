@@ -20,7 +20,7 @@ function snapshot() {
     updateDesign: read("docs/design/accepted-2026-07-25-about-and-update-check-design.md"),
     docsIndex: read("docs/README.md"),
     activeSpec: read("docs/plans/active-2026-08-11-signpath-application-readiness-spec.md"),
-    checklist: read("docs/release/active-0.4.0-dev.38-candidate-checklist.md"),
+    checklist: read("docs/release/active-0.4.0-dev.39-candidate-checklist.md"),
     news: read("NEWS.md"),
     generator: read("scripts/generate-update-site.mjs"),
     compatibilityWorkflow: read(".github/workflows/rust-compatibility.yml"),
@@ -75,6 +75,7 @@ function validate(value) {
     "/scripts/generate-update-site.mjs",
     "/scripts/test-signpath-candidate-workflow.mjs",
     "/docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md",
+    "/docs/plans/active-2026-08-13-conditional-prerelease-policy-spec.md",
   ]) assert.match(value.owners, new RegExp(protectedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
   for (const link of ["PRIVACY.md", "SECURITY.md", "CODE_SIGNING_POLICY.md", "LICENSE"]) {
@@ -111,8 +112,9 @@ function validate(value) {
   assert.doesNotMatch(value.docsIndex, /design\/active-2026-07-25-about-and-update-check-design\.md/);
   assert.match(value.activeSpec, /Status: active; SP-READY1 repository-readiness package/);
   assert.match(value.activeSpec, /organization-owner MFA\s+audit,[\s\S]{0,360}remain\s+open/);
-  assert.match(value.checklist, /DEV38-SIGN1 source integration, exact candidate construction,[\s\S]{0,100}independent candidate audit passed/);
-  assert.match(value.checklist, /human Windows\/macOS acceptance, MAC5, publication,[\s\S]{0,80}remain open/);
+  assert.match(value.checklist, /CPREL1A source policy gate passed locally/);
+  assert.match(value.checklist, /Windows clean-profile human installation[\s\S]{0,180}`NOT RUN`/);
+  assert.match(value.checklist, /enabled-Gatekeeper human macOS launch[\s\S]{0,120}`NOT RUN`/);
   assert.match(value.checklist, /Free Trial self-signed test certificate/i);
   assert.match(value.checklist, /Release decision[\s\S]{0,80}`NO-GO`/i);
   assert.match(value.news, /Update checks are now user-initiated only/i);
@@ -147,7 +149,8 @@ function validate(value) {
     "docs/README.md",
     "docs/plans/active-2026-08-11-signpath-application-readiness-spec.md",
     "docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md",
-    "docs/release/active-0.4.0-dev.38-candidate-checklist.md",
+    "docs/plans/active-2026-08-13-conditional-prerelease-policy-spec.md",
+    "docs/release/active-0.4.0-dev.39-candidate-checklist.md",
   ]) {
     assert.equal(occurrences(value.compatibilityWorkflow, new RegExp(`- "${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "g")), 2, `${trigger} must trigger push and PR validation`);
   }

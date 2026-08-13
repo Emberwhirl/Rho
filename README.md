@@ -42,10 +42,12 @@ It requires:
 
 Listed Apple Silicon macOS packages use Developer ID signing and notarization.
 Windows trust status is recorded per release. The published `0.4.0-dev.24`
-Windows package is unsigned; a `0.4.0-dev.38` prerelease may carry a SignPath
+Windows package is unsigned; a `0.4.0-dev.39` prerelease may carry a SignPath
 Free Trial self-signed test signature only after its exact evidence passes.
 That test signature is not publicly trusted or a SignPath Foundation production
-publisher, and Windows or SmartScreen may still warn. Unsigned local builds are
+publisher, and Windows or SmartScreen may still warn. Its Release page also
+identifies any conditional human-acceptance limitations; conditional builds are
+for evaluation, not stable or production-ready use. Unsigned local builds are
 for development review only. Verify the release SHA-256 and see the
 [Windows prototype guide](docs/implementation/implemented-windows-prototype.md)
 and the [macOS support specification](docs/plans/active-2026-08-05-macos-arm64-support-spec.md)

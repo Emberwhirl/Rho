@@ -19,6 +19,23 @@ const SIGNPATH_FREE_TRIAL_MODULE_VERSION = "4.4.6";
 const SIGNPATH_FREE_TRIAL_MODULE_SHA256 = "4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae";
 const UNSIGNED_CANDIDATE_COMPATIBILITY = new Set(["0.4.0-dev.27"]);
 const UNSIGNED_PUBLISHED_COMPATIBILITY = new Set(["0.4.0-dev.24"]);
+const CONDITIONAL_ACCEPTANCE_VERSIONS = new Set(["0.4.0-dev.39"]);
+const CONDITIONAL_ACCEPTANCE_RISKS = [
+  "macos_gatekeeper_human_launch_not_run",
+  "windows_human_install_not_run",
+];
+const CONDITIONAL_ACCEPTANCE_LIMITATIONS = [
+  {
+    id: "macos_gatekeeper_human_launch_not_run",
+    status: "not_run",
+    reason_code: "gatekeeper_assessments_disabled",
+  },
+  {
+    id: "windows_human_install_not_run",
+    status: "not_run",
+    reason_code: "no_windows_device",
+  },
+];
 
 const REQUIRED_CHECKS = {
   windows_x86_64: [
@@ -444,10 +461,148 @@ function requiredCandidateAssetRecords(candidateEvidence) {
   return Object.values(candidateEvidence.platforms).flatMap((entry) => [entry.artifact, entry.checksum, entry.evidence]);
 }
 
+function validGithubLogin(value) {
+  return typeof value === "string"
+    && value.length <= 39
+    && /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(value);
+}
+
+function validateCanonicalPastUtcTimestamp(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) {
+    fail("Conditional acceptance authorization time is not canonical UTC");
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== `${value.slice(0, -1)}.000Z`) {
+    fail("Conditional acceptance authorization time is invalid");
+  }
+  if (parsed > Date.now() + 5 * 60 * 1000) {
+    fail("Conditional acceptance authorization time is in the future");
+  }
+}
+
+export function validateAcceptanceEvidence(acceptance, {
+  candidate,
+  candidateEvidenceSha256,
+  publisher,
+} = {}) {
+  if (!acceptance || typeof acceptance !== "object" || Array.isArray(acceptance)) {
+    fail("Candidate acceptance evidence is invalid");
+  }
+  if (!candidate || typeof candidate !== "object") fail("Candidate evidence is required for acceptance validation");
+  if (!/^[0-9a-f]{64}$/.test(candidateEvidenceSha256 || "")) {
+    fail("Candidate evidence digest is required for acceptance validation");
+  }
+
+  const commonKeys = [
+    "schema_version",
+    "type",
+    "status",
+    "decision",
+    "version",
+    "release_tag",
+    "commit",
+    "candidate_evidence_sha256",
+    "platforms",
+  ];
+  if (acceptance.schema_version === 1) {
+    assertExactKeys(acceptance, commonKeys, "acceptance evidence");
+    if (
+      acceptance.type !== "rho_candidate_acceptance"
+      || acceptance.status !== "passed"
+      || acceptance.decision !== "GO"
+    ) fail("MAC5 acceptance does not contain an explicit passed GO");
+  } else if (acceptance.schema_version === 2) {
+    assertExactKeys(acceptance, [...commonKeys, "authorization", "limitations"], "acceptance evidence");
+    if (
+      acceptance.type !== "rho_candidate_acceptance"
+      || acceptance.status !== "conditional"
+      || acceptance.decision !== "CONDITIONAL_GO"
+    ) fail("Conditional acceptance must contain an explicit conditional CONDITIONAL_GO");
+    if (!CONDITIONAL_ACCEPTANCE_VERSIONS.has(candidate.version) || !candidate.version.includes("-")) {
+      fail("Conditional acceptance is not authorized for this version");
+    }
+    assertExactKeys(
+      acceptance.authorization,
+      ["authorized_by", "authorized_at", "scope", "acknowledged_risks"],
+      "conditional acceptance authorization",
+    );
+    if (!validGithubLogin(acceptance.authorization.authorized_by)) {
+      fail("Conditional acceptance authorizer is invalid");
+    }
+    if (publisher !== undefined && acceptance.authorization.authorized_by !== publisher) {
+      fail("Conditional acceptance authorizer does not match the publish actor");
+    }
+    validateCanonicalPastUtcTimestamp(acceptance.authorization.authorized_at);
+    if (acceptance.authorization.scope !== "public_prerelease_only") {
+      fail("Conditional acceptance scope is invalid");
+    }
+    if (!isDeepStrictEqual(acceptance.authorization.acknowledged_risks, CONDITIONAL_ACCEPTANCE_RISKS)) {
+      fail("Conditional acceptance risks are incomplete or not canonical");
+    }
+    if (!isDeepStrictEqual(acceptance.limitations, CONDITIONAL_ACCEPTANCE_LIMITATIONS)) {
+      fail("Conditional acceptance limitations are incomplete or not canonical");
+    }
+  } else {
+    fail("Candidate acceptance schema version is unsupported");
+  }
+
+  if (
+    acceptance.version !== candidate.version
+    || acceptance.release_tag !== candidate.release_tag
+    || acceptance.commit !== candidate.commit
+    || acceptance.candidate_evidence_sha256 !== candidateEvidenceSha256
+    || !isDeepStrictEqual(acceptance.platforms, candidate.platforms)
+  ) fail("MAC5 acceptance is stale or does not match the candidate");
+  return acceptance;
+}
+
+export function createConditionalAcceptanceEvidence({
+  candidateEvidencePath,
+  authorizer,
+  authorizedAt,
+  outputPath,
+}) {
+  const candidateRecord = fileRecord(candidateEvidencePath);
+  if (candidateRecord.size_bytes > MAX_EVIDENCE_BYTES) fail("Candidate evidence exceeds its byte budget");
+  const candidate = validateAggregateEvidence(JSON.parse(fs.readFileSync(candidateEvidencePath, "utf8")));
+  const expectedCandidateName = `rho-${candidate.version}-candidate-evidence.json`;
+  if (candidateRecord.name !== expectedCandidateName) fail(`Expected candidate evidence ${expectedCandidateName}`);
+  const expectedOutputName = `rho-${candidate.version}-acceptance.json`;
+  if (path.basename(outputPath) !== expectedOutputName) fail(`Expected acceptance evidence ${expectedOutputName}`);
+  if (path.resolve(path.dirname(outputPath)) !== path.resolve(path.dirname(candidateEvidencePath))) {
+    fail("Acceptance evidence output is outside the candidate directory");
+  }
+  const acceptance = {
+    schema_version: 2,
+    type: "rho_candidate_acceptance",
+    status: "conditional",
+    decision: "CONDITIONAL_GO",
+    version: candidate.version,
+    release_tag: candidate.release_tag,
+    commit: candidate.commit,
+    candidate_evidence_sha256: candidateRecord.sha256,
+    platforms: candidate.platforms,
+    authorization: {
+      authorized_by: authorizer,
+      authorized_at: authorizedAt,
+      scope: "public_prerelease_only",
+      acknowledged_risks: [...CONDITIONAL_ACCEPTANCE_RISKS],
+    },
+    limitations: structuredClone(CONDITIONAL_ACCEPTANCE_LIMITATIONS),
+  };
+  validateAcceptanceEvidence(acceptance, {
+    candidate,
+    candidateEvidenceSha256: candidateRecord.sha256,
+    publisher: authorizer,
+  });
+  writeJson(outputPath, acceptance);
+  return acceptance;
+}
+
 export function validatePublishRecord(record) {
   assertExactKeys(
     record,
-    ["tag_name", "draft", "prerelease", "target_commitish", "assets", "platform_evidence", "candidate_evidence", "candidate_evidence_asset", "acceptance_evidence"],
+    ["tag_name", "draft", "prerelease", "target_commitish", "publisher", "assets", "platform_evidence", "candidate_evidence", "candidate_evidence_asset", "acceptance_evidence"],
     "publish record",
   );
   const candidate = validateAggregateEvidence(record.candidate_evidence);
@@ -473,25 +628,12 @@ export function validatePublishRecord(record) {
     || record.candidate_evidence_asset.size_bytes <= 0
     || record.candidate_evidence_asset.size_bytes > MAX_EVIDENCE_BYTES
   ) fail("Candidate evidence asset record is invalid");
-  const acceptance = record.acceptance_evidence;
-  assertExactKeys(
-    acceptance,
-    ["schema_version", "type", "status", "decision", "version", "release_tag", "commit", "candidate_evidence_sha256", "platforms"],
-    "acceptance evidence",
-  );
-  if (
-    acceptance.schema_version !== 1
-    || acceptance.type !== "rho_candidate_acceptance"
-    || acceptance.status !== "passed"
-    || acceptance.decision !== "GO"
-  ) fail("MAC5 acceptance does not contain an explicit passed GO");
-  if (
-    acceptance.version !== candidate.version
-    || acceptance.release_tag !== candidate.release_tag
-    || acceptance.commit !== candidate.commit
-    || acceptance.candidate_evidence_sha256 !== record.candidate_evidence_asset.sha256
-    || !isDeepStrictEqual(acceptance.platforms, candidate.platforms)
-  ) fail("MAC5 acceptance is stale or does not match the candidate");
+  if (!validGithubLogin(record.publisher)) fail("Publish actor is invalid");
+  validateAcceptanceEvidence(record.acceptance_evidence, {
+    candidate,
+    candidateEvidenceSha256: record.candidate_evidence_asset.sha256,
+    publisher: record.publisher,
+  });
   if (!Array.isArray(record.assets)) fail("Draft release assets are missing");
   const expectedNames = new Set([
     ...requiredCandidateAssetRecords(candidate).map((entry) => entry.name),
@@ -539,7 +681,7 @@ function expectFailure(action, pattern) {
 export function selfTest() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "rho-candidate-contract-"));
   try {
-    const version = "0.4.0-dev.1";
+    const version = "0.4.0-dev.39";
     const releaseTag = `v${version}`;
     const commit = "a".repeat(40);
     validateBuildAdmission("rehearsal", REHEARSAL_REPOSITORY, "refs/heads/main", "main");
@@ -721,6 +863,7 @@ export function selfTest() {
       draft: true,
       prerelease: true,
       target_commitish: commit,
+      publisher: "xiayh17",
       assets,
       platform_evidence: Object.fromEntries(CANDIDATE_PLATFORMS.map((platform) => [
         platform,
@@ -731,6 +874,67 @@ export function selfTest() {
       acceptance_evidence: acceptance,
     };
     validatePublishRecord(record);
+    const conditionalAcceptance = {
+      ...acceptance,
+      schema_version: 2,
+      status: "conditional",
+      decision: "CONDITIONAL_GO",
+      authorization: {
+        authorized_by: "xiayh17",
+        authorized_at: new Date(Math.floor(Date.now() / 1000) * 1000).toISOString().replace(".000Z", "Z"),
+        scope: "public_prerelease_only",
+        acknowledged_risks: [...CONDITIONAL_ACCEPTANCE_RISKS],
+      },
+      limitations: structuredClone(CONDITIONAL_ACCEPTANCE_LIMITATIONS),
+    };
+    validatePublishRecord({ ...record, acceptance_evidence: conditionalAcceptance });
+    const generatedAcceptancePath = path.join(root, `rho-${version}-acceptance.json`);
+    const generatedAcceptance = createConditionalAcceptanceEvidence({
+      candidateEvidencePath: aggregatePath,
+      authorizer: "xiayh17",
+      authorizedAt: conditionalAcceptance.authorization.authorized_at,
+      outputPath: generatedAcceptancePath,
+    });
+    assertExactKeys(
+      generatedAcceptance,
+      [
+        "schema_version",
+        "type",
+        "status",
+        "decision",
+        "version",
+        "release_tag",
+        "commit",
+        "candidate_evidence_sha256",
+        "platforms",
+        "authorization",
+        "limitations",
+      ],
+      "generated conditional acceptance",
+    );
+    if (!isDeepStrictEqual(generatedAcceptance, conditionalAcceptance)) {
+      fail("Generated conditional acceptance is not canonical");
+    }
+    expectFailure(
+      () => createConditionalAcceptanceEvidence({
+        candidateEvidencePath: aggregatePath,
+        authorizer: "xiayh17",
+        authorizedAt: conditionalAcceptance.authorization.authorized_at,
+        outputPath: generatedAcceptancePath,
+      }),
+      /EEXIST|file already exists/,
+    );
+    const foreignAcceptanceDirectory = path.join(root, "foreign-acceptance");
+    fs.mkdirSync(foreignAcceptanceDirectory);
+    expectFailure(
+      () => createConditionalAcceptanceEvidence({
+        candidateEvidencePath: aggregatePath,
+        authorizer: "xiayh17",
+        authorizedAt: conditionalAcceptance.authorization.authorized_at,
+        outputPath: path.join(foreignAcceptanceDirectory, `rho-${version}-acceptance.json`),
+      }),
+      /outside the candidate directory/,
+    );
     expectFailure(
       () => validateRehearsalEvidence({ ...rehearsal, source_repository: "YuLab-SMU/Rho" }),
       /not authorized/,
@@ -784,6 +988,154 @@ export function selfTest() {
     expectFailure(
       () => validatePublishRecord({ ...record, acceptance_evidence: { ...acceptance, decision: "NO-GO" } }),
       /passed GO/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: { ...conditionalAcceptance, status: "passed" },
+      }),
+      /conditional CONDITIONAL_GO/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        publisher: "other-owner",
+        acceptance_evidence: conditionalAcceptance,
+      }),
+      /publish actor/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          authorization: {
+            ...conditionalAcceptance.authorization,
+            authorized_at: "2999-01-01T00:00:00Z",
+          },
+        },
+      }),
+      /future/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          authorization: {
+            ...conditionalAcceptance.authorization,
+            authorized_at: "2026-08-13T12:34:56.000Z",
+          },
+        },
+      }),
+      /canonical UTC/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          authorization: {
+            ...conditionalAcceptance.authorization,
+            unexpected: true,
+          },
+        },
+      }),
+      /authorization keys are invalid/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          authorization: {
+            ...conditionalAcceptance.authorization,
+            acknowledged_risks: [...CONDITIONAL_ACCEPTANCE_RISKS].reverse(),
+          },
+        },
+      }),
+      /risks/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          authorization: {
+            ...conditionalAcceptance.authorization,
+            acknowledged_risks: CONDITIONAL_ACCEPTANCE_RISKS.slice(0, 1),
+          },
+        },
+      }),
+      /risks/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          limitations: structuredClone(CONDITIONAL_ACCEPTANCE_LIMITATIONS).reverse(),
+        },
+      }),
+      /limitations/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          limitations: CONDITIONAL_ACCEPTANCE_LIMITATIONS.slice(0, 1),
+        },
+      }),
+      /limitations/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: {
+          ...conditionalAcceptance,
+          limitations: CONDITIONAL_ACCEPTANCE_LIMITATIONS.map((entry, index) => (
+            index === 0 ? { ...entry, reason_code: "manual_test_failed" } : entry
+          )),
+        },
+      }),
+      /limitations/,
+    );
+    expectFailure(
+      () => validateAcceptanceEvidence(
+        { ...conditionalAcceptance, version: "0.4.0-dev.40", release_tag: "v0.4.0-dev.40" },
+        {
+          candidate: { ...candidate, version: "0.4.0-dev.40", release_tag: "v0.4.0-dev.40" },
+          candidateEvidenceSha256: candidateAsset.sha256,
+          publisher: "xiayh17",
+        },
+      ),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validateAcceptanceEvidence(
+        { ...conditionalAcceptance, version: "0.4.0", release_tag: "v0.4.0" },
+        {
+          candidate: { ...candidate, version: "0.4.0", release_tag: "v0.4.0" },
+          candidateEvidenceSha256: candidateAsset.sha256,
+          publisher: "xiayh17",
+        },
+      ),
+      /not authorized/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: { ...acceptance, limitations: [] },
+      }),
+      /acceptance evidence keys are invalid/,
+    );
+    expectFailure(
+      () => validatePublishRecord({
+        ...record,
+        acceptance_evidence: { ...conditionalAcceptance, unexpected: true },
+      }),
+      /acceptance evidence keys are invalid/,
     );
     const mismatchedAsset = JSON.parse(JSON.stringify(record));
     mismatchedAsset.assets[0].sha256 = "f".repeat(64);
@@ -897,12 +1249,21 @@ function runCli() {
     });
     return;
   }
+  if (args.mode === "conditional-acceptance") {
+    createConditionalAcceptanceEvidence({
+      candidateEvidencePath: args.input,
+      authorizer: args.authorizer,
+      authorizedAt: args.authorized_at,
+      outputPath: args.output,
+    });
+    return;
+  }
   if (args.mode === "publish") {
     const result = validatePublishRecord(JSON.parse(fs.readFileSync(args.input, "utf8")));
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
-  fail("Use --test true or --mode admission|identity|platform|aggregate|rehearsal|publish with the required arguments");
+  fail("Use --test true or --mode admission|identity|platform|aggregate|rehearsal|conditional-acceptance|publish with the required arguments");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runCli();
