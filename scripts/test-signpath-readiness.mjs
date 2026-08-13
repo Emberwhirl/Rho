@@ -111,7 +111,8 @@ function validate(value) {
   assert.doesNotMatch(value.docsIndex, /design\/active-2026-07-25-about-and-update-check-design\.md/);
   assert.match(value.activeSpec, /Status: active; SP-READY1 repository-readiness package/);
   assert.match(value.activeSpec, /organization-owner MFA\s+audit,[\s\S]{0,360}remain\s+open/);
-  assert.match(value.checklist, /DEV38-SIGN1 local source implementation and affected validation[\s\S]{0,40}passed/);
+  assert.match(value.checklist, /DEV38-SIGN1 source integration, exact candidate construction,[\s\S]{0,100}independent candidate audit passed/);
+  assert.match(value.checklist, /human Windows\/macOS acceptance, MAC5, publication,[\s\S]{0,80}remain open/);
   assert.match(value.checklist, /Free Trial self-signed test certificate/i);
   assert.match(value.checklist, /Release decision[\s\S]{0,80}`NO-GO`/i);
   assert.match(value.news, /Update checks are now user-initiated only/i);
