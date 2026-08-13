@@ -2,10 +2,9 @@
 
 Date: 2026-08-13
 
-Status: active; DEV38-SIGN1 source integration, exact candidate construction,
-and independent candidate audit passed. Automated macOS installed smoke passed
-as supporting evidence; human Windows/macOS acceptance, MAC5, publication, and
-live update evidence remain open
+Status: active immutable NO-GO ledger; source, exact candidate, audit, and
+automated macOS support evidence passed, required human acceptance did not, and
+the owner-authorized conditional policy advances to fresh `dev.39`
 
 Owning contract:
 `docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md`
@@ -162,3 +161,7 @@ completion.
 
 `NO-GO` for DEV38-SIGN1C acceptance, MAC5, publication, or update-site mutation
 until both exact human platform gates are true.
+
+This candidate is superseded for publication by CPREL1 `dev.39`. Its Draft,
+seven assets, body, request, and hashes remain immutable and unpublished; no
+`dev.38` evidence is composable into the conditional candidate.

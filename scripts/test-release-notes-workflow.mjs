@@ -41,7 +41,7 @@ assert.match(draft, /checked\.data\.body !== releaseNotes\.body/);
 assert.doesNotMatch(draft, /body: `Immutable cross-platform candidate/);
 assert.equal(count(draft, /uploadReleaseAsset/g), 1, "Release notes must not expand the candidate asset upload loop");
 
-const publishDownload = publish.match(/- name: Download draft assets and assemble publish record[\s\S]*?- name: Enforce immutable candidate and explicit MAC5 GO/)?.[0];
+const publishDownload = publish.match(/- name: Download draft assets and assemble publish record[\s\S]*?- name: Enforce immutable candidate and explicit release decision/)?.[0];
 assert.ok(publishDownload, "Missing candidate publish admission step");
 assert.match(publishDownload, /\.github", "release-notes", `\$\{process\.env\.RELEASE_TAG\}\.md`/);
 assert.match(publishDownload, /loadReleaseNotes/);
@@ -55,6 +55,7 @@ assert.match(publishDownload, /release\.data\.target_commitish !== legacy\.targe
 assert.match(publishDownload, /release\.data\.body !== legacy\.body/);
 assert.match(publishDownload, /does not contain its reviewed versioned release notes file/);
 assert.match(publishDownload, /body_sha256: releaseBodySha256/);
+assert.match(publishDownload, /publisher: process\.env\.PUBLISH_ACTOR/);
 
 const publishTransition = publish.match(/- name: Publish without rebuilding or changing assets[\s\S]*$/)?.[0];
 assert.ok(publishTransition, "Missing candidate publication transition");
@@ -80,6 +81,14 @@ assert.match(
   /summary: String\(release\.body \|\| ""\)\.split\("\\n"\)\.find\(\(line\) => line\.trim\(\)\)/,
   "Update Site must continue projecting the reviewed first non-empty body line as its summary",
 );
+assert.match(updateSite, /rho-\$\{version\}-acceptance\.json/);
+
+const conditionalNotes = read(".github/release-notes/v0.4.0-dev.39.md");
+assert.match(conditionalNotes, /^Rho 0\.4\.0-dev\.39 is a conditional evaluation prerelease/m);
+assert.match(conditionalNotes, /Windows clean-profile human installation[\s\S]*were not run/);
+assert.match(conditionalNotes, /Enabled-Gatekeeper macOS human launch was not run/);
+assert.match(conditionalNotes, /evaluation and testing, not a stable or production-ready release/);
+assert.match(conditionalNotes, /CONDITIONAL_GO/);
 
 assert.match(metadata, /\.github\\release-notes\\README\.md/);
 assert.match(metadata, /scripts\\release-notes\.mjs/);

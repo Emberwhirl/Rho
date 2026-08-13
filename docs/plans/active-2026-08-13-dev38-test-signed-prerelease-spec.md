@@ -2,11 +2,10 @@
 
 Date: 2026-08-13
 
-Status: active; DEV38-SIGN1 contract authorized and cross-reviewed; source
-implementation, protected-main integration, exact-candidate construction, and
-independent candidate audit passed on 2026-08-13. Automated macOS installed
-smoke passed as supporting evidence, while human Windows/macOS acceptance,
-MAC5, publication, and live update projection remain separate open gates
+Status: active immutable NO-GO snapshot; source integration, exact-candidate
+construction, and independent audit passed, but required human acceptance did
+not. The owner authorized a new conditional policy only for fresh `dev.39`, so
+this Draft/body/evidence remain unpublished and must not be rewritten
 
 Authorization: after the accepted FT-SIGN1 smoke, the project owner instructed
 the agent to use the Free Trial subscription, finish the remaining work without
@@ -304,6 +303,12 @@ model-settings/routing, and manual-update-check probes; this machine has
 Gatekeeper assessment disabled, and automation does not satisfy either human
 platform row. DEV38-SIGN1C, MAC5, publication, and update projection therefore
 remain `NO-GO`.
+
+On 2026-08-13 the owner authorized a public conditional evaluation prerelease,
+but that changes the reviewed release contract and does not retroactively
+convert either missing human row into PASS. CPREL1 therefore advances to fresh
+`dev.39`. The exact `dev.38` Draft, seven assets, body, request, and hashes stay
+immutable and unpublished.
 
 ## 12. Definition Of Done
 
