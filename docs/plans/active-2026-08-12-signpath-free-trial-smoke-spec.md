@@ -1,10 +1,11 @@
 # SignPath Free Trial Windows Smoke Contract
 
 Status: active; FT-SIGN1 source implementation, repository-variable setup,
-deterministic validation, protected integration, and separate security review
-complete; the first hosted request exposed an authorization/variable-log
-defect, its run was deleted, the token was rotated, and the privacy correction
-plus one successful hosted request remain open
+deterministic validation, protected integration, log redaction, dedicated
+least-privilege CI identity, and separate security review complete; the GitHub
+connector path is rejected by the Free Trial deployment after GitHub artifact
+validation, so the authorized official PowerShell/REST transport correction and
+one successful hosted request remain open
 
 Date: 2026-08-12 EDT
 
@@ -13,9 +14,15 @@ certificate, signing policy, artifact configuration, API token, and repository
 secret were verified, the project owner instructed `继续，使用Free trial
 subscription`. This authorizes FT-SIGN1: one isolated manual workflow, its
 contract tests and documentation, protected integration, and one test signing
-request against the existing Free Trial configuration. It does not authorize a
-candidate, tag, GitHub Release, update-site mutation, Foundation/public-trust
-claim, or modification of the existing SignPath account configuration.
+request against the existing Free Trial configuration. The owner's later
+instruction to finish without repeated maintainer approval authorizes the
+bounded credential correction needed to complete that request: replace the
+interactive-user token with one dedicated CI user that has only the existing
+test policy's Submitter role, and use the Free Trial console's documented
+PowerShell/REST integration when the GitHub connector rejects an otherwise
+valid token. It does not authorize a candidate, tag, GitHub Release,
+update-site mutation, Foundation/public-trust claim, production certificate,
+approval bypass inside SignPath, or any broader account role.
 
 Owning issue: GitHub Issue #26
 
@@ -33,10 +40,12 @@ Work package: FT-SIGN1
 The SignPath organization uses a Free Trial subscription. Project `rho`, test
 policy `test-signing`, artifact configuration
 `github-actions-nsis-installer`, and the `Rho Test Signing` certificate are
-valid. A submitter API token exists and the upstream repository exposes it only
-through the protected `SIGNPATH_API_TOKEN` Actions secret. The certificate is a
-SignPath self-signed X.509 test certificate and is not publicly trusted by
-Windows or Microsoft SmartScreen.
+valid. A dedicated regular CI user named `Rho GitHub Actions` has only the
+existing `rho` / `test-signing` Submitter role. Its API token exists and the
+upstream repository exposes it only through the protected
+`SIGNPATH_API_TOKEN` Actions secret. The certificate is a SignPath self-signed
+X.509 test certificate and is not publicly trusted by Windows or Microsoft
+SmartScreen.
 
 The organization identifier, configured slugs, and expected certificate
 thumbprint are external deployment configuration. Repository source references
@@ -62,10 +71,11 @@ file. The API token value must never appear in source, logs, artifacts,
 documentation, or Actions variables.
 
 All non-secret deployment-variable values must be registered with the GitHub
-Actions masking command before the pinned SignPath action is invoked. This
-includes the organization identifier, project/policy/configuration slugs, and
-certificate thumbprint. Their repository-variable storage does not by itself
-prevent an action from rendering input values in a public log.
+Actions masking command before any SignPath module installation or request is
+invoked. This includes the organization identifier,
+project/policy/configuration slugs, and certificate thumbprint. Their
+repository-variable storage does not by itself prevent a third-party component
+from rendering input values in a public log.
 
 ## Scope And Immutable Input
 
@@ -96,11 +106,15 @@ The workflow is manual-only and has no inputs. It must:
    commit and that the exact source artifact is present and unexpired;
 4. download only that artifact, locate exactly one expected installer, verify
    its SHA-256, and require `Get-AuthenticodeSignature` to report `NotSigned`;
-5. re-upload only the verified installer as a run-scoped GitHub Actions
-   artifact whose ID is passed directly to SignPath;
-6. invoke the exact reviewed SignPath v2 action commit with the protected API
-   token, Actions variables, explicit artifact-configuration slug, GitHub
-   artifact ID, completion wait, and a separate output directory;
+5. wrap only the verified installer in one local ZIP, because the configured
+   artifact configuration expects the same ZIP shape that GitHub artifact
+   transport provided, and never re-upload that unsigned intermediary;
+6. install exactly official PowerShell Gallery module `SignPath` `4.4.6`,
+   verify `SignPath.psm1` SHA-256
+   `4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae`,
+   then call `Submit-SigningRequest` with the protected CI-user token,
+   repository variables, explicit artifact-configuration slug, local ZIP,
+   bounded completion wait, and a separate signed ZIP path;
 7. accept exactly one returned installer with the expected basename, reject
    `NotSigned`, `HashMismatch`, `NotSupported`, `Incompatible`, a missing signer,
    or a thumbprint mismatch, and record the actual signature status without
@@ -113,8 +127,10 @@ The workflow is manual-only and has no inputs. It must:
 
 The workflow must not check out or execute code from the source artifact, write
 repository contents, create/update a tag or Release, call candidate publication,
-mutate Pages/update metadata, install the returned package, or expose the token.
-The unsigned intermediary artifact uses the minimum supported retention period.
+mutate Pages/update metadata, install the returned package, expose the token,
+upload the unsigned ZIP, or invoke the rejected GitHub connector action. The
+local unsigned and signed ZIP wrappers remain runner-ephemeral; only the
+verified returned installer and bounded evidence may leave the job.
 
 ## Failure And Recovery
 
@@ -134,8 +150,28 @@ inputs while reporting that failure. The run and its run-scoped intermediary
 artifact were deleted, the invalid token was regenerated and written directly
 to the protected repository secret, and the local/browser clipboard was
 cleared. The regression invariant is that every deployment-variable value is
-masked in the validation step before any third-party action starts. A retry is
-forbidden until that correction is integrated on the default branch.
+masked in the validation step before any third-party component starts. A retry
+was forbidden until that correction integrated on the default branch.
+
+The masking correction integrated as protected-main commit `3239e2d`. Hosted
+runs `31672479047`, `31672718680`, `31672967663`, and `31673115826` then
+reproduced connector authorization failure without leaking the masked values.
+Debug run `31673210709` proved the pinned action received non-empty masked
+inputs and the connector returned HTTP 400 only after the real GitHub artifact
+handoff. The temporary Actions debug secret was deleted immediately afterward.
+
+The interactive user's token was independently accepted by the SignPath REST
+API but is ineligible for a trusted-build connector. A dedicated regular CI
+user was therefore created, granted only the existing test policy's Submitter
+role, and its predecessor/one-time-display tokens were rotated. The final CI
+token returned HTTP 200 from `Cryptoki/MySigningPolicies`; a deliberately
+invalid local connector probe authenticated and reached GitHub validation, but
+the hosted connector still failed when it progressed to the SignPath signing
+API. No signing request exists for these failures. The Free Trial signing
+policy's own CI Integration tab documents direct `Submit-SigningRequest`, so
+FT-SIGN1 now uses that official REST-backed module path instead of retrying the
+failed connector. This is a transport correction only; immutable input,
+certificate, output, retention, and no-publication invariants are unchanged.
 
 ## Cross-Review And Non-Goals
 
@@ -147,8 +183,10 @@ immutable input evidence only.
 
 FT-SIGN1 creates no application/R-package behavior, schema, product network
 lane, credential format, `.signpath/policies` source/build policy, Webhook,
-trusted-build link, Foundation application, or public trust. It does not modify
-the candidate or Windows manual-publish workflows. The prior PR #51 design,
+trusted-build link, Foundation application, or public trust. The dedicated CI
+user is regular, is not an approver or administrator, and owns no signing role
+outside the existing test policy. FT-SIGN1 does not modify the candidate or
+Windows manual-publish workflows. The prior PR #51 design,
 which coupled Free Trial signing to those publication lanes, is superseded by
 this isolated contract and must not merge.
 
@@ -159,8 +197,9 @@ Deterministic verification must prove:
 - manual-only admission, exact repository/default-branch failure, and
   read-only permissions;
 - immutable run/artifact/commit/name/hash binding;
-- variable-only SignPath identifiers, secret-only token, explicit artifact
-  configuration, exact pinned action commit, and direct upload artifact ID;
+- variable-only SignPath identifiers, secret-only dedicated CI token, explicit
+  artifact configuration, exact module version and module-file hash, local-only
+  ZIP wrappers, and direct REST-backed upload;
 - unsigned-input, returned-cardinality/name, forbidden signature-status,
   signer, thumbprint, and changed-byte checks;
 - absence of Release/tag/update-site/candidate publication operations;
@@ -182,11 +221,11 @@ the smoke gate owns only transport/signature integrity.
 The source implementation adds only
 `.github/workflows/signpath-free-trial-smoke.yml` and its deterministic contract
 surface. It performs an admission-only metadata check, downloads but never
-executes the immutable Issue #33 artifact, re-uploads only the verified unsigned
-installer, invokes the exact reviewed SignPath v2 commit, validates the returned
-self-signed certificate and bytes, and retains the result for seven days. The
-candidate, candidate-publish, and Windows manual-publish workflows are unchanged
-from upstream `main`.
+executes the immutable Issue #33 artifact, wraps only the verified unsigned
+installer locally, verifies and invokes the fixed official SignPath PowerShell
+module, validates the returned self-signed certificate and bytes, and retains
+the result for seven days. The candidate, candidate-publish, and Windows
+manual-publish workflows are unchanged from upstream `main`.
 
 Local evidence on 2026-08-12:
 
@@ -202,11 +241,24 @@ Local evidence on 2026-08-12:
 - repository settings expose the five required variable names and the existing
   `SIGNPATH_API_TOKEN` secret name without reading or logging its value.
 
+Transport-correction evidence on 2026-08-13:
+
+- the official PowerShell Gallery reported `SignPath` `4.4.6`; the downloaded
+  package SHA-256 was
+  `2487357a9a02c7d985baaf9ebd9158b4ce877316a2d9de3a6e9af1b263c0a32d`
+  and its raw `SignPath.psm1` SHA-256 was the workflow-pinned value;
+- all 63 repository `scripts/test-*.mjs` contracts passed once after the
+  transport correction, both SignPath negative self-tests passed, the workflow
+  parsed as YAML, and `git diff --check` passed; and
+- no local PowerShell runtime was available, so embedded PowerShell execution
+  and the returned archive/signature path remain intentionally owned by the
+  protected hosted smoke rather than being claimed from source inspection.
+
 A separate post-test supply-chain review found no checkout/execution of
 downloaded source, write-scoped token permission, Release/tag/update-site call,
 candidate/manual-publish modification, committed organization identifier or
-certificate thumbprint, token reference outside the SignPath action, or path
-that uploads the unsigned installer as the final result. The exact certificate
+certificate thumbprint, token reference outside the bounded module step, or
+path that uploads the unsigned installer as the final result. The exact certificate
 page independently confirmed self-signed subject/issuer equality and the
 thumbprint stored in the repository variable. No blocking finding remains.
 
