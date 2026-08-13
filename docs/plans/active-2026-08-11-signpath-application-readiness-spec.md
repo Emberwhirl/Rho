@@ -4,7 +4,8 @@ Status: active; SP-READY1 repository-readiness package, exact-head and merged-
 main hosted validation, upstream integration, linked SignPath attribution,
 public uninstall guidance, live policy deployment, private reporting, and
 default-branch ruleset complete; a real Free Trial project/test policy exists
-and FT-SIGN1 owns one isolated hosted smoke request; organization-owner MFA
+and FT-SIGN1 isolated hosted smoke run `31675464182` is accepted;
+organization-owner MFA
 audit, Foundation application/decision, approved-project GitHub App
 configuration, and production signing remain open
 
@@ -349,14 +350,13 @@ package versions and store schema remain fixed.
 
 The release decision remains `NO-GO`. SP-READY1 PR-gated integration, private
 vulnerability reporting, default-branch review enforcement, and public policy
-deployment pass. FT-SIGN1 may now validate the existing Free Trial transport
-and test certificate through one isolated, non-release request. Production
-readiness still requires the organization-owner signing-role MFA verification,
-Foundation application and decision, then any required production GitHub
-App/trusted-build and certificate/policy configuration. Production two-stage
-signing is a later D4/R4 package. Only a new exact production-signed candidate
-with two-platform installed acceptance and explicit MAC5 GO can proceed to
-publication.
+deployment pass. FT-SIGN1 completed one isolated Free Trial request without
+granting release authority. Production readiness still requires the
+organization-owner signing-role MFA verification, Foundation application and
+decision, then any required production GitHub App/trusted-build and
+certificate/policy configuration. Production two-stage signing is a later
+D4/R4 package. Only a new exact production-signed candidate with two-platform
+installed acceptance and explicit MAC5 GO can proceed to publication.
 
 ## SP-READY1 Definition Of Done
 

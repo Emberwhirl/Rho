@@ -4,9 +4,10 @@ Status: active accepted Issue #33 source contract; exact protected-main source
 run `31644418691` and clean-profile installed Windows run `31644429787` pass at
 `7ab861b01a36313150988b1e2fa8fdc2056325d9`; all six scenarios, exact installed
 identity/runtime, screenshot, and fail-closed cleanup are recorded; Issue #33
-closure is GO; FT-SIGN1 Free Trial smoke integration/request, production
-Windows signing, exact cross-platform candidate, human installed-candidate
-acceptance, MAC5, publication, and updater mutation remain open
+closure is GO; FT-SIGN1 Free Trial smoke run `31675464182` and evidence
+reconciliation pass; production Windows signing, exact cross-platform candidate,
+human installed-candidate acceptance, MAC5, publication, and updater mutation
+remain open
 
 Date: 2026-08-12
 
@@ -162,7 +163,7 @@ candidate gate.
 ## Current Decision
 
 `GO` to close Issue #33 as an exact-source installed product defect.
-`GO` only for the isolated FT-SIGN1 Free Trial smoke request after its source
-package passes protected integration. `NO-GO` for SignPath production signing,
-exact candidate construction, human installed-candidate acceptance, MAC5,
-publication, and updater mutation.
+`PASS` for isolated FT-SIGN1 Free Trial smoke run `31675464182`; its returned
+bytes remain test-only and are not candidate assets. `NO-GO` for SignPath
+production signing, exact candidate construction, human installed-candidate
+acceptance, MAC5, publication, and updater mutation.
