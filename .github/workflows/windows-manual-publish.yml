@@ -70,6 +70,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate reviewed versioned release notes
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.release_tag }}"
+          if (-not $tag.StartsWith("v")) { throw "Release tag must start with v." }
+          $version = $tag.Substring(1)
+          node scripts/release-notes.mjs --mode prepare --version $version --tag $tag --output target/release-notes.json
+          if ($LASTEXITCODE -ne 0) { throw "Reviewed release notes validation failed." }
+
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -162,20 +171,18 @@ jobs:
           RELEASE_NAME: ${{ inputs.release_name }}
           RELEASE_PRERELEASE: ${{ inputs.prerelease }}
           RELEASE_TARGET: ${{ steps.release_checks.outputs.commit_sha }}
-          INSTALLER_NAME: ${{ steps.release_checks.outputs.installer_name }}
-          INSTALLER_SHA256: ${{ steps.release_checks.outputs.hash_value }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require("fs");
+            const path = require("path");
+            const { pathToFileURL } = require("url");
             const prerelease = String(process.env.RELEASE_PRERELEASE).toLowerCase() === "true";
-            const body = [
-              "GitHub-hosted windows-latest release build.",
-              "",
-              `- Ref: \`${{ inputs.ref }}\``,
-              `- Commit: \`${process.env.RELEASE_TARGET}\``,
-              `- Installer: \`${process.env.INSTALLER_NAME}\``,
-              `- SHA-256: \`${process.env.INSTALLER_SHA256}\``,
-            ].join("\n");
+            const releaseNotesModule = await import(pathToFileURL(path.join(process.cwd(), "scripts", "release-notes.mjs")).href);
+            const releaseNotes = releaseNotesModule.validateReleaseNotesRecord(
+              JSON.parse(fs.readFileSync(path.join("target", "release-notes.json"), "utf8")),
+              { release_tag: process.env.RELEASE_TAG },
+            );
             let release;
             try {
               release = await github.rest.repos.getReleaseByTag({
@@ -190,7 +197,7 @@ jobs:
                 tag_name: process.env.RELEASE_TAG,
                 target_commitish: process.env.RELEASE_TARGET,
                 name: process.env.RELEASE_NAME,
-                body,
+                body: releaseNotes.body,
                 draft: false,
                 prerelease,
               });
@@ -204,10 +211,17 @@ jobs:
                 tag_name: process.env.RELEASE_TAG,
                 target_commitish: process.env.RELEASE_TARGET,
                 name: process.env.RELEASE_NAME,
-                body,
+                body: releaseNotes.body,
                 draft: false,
                 prerelease,
               });
+            }
+            if (
+              release.data.tag_name !== process.env.RELEASE_TAG
+              || release.data.target_commitish !== process.env.RELEASE_TARGET
+              || release.data.body !== releaseNotes.body
+            ) {
+              throw new Error("Published Windows release does not match its reviewed release notes or identity.");
             }
             core.setOutput("release_id", String(release.data.id));
 

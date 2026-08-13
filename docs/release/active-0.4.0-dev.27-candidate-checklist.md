@@ -184,6 +184,16 @@ remain the only Issue #5 steps. Closing the Issue does not by itself publish
 this release. Public Release and update-site mutation require their distinct
 GO gate.
 
+The versioned release-notes workflow was authorized only after this exact
+candidate commit and Draft existed. It is not retroactively part of `dev.27`
+and no release-notes file may be invented in, or composed into, commit
+`aff83f01d2db8c241fe794fe5e5e4c80d2baf2a0`. A later publication attempt may
+recognize only the explicit compatibility tuple recorded in the active
+release-notes specification: Draft `367934137`, tag `v0.4.0-dev.27`, this exact
+commit, and the existing generic body. It may not rewrite that body or any
+asset. Every newly constructed successor candidate requires its reviewed
+`.github/release-notes/v<version>.md` in the exact candidate commit.
+
 ## Current Decision
 
 `MAC5 GO` for the exact `dev.27` candidate and Issue #5 behavior. Source,
