@@ -28,6 +28,7 @@ const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_MODEL_DISCOVERY_BYTES: usize = 1024 * 1024;
 const MAX_DISCOVERED_MODELS: usize = 100;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
+#[cfg(any(windows, target_os = "macos"))]
 const CREDENTIAL_SERVICE: &str = "Rho Agent LLM";
 const MAX_CREDENTIAL_BYTES: usize = 16 * 1024;
 

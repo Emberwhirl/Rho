@@ -1,8 +1,18 @@
 # Linux x64 AppImage Support
 
-Status: proposed integration design; implementation not authorized
+Status: active; full direction authorized by the project owner on 2026-08-13
+("create an appimage based on this plan", with explicit toolchain-install
+guidance and sandbox enablement). LIN1-LIN4 source implementation is present
+on 2026-08-13; the authoring environment could not execute builds or tests
+(the host shell sandbox was unavailable and no Rust toolchain was installed),
+so every gate was recorded as unrun rather than claimed as passing. Partial
+verification was executed on a toolchain-equipped machine on 2026-08-14:
+the LIN1/LIN3 fixture suites and `cargo fmt` pass, and the Rust workspace
+suite runs with three pre-existing Linux update-manifest gaps (see
+"Verification Record (2026-08-14)"). The LIN2 build lanes and LIN5 remain
+unrun; the M3 release decision remains open and unauthorized.
 
-Date: 2026-08-11
+Date: 2026-08-11 (authored); 2026-08-13 (activated)
 
 Scope: Linux x64 AppImage distribution for the desktop application, a runtime
 dependency check for the missing WebKitGTK 4.1 library, local and hosted build
@@ -20,8 +30,13 @@ Cross-reviewed against:
 - `docs/plans/proposed-2026-07-26-implemented-baseline-hardening-plan.md`.
 
 Implementation entry rule: no product-code work begins before explicit
-authorization. Each work package below requires a separate focused handoff and
-its own acceptance gate, following the one-package governance rule.
+authorization. The project owner authorized the full direction and the
+LIN1-LIN4 implementation slice on 2026-08-13. Each work package below still
+records its own acceptance gate; LIN5 remains open and its release decision is
+not authorized. The authoring environment could not execute any build or test,
+so the gates below are recorded as unrun and require verification on a
+toolchain-equipped machine (or the hosted lane) before this document may move
+past `active`.
 
 ## Summary
 
@@ -137,7 +152,7 @@ must never silently install, download, or require network access.
 
 ## Work Packages
 
-### LIN1: Ark linux-x64 manifest and bootstrap — requires authorization
+### LIN1: Ark linux-x64 manifest and bootstrap — authorized 2026-08-13
 
 - capture the exact `ark-0.1.252-linux-x64.zip` URL and SHA-256 from the
   posit-dev/ark release; add `linux-x64` to `runtime/ark.json`;
@@ -151,7 +166,7 @@ must never silently install, download, or require network access.
 Exit gate: generated runtime binaries remain ignored; the pinned sidecar is
 reproducible from the manifest; negative fixtures pass. No product code changes.
 
-### LIN2: Linux build script and hosted workflow — requires authorization
+### LIN2: Linux build script and hosted workflow — authorized 2026-08-13
 
 Local lane (mirrors `build-windows-installer.ps1`):
 
@@ -173,7 +188,7 @@ Hosted lane:
 Exit gate: both lanes produce an AppImage containing the checked `AppRun` and
 bundled Ark; artifact byte size and SHA-256 recorded.
 
-### LIN3: AppRun dependency check with friendly hint — requires authorization
+### LIN3: AppRun dependency check with friendly hint — authorized 2026-08-13
 
 - replace the default AppRun of the generated AppImage with a bounded bash
   wrapper that:
@@ -193,7 +208,7 @@ Exit gate: fixture-driven tests cover present/missing library, each supported
 distribution family, unknown family, and argument passthrough. No silent
 installation or download in the wrapper.
 
-### LIN4: Linux R discovery — requires authorization
+### LIN4: Linux R discovery — authorized 2026-08-13
 
 - R discovery order (Linux): persisted user selection, `RHO_RSCRIPT`,
   `/usr/lib/R/bin/Rscript`, `/usr/local/lib/R/bin/Rscript`, `/opt/...` conda
@@ -208,7 +223,7 @@ installation or download in the wrapper.
 Exit gate: unit and fixture coverage for present/missing/wrong-arch/old R,
 PATH order, and no-shell guarantee.
 
-### LIN5: Verification and acceptance — requires authorization
+### LIN5: Verification and acceptance — not yet authorized; exit gate open
 
 - complete the affected Rust workspace, `rho.agent`, `rho.bridge`, frontend/
   mock, and workflow contract suites;
@@ -227,9 +242,108 @@ decision is NO-GO until an explicit owner GO.
 
 ## Version, Documentation, And Release State
 
-This proposal remains `proposed`. It changes no application version, R package
-version, `NEWS.md`, or release status. Each LIN package must be separately
-authorized; implementation may not start on any package before this contract
-is renamed to `active-` and its entry review records the authorization. A
-user-visible Linux release remains a separate later decision gated by the M3
-roadmap acceptance gate.
+This document is `active`. It changes no application version, R package
+version, `NEWS.md`, or release status for `0.4.0-dev.38`; the version decision
+is recorded as *deferred until a named Linux integration candidate* — no Linux
+distribution is permitted before the M3 roadmap acceptance gate. The full
+direction and the LIN1-LIN4 slice were authorized on 2026-08-13; LIN5 and any
+user-visible Linux release remain separate later decisions gated by the M3
+roadmap acceptance gate. The authoring environment could not execute builds or
+tests, so the LIN1-LIN4 exit gates are recorded as unrun and this document may
+not move past `active` until a toolchain-equipped machine (or the hosted lane)
+runs them and LIN5 records the evidence.
+
+## Implementation Record (2026-08-13)
+
+Source implementation present, no execution verification (see Status):
+
+- LIN1: `runtime/ark.json` pins `linux-x64`
+  `ark-0.1.252-linux-x64.zip` with SHA-256
+  `7dda5d05b6c4d67e7ae74e70b6bec5fd3bc526b19e222fa78306e14972cf4495`
+  (captured from the posit-dev/ark release API on 2026-08-13).
+  `scripts/bootstrap-ark-linux.sh` verifies the checksum, rejects non-x86-64
+  ELF binaries / missing LICENSE/NOTICE / missing `ark`, stages
+  `desktop/src-tauri/binaries/ark-x86_64-unknown-linux-gnu`, and writes a
+  controlled-startup kernelspec. `scripts/test-bootstrap-ark-linux.sh` covers
+  the four negative fixtures plus a success fixture.
+- LIN2: `scripts/prepare-runtime-resources.sh` (Linux equivalent of the
+  Windows PS1), `desktop/src-tauri/tauri.linux.conf.json` (AppImage target,
+  `externalBin` sidecar, license resources, PNG icons; auto-merged by the
+  Tauri CLI), `scripts/build-linux.sh` (preflight, prepare, `npx
+  "@tauri-apps/cli@2.11.4" build`, rename to `Rho_<version>_x86_64.AppImage`,
+  AppRun patch, size/SHA-256 report), and
+  `.github/workflows/linux-appimage-build.yml` (ubuntu-22.04 lane with exact
+  commit checkout, pinned Rust 1.97.0, R 4.6.1, LIN1/LIN3 fixture gates, and
+  fail-closed AppImage assertions).
+- LIN3: `scripts/rho-apprun-check.sh` (POSIX-sh WebKitGTK 4.1 check with
+  per-family hints), `scripts/compose-apprun.sh` (single-shebang composition
+  preserving the original Tauri AppRun body), `scripts/patch-appimage-apprun.sh`
+  (extract → replace → repack with the original runtime prefix and a
+  validated default gzip compressor; final verification runs the repacked
+  image's own `--appimage-extract`, so it does not depend on unsquashfs
+  offset auto-detection), and `scripts/test-linux-apprun.sh` (fixture-driven,
+  no network).
+- LIN4: Linux R discovery order (persisted selection, `RHO_RSCRIPT`,
+  `/usr/lib/R/bin/Rscript`, `/usr/local/lib/R/bin/Rscript`, conda paths, then
+  the child-process PATH search), an x86-64 `R_ARCH_MISMATCH` gate,
+  platform-specific architecture copy, and the Linux x86-64 arm of
+  `ark_candidate_paths` (sidecar beside the executable, then the
+  development-staged `binaries/ark-x86_64-unknown-linux-gnu`) in
+  `desktop/src-tauri/src/main.rs` and `platform.rs`, with unit tests. No new
+  Tauri commands, so browser/mock mode is unchanged.
+
+Recorded deviations (bounded interpretations, all reversible):
+
+- the plan's "/opt/... conda paths as present" is implemented as the bounded
+  list `/opt/conda/bin/Rscript` and `/opt/miniconda3/bin/Rscript`;
+- when no `ldconfig` binary can be found at all, the AppRun check treats the
+  library as absent and prints the hint (the plan pins
+  `ldconfig -p | grep -q libwebkit2gtk-4.1.so.0`);
+- the AppImage filename produced by Tauri is renamed to the plan's
+  `Rho_<version>_x86_64.AppImage` convention after the build.
+
+Version and NEWS: no application or R package version bump; no `NEWS.md`
+entry; distribution deferred to a named Linux integration candidate gated by
+the M3 roadmap acceptance gate.
+
+## Verification Record (2026-08-14)
+
+Run on Linux x86-64 (cargo 1.97.0, Rscript and zip present). The commands
+below were executed exactly as written; results are recorded truthfully:
+
+```text
+scripts/test-linux-apprun.sh             PASSED (all LIN3 fixtures)
+scripts/test-bootstrap-ark-linux.sh      PASSED (all LIN1 fixtures)
+scripts/bootstrap-ark-linux.sh           NOT RUN  (downloads the pinned Ark
+                                         archive from GitHub; deferred to the
+                                         hosted lane / LIN5)
+scripts/build-linux.sh                   NOT RUN  (requires libwebkit2gtk-4.1-dev
+                                         and a full Tauri build; deferred to the
+                                         hosted lane / LIN5)
+cd desktop/src-tauri && cargo test --workspace --locked
+                                         176 passed; 3 failed (see below)
+cd desktop/src-tauri && cargo fmt --all -- --check
+                                         PASSED (two rustfmt deviations in the
+                                         LIN4 code fixed on 2026-08-14)
+```
+
+The two LIN4 arch-gate test regressions found on Linux
+(`parses_base_r_probe_without_requiring_user_startup_files` and
+`rejects_x86_and_old_r_probe_results_before_runtime_generation`, which used
+an `aarch64` fixture invalid on Linux x86-64) were fixed in-slice on
+2026-08-14 by making the fixture architecture platform-valid; Windows x64 and
+macOS arm64 behavior is unchanged.
+
+The three remaining failures are pre-existing Linux platform gaps in
+`desktop/src-tauri/src/update.rs` test fixtures
+(`compares_development_versions_as_semver`,
+`accepts_optional_apple_silicon_artifact`,
+`reports_equal_and_newer_local_versions`): `evaluate_manifest` correctly
+returns `UPDATE_PLATFORM_UNAVAILABLE` on Linux because the update manifest
+carries only `windows_x86_64` and `macos_aarch64` artifacts (Linux updates are
+explicitly out of scope this round). `update.rs` is untouched by this slice,
+and the Rust test CI matrix (windows + macos) is unaffected. Making these
+fixtures Linux-aware belongs to the LIN5 workspace-suite gate.
+
+LIN5 manual acceptance (clean machine with and without
+`libwebkit2gtk-4.1-0`) remains open and unauthorized.
