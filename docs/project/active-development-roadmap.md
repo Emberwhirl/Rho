@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.37`
+Current source baseline: `0.4.0-dev.38`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -118,6 +118,15 @@ macOS/Windows stable/MSRV, and installed run `31644429787` passed exact
 identity/runtime, all six scenarios, screenshot, and uninstall cleanup.
 Issue #33 closure is GO, while signing, candidate, human installed acceptance,
 MAC5, publication, and updater gates remain open.
+
+DEV38-SIGN1 now advances the release source to `0.4.0-dev.38`. It preserves the
+accepted `dev.37` product behavior while adding reviewed per-tag Release notes,
+candidate-only SignPath Free Trial self-signed installer evidence, and truthful
+per-release Windows trust projection. Rehearsal remains unsigned; Foundation,
+production publisher trust, MFA/trusted-build, and two-stage signing remain
+open under SP-READY1. Source implementation is authorized, while the exact
+candidate, human Windows/macOS installed acceptance, MAC5, publication, and
+live update gates remain `NO-GO` until their own evidence exists.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

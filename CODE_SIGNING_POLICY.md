@@ -1,6 +1,6 @@
 # Rho Code Signing Policy
 
-Last updated: 2026-08-12
+Last updated: 2026-08-13
 
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org).
@@ -16,9 +16,13 @@ the project before that external approval is recorded.
 - Apple Silicon macOS candidate packages use Apple's Developer ID Application
   signing and notarization path. That Apple trust chain is independent of
   SignPath.
-- Windows downloads are currently not Authenticode-signed. Local and historical
-  unsigned Windows packages are development/review artifacts and must not be
-  represented as SignPath-signed or public-release-ready.
+- The published `0.4.0-dev.24` Windows download and historical review packages
+  are not Authenticode-signed. Their exact evidence must not be relabelled.
+- A development prerelease may carry an Authenticode signature created with a
+  SignPath Free Trial self-signed test certificate only when its exact platform
+  evidence records that request and final hash. This test signature is not
+  publicly trusted, does not establish SignPath Foundation acceptance or a
+  production publisher, and may still trigger Windows or SmartScreen warnings.
 - If the SignPath Foundation application and production pipeline are approved,
   Windows will show the approved SignPath Foundation certificate identity as
   the publisher. A valid signature protects integrity and publisher identity;
@@ -26,6 +30,27 @@ the project before that external approval is recorded.
 
 The exact status of a release is established by that release's evidence and
 checksums, not by this policy alone.
+
+## Free Trial test-signed prerelease boundary
+
+The bounded `0.4.0-dev.38` candidate contract may submit only its final Rho NSIS
+installer to the existing SignPath Free Trial test policy after complete build
+and smoke validation. Fork rehearsal remains unsigned and cannot create a
+Release. The workflow must prove the input was unsigned, use the pinned official
+SignPath module, validate the protected test-certificate thumbprint and self-
+signed subject/issuer, require the expected untrusted `UnknownError` status,
+and hash the returned bytes before candidate evidence is created.
+
+The request identifier, module identity, normalized public thumbprint,
+self-signed flag, trust status, and before/after hashes may be published as
+bounded evidence. Organization identifiers, project/policy/configuration
+slugs, protected JSON, API tokens, and credentials may not be logged or
+published. The test certificate is never installed into a trust store to make
+the result appear publicly valid.
+
+This lane signs only the outer test candidate installer. It is not the future
+production two-stage procedure below and creates no exception to Foundation,
+MFA, trusted-build, per-request approval, installed-payload, or release gates.
 
 ## Signing scope
 
@@ -55,8 +80,8 @@ organization, project, policy, or artifact-configuration data stops the
 workflow before publication. Legacy/manual publication cannot bypass the same
 signed-candidate gate.
 
-SignPath requires manual approval for every signing request. Rho's intended
-roles are:
+Rho's intended production policy requires manual approval for every production
+signing request. Its intended roles are:
 
 - **Authors and Reviewers:**
   [YuLab-SMU organization members](https://github.com/orgs/YuLab-SMU/people);

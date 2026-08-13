@@ -18,11 +18,11 @@ on:
       release_tag:
         description: Single-use prerelease tag
         required: true
-        default: v0.4.0-dev.37
+        default: v0.4.0-dev.38
       release_name:
         description: Draft release title
         required: true
-        default: Rho 0.4.0-dev.37
+        default: Rho 0.4.0-dev.38
 
 permissions:
   contents: read
@@ -176,16 +176,280 @@ jobs:
           New-Item -ItemType Directory -Path "target\candidate" -Force | Out-Null
           Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path "target\candidate" $expected)
 
+      - name: Load protected SignPath deployment configuration
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        env:
+          SIGNPATH_DEPLOYMENT_CONFIG: ${{ secrets.SIGNPATH_DEPLOYMENT_CONFIG }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_DEPLOYMENT_CONFIG)) {
+            throw "Required protected SignPath deployment configuration is missing."
+          }
+          try {
+            $config = ConvertFrom-Json -InputObject $env:SIGNPATH_DEPLOYMENT_CONFIG -AsHashtable -ErrorAction Stop
+          } catch {
+            throw "Protected SignPath deployment configuration is not valid JSON."
+          }
+          if ($config -isnot [System.Collections.IDictionary]) {
+            throw "Protected SignPath deployment configuration must be a JSON object."
+          }
+          $required = @(
+            "SIGNPATH_ORGANIZATION_ID",
+            "SIGNPATH_PROJECT_SLUG",
+            "SIGNPATH_SIGNING_POLICY_SLUG",
+            "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG",
+            "SIGNPATH_CERTIFICATE_THUMBPRINT"
+          )
+          if (@(Compare-Object -ReferenceObject @($required | Sort-Object) -DifferenceObject @($config.Keys | Sort-Object)).Count -ne 0) {
+            throw "Protected SignPath deployment configuration has an unexpected key set."
+          }
+          $validated = @{}
+          foreach ($name in $required) {
+            if (-not $config.ContainsKey($name) -or $config[$name] -isnot [string]) {
+              throw "Protected SignPath deployment configuration contains a non-string value: $name"
+            }
+            $value = [string]$config[$name]
+            if ([string]::IsNullOrWhiteSpace($value) -or $value -match "[\r\n]") {
+              throw "Protected SignPath deployment configuration contains a blank or multiline value: $name"
+            }
+            $validated[$name] = $value
+          }
+          if ($validated.SIGNPATH_ORGANIZATION_ID -notmatch '^[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}$') {
+            throw "SIGNPATH_ORGANIZATION_ID must be a UUID."
+          }
+          foreach ($name in @("SIGNPATH_PROJECT_SLUG", "SIGNPATH_SIGNING_POLICY_SLUG", "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG")) {
+            if ($validated[$name] -notmatch '^[A-Za-z0-9._-]+$') {
+              throw "Protected SignPath deployment configuration contains an invalid slug: $name"
+            }
+          }
+          $thumbprint = ($validated.SIGNPATH_CERTIFICATE_THUMBPRINT -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+          if ($thumbprint -notmatch '^[0-9A-F]{40}$') {
+            throw "SIGNPATH_CERTIFICATE_THUMBPRINT must be a 40-digit SHA-1 certificate thumbprint."
+          }
+          $validated.SIGNPATH_CERTIFICATE_THUMBPRINT = $thumbprint
+          foreach ($name in $required) {
+            $value = $validated[$name]
+            Write-Output "::add-mask::$value"
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value "$name=$value" -Encoding utf8
+          }
+
+      - name: Verify and isolate exact unsigned candidate
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+        run: |
+          $expected = "Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
+          $candidate = Join-Path $PWD "target\candidate\$expected"
+          if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            throw "Expected unsigned candidate is missing."
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $candidate
+          if ([string]$signature.Status -ne "NotSigned" -or $null -ne $signature.SignerCertificate) {
+            throw "Candidate signing input must be exactly unsigned."
+          }
+          $unsignedHash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RHO_UNSIGNED_INSTALLER_SHA256=$unsignedHash" -Encoding utf8
+          New-Item -ItemType Directory -Path "target\signpath-input" -Force | Out-Null
+          $isolatedInstaller = Join-Path $PWD "target\signpath-input\$expected"
+          Copy-Item -LiteralPath $candidate -Destination $isolatedInstaller
+          $inputArchive = Join-Path $PWD "target\signpath-input\rho-signpath-candidate-input.zip"
+          Compress-Archive -LiteralPath $isolatedInstaller -DestinationPath $inputArchive
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($inputArchive)
+          try {
+            $entries = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) })
+            if ($entries.Count -ne 1 -or $entries[0].FullName -ne $expected) {
+              throw "The SignPath input ZIP must contain exactly the candidate installer at its root."
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Prepare fixed official SignPath module
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        env:
+          SIGNPATH_MODULE_VERSION: "4.4.6"
+          SIGNPATH_MODULE_SHA256: 4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae
+        run: |
+          Install-Module -Name SignPath -RequiredVersion $env:SIGNPATH_MODULE_VERSION -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+          $module = Get-Module -ListAvailable -Name SignPath |
+            Where-Object { $_.Version.ToString() -eq $env:SIGNPATH_MODULE_VERSION } |
+            Select-Object -First 1
+          if ($null -eq $module) {
+            throw "SignPath module $env:SIGNPATH_MODULE_VERSION was not installed."
+          }
+          $moduleFile = Join-Path $module.ModuleBase "SignPath.psm1"
+          $moduleHash = (Get-FileHash -LiteralPath $moduleFile -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($moduleHash -ne $env:SIGNPATH_MODULE_SHA256) {
+            throw "SignPath module integrity mismatch."
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "SIGNPATH_MODULE_VERSION=$($env:SIGNPATH_MODULE_VERSION)" -Encoding utf8
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "SIGNPATH_MODULE_SHA256=$moduleHash" -Encoding utf8
+
+      - name: Submit exact candidate through official SignPath REST module
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        id: candidate-signpath
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)) {
+            throw "Required SignPath API token is missing."
+          }
+          $module = Get-Module -ListAvailable -Name SignPath |
+            Where-Object { $_.Version.ToString() -eq $env:SIGNPATH_MODULE_VERSION } |
+            Select-Object -First 1
+          if ($null -eq $module) {
+            throw "The verified SignPath module is unavailable."
+          }
+          $moduleFile = Join-Path $module.ModuleBase "SignPath.psm1"
+          $moduleHash = (Get-FileHash -LiteralPath $moduleFile -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($moduleHash -ne $env:SIGNPATH_MODULE_SHA256) {
+            throw "The SignPath module changed after verification."
+          }
+          Import-Module -Name $module.Path -Force -ErrorAction Stop
+          $inputArchive = Join-Path $PWD "target\signpath-input\rho-signpath-candidate-input.zip"
+          $outputDirectory = Join-Path $PWD "target\signpath-output"
+          New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+          $signedArchive = Join-Path $outputDirectory "rho-signpath-candidate-output.zip"
+          $signingRequestId = Submit-SigningRequest `
+            -InputArtifactPath $inputArchive `
+            -ProjectSlug $env:SIGNPATH_PROJECT_SLUG `
+            -SigningPolicySlug $env:SIGNPATH_SIGNING_POLICY_SLUG `
+            -ArtifactConfigurationSlug $env:SIGNPATH_ARTIFACT_CONFIGURATION_SLUG `
+            -WaitForCompletion `
+            -OutputArtifactPath $signedArchive `
+            -WaitForCompletionTimeoutInSeconds 900 `
+            -UploadAndDownloadRequestTimeoutInSeconds 300 `
+            -OrganizationId $env:SIGNPATH_ORGANIZATION_ID `
+            -ApiToken $env:SIGNPATH_API_TOKEN `
+            -Description "Rho candidate $env:CANDIDATE_VERSION at $env:CANDIDATE_COMMIT run $env:GITHUB_RUN_ID attempt $env:GITHUB_RUN_ATTEMPT"
+          $signingRequestId = ([string]$signingRequestId).ToLowerInvariant()
+          if ($signingRequestId -notmatch '^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$') {
+            throw "SignPath did not return a signing request identifier."
+          }
+          if (-not (Test-Path -LiteralPath $signedArchive -PathType Leaf)) {
+            throw "SignPath did not return the signed ZIP."
+          }
+          Write-Output "signing_request_id=$signingRequestId" >> $env:GITHUB_OUTPUT
+
+      - name: Verify and promote returned test-signed installer
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          SIGNING_REQUEST_ID: ${{ steps.candidate-signpath.outputs.signing_request_id }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_REQUEST_ID)) {
+            throw "SignPath did not return a signing request identifier."
+          }
+          $expected = "Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
+          $signedArchive = Join-Path $PWD "target\signpath-output\rho-signpath-candidate-output.zip"
+          $extractedDirectory = Join-Path $PWD "target\signpath-output\extracted"
+          New-Item -ItemType Directory -Path $extractedDirectory -Force | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($signedArchive)
+          try {
+            $entries = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) })
+            if ($entries.Count -ne 1 -or $entries[0].FullName -ne $expected) {
+              throw "The returned SignPath ZIP must contain exactly the candidate installer at its root."
+            }
+            $returnedInstaller = Join-Path $extractedDirectory $expected
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $returnedInstaller, $false)
+          } finally {
+            $archive.Dispose()
+          }
+          $returnedFiles = @(Get-ChildItem -LiteralPath $extractedDirectory -Recurse -File)
+          if ($returnedFiles.Count -ne 1 -or $returnedFiles[0].Name -ne $expected) {
+            throw "SignPath must return exactly one correctly named installer."
+          }
+          $signedHash = (Get-FileHash -LiteralPath $returnedFiles[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($signedHash -eq $env:RHO_UNSIGNED_INSTALLER_SHA256) {
+            throw "SignPath returned unchanged installer bytes."
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $returnedFiles[0].FullName
+          if ($null -eq $signature.SignerCertificate) {
+            throw "Returned installer has no Authenticode signer certificate."
+          }
+          if ([string]$signature.Status -ne "UnknownError") {
+            throw "Free Trial candidate must retain the expected untrusted self-signed status."
+          }
+          $actualThumbprint = ($signature.SignerCertificate.Thumbprint -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+          if ($actualThumbprint -ne $env:SIGNPATH_CERTIFICATE_THUMBPRINT) {
+            throw "Returned installer signer thumbprint does not match protected configuration."
+          }
+          if ($signature.SignerCertificate.Subject -ne $signature.SignerCertificate.Issuer) {
+            throw "Free Trial signer certificate must be self-signed."
+          }
+          $candidate = Join-Path $PWD "target\candidate\$expected"
+          Copy-Item -LiteralPath $returnedFiles[0].FullName -Destination $candidate -Force
+          $promotedHash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($promotedHash -ne $signedHash) {
+            throw "Promoted Windows candidate does not match returned signed bytes."
+          }
+          $evidence = [ordered]@{
+            provider = "signpath"
+            profile = "free_trial_self_signed"
+            request_id = $env:SIGNING_REQUEST_ID.ToLowerInvariant()
+            module_version = $env:SIGNPATH_MODULE_VERSION
+            module_sha256 = $env:SIGNPATH_MODULE_SHA256.ToLowerInvariant()
+            signer_thumbprint = $actualThumbprint.ToLowerInvariant()
+            self_signed = $true
+            signature_status = [string]$signature.Status
+            unsigned_sha256 = $env:RHO_UNSIGNED_INSTALLER_SHA256.ToLowerInvariant()
+            signed_sha256 = $signedHash
+          }
+          $evidence | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath "target\candidate\windows-signing-evidence.json" -Encoding utf8
+
+      - name: Clear SignPath deployment values before evidence handoff
+        if: ${{ always() && needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        run: |
+          @(
+            "SIGNPATH_ORGANIZATION_ID",
+            "SIGNPATH_PROJECT_SLUG",
+            "SIGNPATH_SIGNING_POLICY_SLUG",
+            "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG",
+            "SIGNPATH_CERTIFICATE_THUMBPRINT",
+            "SIGNPATH_MODULE_VERSION",
+            "SIGNPATH_MODULE_SHA256",
+            "RHO_UNSIGNED_INSTALLER_SHA256"
+          ) | ForEach-Object {
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value "$_=" -Encoding utf8
+          }
+
       - name: Create Windows platform evidence
         shell: pwsh
         env:
+          CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
           CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
           CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           $artifact = "target\candidate\Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
           $evidence = "target\candidate\rho-$($env:CANDIDATE_VERSION)-windows-x86_64-evidence.json"
-          node scripts/candidate-release.mjs --mode platform --version $env:CANDIDATE_VERSION --tag $env:CANDIDATE_TAG --commit $env:CANDIDATE_COMMIT --platform windows_x86_64 --artifact $artifact --output $evidence --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke
+          $checks = "release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke"
+          $arguments = @(
+            "scripts/candidate-release.mjs",
+            "--mode", "platform",
+            "--version", $env:CANDIDATE_VERSION,
+            "--tag", $env:CANDIDATE_TAG,
+            "--commit", $env:CANDIDATE_COMMIT,
+            "--platform", "windows_x86_64",
+            "--artifact", $artifact,
+            "--output", $evidence
+          )
+          if ($env:CANDIDATE_MODE -eq "candidate") {
+            $checks = "$checks,authenticode,signpath_request_binding,free_trial_self_signed"
+            $arguments += @("--signing", "target\candidate\windows-signing-evidence.json")
+          }
+          $arguments += @("--checks", $checks)
+          & node @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Windows platform evidence validation failed." }
 
       - name: Upload immutable Windows candidate inputs
         uses: actions/upload-artifact@v4
@@ -703,7 +967,7 @@ jobs:
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
-          node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json"
+          node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json" --require_windows_signing true
 
       - name: Prepare reviewed release notes from the exact candidate commit
         shell: bash

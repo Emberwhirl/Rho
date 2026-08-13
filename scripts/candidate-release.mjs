@@ -11,8 +11,14 @@ export const REHEARSAL_REPOSITORY = "YuLab-SMU/Rho_for_mac";
 export const CANDIDATE_REPOSITORY = "YuLab-SMU/Rho";
 
 const MAX_CHECKSUM_BYTES = 1024;
+const MAX_SIGNING_EVIDENCE_BYTES = 16 * 1024;
 const PRERELEASE_IDENTIFIER = "(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)";
 const CANDIDATE_VERSION_PATTERN = new RegExp(`^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)-(${PRERELEASE_IDENTIFIER})(?:\\.${PRERELEASE_IDENTIFIER})*$`);
+const WINDOWS_SIGNING_CHECKS = ["authenticode", "signpath_request_binding", "free_trial_self_signed"];
+const SIGNPATH_FREE_TRIAL_MODULE_VERSION = "4.4.6";
+const SIGNPATH_FREE_TRIAL_MODULE_SHA256 = "4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae";
+const UNSIGNED_CANDIDATE_COMPATIBILITY = new Set(["0.4.0-dev.27"]);
+const UNSIGNED_PUBLISHED_COMPATIBILITY = new Set(["0.4.0-dev.24"]);
 
 const REQUIRED_CHECKS = {
   windows_x86_64: [
@@ -120,7 +126,7 @@ function fileRecord(filePath) {
   return { name: path.basename(filePath), size_bytes: stat.size, sha256: sha256File(filePath) };
 }
 
-function validateChecks(platform, checks, version, publishedCompatibility = false) {
+function validateChecks(platform, checks, version, publishedCompatibility = false, hasSigning = false) {
   if (!Array.isArray(checks) || !checks.length || checks.length > 32) fail(`${platform} checks are missing or unbounded`);
   const names = new Set();
   for (const check of checks) {
@@ -136,12 +142,60 @@ function validateChecks(platform, checks, version, publishedCompatibility = fals
       && PUBLISHED_EVIDENCE_CHECK_EXCEPTIONS[platform]?.[version]?.has(required);
     if (!allowedHistoricalOmission) fail(`${platform} evidence is missing required check ${required}`);
   }
+  if (platform === "windows_x86_64") {
+    for (const required of WINDOWS_SIGNING_CHECKS) {
+      if (hasSigning && !names.has(required)) fail(`${platform} evidence is missing required check ${required}`);
+      if (!hasSigning && names.has(required)) fail(`${platform} evidence has signing check ${required} without signing evidence`);
+    }
+  }
+}
+
+function validateWindowsSigning(signing, artifact) {
+  assertExactKeys(
+    signing,
+    [
+      "provider",
+      "profile",
+      "request_id",
+      "module_version",
+      "module_sha256",
+      "signer_thumbprint",
+      "self_signed",
+      "signature_status",
+      "unsigned_sha256",
+      "signed_sha256",
+    ],
+    "Windows signing evidence",
+  );
+  if (signing.provider !== "signpath" || signing.profile !== "free_trial_self_signed") {
+    fail("Windows signing evidence profile is invalid");
+  }
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(signing.request_id)) {
+    fail("Windows signing request ID is invalid");
+  }
+  if (
+    signing.module_version !== SIGNPATH_FREE_TRIAL_MODULE_VERSION
+    || signing.module_sha256 !== SIGNPATH_FREE_TRIAL_MODULE_SHA256
+  ) fail("Windows signing module identity is invalid");
+  if (!/^[0-9a-f]{40}$/.test(signing.signer_thumbprint)) fail("Windows signer thumbprint is invalid");
+  if (signing.self_signed !== true || signing.signature_status !== "UnknownError") {
+    fail("Windows Free Trial signature trust state is invalid");
+  }
+  if (
+    !/^[0-9a-f]{64}$/.test(signing.unsigned_sha256)
+    || !/^[0-9a-f]{64}$/.test(signing.signed_sha256)
+    || signing.unsigned_sha256 === signing.signed_sha256
+  ) fail("Windows signing hashes are invalid or unchanged");
+  if (signing.signed_sha256 !== artifact.sha256) fail("Windows signed hash does not match the candidate artifact");
+  return signing;
 }
 
 function validatePlatformEvidenceWithPolicy(value, expected, publishedCompatibility) {
+  const baseKeys = ["schema_version", "type", "status", "version", "release_tag", "commit", "platform", "artifact", "checks"];
+  const hasSigning = value?.signing != null;
   assertExactKeys(
     value,
-    ["schema_version", "type", "status", "version", "release_tag", "commit", "platform", "artifact", "checks"],
+    hasSigning ? [...baseKeys, "signing"] : baseKeys,
     "platform evidence",
   );
   if (value.schema_version !== 1 || value.type !== "rho_platform_candidate_evidence" || value.status !== "passed") {
@@ -161,7 +215,14 @@ function validatePlatformEvidenceWithPolicy(value, expected, publishedCompatibil
     fail(`${value.platform} artifact size is invalid`);
   }
   if (!/^[0-9a-f]{64}$/.test(value.artifact.sha256)) fail(`${value.platform} artifact SHA-256 is invalid`);
-  validateChecks(value.platform, value.checks, value.version, publishedCompatibility);
+  if (hasSigning) {
+    if (value.platform !== "windows_x86_64") fail("Only Windows platform evidence may contain a signing record");
+    validateWindowsSigning(value.signing, value.artifact);
+  }
+  const requireWindowsSigning = expected.require_windows_signing === true
+    || (publishedCompatibility && value.platform === "windows_x86_64" && !UNSIGNED_PUBLISHED_COMPATIBILITY.has(value.version));
+  if (requireWindowsSigning && !hasSigning) fail("Windows candidate evidence is missing required signing evidence");
+  validateChecks(value.platform, value.checks, value.version, publishedCompatibility, hasSigning);
   return value;
 }
 
@@ -173,7 +234,7 @@ export function validatePublishedPlatformEvidence(value, expected = {}) {
   return validatePlatformEvidenceWithPolicy(value, expected, true);
 }
 
-export function createPlatformEvidence({ version, releaseTag, commit, platform, artifactPath, outputPath, checks }) {
+export function createPlatformEvidence({ version, releaseTag, commit, platform, artifactPath, outputPath, checks, signingEvidence }) {
   validateCandidateIdentity(version, releaseTag, commit);
   const names = expectedPlatformNames(version, platform);
   if (path.basename(artifactPath) !== names.artifactName) fail(`Expected artifact ${names.artifactName}`);
@@ -200,6 +261,7 @@ export function createPlatformEvidence({ version, releaseTag, commit, platform, 
     },
     checks: checks.map((name) => ({ name, status: "passed" })),
   };
+  if (signingEvidence != null) evidence.signing = signingEvidence;
   validatePlatformEvidence(evidence);
   writeJson(outputPath, evidence);
   return evidence;
@@ -256,7 +318,7 @@ export function validateAggregateEvidence(value) {
   return value;
 }
 
-export function createAggregateEvidence({ version, releaseTag, commit, directory, windowsEvidencePath, macosEvidencePath, outputPath }) {
+export function createAggregateEvidence({ version, releaseTag, commit, directory, windowsEvidencePath, macosEvidencePath, outputPath, requireWindowsSigning = false }) {
   validateCandidateIdentity(version, releaseTag, commit);
   const resolvedDirectory = fs.realpathSync(directory);
   const inputs = {
@@ -274,6 +336,7 @@ export function createAggregateEvidence({ version, releaseTag, commit, directory
       release_tag: releaseTag,
       commit,
       platform,
+      require_windows_signing: requireWindowsSigning && platform === "windows_x86_64",
     });
     platforms[platform] = verifyPlatformFiles(evidence, directory, inputs[platform]);
   }
@@ -399,6 +462,7 @@ export function validatePublishRecord(record) {
       release_tag: candidate.release_tag,
       commit: candidate.commit,
       platform,
+      require_windows_signing: platform === "windows_x86_64" && !UNSIGNED_CANDIDATE_COMPATIBILITY.has(candidate.version),
     });
   }
   assertExactKeys(record.candidate_evidence_asset, ["name", "size_bytes", "sha256"], "candidate evidence asset");
@@ -501,10 +565,25 @@ export function selfTest() {
       /default main branch/,
     );
     const evidencePaths = {};
+    const signingEvidence = {
+      provider: "signpath",
+      profile: "free_trial_self_signed",
+      request_id: "12345678-1234-1234-1234-123456789abc",
+      module_version: SIGNPATH_FREE_TRIAL_MODULE_VERSION,
+      module_sha256: SIGNPATH_FREE_TRIAL_MODULE_SHA256,
+      signer_thumbprint: "1".repeat(40),
+      self_signed: true,
+      signature_status: "UnknownError",
+      unsigned_sha256: "2".repeat(64),
+      signed_sha256: null,
+    };
     for (const platform of CANDIDATE_PLATFORMS) {
       const names = expectedPlatformNames(version, platform);
       const artifactPath = path.join(root, names.artifactName);
       fs.writeFileSync(artifactPath, `${platform} candidate bytes`);
+      const platformSigning = platform === "windows_x86_64"
+        ? { ...signingEvidence, signed_sha256: sha256File(artifactPath) }
+        : undefined;
       evidencePaths[platform] = path.join(root, names.evidenceName);
       createPlatformEvidence({
         version,
@@ -513,10 +592,72 @@ export function selfTest() {
         platform,
         artifactPath,
         outputPath: evidencePaths[platform],
-        checks: REQUIRED_CHECKS[platform],
+        checks: platform === "windows_x86_64"
+          ? [...REQUIRED_CHECKS[platform], ...WINDOWS_SIGNING_CHECKS]
+          : REQUIRED_CHECKS[platform],
+        signingEvidence: platformSigning,
       });
     }
     const macosEvidence = JSON.parse(fs.readFileSync(evidencePaths.macos_aarch64, "utf8"));
+    const windowsEvidence = JSON.parse(fs.readFileSync(evidencePaths.windows_x86_64, "utf8"));
+    const unsignedWindowsEvidence = {
+      ...windowsEvidence,
+      checks: windowsEvidence.checks.filter((check) => !WINDOWS_SIGNING_CHECKS.includes(check.name)),
+    };
+    delete unsignedWindowsEvidence.signing;
+    validatePlatformEvidence(unsignedWindowsEvidence);
+    expectFailure(
+      () => validatePlatformEvidence(unsignedWindowsEvidence, { require_windows_signing: true }),
+      /missing required signing evidence/,
+    );
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...unsignedWindowsEvidence,
+        checks: [...unsignedWindowsEvidence.checks, { name: "authenticode", status: "passed" }],
+      }),
+      /without signing evidence/,
+    );
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...windowsEvidence,
+        signing: { ...windowsEvidence.signing, signed_sha256: "3".repeat(64) },
+      }),
+      /does not match/,
+    );
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...windowsEvidence,
+        signing: { ...windowsEvidence.signing, signature_status: "Valid" },
+      }),
+      /trust state/,
+    );
+    for (const [field, value, pattern] of [
+      ["request_id", "not-a-uuid", /request ID/],
+      ["module_version", "4.4.7", /module identity/],
+      ["module_sha256", "0".repeat(64), /module identity/],
+      ["signer_thumbprint", "0".repeat(39), /thumbprint/],
+      ["self_signed", false, /trust state/],
+      ["unsigned_sha256", windowsEvidence.signing.signed_sha256, /invalid or unchanged/],
+    ]) {
+      expectFailure(
+        () => validatePlatformEvidence({
+          ...windowsEvidence,
+          signing: { ...windowsEvidence.signing, [field]: value },
+        }),
+        pattern,
+      );
+    }
+    expectFailure(
+      () => validatePlatformEvidence({
+        ...windowsEvidence,
+        checks: windowsEvidence.checks.filter((check) => check.name !== "signpath_request_binding"),
+      }),
+      /missing required check signpath_request_binding/,
+    );
+    expectFailure(
+      () => validatePlatformEvidence({ ...macosEvidence, signing: windowsEvidence.signing }),
+      /Only Windows/,
+    );
     expectFailure(
       () => validatePlatformEvidence({
         ...macosEvidence,
@@ -540,6 +681,7 @@ export function selfTest() {
       windowsEvidencePath: evidencePaths.windows_x86_64,
       macosEvidencePath: evidencePaths.macos_aarch64,
       outputPath: aggregatePath,
+      requireWindowsSigning: true,
     });
     const rehearsalPath = path.join(root, `rho-${version}-rehearsal-evidence.json`);
     const rehearsal = createRehearsalEvidence({
@@ -709,6 +851,17 @@ function runCli() {
     return;
   }
   if (args.mode === "platform") {
+    let signingEvidence;
+    if (args.signing) {
+      if (path.resolve(path.dirname(args.signing)) !== path.resolve(path.dirname(args.artifact))) {
+        fail("Windows signing evidence input is outside the artifact directory");
+      }
+      const signingStat = fs.lstatSync(args.signing);
+      if (signingStat.isSymbolicLink() || !signingStat.isFile() || signingStat.size <= 0 || signingStat.size > MAX_SIGNING_EVIDENCE_BYTES) {
+        fail("Windows signing evidence input is missing, invalid, or exceeds its byte budget");
+      }
+      signingEvidence = JSON.parse(fs.readFileSync(args.signing, "utf8"));
+    }
     createPlatformEvidence({
       version: args.version,
       releaseTag: args.tag,
@@ -717,6 +870,7 @@ function runCli() {
       artifactPath: args.artifact,
       outputPath: args.output,
       checks: String(args.checks || "").split(",").filter(Boolean),
+      signingEvidence,
     });
     return;
   }
@@ -729,6 +883,7 @@ function runCli() {
       windowsEvidencePath: args.windows_evidence,
       macosEvidencePath: args.macos_evidence,
       outputPath: args.output,
+      requireWindowsSigning: args.require_windows_signing === "true",
     });
     return;
   }

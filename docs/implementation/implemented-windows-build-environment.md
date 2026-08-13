@@ -2,7 +2,7 @@
 
 Status: implemented and actively maintained
 
-Date: 2026-08-10
+Date: 2026-08-13
 Validated release: `0.2.0-dev.11`
 
 Release automation for later candidates runs
@@ -268,8 +268,16 @@ The target machine must provide:
 Rho supports `RHO_RSCRIPT` for an explicit `Rscript.exe` when automatic R
 discovery cannot find the intended installation.
 
-The installer is currently unsigned. A SmartScreen unrecognized-publisher
-warning is expected and is not itself a build failure.
+The local installer builder and fork rehearsal artifact are unsigned. For the
+exact `0.4.0-dev.38` upstream candidate only, the candidate workflow submits
+the final NSIS installer to the SignPath Free Trial test policy after build and
+smoke checks, verifies the expected self-signed test certificate, and hashes
+the returned bytes before evidence assembly. That signature is not publicly
+trusted or a SignPath Foundation production publisher; a Windows or SmartScreen
+warning remains expected and is not itself a build failure.
+
+The legacy manual Windows publisher does not replace the cross-platform
+candidate/MAC5 path and cannot bypass its test-signing evidence gate.
 
 ## Manual GitHub Release Workflow
 
