@@ -4,6 +4,27 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.38 - 2026-08-13
+
+### Distribution
+
+- Candidate-mode Windows packaging now submits the final NSIS installer to the
+  SignPath Free Trial test policy only after complete build and smoke checks,
+  verifies the expected self-signed certificate and changed bytes, and binds
+  the final post-sign hash and request facts into platform evidence.
+- The Free Trial signature is explicitly test-only and not publicly trusted;
+  it does not establish SignPath Foundation acceptance, a production publisher,
+  or SmartScreen reputation. Release notes and the download page show this
+  limitation with the exact release instead of applying one blanket Windows
+  trust claim.
+- GitHub Release bodies now come from reviewed per-tag Markdown in the exact
+  candidate commit and are protected against body drift during publication.
+
+R package versions and installed application behavior are unchanged from the
+accepted `0.4.0-dev.37` source; this fresh identity is required because the
+public installer bytes, evidence, release metadata, and trust presentation
+change.
+
 ## 0.4.0-dev.37 - 2026-08-12
 
 ### Verification

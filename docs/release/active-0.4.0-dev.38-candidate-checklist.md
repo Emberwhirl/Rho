@@ -2,9 +2,9 @@
 
 Date: 2026-08-13
 
-Status: active; DEV38-SIGN1 source implementation authorized; exact protected-
-main source, candidate Draft, installed acceptance, MAC5, publication, and live
-update evidence remain open
+Status: active; DEV38-SIGN1 local source implementation and affected validation
+passed; protected-main integration/matrix, candidate Draft, installed
+acceptance, MAC5, publication, and live update evidence remain open
 
 Owning contract:
 `docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md`
@@ -17,7 +17,7 @@ Risk: R4
 
 | Field | Required value | Current evidence |
 | --- | --- | --- |
-| Application version | `0.4.0-dev.38` | synchronization pending implementation |
+| Application version | `0.4.0-dev.38` | local Cargo/npm/Tauri/frontend/workflow metadata synchronized; integration pending |
 | Release tag/name | `v0.4.0-dev.38` / `Rho 0.4.0-dev.38` | single-use identity; no tag or Release exists yet |
 | Source repository | `YuLab-SMU/Rho` | candidate mode admits only exact current protected `main` |
 | Source commit | exact 40-hex protected-main SHA | open until source PR integration |
@@ -34,7 +34,7 @@ reused in this checklist.
 
 ## Candidate Construction Gate
 
-- [ ] version, Cargo/npm locks, Tauri metadata, frontend cache/mock identity,
+- [x] version, Cargo/npm locks, Tauri metadata, frontend cache/mock identity,
   candidate/publish defaults, `NEWS.md`, release notes, and this checklist agree;
 - [ ] protected-main source matrix passes on macOS/Windows with Rust stable and
   `1.88.0` at the exact source commit;
@@ -131,7 +131,7 @@ without a human observation bound to the exact downloaded hashes.
 | Gate | Result | Evidence |
 | --- | --- | --- |
 | Contract authorization/cross-review | PASS | active DEV38-SIGN1 contract dated 2026-08-13 |
-| Source implementation | OPEN | not yet integrated |
+| Source implementation | PASS (local) | candidate-only signing/evidence/public wording implemented; 65 JS tests, Rust workspace check/tests, both R package suites, shell fixtures, syntax/YAML/Cargo/diff validation passed on 2026-08-13; protected-main integration remains open |
 | Exact source matrix | OPEN | no candidate source SHA selected |
 | Windows signed candidate | OPEN | no `dev.38` signing request or artifact exists |
 | macOS signed/notarized candidate | OPEN | no `dev.38` artifact exists |
@@ -143,7 +143,8 @@ without a human observation bound to the exact downloaded hashes.
 
 ## Current Decision
 
-`GO` for bounded source implementation under DEV38-SIGN1A.
+`GO` for protected-main review and integration of the locally validated
+DEV38-SIGN1A source implementation.
 
 `NO-GO` for candidate acceptance, publication, or update-site mutation until
 every preceding exact-candidate and human gate is true.

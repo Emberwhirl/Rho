@@ -2,8 +2,9 @@
 
 Date: 2026-08-13
 
-Status: active; DEV38-SIGN1 contract authorized and cross-reviewed; source
-implementation, exact-candidate construction, installed acceptance, MAC5, and
+Status: active; DEV38-SIGN1 contract authorized and cross-reviewed; local source
+implementation and affected validation passed on 2026-08-13, while protected-
+main integration, exact-candidate construction, installed acceptance, MAC5, and
 publication remain separate evidence gates
 
 Authorization: after the accepted FT-SIGN1 smoke, the project owner instructed
@@ -290,9 +291,13 @@ application behavior. `NEWS.md` must record the new candidate identity and
 truthful packaging limitation without claiming production signing. The reviewed
 per-tag release-notes file owns the public presentation.
 
-Current decision: implementation authorized; candidate `NO-GO` until 1A is
-integrated; publication `NO-GO` until exact 1B and human 1C evidence plus
-explicit MAC5 GO are true.
+Current decision: local 1A implementation is review-ready after 65 JavaScript
+contract tests, the complete Rust workspace check/test suite, both R package
+test suites, Ark bootstrap failure fixtures, Node syntax, YAML parsing, Cargo
+format/locked-metadata, and `git diff --check` passed. Candidate remains
+`NO-GO` until 1A is integrated and the exact protected-main matrix passes;
+publication remains `NO-GO` until exact 1B and human 1C evidence plus explicit
+MAC5 GO are true.
 
 ## 12. Definition Of Done
 
