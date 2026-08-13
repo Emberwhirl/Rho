@@ -50,17 +50,27 @@ function validate(value) {
   assert.match(workflow, /run-id: 31644429787/);
   assert.match(workflow, /merge-multiple: true/);
 
-  for (const variable of [
+  for (const key of [
     "SIGNPATH_ORGANIZATION_ID",
     "SIGNPATH_PROJECT_SLUG",
     "SIGNPATH_SIGNING_POLICY_SLUG",
     "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG",
     "SIGNPATH_CERTIFICATE_THUMBPRINT",
-  ]) assert.match(workflow, new RegExp(`vars\\.${variable}`), `${variable} must come from repository variables`);
-  const variableValidation = workflow.match(/- name: Validate non-secret SignPath deployment variables[\s\S]*?(?=\n      - name: Download exact accepted unsigned artifact)/)?.[0];
-  assert.ok(variableValidation, "the deployment-variable validation step is missing");
-  assert.match(variableValidation, /\$value = \[Environment\]::GetEnvironmentVariable\(\$name\)/);
-  assert.match(variableValidation, /Write-Output "::add-mask::\$value"/, "every deployment variable must be masked before SignPath execution");
+  ]) assert.match(workflow, new RegExp(`"${key}"`), `${key} must be required by the protected configuration schema`);
+  assert.doesNotMatch(workflow, /\bvars\./, "repository variables must not carry protected SignPath deployment values");
+  assert.equal(occurrences(workflow, /secrets\.SIGNPATH_DEPLOYMENT_CONFIG/g), 1, "the protected deployment bundle must enter only the bounded loader step");
+  assert.match(workflow, /SIGNPATH_DEPLOYMENT_CONFIG: \$\{\{ secrets\.SIGNPATH_DEPLOYMENT_CONFIG \}\}/);
+  const configLoader = workflow.match(/- name: Load protected SignPath deployment configuration[\s\S]*?(?=\n      - name: Download exact accepted unsigned artifact)/)?.[0];
+  assert.ok(configLoader, "the protected deployment-configuration loader is missing");
+  assert.match(configLoader, /ConvertFrom-Json -InputObject \$env:SIGNPATH_DEPLOYMENT_CONFIG -AsHashtable -ErrorAction Stop/);
+  assert.match(configLoader, /Compare-Object -ReferenceObject @\(\$required \| Sort-Object\) -DifferenceObject @\(\$config\.Keys \| Sort-Object\)/, "the deployment configuration must reject missing and extra keys");
+  assert.match(configLoader, /\$config\[\$name\] -isnot \[string\]/, "deployment values must be strings");
+  assert.match(configLoader, /\$value -match "\[\\r\\n\]"/, "deployment values must reject environment-file line injection");
+  assert.match(configLoader, /SIGNPATH_ORGANIZATION_ID -notmatch '\^\[0-9A-Fa-f\]\{8\}/, "the organization identifier must be validated as a UUID");
+  assert.match(configLoader, /\^\[A-Za-z0-9\._-\]\+\$/, "deployment slugs must use the bounded character set");
+  assert.match(configLoader, /\$thumbprint -notmatch '\^\[0-9A-F\]\{40\}\$'/, "the certificate thumbprint must be validated");
+  assert.match(configLoader, /Write-Output "::add-mask::\$value"/, "every deployment value must be masked before later steps");
+  assert.match(configLoader, /Add-Content -LiteralPath \$env:GITHUB_ENV -Value "\$name=\$value" -Encoding utf8/, "only validated and masked values may enter later step environments");
   assert.doesNotMatch(workflow, /[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/i, "the organization identifier must not be committed");
   assert.equal(occurrences(workflow, /secrets\.SIGNPATH_API_TOKEN/g), 1, "the protected token must be passed only to the bounded module step");
   assert.match(workflow, /SIGNPATH_API_TOKEN: \$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
@@ -152,11 +162,35 @@ if (process.argv.includes("--self-test")) {
     value.workflow = value.workflow.replace("a8fa9ad2628590c9c12e176f22930d971fd8d2572dc606b52b55e38abb41bda6", "0".repeat(64));
   }, /immutable source binding/);
   expectRejected(current, "public organization id", (value) => {
-    value.workflow = value.workflow.replace("${{ vars.SIGNPATH_ORGANIZATION_ID }}", "11111111-2222-4333-8444-555555555555");
+    value.workflow += "\n# 11111111-2222-4333-8444-555555555555\n";
   }, /organization identifier/);
-  expectRejected(current, "unmasked deployment variables", (value) => {
+  expectRejected(current, "repository-variable deployment configuration", (value) => {
+    value.workflow = value.workflow.replace("secrets.SIGNPATH_DEPLOYMENT_CONFIG", "vars.SIGNPATH_DEPLOYMENT_CONFIG");
+  }, /repository variables/);
+  expectRejected(current, "unvalidated configuration key set", (value) => {
+    value.workflow = value.workflow.replace("Compare-Object -ReferenceObject @($required | Sort-Object) -DifferenceObject @($config.Keys | Sort-Object)", "Compare-Object -ReferenceObject @($required | Sort-Object) -DifferenceObject @($required | Sort-Object)");
+  }, /missing and extra keys/);
+  expectRejected(current, "non-string configuration value", (value) => {
+    value.workflow = value.workflow.replace("$config[$name] -isnot [string]", "$config[$name] -isnot [object]");
+  }, /must be strings/);
+  expectRejected(current, "multiline configuration value", (value) => {
+    value.workflow = value.workflow.replace('$value -match "[\\r\\n]"', "$false");
+  }, /line injection/);
+  expectRejected(current, "malformed organization identifier", (value) => {
+    value.workflow = value.workflow.replace("$validated.SIGNPATH_ORGANIZATION_ID -notmatch", "$false -and");
+  }, /UUID/);
+  expectRejected(current, "unbounded deployment slug", (value) => {
+    value.workflow = value.workflow.replace("'^[A-Za-z0-9._-]+$'", "'.*'");
+  }, /bounded character set/);
+  expectRejected(current, "unvalidated certificate thumbprint", (value) => {
+    value.workflow = value.workflow.replace("$thumbprint -notmatch '^[0-9A-F]{40}$'", "$false");
+  }, /thumbprint must be validated/);
+  expectRejected(current, "unmasked deployment values", (value) => {
     value.workflow = value.workflow.replace('Write-Output "::add-mask::$value"', "");
   }, /must be masked/);
+  expectRejected(current, "unexported validated deployment values", (value) => {
+    value.workflow = value.workflow.replace('Add-Content -LiteralPath $env:GITHUB_ENV -Value "$name=$value" -Encoding utf8', "");
+  }, /only validated and masked values/);
   expectRejected(current, "changed SignPath module version", (value) => {
     value.workflow = value.workflow.replace('SIGNPATH_MODULE_VERSION: "4.4.6"', 'SIGNPATH_MODULE_VERSION: "4.4.5"');
   }, /SIGNPATH_MODULE_VERSION/);
