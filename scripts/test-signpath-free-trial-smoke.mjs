@@ -60,15 +60,31 @@ function validate(value) {
   const variableValidation = workflow.match(/- name: Validate non-secret SignPath deployment variables[\s\S]*?(?=\n      - name: Download exact accepted unsigned artifact)/)?.[0];
   assert.ok(variableValidation, "the deployment-variable validation step is missing");
   assert.match(variableValidation, /\$value = \[Environment\]::GetEnvironmentVariable\(\$name\)/);
-  assert.match(variableValidation, /Write-Output "::add-mask::\$value"/, "every deployment variable must be masked before the SignPath action runs");
+  assert.match(variableValidation, /Write-Output "::add-mask::\$value"/, "every deployment variable must be masked before SignPath execution");
   assert.doesNotMatch(workflow, /[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/i, "the organization identifier must not be committed");
-  assert.equal(occurrences(workflow, /secrets\.SIGNPATH_API_TOKEN/g), 1, "the protected token must be passed only to the SignPath action");
-  assert.match(workflow, /api-token: \$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
-  assert.match(workflow, /uses: signpath\/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2/);
-  assert.match(workflow, /artifact-configuration-slug: \$\{\{ vars\.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG \}\}/);
-  assert.match(workflow, /github-artifact-id: \$\{\{ steps\.upload-unsigned\.outputs\.artifact-id \}\}/);
-  assert.match(workflow, /wait-for-completion: true/);
-  assert.match(workflow, /output-artifact-directory: target\/signpath-output/);
+  assert.equal(occurrences(workflow, /secrets\.SIGNPATH_API_TOKEN/g), 1, "the protected token must be passed only to the bounded module step");
+  assert.match(workflow, /SIGNPATH_API_TOKEN: \$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
+  assert.match(workflow, /SIGNPATH_MODULE_VERSION: "4\.4\.6"/);
+  assert.match(workflow, /SIGNPATH_MODULE_SHA256: 4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae/);
+  assert.match(workflow, /Install-Module -Name SignPath -RequiredVersion \$env:SIGNPATH_MODULE_VERSION -Repository PSGallery -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop/);
+  assert.match(workflow, /Get-FileHash -LiteralPath \$moduleFile -Algorithm SHA256/);
+  assert.equal(occurrences(workflow, /\$moduleHash -ne \$env:SIGNPATH_MODULE_SHA256/g), 2, "module integrity must be rechecked at the execution boundary");
+  assert.match(workflow, /Compress-Archive -LiteralPath \$inputInstaller -DestinationPath \$inputArchive/);
+  assert.match(workflow, /\$entries\.Count -ne 1 -or \$entries\[0\]\.FullName -ne \$env:EXPECTED_INSTALLER/);
+  assert.match(workflow, /Submit-SigningRequest `/);
+  assert.match(workflow, /-InputArtifactPath \$inputArchive/);
+  assert.match(workflow, /-ProjectSlug \$env:SIGNPATH_PROJECT_SLUG/);
+  assert.match(workflow, /-SigningPolicySlug \$env:SIGNPATH_SIGNING_POLICY_SLUG/);
+  assert.match(workflow, /-ArtifactConfigurationSlug \$env:SIGNPATH_ARTIFACT_CONFIGURATION_SLUG/);
+  assert.match(workflow, /-WaitForCompletionTimeoutInSeconds 900/);
+  assert.match(workflow, /-OutputArtifactPath \$signedArchive/);
+  assert.match(workflow, /-OrganizationId \$env:SIGNPATH_ORGANIZATION_ID/);
+  assert.match(workflow, /-ApiToken \$env:SIGNPATH_API_TOKEN/);
+  assert.match(workflow, /\$returnedEntries\.Count -ne 1 -or \$returnedEntries\[0\]\.FullName -ne \$env:EXPECTED_INSTALLER/);
+  assert.match(workflow, /ZipFileExtensions\]::ExtractToFile\(\$returnedEntries\[0\], \$returnedInstaller, \$false\)/);
+  assert.doesNotMatch(workflow, /Expand-Archive/, "returned ZIP extraction must occur only after exact root-entry validation");
+  assert.match(workflow, /SIGNING_REQUEST_ID: \$\{\{ steps\.direct-signpath\.outputs\.signing_request_id \}\}/);
+  assert.doesNotMatch(workflow, /signpath\/github-action-submit-signing-request|github-artifact-id|upload-unsigned/, "the rejected GitHub connector and unsigned artifact handoff must stay absent");
   assert.match(workflow, /IsNullOrWhiteSpace\(\$env:SIGNING_REQUEST_ID\)/);
 
   assert.match(workflow, /\[string\]\$signature\.Status -ne "NotSigned"/);
@@ -80,8 +96,11 @@ function validate(value) {
   assert.match(workflow, /public_release_authorized = \$false/);
   assert.match(workflow, /candidate_authorized = \$false/);
   assert.match(workflow, /installed_after_signing = \$false/);
+  assert.match(workflow, /signing_transport = "signpath_powershell_module"/);
+  assert.match(workflow, /signpath_module_version = \$env:SIGNPATH_MODULE_VERSION/);
+  assert.match(workflow, /signpath_module_sha256 = \$env:SIGNPATH_MODULE_SHA256/);
   assert.match(workflow, /name: rho-signpath-free-trial-smoke-dev37-/);
-  assert.equal(occurrences(workflow, /retention-days: 1\s*$/gm), 1, "unsigned intermediary retention must be one day");
+  assert.equal(occurrences(workflow, /retention-days: 1\s*$/gm), 0, "the unsigned ZIP must stay runner-local");
   assert.equal(occurrences(workflow, /retention-days: 7\s*$/gm), 1, "signed smoke result retention must be seven days");
   assert.doesNotMatch(workflow, /actions\/checkout|createRelease|updateRelease|uploadReleaseAsset|createRef|gh release|candidate-publish|generate-update-site|update-site-publish/i, "the smoke lane must not execute source or mutate release/update state");
 
@@ -138,15 +157,24 @@ if (process.argv.includes("--self-test")) {
   expectRejected(current, "unmasked deployment variables", (value) => {
     value.workflow = value.workflow.replace('Write-Output "::add-mask::$value"', "");
   }, /must be masked/);
-  expectRejected(current, "unpinned SignPath action", (value) => {
-    value.workflow = value.workflow.replace("@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2", "@v2");
-  }, /submit-signing-request/);
+  expectRejected(current, "changed SignPath module version", (value) => {
+    value.workflow = value.workflow.replace('SIGNPATH_MODULE_VERSION: "4.4.6"', 'SIGNPATH_MODULE_VERSION: "4.4.5"');
+  }, /SIGNPATH_MODULE_VERSION/);
+  expectRejected(current, "changed SignPath module hash", (value) => {
+    value.workflow = value.workflow.replace("4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae", "0".repeat(64));
+  }, /SIGNPATH_MODULE_SHA256/);
   expectRejected(current, "missing artifact configuration", (value) => {
-    value.workflow = value.workflow.replace("artifact-configuration-slug:", "artifact-configuration-disabled:");
-  }, /artifact-configuration-slug/);
-  expectRejected(current, "wrong artifact handoff", (value) => {
-    value.workflow = value.workflow.replace("steps.upload-unsigned.outputs.artifact-id", "env.SOURCE_ARTIFACT_ID");
-  }, /github-artifact-id/);
+    value.workflow = value.workflow.replace("-ArtifactConfigurationSlug $env:SIGNPATH_ARTIFACT_CONFIGURATION_SLUG", "-ArtifactConfigurationSlug disabled");
+  }, /ArtifactConfigurationSlug/);
+  expectRejected(current, "missing local ZIP cardinality", (value) => {
+    value.workflow = value.workflow.replace("$entries.Count -ne 1 -or $entries[0].FullName -ne $env:EXPECTED_INSTALLER", "$false");
+  }, /entries/);
+  expectRejected(current, "missing returned ZIP cardinality", (value) => {
+    value.workflow = value.workflow.replace("$returnedEntries.Count -ne 1 -or $returnedEntries[0].FullName -ne $env:EXPECTED_INSTALLER", "$false");
+  }, /returnedEntries/);
+  expectRejected(current, "missing direct submission", (value) => {
+    value.workflow = value.workflow.replace("Submit-SigningRequest `", "Write-Output `");
+  }, /Submit-SigningRequest/);
   expectRejected(current, "missing signing request identity", (value) => {
     value.workflow = value.workflow.replace("IsNullOrWhiteSpace($env:SIGNING_REQUEST_ID)", "IsNullOrWhiteSpace('not-empty')");
   }, /SIGNING_REQUEST_ID/);
