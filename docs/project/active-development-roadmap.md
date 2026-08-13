@@ -144,9 +144,14 @@ schema-v2 decision is `conditional` / `CONDITIONAL_GO`, actor-bound,
 public-prerelease-only, and allowlisted to exact `dev.39` with the canonical two
 limitations. Ordinary `GO` compatibility and every source, signing,
 notarization, checksum, privacy, exact-body, protected-publication, and update
-validation gate remain in force. CPREL1A implementation is authorized;
-candidate construction and publication remain NO-GO until their named gates
-pass.
+validation gate remain in force. PR #73 integrated at
+`579d6dc0d64e770aea14b2282e75ccde2076b345`; PR and exact-main four-leg
+stable/MSRV matrices, candidate run `31732445952`, independent downloaded-byte
+audit, actor-bound acceptance, protected publish run `31734766000`, and live
+update run `31734975029` passed. Release `370143482` is public with eight exact
+assets and a visible conditional warning. The two human observations remain
+`NOT RUN`; this is not ordinary MAC5, stable, production-ready, or public
+Windows-trust acceptance.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run

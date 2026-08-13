@@ -12,15 +12,15 @@ const updateWorkflow = read(".github/workflows/update-site-publish.yml");
 const generator = read("scripts/generate-update-site.mjs");
 const notes = read(".github/release-notes/v0.4.0-dev.39.md");
 const oldNotes = read(".github/release-notes/v0.4.0-dev.38.md");
-const spec = read("docs/plans/active-2026-08-13-conditional-prerelease-policy-spec.md");
-const checklist = read("docs/release/active-0.4.0-dev.39-candidate-checklist.md");
+const spec = read("docs/plans/implemented-2026-08-13-conditional-prerelease-policy-spec.md");
+const checklist = read("docs/release/historical-0.4.0-dev.39-candidate-checklist.md");
 const crossReview = read("docs/project/active-document-cross-review.md");
 
-assert.match(spec, /Status: active; CPREL1 authorized by the project owner/);
+assert.match(spec, /Status: implemented; CPREL1A-CPREL1D completed/);
 assert.match(spec, /does not make either\s+missing observation pass/);
 assert.match(spec, /fresh `dev\.39` identity/);
-assert.match(checklist, /Status: active; CPREL1A source policy gate passed locally/);
-assert.match(checklist, /deliberately limitations, not passed checks/);
+assert.match(checklist, /Status: historical published conditional prerelease record/);
+assert.match(checklist, /immutable limitations, not passed checks/);
 assert.match(crossReview, /schema-v2 actor-bound `CONDITIONAL_GO`/);
 
 assert.equal(

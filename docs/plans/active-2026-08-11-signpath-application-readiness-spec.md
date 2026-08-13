@@ -128,7 +128,7 @@ signature, candidate, tag, Release, or updater mutation.
   signing or privacy. LIC-2 protected integration is a prerequisite.
 - The `0.4.0-dev.37` checklist remains the immutable Issue #33/FT-SIGN1 source
   ledger, and `dev.38` remains an immutable unpublished NO-GO Draft. The active
-  `0.4.0-dev.39` CPREL1 checklist alone owns the new exact candidate identity,
+  historical `0.4.0-dev.39` CPREL1 checklist alone owns the exact candidate identity,
   artifact construction, conditional decision, publication, and update-site
   mutation. SP-READY1 cannot satisfy those gates.
 
