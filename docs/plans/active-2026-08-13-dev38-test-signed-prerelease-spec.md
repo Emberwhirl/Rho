@@ -2,10 +2,11 @@
 
 Date: 2026-08-13
 
-Status: active; DEV38-SIGN1 contract authorized and cross-reviewed; local source
-implementation and affected validation passed on 2026-08-13, while protected-
-main integration, exact-candidate construction, installed acceptance, MAC5, and
-publication remain separate evidence gates
+Status: active; DEV38-SIGN1 contract authorized and cross-reviewed; source
+implementation, protected-main integration, exact-candidate construction, and
+independent candidate audit passed on 2026-08-13. Automated macOS installed
+smoke passed as supporting evidence, while human Windows/macOS acceptance,
+MAC5, publication, and live update projection remain separate open gates
 
 Authorization: after the accepted FT-SIGN1 smoke, the project owner instructed
 the agent to use the Free Trial subscription, finish the remaining work without
@@ -291,13 +292,18 @@ application behavior. `NEWS.md` must record the new candidate identity and
 truthful packaging limitation without claiming production signing. The reviewed
 per-tag release-notes file owns the public presentation.
 
-Current decision: local 1A implementation is review-ready after 65 JavaScript
-contract tests, the complete Rust workspace check/test suite, both R package
-test suites, Ark bootstrap failure fixtures, Node syntax, YAML parsing, Cargo
-format/locked-metadata, and `git diff --check` passed. Candidate remains
-`NO-GO` until 1A is integrated and the exact protected-main matrix passes;
-publication remains `NO-GO` until exact 1B and human 1C evidence plus explicit
-MAC5 GO are true.
+Current decision: DEV38-SIGN1A and DEV38-SIGN1B pass. PR #71 integrated the
+reviewed source at `6f840796cbc04e6bb600474305148a8fe1043e74`; exact merged-main
+matrix run `31678959111` passed macOS/Windows stable and Rust `1.88.0`.
+Candidate run `31679767609` produced one seven-asset Draft bound to that commit.
+Independent download, hash/evidence/body/state review, SignPath request and
+certificate review, complete hosted-log privacy scanning, and no-publication /
+no-update-site checks passed. Automated installation of the exact macOS DMG
+also passed launch, runtime, project switch, Environment refresh, error/recovery,
+model-settings/routing, and manual-update-check probes; this machine has
+Gatekeeper assessment disabled, and automation does not satisfy either human
+platform row. DEV38-SIGN1C, MAC5, publication, and update projection therefore
+remain `NO-GO`.
 
 ## 12. Definition Of Done
 

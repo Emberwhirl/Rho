@@ -124,9 +124,16 @@ accepted `dev.37` product behavior while adding reviewed per-tag Release notes,
 candidate-only SignPath Free Trial self-signed installer evidence, and truthful
 per-release Windows trust projection. Rehearsal remains unsigned; Foundation,
 production publisher trust, MFA/trusted-build, and two-stage signing remain
-open under SP-READY1. Source implementation is authorized, while the exact
-candidate, human Windows/macOS installed acceptance, MAC5, publication, and
-live update gates remain `NO-GO` until their own evidence exists.
+open under SP-READY1. PR #71 integrated the source at
+`6f840796cbc04e6bb600474305148a8fe1043e74`; exact merged-main matrix run
+`31678959111` and candidate run `31679767609` pass. Independent review confirms
+the seven-asset unpublished Draft, final Windows/macOS hashes, completed
+test-signing request, public certificate facts, protected-log privacy, and no
+public Release/update-site mutation. Automated exact-DMG macOS installation and
+core UI/runtime smoke also pass as supporting evidence, but the local machine's
+Gatekeeper assessment is disabled and automation cannot replace human review.
+Human Windows/macOS installed acceptance, MAC5, publication, and live update
+gates remain `NO-GO` until their own evidence exists.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
