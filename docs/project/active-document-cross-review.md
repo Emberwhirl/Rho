@@ -42,7 +42,7 @@ semantics.
 | `project/active-development-governance.md` | active | required proposal-to-release development lifecycle, risk/test depth, review, versioning, and evidence rules | applies continuously to all non-trivial work |
 | `plans/active-2026-08-10-agpl-license-transition-spec.md` | active; LIC-1 and LIC-2 implementation, affected validation, UI/bundle review, exact-head hosted validation, and protected integration complete; exact candidate and installed distribution acceptance remain open | prospective `AGPL-3.0-only` source-license boundary, synchronized repository metadata, contribution terms, third-party exclusions, fixed installed resource copies, About legal notice, and transition gates | preserve the integrated license/resource boundary; SignPath readiness may reference but not redefine it; exact candidate and installed acceptance remain release-owned |
 | `plans/active-2026-08-11-signpath-application-readiness-spec.md` | active; SP-READY1 implementation, exact-head/main hosted matrices, PR #45/#46 integration, linked attribution, public uninstall guidance, live policy deployment, private reporting, and no-bypass default-branch ruleset complete; a real Free Trial organization/project/test policy now exists; owner MFA audit, Foundation decision, approved-project GitHub App configuration, and production signing remain open | manual-only update admission, public privacy/security/code-signing policies, policy links and uninstall guidance, CODEOWNERS, and deterministic readiness enforcement | preserve completed readiness; FT-SIGN1 may use only its isolated test lane; organization owner separately closes MFA/Foundation/production gates; do not claim Free Trial evidence as public trust or release authority |
-| `plans/active-2026-08-12-signpath-free-trial-smoke-spec.md` | active; FT-SIGN1 explicitly authorized and source/log-redaction integrated; hosted GitHub connector requests fail after artifact validation; dedicated least-privilege CI identity is configured; official PowerShell/REST transport correction and successful retry open | one manual read-only-permission workflow that rewraps the exact accepted Issue #33 unsigned installer, submits it to the configured Free Trial test policy, validates returned signer/bytes, and uploads a short-lived test-only artifact | keep candidate/manual-publish workflows unchanged; mask every deployment variable before third-party execution; pin and hash-check the official module; exact source and variable/secret interfaces fail closed; one successful hosted smoke then evidence reconciliation |
+| `plans/active-2026-08-12-signpath-free-trial-smoke-spec.md` | active; FT-SIGN1 explicitly authorized; hosted GitHub connector rejected; dedicated least-privilege CI identity and official PowerShell/REST transport integrated; run `31674347116` signed successfully but exposed a repository variable in the pre-script Runner environment log, so protected-config repair and clean retry remain open | one manual read-only-permission workflow that rewraps the exact accepted Issue #33 unsigned installer, submits it to the configured Free Trial test policy, validates returned signer/bytes, and uploads a short-lived test-only artifact | keep candidate/manual-publish workflows unchanged; receive deployment values through one exact-schema protected JSON secret, validate/mask before module install, remove obsolete variables after clean retry, pin and hash-check the official module, and fail closed on exact source/config interfaces |
 | `project/active-development-roadmap.md` | active | milestone order and acceptance gates | continuously maintained from accepted evidence |
 | `plans/active-2026-08-10-rust-msrv-build-contract.md` | active integrated build contract; exact PR #29 head `f022d2c` passed all four jobs in run `31509554882`; merge `9e0b36b` passed all four exact-main jobs in run `31510716448`; Issue #28 closed | Rust 1.88 workspace MSRV metadata, Resolver 3, non-packaging stable/MSRV native CI, locked candidate Rust validation, and deterministic policy enforcement | enforce continuously; any dependency, target, runner, packaging, or MSRV change requires reviewed scope; no candidate or release authority |
 | `plans/active-2026-08-05-macos-arm64-support-spec.md` | active broader platform plan; MAC1-MAC5 complete for published Apple Silicon candidate `0.4.0-dev.24`; protected Release and live development manifest pass without asset replacement | Apple Silicon macOS 14+ platform adapters, Ark/R integration, Keychain extension, additive macOS update artifact, signed DMG handoff, repository-bound rehearsal lane, async notarization orchestration, and MAC5 publication admission | preserve immutable release evidence; macOS x64 and Linux x64 remain open milestone scope |
@@ -240,9 +240,12 @@ identifiers existed, but it does not establish Foundation acceptance, public
 Windows trust, or production-signing readiness. The owner explicitly
 authorized FT-SIGN1 to validate only this existing test transport. Its owning
 contract isolates one exact unsigned Issue #33 artifact from candidate and
-manual-publish workflows, uses repository variables rather than public
-identifier values, writes no Release/update state, and stops after one hosted
-request. This resolves the conflict in PR #51, whose older design coupled the
+manual-publish workflows, writes no Release/update state, and stops after one
+accepted hosted request. The initial variable interface is superseded because
+GitHub renders a step environment before an in-step mask can execute; one
+exact-schema protected JSON secret now owns all deployment values and must be
+expanded only after strict validation. This resolves the conflict in PR #51,
+whose older design coupled the
 test certificate directly to publication lanes and therefore must not merge.
 
 Protected integration of FT-SIGN1 and its logging correction preserved those
@@ -255,6 +258,12 @@ module. FT-SIGN1 may therefore replace only its connector transport with an
 exact-version, module-file-hash-verified, local-ZIP REST upload. It may not add
 origin claims, a trusted-build link, production policy/certificate use,
 candidate/manual-publish changes, or reuse the returned test bytes publicly.
+Run `31674347116` proved that direct transport and signature verification work,
+but its pre-script environment log exposed the organization identifier. It is
+failure evidence, not accepted smoke evidence. The bounded recovery may migrate
+the five deployment values into one protected JSON secret, reject malformed or
+extra configuration before module install, remove the obsolete variables after
+a clean retry, and rerun once without expanding signing or publication scope.
 
 ### Navigation and layout state
 

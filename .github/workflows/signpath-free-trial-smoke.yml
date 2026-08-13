@@ -73,15 +73,22 @@ jobs:
       SIGNPATH_MODULE_VERSION: "4.4.6"
       SIGNPATH_MODULE_SHA256: 4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae
     steps:
-      - name: Validate non-secret SignPath deployment variables
+      - name: Load protected SignPath deployment configuration
         shell: pwsh
         env:
-          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          SIGNPATH_CERTIFICATE_THUMBPRINT: ${{ vars.SIGNPATH_CERTIFICATE_THUMBPRINT }}
+          SIGNPATH_DEPLOYMENT_CONFIG: ${{ secrets.SIGNPATH_DEPLOYMENT_CONFIG }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_DEPLOYMENT_CONFIG)) {
+            throw "Required protected SignPath deployment configuration is missing."
+          }
+          try {
+            $config = ConvertFrom-Json -InputObject $env:SIGNPATH_DEPLOYMENT_CONFIG -AsHashtable -ErrorAction Stop
+          } catch {
+            throw "Protected SignPath deployment configuration is not valid JSON."
+          }
+          if ($config -isnot [System.Collections.IDictionary]) {
+            throw "Protected SignPath deployment configuration must be a JSON object."
+          }
           $required = @(
             "SIGNPATH_ORGANIZATION_ID",
             "SIGNPATH_PROJECT_SLUG",
@@ -89,16 +96,37 @@ jobs:
             "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG",
             "SIGNPATH_CERTIFICATE_THUMBPRINT"
           )
-          foreach ($name in $required) {
-            $value = [Environment]::GetEnvironmentVariable($name)
-            if ([string]::IsNullOrWhiteSpace($value)) {
-              throw "Required repository variable is missing: $name"
-            }
-            Write-Output "::add-mask::$value"
+          if (@(Compare-Object -ReferenceObject @($required | Sort-Object) -DifferenceObject @($config.Keys | Sort-Object)).Count -ne 0) {
+            throw "Protected SignPath deployment configuration has an unexpected key set."
           }
-          $thumbprint = ($env:SIGNPATH_CERTIFICATE_THUMBPRINT -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+          $validated = @{}
+          foreach ($name in $required) {
+            if (-not $config.ContainsKey($name) -or $config[$name] -isnot [string]) {
+              throw "Protected SignPath deployment configuration contains a non-string value: $name"
+            }
+            $value = [string]$config[$name]
+            if ([string]::IsNullOrWhiteSpace($value) -or $value -match "[\r\n]") {
+              throw "Protected SignPath deployment configuration contains a blank or multiline value: $name"
+            }
+            $validated[$name] = $value
+          }
+          if ($validated.SIGNPATH_ORGANIZATION_ID -notmatch '^[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}$') {
+            throw "SIGNPATH_ORGANIZATION_ID must be a UUID."
+          }
+          foreach ($name in @("SIGNPATH_PROJECT_SLUG", "SIGNPATH_SIGNING_POLICY_SLUG", "SIGNPATH_ARTIFACT_CONFIGURATION_SLUG")) {
+            if ($validated[$name] -notmatch '^[A-Za-z0-9._-]+$') {
+              throw "Protected SignPath deployment configuration contains an invalid slug: $name"
+            }
+          }
+          $thumbprint = ($validated.SIGNPATH_CERTIFICATE_THUMBPRINT -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
           if ($thumbprint -notmatch '^[0-9A-F]{40}$') {
             throw "SIGNPATH_CERTIFICATE_THUMBPRINT must be a 40-digit SHA-1 certificate thumbprint."
+          }
+          $validated.SIGNPATH_CERTIFICATE_THUMBPRINT = $thumbprint
+          foreach ($name in $required) {
+            $value = $validated[$name]
+            Write-Output "::add-mask::$value"
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value "$name=$value" -Encoding utf8
           }
 
       - name: Download exact accepted unsigned artifact
@@ -165,10 +193,6 @@ jobs:
         shell: pwsh
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)) {
             throw "Required SignPath API token is missing."
@@ -226,7 +250,6 @@ jobs:
       - name: Verify returned test signature and write bounded evidence
         shell: pwsh
         env:
-          SIGNPATH_CERTIFICATE_THUMBPRINT: ${{ vars.SIGNPATH_CERTIFICATE_THUMBPRINT }}
           SIGNING_REQUEST_ID: ${{ steps.direct-signpath.outputs.signing_request_id }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SIGNING_REQUEST_ID)) {

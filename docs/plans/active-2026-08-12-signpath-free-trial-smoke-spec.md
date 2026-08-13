@@ -1,11 +1,10 @@
 # SignPath Free Trial Windows Smoke Contract
 
-Status: active; FT-SIGN1 source implementation, repository-variable setup,
-deterministic validation, protected integration, log redaction, dedicated
-least-privilege CI identity, and separate security review complete; the GitHub
-connector path is rejected by the Free Trial deployment after GitHub artifact
-validation, so the authorized official PowerShell/REST transport correction and
-one successful hosted request remain open
+Status: active; FT-SIGN1 source implementation, dedicated least-privilege CI
+identity, official PowerShell/REST transport, and one successful signing request
+complete; hosted evidence reconciliation is blocked by a pre-mask Runner
+environment-log exposure and requires the protected deployment-configuration
+secret repair plus one clean replacement run
 
 Date: 2026-08-12 EDT
 
@@ -48,8 +47,9 @@ X.509 test certificate and is not publicly trusted by Windows or Microsoft
 SmartScreen.
 
 The organization identifier, configured slugs, and expected certificate
-thumbprint are external deployment configuration. Repository source references
-only these Actions variables:
+thumbprint are external deployment configuration. The workflow receives them
+only through one protected `SIGNPATH_DEPLOYMENT_CONFIG` Actions secret whose
+JSON object has exactly these keys:
 
 - `SIGNPATH_ORGANIZATION_ID`;
 - `SIGNPATH_PROJECT_SLUG`;
@@ -57,25 +57,31 @@ only these Actions variables:
 - `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`; and
 - `SIGNPATH_CERTIFICATE_THUMBPRINT`.
 
-All five variable names were configured on the upstream repository on
-2026-08-12 after the current certificate page independently confirmed a
+The five values were first configured as repository variables on 2026-08-12
+after the current certificate page independently confirmed a
 self-signed RSA-4096 Code Signing certificate whose subject and issuer are both
-`CN=Rho Test Signing`. Only the variable names, not their configured values,
-are repository evidence before the hosted request.
+`CN=Rho Test Signing`. Hosted run `31674347116` proved that a step-level
+repository-variable environment is rendered before the step can issue an
+`add-mask` command. Therefore the variable interface is rejected and all five
+values must be migrated atomically to the protected JSON secret before the
+replacement hosted request. Repository source records only the secret name and
+the expected JSON keys, never configured values.
 
-The organization identifier and configured slugs must not be copied into
-repository source, Issues, pull-request discussion, or public evidence. The
-certificate thumbprint may appear only in the bounded returned-signature
+The organization identifier must not be copied into repository source, Issues,
+pull-request discussion, or public evidence. The configured slugs are not
+credentials, but the workflow must not render them as configuration inputs in
+logs. The certificate thumbprint may appear only in bounded returned-signature
 evidence because it identifies the certificate already embedded in the signed
-file. The API token value must never appear in source, logs, artifacts,
-documentation, or Actions variables.
+file. The API token, organization identifier, and complete deployment JSON must
+never appear in source, logs, artifacts, documentation, or Actions variables.
 
-All non-secret deployment-variable values must be registered with the GitHub
-Actions masking command before any SignPath module installation or request is
-invoked. This includes the organization identifier,
-project/policy/configuration slugs, and certificate thumbprint. Their
-repository-variable storage does not by itself prevent a third-party component
-from rendering input values in a public log.
+The protected JSON secret may be referenced only by the first bounded
+configuration step. GitHub masks the complete secret before Runner environment
+rendering. That step must parse a JSON object, require the exact five-key set,
+require non-empty single-line string values, validate the organization UUID,
+slug characters, and 40-hex-digit thumbprint, register each individual value
+with `add-mask`, and append only those validated values to `GITHUB_ENV`. No
+later step may reference the configuration secret or repository variables.
 
 ## Scope And Immutable Input
 
@@ -113,7 +119,8 @@ The workflow is manual-only and has no inputs. It must:
    verify `SignPath.psm1` SHA-256
    `4a732624a7214dc8290dbf81ed2714d6b509be319427c2d55fd0c679d13ab5ae`,
    then call `Submit-SigningRequest` with the protected CI-user token,
-   repository variables, explicit artifact-configuration slug, local ZIP,
+   validated secret-backed deployment configuration, explicit artifact-
+   configuration slug, local ZIP,
    bounded completion wait, and a separate signed ZIP path;
 7. accept exactly one returned installer with the expected basename, reject
    `NotSigned`, `HashMismatch`, `NotSupported`, `Incompatible`, a missing signer,
@@ -134,8 +141,9 @@ verified returned installer and bounded evidence may leave the job.
 
 ## Failure And Recovery
 
-Missing variables or secret, an unavailable/expired source artifact, source
-identity/hash/signature mismatch, zero or multiple installers, SignPath
+Missing or malformed deployment configuration or token, an unavailable or
+expired source artifact, source identity/hash/signature mismatch, zero or
+multiple installers, SignPath
 rejection/timeout, an unexpected returned filename, signer/thumbprint failure,
 or unsupported/corrupt signature status fails before the final artifact upload.
 Reruns create a new signing request and new run-scoped artifacts; their evidence
@@ -173,6 +181,17 @@ FT-SIGN1 now uses that official REST-backed module path instead of retrying the
 failed connector. This is a transport correction only; immutable input,
 certificate, output, retention, and no-publication invariants are unchanged.
 
+Hosted run `31674347116` then completed one real signing request and passed its
+in-job signature, signer, thumbprint, self-signed-certificate, and changed-byte
+checks. Post-run log inspection found the organization identifier in the
+Runner-rendered environment block of the first validation step, before that
+step's masking command executed. The artifact therefore does not close hosted
+acceptance even though its signed bytes are technically valid. The recovery is
+to replace all five repository-variable inputs with the single protected JSON
+secret above, remove the obsolete variables after a clean replacement run, and
+retain this run only as failure evidence. No API-token rotation is required
+because GitHub masked that separate secret throughout the run.
+
 ## Cross-Review And Non-Goals
 
 SP-READY1 retains privacy, manual update admission, public policy, Foundation
@@ -182,7 +201,7 @@ acceptance, MAC5, publication, and updater authority. The Issue #33 artifact is
 immutable input evidence only.
 
 FT-SIGN1 creates no application/R-package behavior, schema, product network
-lane, credential format, `.signpath/policies` source/build policy, Webhook,
+lane, product credential format, `.signpath/policies` source/build policy, Webhook,
 trusted-build link, Foundation application, or public trust. The dedicated CI
 user is regular, is not an approver or administrator, and owns no signing role
 outside the existing test policy. FT-SIGN1 does not modify the candidate or
@@ -197,9 +216,12 @@ Deterministic verification must prove:
 - manual-only admission, exact repository/default-branch failure, and
   read-only permissions;
 - immutable run/artifact/commit/name/hash binding;
-- variable-only SignPath identifiers, secret-only dedicated CI token, explicit
-  artifact configuration, exact module version and module-file hash, local-only
-  ZIP wrappers, and direct REST-backed upload;
+- one exact-schema secret-backed deployment configuration, no repository-
+  variable references, secret-only dedicated CI token, explicit artifact
+  configuration, exact module version and module-file hash, local-only ZIP
+  wrappers, and direct REST-backed upload;
+- rejection of missing, extra, non-string, blank, multiline, malformed UUID,
+  malformed slug, and malformed thumbprint configuration before module install;
 - unsigned-input, returned-cardinality/name, forbidden signature-status,
   signer, thumbprint, and changed-byte checks;
 - absence of Release/tag/update-site/candidate publication operations;
