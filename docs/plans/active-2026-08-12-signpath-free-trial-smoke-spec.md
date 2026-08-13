@@ -338,3 +338,9 @@ FT-SIGN1 stops complete after run `31675464182` and evidence reconciliation.
 Any use of returned bytes in a candidate or Release, any production certificate
 or trusted-build integration, or any public wording change requires a separate
 active D4/R4 contract and explicit authorization.
+
+That later authorization now exists only as
+`active-2026-08-13-dev38-test-signed-prerelease-spec.md`. It requires a fresh
+`dev.38` build and a new candidate-mode request; it does not reopen FT-SIGN1 or
+permit this contract's `dev.37` bytes, hashes, request, artifact, or evidence to
+enter a candidate, Release, acceptance record, or update site.

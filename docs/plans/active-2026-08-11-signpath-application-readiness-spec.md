@@ -36,6 +36,21 @@ candidate, installed-candidate, MAC5, publication, or updater gates. The Free
 Trial workflow must remain separate from candidate and manual-publish workflows
 and must not expose its returned bytes through a Release or update site.
 
+## 2026-08-13 Test-Signed Prerelease Amendment
+
+After FT-SIGN1 completed, the owner separately authorized DEV38-SIGN1 under
+`active-2026-08-13-dev38-test-signed-prerelease-spec.md`. That D4/R4 contract
+may add a new candidate-only request for a fresh `0.4.0-dev.38` NSIS installer
+and publish it only after exact human acceptance and MAC5 GO. FT-SIGN1 remains
+isolated: its `dev.37` request and returned bytes are never reused or promoted.
+
+DEV38-SIGN1 does not satisfy this document's Foundation, production
+certificate, MFA, GitHub App/trusted-build, or two-stage executable-plus-
+installer signing gates. Its release notes, policy amendment, and download-page
+projection must call the result a Free Trial self-signed test signature with no
+public trust and possible SmartScreen warnings. Rehearsal remains unsigned and
+review-only.
+
 ## Problem And Current Evidence
 
 Rho's macOS candidate path uses Developer ID signing and notarization, while
@@ -111,9 +126,10 @@ signature, candidate, tag, Release, or updater mutation.
   files, application data, logs, or operating-system credential storage.
 - The AGPL contract owns license identity and installed license bytes, not
   signing or privacy. LIC-2 protected integration is a prerequisite.
-- The current `0.4.0-dev.37` checklist alone owns exact candidate identity, artifact
-  construction, installed acceptance, MAC5, publication, and update-site
-  mutation. SP-READY1 cannot satisfy those gates.
+- The `0.4.0-dev.37` checklist remains the immutable Issue #33/FT-SIGN1 source
+  ledger. The active `0.4.0-dev.38` checklist alone owns the new exact candidate
+  identity, artifact construction, installed acceptance, MAC5, publication,
+  and update-site mutation. SP-READY1 cannot satisfy those gates.
 
 No schema, project identity, approval table, Provider format, credential
 format, R package contract, or public updater manifest changes. Cross-review

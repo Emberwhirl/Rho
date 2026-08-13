@@ -313,3 +313,14 @@ Implementation review found no deviation from RELEASE-NOTES-1. Residual risk
 is limited to the first live GitHub API round trip for a newly versioned
 candidate; that candidate must supply its own reviewed file and record hosted
 Draft/body/publication evidence before this stream can be accepted.
+
+## 14. DEV38-SIGN1 Consumer Cross-Review
+
+The separately authorized
+`active-2026-08-13-dev38-test-signed-prerelease-spec.md` is the first planned
+new-candidate consumer. It must add
+`.github/release-notes/v0.4.0-dev.38.md` in the exact synchronized source commit
+and exercise this contract's canonical body and stale guards. DEV38-SIGN1 owns
+the Free Trial signing facts and trust wording; RELEASE-NOTES-1 owns only how
+the reviewed body is selected and preserved. Neither document may use release
+prose as artifact/signature/MAC5 evidence or modify the exact `dev.27` bridge.
