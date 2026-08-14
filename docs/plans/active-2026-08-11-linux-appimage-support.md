@@ -328,9 +328,11 @@ Source implementation present, no execution verification (see Status):
   per-family hints), `scripts/compose-apprun.sh` (single-shebang composition
   preserving the original Tauri AppRun body), `scripts/patch-appimage-apprun.sh`
   (extract → replace → repack with the original runtime prefix and a
-  validated default gzip compressor; final verification runs the repacked
-  image's own `--appimage-extract`, so it does not depend on unsquashfs
-  offset auto-detection), and `scripts/test-linux-apprun.sh` (fixture-driven,
+  zstd default compressor, overridable via `RHO_SQUASHFS_COMPRESSION`; final
+  verification runs the repacked image's own `--appimage-extract`, so a
+  runtime that cannot read the compressor fails the build instead of shipping
+  a broken artifact, and the check does not depend on unsquashfs offset
+  auto-detection), and `scripts/test-linux-apprun.sh` (fixture-driven,
   no network).
 - LIN4: Linux R discovery order (persisted selection, `RHO_RSCRIPT`,
   `/usr/lib/R/bin/Rscript`, `/usr/local/lib/R/bin/Rscript`, conda paths, then
@@ -358,7 +360,18 @@ Recorded deviations (bounded interpretations, all reversible):
   library as absent and prints the hint (the plan pins
   `ldconfig -p | grep -q libwebkit2gtk-4.1.so.0`);
 - the AppImage filename produced by Tauri is renamed to the plan's
-  `Rho_<version>_x86_64.AppImage` convention after the build.
+  `Rho_<version>_x86_64.AppImage` convention after the build;
+- the LIN3 repack default compressor is zstd (2026-08-14), not the originally
+  recorded gzip: zstd yields smaller AppImages for the same payload and is
+  available in squashfs-tools >= 4.4 (the ubuntu-22.04 hosted lane) and the
+  modern AppImage runtime. The override `RHO_SQUASHFS_COMPRESSION` retains
+  gzip/xz/lzma/lzo/lz4, and the repack's own `--appimage-extract` verification
+  fails the build if the bundled runtime cannot read the chosen compressor.
+  Measured on 2026-08-14 on the real payload (42 MB `rho-desktop` +
+  22 MB Ark sidecar, 63 MB total): zstd default level 21.2 MB vs gzip
+  23.4 MB (−9.5%), zstd -19 21.0 MB, xz 19.6 MB. The full AppImage artifact
+  build remains unrun here (see the Verification Record); the hosted lane
+  reports the zstd artifact size and SHA-256.
 
 Version and NEWS: no application or R package version bump; no `NEWS.md`
 entry; distribution deferred to a named Linux integration candidate gated by

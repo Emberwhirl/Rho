@@ -8,13 +8,16 @@ set -euo pipefail
 #
 # Usage: patch-appimage-apprun.sh <AppImage>
 # Optional: RHO_APPRUN_CHECK overrides the check fragment path;
-# RHO_SQUASHFS_COMPRESSION overrides the repack compressor (default gzip).
+# RHO_SQUASHFS_COMPRESSION overrides the repack compressor (default zstd).
 #
 # Requires: squashfs-tools (mksquashfs), grep, head, tail, cat. The AppImage
 # runtime reads the compressor from the squashfs superblock, so repacking with
-# gzip is compatible with the original runtime; verification runs the repacked
-# image's own `--appimage-extract` (no FUSE needed), so it does not depend on
-# unsquashfs offset auto-detection.
+# zstd (smaller artifacts than gzip for the same payload; supported by
+# squashfs-tools on the ubuntu-22.04 hosted lane and by the modern AppImage
+# runtime) keeps the original runtime compatible; verification runs the
+# repacked image's own `--appimage-extract` (no FUSE needed), so a runtime
+# that cannot read the chosen compressor fails the build instead of shipping
+# a broken artifact. It does not depend on unsquashfs offset auto-detection.
 
 if [[ "$#" -ne 1 ]]; then
   echo "Usage: patch-appimage-apprun.sh <AppImage>" >&2
@@ -73,8 +76,9 @@ mv "$RHO_EXTRACT_ROOT/AppRun.new" "$RHO_EXTRACT_ROOT/AppRun"
 
 # 3. The AppImage runtime reads the compressor from the squashfs superblock,
 #    so any supported compressor works with the original runtime. Default to
-#    gzip (universally supported by squashfs-tools) with an explicit override.
-RHO_COMPRESSION="${RHO_SQUASHFS_COMPRESSION:-gzip}"
+#    zstd (better ratio than gzip for the same payload, fast enough for CI,
+#    universally available in squashfs-tools >= 4.4) with an explicit override.
+RHO_COMPRESSION="${RHO_SQUASHFS_COMPRESSION:-zstd}"
 case "$RHO_COMPRESSION" in
   gzip|lzma|lzo|xz|zstd) ;;
   *)
