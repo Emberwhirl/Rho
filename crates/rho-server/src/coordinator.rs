@@ -534,25 +534,12 @@ pub async fn probe(
     shutdown_result
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_probe(
-    session: &ArkSession,
-    broker: &mut BrokerState,
-    store: &mut Store,
-    rscript: PathBuf,
-    agent_package: PathBuf,
-    bridge_package: PathBuf,
-    recovered_runs: usize,
-    store_path: &Path,
-    model: Option<String>,
-    prompt: String,
-) -> Result<()> {
-    bootstrap_bridge(session, broker, store, &bridge_package).await?;
-
-    let mut authenticator = AgentAuthenticator::bind().await?;
-    let address = authenticator.local_addr()?;
-    let token = authenticator.bootstrap_token()?.to_string();
-    let script = r#"
+/// Multi-line Agent R coordinator probe program. Per the active
+/// `windows-agent-r-script-launch-repair-spec` invariant, Agent R code is
+/// transported in a flushed UTF-8 temporary `.R` file, never as a multi-line
+/// `-e` argument (the pattern that failed Windows turns with `0xc0000005`).
+fn coordinator_probe_script() -> &'static str {
+    r#"
 args <- commandArgs(TRUE)
 source(file.path(args[[2]], "R", "aaa-state.R"))
 source(file.path(args[[2]], "R", "transport.R"))
@@ -633,20 +620,76 @@ if (identical(args[[3]], "mock")) {
   )
 }
 close(connection)
-"#;
+"#
+}
+
+fn write_coordinator_probe_script() -> Result<tempfile::NamedTempFile> {
+    use std::io::Write;
+
+    let mut script_file = tempfile::Builder::new()
+        .prefix("rho-coordinator-probe-")
+        .suffix(".R")
+        .tempfile()
+        .context("creating Agent R coordinator probe script file")?;
+    script_file
+        .write_all(coordinator_probe_script().as_bytes())
+        .context("writing Agent R coordinator probe script file")?;
+    script_file
+        .flush()
+        .context("flushing Agent R coordinator probe script file")?;
+    Ok(script_file)
+}
+
+fn coordinator_probe_args(
+    script_path: &Path,
+    port: u16,
+    agent_package: &Path,
+    model: &str,
+    prompt: &str,
+) -> Vec<OsString> {
+    vec![
+        script_path.as_os_str().to_os_string(),
+        OsString::from(port.to_string()),
+        agent_package.as_os_str().to_os_string(),
+        OsString::from(model.to_string()),
+        OsString::from(prompt.to_string()),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_probe(
+    session: &ArkSession,
+    broker: &mut BrokerState,
+    store: &mut Store,
+    rscript: PathBuf,
+    agent_package: PathBuf,
+    bridge_package: PathBuf,
+    recovered_runs: usize,
+    store_path: &Path,
+    model: Option<String>,
+    prompt: String,
+) -> Result<()> {
+    bootstrap_bridge(session, broker, store, &bridge_package).await?;
+
+    let mut authenticator = AgentAuthenticator::bind().await?;
+    let address = authenticator.local_addr()?;
+    let token = authenticator.bootstrap_token()?.to_string();
+    let script_file = write_coordinator_probe_script()?;
 
     let real_model = model.is_some();
     let model_arg = model.clone().unwrap_or_else(|| "mock".to_string());
 
+    let args = coordinator_probe_args(
+        script_file.path(),
+        address.port(),
+        &agent_package,
+        &model_arg,
+        &prompt,
+    );
     let mut command = tokio::process::Command::new(rscript);
     hide_console_window(&mut command);
     let mut child = command
-        .arg("-e")
-        .arg(script)
-        .arg(address.port().to_string())
-        .arg(agent_package)
-        .arg(&model_arg)
-        .arg(prompt)
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -6047,6 +6090,44 @@ mod tests {
                 Path::new("r/rho.agent").as_os_str().to_os_string(),
                 OsString::from("act"),
             ]
+        );
+    }
+
+    #[test]
+    fn coordinator_probe_script_uses_a_flushed_utf8_r_file_instead_of_inline_e() {
+        let script_file = write_coordinator_probe_script().unwrap();
+        let script_path = script_file.path();
+        let args = coordinator_probe_args(
+            script_path,
+            4321,
+            Path::new("r/rho.agent"),
+            "mock",
+            "probe prompt",
+        );
+
+        assert_eq!(
+            script_path.extension().and_then(|value| value.to_str()),
+            Some("R")
+        );
+        assert_eq!(
+            std::fs::read_to_string(script_path).unwrap(),
+            coordinator_probe_script()
+        );
+        assert_eq!(
+            args,
+            vec![
+                script_path.as_os_str().to_os_string(),
+                OsString::from("4321"),
+                Path::new("r/rho.agent").as_os_str().to_os_string(),
+                OsString::from("mock"),
+                OsString::from("probe prompt"),
+            ]
+        );
+        assert!(!args.iter().any(|arg| arg == "-e"));
+        assert!(
+            !args
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("rho_agent_connect"))
         );
     }
 
