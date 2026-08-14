@@ -9,8 +9,11 @@ so every gate was recorded as unrun rather than claimed as passing. Partial
 verification was executed on a toolchain-equipped machine on 2026-08-14:
 the LIN1/LIN3 fixture suites and `cargo fmt` pass, and the Rust workspace
 suite runs with three pre-existing Linux update-manifest gaps (see
-"Verification Record (2026-08-14)"). The LIN2 build lanes and LIN5 remain
-unrun; the M3 release decision remains open and unauthorized.
+"Verification Record (2026-08-14)"). LIN6 (Linux Secret Service credential
+storage) was authorized by the project owner on 2026-08-14 ("Please support
+it" for credential storage); its implementation and verification are recorded
+in the LIN6 package and the Verification Record below. The LIN2 build lanes
+and LIN5 remain unrun; the M3 release decision remains open and unauthorized.
 
 Date: 2026-08-11 (authored); 2026-08-13 (activated)
 
@@ -74,6 +77,10 @@ This proposal will:
   distribution;
 - add Linux R discovery (Ubuntu paths, `/usr/lib/R`, conda, `RHO_RSCRIPT`
   override) consistent with the existing persisted-selection-first model;
+- store and retrieve Agent LLM API keys through the Linux Secret Service
+  (GNOME Keyring / KWallet) with the same `Rho Agent LLM` service contract,
+  provider-id accounts, 16 KiB bound, precedence, and redaction used on
+  Windows and macOS;
 - keep Windows x64 and macOS arm64 behavior unchanged.
 
 ## Non-Goals
@@ -240,6 +247,48 @@ PATH order, and no-shell guarantee.
 Exit gate: all above pass or every unavailable runner is recorded; release
 decision is NO-GO until an explicit owner GO.
 
+### LIN6: Linux Secret Service credential storage — authorized 2026-08-14
+
+Authorized by the project owner on 2026-08-14: "The linux version shows:
+Credential storage unavailable. Please support it." Entry review: LIN1-LIN4
+are committed on `main` as `6129035`; the Linux plan is active; the
+system-credential contract (service `Rho Agent LLM`, stable provider-id
+accounts, 16 KiB bound, stored-over-`.Renviron` precedence, Agent-only child
+injection, presentation redaction, replace/delete recovery, and
+unavailable/fallback truth) is unchanged — LIN6 changes only the production
+Linux adapter and Linux acceptance evidence, mirroring MAC3.
+
+- keyring 4.1.6 is already the Windows and macOS credential library. Its `v1`
+  feature already selects the `zbus-secret-service-keyring-store` backend on
+  Linux (Secret Service over DBus; GNOME Keyring / KWallet), so LIN6 adds a
+  Linux-target keyring dependency with the same `v1` feature set as macOS —
+  no second credential library, no Tauri credential plugin, no new system
+  package, no secret migration.
+- MSRV cross-review: keyring 4.1.6 declares `rust_version` 1.88.0, exactly the
+  workspace floor; its Linux backend graph (`zbus-secret-service-keyring-store`,
+  `secret-service`, `zbus`) is already resolved in the committed lockfile for
+  the macOS/Windows legs, so the locked resolution is unchanged and the
+  dependency-change rule in `active-2026-08-10-rust-msrv-build-contract.md` is
+  satisfied with reviewed scope recorded here.
+- the store label is `Linux Secret Service`; when no Secret Service is running
+  (headless server, no desktop session, locked keyring), DBus failures surface
+  through the existing status path exactly as they do when Windows/macOS
+  storage is unavailable: `credential_status` becomes `unavailable` and the
+  UI keeps showing the truthful "Credential storage unavailable" message —
+  never a raw traceback and never silent fallback to plaintext.
+- tests: the existing `MemoryCredentialStore` failure-injection coverage keeps
+  the detected/not-detected/unavailable status contract; an opt-in Linux smoke
+  (mirroring the MAC3 Keychain smoke) exercises set/get/replace/delete/cleanup
+  against a unique disposable Secret Service entry and stays `#[ignore]` by
+  default because this headless authoring environment has no keyring daemon.
+
+Exit gate: Linux-target keyring dependency added with `--locked` resolution
+unchanged; cfg wiring compiles on Linux; the opt-in smoke is present and
+ignored; full affected workspace suite and fmt pass; Windows x64 and macOS
+arm64 behavior unchanged (verified by cfg analysis); security review of the
+credential path passes. Manual acceptance on a Linux desktop with an unlocked
+keyring remains part of LIN5.
+
 ## Version, Documentation, And Release State
 
 This document is `active`. It changes no application version, R package
@@ -291,6 +340,15 @@ Source implementation present, no execution verification (see Status):
   development-staged `binaries/ark-x86_64-unknown-linux-gnu`) in
   `desktop/src-tauri/src/main.rs` and `platform.rs`, with unit tests. No new
   Tauri commands, so browser/mock mode is unchanged.
+- LIN6: keyring 4.1.6 enabled for the Linux target with the same `v1` feature
+  set as macOS (selects `zbus-secret-service-keyring-store` on Linux; the
+  backend graph was already resolved in the committed `Cargo.lock`, so
+  `--locked` resolution is unchanged), the `CREDENTIAL_SERVICE` /
+  `system_credential_*` cfg guards extended to `target_os = "linux"`, and the
+  store label `Linux Secret Service` in `desktop/src-tauri/Cargo.toml` and
+  `desktop/src-tauri/src/agent_llm.rs`, plus an opt-in ignored Linux smoke
+  mirroring the MAC3 Keychain test. No new Tauri commands, no frontend/mock
+  change (the UI already renders the per-provider `credential_status`).
 
 Recorded deviations (bounded interpretations, all reversible):
 
@@ -344,6 +402,35 @@ carries only `windows_x86_64` and `macos_aarch64` artifacts (Linux updates are
 explicitly out of scope this round). `update.rs` is untouched by this slice,
 and the Rust test CI matrix (windows + macos) is unaffected. Making these
 fixtures Linux-aware belongs to the LIN5 workspace-suite gate.
+
+LIN6 verification (2026-08-14, same Linux x86-64 environment):
+
+```text
+cd desktop/src-tauri && cargo metadata --locked --format-version 1
+                                         PASSED (lock resolution unchanged:
+                                         the Linux backend graph was already
+                                         in the committed Cargo.lock)
+cd desktop/src-tauri && cargo test --workspace --locked
+                                         176 passed; 3 failed; 1 ignored
+                                         (same 3 pre-existing update.rs Linux
+                                         gaps; the ignored test is the opt-in
+                                         LIN6 Secret Service smoke)
+cd desktop/src-tauri && cargo fmt --all -- --check
+                                         PASSED
+```
+
+- cfg analysis: the LIN6 diff only widens the existing
+  `any(windows, target_os = "macos")` guards to include
+  `target_os = "linux"` and adds a Linux-target keyring entry identical to
+  the macOS arm; Windows x64 and macOS arm64 code paths and Cargo.toml
+  entries are textually unchanged.
+- independent security review of the LIN6 diff: passed, no issues found
+  (no plaintext fallback; store errors map to the truthful "unavailable"
+  status; secret never appears in error/format output; smoke is
+  UUID-unique, Drop-cleaned, and test-only).
+- the opt-in Linux Secret Service smoke and LIN5 manual acceptance on a
+  desktop with an unlocked keyring remain unrun (no keyring daemon in this
+  environment) and belong to LIN5.
 
 LIN5 manual acceptance (clean machine with and without
 `libwebkit2gtk-4.1-0`) remains open and unauthorized.
