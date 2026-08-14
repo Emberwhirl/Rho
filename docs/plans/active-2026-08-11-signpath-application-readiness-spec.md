@@ -127,9 +127,10 @@ signature, candidate, tag, Release, or updater mutation.
 - The AGPL contract owns license identity and installed license bytes, not
   signing or privacy. LIC-2 protected integration is a prerequisite.
 - The `0.4.0-dev.37` checklist remains the immutable Issue #33/FT-SIGN1 source
-  ledger. The active `0.4.0-dev.38` checklist alone owns the new exact candidate
-  identity, artifact construction, installed acceptance, MAC5, publication,
-  and update-site mutation. SP-READY1 cannot satisfy those gates.
+  ledger, and `dev.38` remains an immutable unpublished NO-GO Draft. The active
+  historical `0.4.0-dev.39` CPREL1 checklist alone owns the exact candidate identity,
+  artifact construction, conditional decision, publication, and update-site
+  mutation. SP-READY1 cannot satisfy those gates.
 
 No schema, project identity, approval table, Provider format, credential
 format, R package contract, or public updater manifest changes. Cross-review
@@ -351,6 +352,23 @@ It changes no application, workflow, artifact, credential, signing, candidate,
 Release, or update-site bytes, so the application version and `NEWS.md` remain
 unchanged.
 
+## CPREL1 Conditional-Prerelease Boundary — 2026-08-13
+
+The owner separately authorized one `0.4.0-dev.39` conditional evaluation
+prerelease whose Windows human installation and enabled-Gatekeeper macOS human
+launch are truthfully recorded as not run. CPREL1 does not alter this
+document's SignPath Foundation, production certificate/policy, trusted-build,
+MFA, per-request approval, or two-stage signing gates. Candidate-mode Free
+Trial evidence must still prove the exact unsigned input, returned self-signed
+signature, request, certificate facts, changed bytes, and final hash. The
+conditional decision cannot claim public trust, Foundation acceptance,
+production readiness, or ordinary installed acceptance.
+
+The already audited `dev.38` Draft remains immutable and unpublished because
+its reviewed body requires ordinary human acceptance. CPREL1 uses a fresh
+`dev.39` request and artifacts, and adds only an actor-bound,
+public-prerelease-only schema-v2 decision plus public limitation disclosure.
+
 ## Version, NEWS, And Release Decision
 
 SP-READY1 changes user-visible update behavior and therefore amends the
@@ -372,7 +390,9 @@ organization-owner signing-role MFA verification, Foundation application and
 decision, then any required production GitHub App/trusted-build and
 certificate/policy configuration. Production two-stage signing is a later
 D4/R4 package. Only a new exact production-signed candidate with two-platform
-installed acceptance and explicit MAC5 GO can proceed to publication.
+installed acceptance and explicit MAC5 GO can claim production readiness.
+CPREL1's allowlisted conditional development prerelease remains evaluation-only
+and does not satisfy that gate.
 
 ## SP-READY1 Definition Of Done
 

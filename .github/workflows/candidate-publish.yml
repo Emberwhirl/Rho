@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Exact accepted draft tag
         required: true
-        default: v0.4.0-dev.38
+        default: v0.4.0-dev.39
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   publish-candidate:
-    name: Validate MAC5 GO and publish existing draft
+    name: Validate exact release decision and publish existing draft
     runs-on: ubuntu-latest
     environment: rho-release
     permissions:
@@ -61,6 +61,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_ID: ${{ steps.identity.outputs.release_id }}
           EXPECTED_COMMIT: ${{ steps.identity.outputs.commit }}
+          PUBLISH_ACTOR: ${{ github.actor }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -156,6 +157,7 @@ jobs:
               draft: release.data.draft,
               prerelease: release.data.prerelease,
               target_commitish: release.data.target_commitish,
+              publisher: process.env.PUBLISH_ACTOR,
               assets: downloadedAssets,
               platform_evidence: {
                 windows_x86_64: JSON.parse(fs.readFileSync(path.join("target", "publish", `rho-${version}-windows-x86_64-evidence.json`), "utf8")),
@@ -179,7 +181,7 @@ jobs:
             }, null, 2)}\n`);
             core.setOutput("release_id", String(release.data.id));
 
-      - name: Enforce immutable candidate and explicit MAC5 GO
+      - name: Enforce immutable candidate and explicit release decision
         shell: bash
         run: |
           set -euo pipefail

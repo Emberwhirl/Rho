@@ -50,9 +50,26 @@ jobs:
                 asset_id: evidenceAsset.id,
                 headers: { accept: "application/octet-stream" },
               });
-              const evidence = JSON.parse(Buffer.from(response.data).toString("utf8"));
+              const evidenceBytes = Buffer.from(response.data);
+              if (evidenceBytes.length !== evidenceAsset.size) throw new Error(`Release evidence size mismatch for ${release.tag_name}`);
+              const evidenceSha256 = crypto.createHash("sha256").update(evidenceBytes).digest("hex");
+              const evidence = JSON.parse(evidenceBytes.toString("utf8"));
               let platformEvidence;
+              let acceptanceEvidence;
               if (evidence.type === "rho_candidate_evidence") {
+                const acceptanceAsset = release.assets.find((asset) => asset.name === `rho-${version}-acceptance.json`);
+                if (!acceptanceAsset || acceptanceAsset.size <= 0 || acceptanceAsset.size > 256 * 1024) {
+                  throw new Error(`Candidate acceptance asset is missing or exceeds its byte budget for ${release.tag_name}`);
+                }
+                const acceptanceResponse = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: acceptanceAsset.id,
+                  headers: { accept: "application/octet-stream" },
+                });
+                const acceptanceBytes = Buffer.from(acceptanceResponse.data);
+                if (acceptanceBytes.length !== acceptanceAsset.size) throw new Error(`Candidate acceptance size mismatch for ${release.tag_name}`);
+                acceptanceEvidence = JSON.parse(acceptanceBytes.toString("utf8"));
                 platformEvidence = {};
                 for (const platform of ["windows_x86_64", "macos_aarch64"]) {
                   const expected = evidence.platforms?.[platform]?.evidence;
@@ -88,6 +105,8 @@ jobs:
                   browser_download_url: asset.browser_download_url,
                 })),
                 evidence,
+                evidence_sha256: evidenceSha256,
+                acceptance_evidence: acceptanceEvidence,
                 platform_evidence: platformEvidence,
               });
             }

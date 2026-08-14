@@ -11,8 +11,8 @@ function snapshot() {
     candidate: read("scripts/candidate-release.mjs"),
     generator: read("scripts/generate-update-site.mjs"),
     policy: read("CODE_SIGNING_POLICY.md"),
-    spec: read("docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md"),
-    checklist: read("docs/release/active-0.4.0-dev.38-candidate-checklist.md"),
+    spec: read("docs/plans/implemented-2026-08-13-conditional-prerelease-policy-spec.md"),
+    checklist: read("docs/release/historical-0.4.0-dev.39-candidate-checklist.md"),
     compatibility: read(".github/workflows/rust-compatibility.yml"),
   };
 }
@@ -115,16 +115,18 @@ function validate(value) {
   assert.match(value.generator, /does not establish Foundation acceptance/);
   assert.match(value.policy, /Free Trial test-signed prerelease boundary/);
   assert.match(value.policy, /not\s+publicly trusted/);
-  assert.match(value.spec, /Status: active; DEV38-SIGN1 contract authorized/);
-  assert.match(value.checklist, /Human Installed Acceptance/);
-  assert.match(value.checklist, /Automation and screenshots may support[\s\S]*cannot mark them passed/);
+  assert.match(value.spec, /Status: implemented; CPREL1A-CPREL1D completed/);
+  assert.match(value.spec, /CONDITIONAL_GO/);
+  assert.match(value.spec, /cannot be written as an ordinary MAC5 `GO`/);
+  assert.match(value.checklist, /Conditional Human Limitations/);
+  assert.match(value.checklist, /immutable limitations, not passed checks/);
 
   assert.equal(occurrences(value.compatibility, /node scripts\/test-signpath-candidate-workflow\.mjs --self-test/g), 1);
   assert.equal(occurrences(value.compatibility, /node scripts\/test-signpath-candidate-workflow\.mjs(?:\s|$)/g), 2);
   for (const trigger of [
     "scripts/test-signpath-candidate-workflow.mjs",
-    "docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md",
-    "docs/release/active-0.4.0-dev.38-candidate-checklist.md",
+    "docs/plans/implemented-2026-08-13-conditional-prerelease-policy-spec.md",
+    "docs/release/historical-0.4.0-dev.39-candidate-checklist.md",
   ]) {
     assert.equal(occurrences(value.compatibility, new RegExp(`- "${trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "g")), 2, `${trigger} must trigger push and PR checks`);
   }

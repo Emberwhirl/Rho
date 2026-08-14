@@ -1862,3 +1862,15 @@ update schema, or MAC4/MAC5 authority. The active `dev.33` checklist owns every
 future source, candidate, installed, acceptance, MAC5, publication, and updater
 fact. A new candidate remains blocked until its exact source is integrated and
 passes the complete protected source gates.
+
+## `dev.39` Conditional Prerelease Cross-Review — 2026-08-13
+
+CPREL1 does not weaken MAC4 artifact construction: exact arm64 identity,
+Developer ID signing, entitlements, notarization binding, stapling, hosted
+Gatekeeper assessment, mounted Workspace smoke, hashes, and aggregate evidence
+remain mandatory. The owner's one-release conditional authorization applies
+only to enabled-Gatekeeper human launch on an available user Mac, which is
+recorded as `not_run` because local assessments are disabled. It is not a MAC5
+pass and cannot be reused by another version. The download page must expose
+that limitation while the update manifest retains its existing schema and
+exact macOS artifact hash.

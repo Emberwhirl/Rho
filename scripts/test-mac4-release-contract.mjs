@@ -6,7 +6,7 @@ const read = (file) => normalizeLineEndings(fs.readFileSync(file, "utf8"));
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const expectedVersion = "0.4.0-dev.38";
+const expectedVersion = "0.4.0-dev.39";
 const expectedVersionPattern = escapeRegExp(expectedVersion);
 const cargo = read("Cargo.toml");
 const cargoVersion = cargo.match(/^version = "([^"]+)"/m)?.[1];
@@ -25,7 +25,7 @@ assert.ok(
 
 const localPackagePattern = /name = "rho-[^"]+"\r?\nversion = "([^"]+)"/g;
 assert.deepEqual(
-  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.38"'.matchAll(localPackagePattern)].map((match) => match[1]),
+  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.39"'.matchAll(localPackagePattern)].map((match) => match[1]),
   [expectedVersion],
   "Cargo.lock parsing must accept Windows CRLF checkouts",
 );
@@ -262,11 +262,13 @@ assert.match(publishIdentity, /github\.paginate\(github\.rest\.repos\.listReleas
 assert.match(publishIdentity, /matches\.length !== 1/);
 assert.match(publishIdentity, /core\.setOutput\("release_id", String\(release\.id\)\)/);
 assert.doesNotMatch(publish, /getReleaseByTag/);
-const publishDownload = publish.match(/- name: Download draft assets and assemble publish record[\s\S]*?- name: Enforce immutable candidate and explicit MAC5 GO/)?.[0];
+const publishDownload = publish.match(/- name: Download draft assets and assemble publish record[\s\S]*?- name: Enforce immutable candidate and explicit release decision/)?.[0];
 assert.ok(publishDownload, "Missing immutable draft download step");
 assert.match(publishDownload, /RELEASE_ID: \$\{\{ steps\.identity\.outputs\.release_id \}\}/);
 assert.match(publishDownload, /getRelease\(\{ owner, repo, release_id: releaseId \}\)/);
 assert.match(publishDownload, /release\.data\.tag_name !== process\.env\.RELEASE_TAG/);
+assert.match(publishDownload, /PUBLISH_ACTOR: \$\{\{ github\.actor \}\}/);
+assert.match(publishDownload, /publisher: process\.env\.PUBLISH_ACTOR/);
 assert.match(publish, /candidate-release\.mjs --mode publish/);
 assert.match(publish, /256 \* 1024/);
 assert.match(publish, /publish-release-snapshot\.json/);
@@ -278,10 +280,19 @@ assert.match(publish, /draft: false/);
 assert.match(publish, /prerelease: true/);
 assert.doesNotMatch(publish, /uploadReleaseAsset|deleteReleaseAsset|createRelease/);
 assert.equal(count(publish, /updateRelease/g), 1, "Publish workflow may perform one release state transition");
+assert.match(candidateTool, /CONDITIONAL_ACCEPTANCE_VERSIONS = new Set\(\["0\.4\.0-dev\.39"\]\)/);
+assert.match(candidateTool, /decision !== "CONDITIONAL_GO"/);
+assert.match(candidateTool, /status !== "conditional"/);
+assert.match(candidateTool, /windows_human_install_not_run/);
+assert.match(candidateTool, /macos_gatekeeper_human_launch_not_run/);
+assert.match(candidateTool, /authorized_by !== publisher/);
+assert.match(candidateTool, /public_prerelease_only/);
 
 const pages = read(".github/workflows/update-site-publish.yml");
 assert.match(pages, /"Publish Rho Candidate"/);
 assert.match(pages, /rho-\$\{version\}-candidate-evidence\.json/);
+assert.match(pages, /rho-\$\{version\}-acceptance\.json/);
+assert.match(pages, /evidence_sha256: evidenceSha256/);
 assert.match(pages, /target_commitish: release\.target_commitish/);
 assert.match(pages, /artifacts\.macos_aarch64/);
 assert.match(pages, /Platform evidence content mismatch/);
@@ -295,5 +306,8 @@ const generator = read("scripts/generate-update-site.mjs");
 assert.match(generator, /validateAggregateEvidence/);
 assert.match(generator, /Download for macOS \(Apple Silicon\)/);
 assert.match(generator, /candidate platforms/);
+assert.match(generator, /validateAcceptanceEvidence/);
+assert.match(generator, /Conditional prerelease:/);
+assert.match(generator, /Windows human installation and enabled-Gatekeeper macOS human launch were not run/);
 
 process.stdout.write("MAC4 release contract tests passed.\n");

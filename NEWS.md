@@ -4,6 +4,25 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.39 - 2026-08-13
+
+### Distribution
+
+- Public development candidates can now carry an actor-bound, exact-candidate
+  `CONDITIONAL_GO` decision without misreporting incomplete human checks as
+  passed. The bounded `dev.39` decision records Windows human installation and
+  enabled-Gatekeeper macOS human launch as not run.
+- Conditional status and evaluation-only scope are visible in reviewed Release
+  notes and on the download site. Candidate construction, signatures,
+  notarization, hashes, log privacy, and protected publication checks remain
+  mandatory.
+- The update-site pipeline now downloads and validates each candidate's
+  acceptance asset before projecting the Release or update manifest.
+
+R package versions and installed application behavior are unchanged from
+`0.4.0-dev.38`; the fresh identity is required because release acceptance and
+public presentation semantics change.
+
 ## 0.4.0-dev.38 - 2026-08-13
 
 ### Distribution

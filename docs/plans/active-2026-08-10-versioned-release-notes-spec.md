@@ -324,3 +324,16 @@ and exercise this contract's canonical body and stale guards. DEV38-SIGN1 owns
 the Free Trial signing facts and trust wording; RELEASE-NOTES-1 owns only how
 the reviewed body is selected and preserved. Neither document may use release
 prose as artifact/signature/MAC5 evidence or modify the exact `dev.27` bridge.
+
+## 15. CPREL1 Consumer Cross-Review
+
+The owner-authorized
+`implemented-2026-08-13-conditional-prerelease-policy-spec.md` changes public
+acceptance semantics after the `dev.38` Draft body was reviewed and locked.
+RELEASE-NOTES-1 therefore prohibits rewriting that Draft. CPREL1 advances to
+fresh `dev.39` and supplies `.github/release-notes/v0.4.0-dev.39.md` in the
+exact candidate commit. The body must disclose the canonical two unrun human
+checks, public-prerelease-only scope, evaluation-only status, and unchanged
+Free Trial trust boundary. RELEASE-NOTES-1 continues to own exact body
+selection, digest, stale protection, and the single publication transition;
+CPREL1 alone owns schema-v2 `CONDITIONAL_GO` and its limitations.

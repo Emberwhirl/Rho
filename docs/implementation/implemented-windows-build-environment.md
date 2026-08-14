@@ -269,12 +269,17 @@ Rho supports `RHO_RSCRIPT` for an explicit `Rscript.exe` when automatic R
 discovery cannot find the intended installation.
 
 The local installer builder and fork rehearsal artifact are unsigned. For the
-exact `0.4.0-dev.38` upstream candidate only, the candidate workflow submits
+exact allowlisted upstream candidate (currently `0.4.0-dev.39`) only, the candidate workflow submits
 the final NSIS installer to the SignPath Free Trial test policy after build and
 smoke checks, verifies the expected self-signed test certificate, and hashes
 the returned bytes before evidence assembly. That signature is not publicly
 trusted or a SignPath Foundation production publisher; a Windows or SmartScreen
 warning remains expected and is not itself a build failure.
+
+`0.4.0-dev.39` is an evaluation-only conditional prerelease: Windows human
+installation is recorded as not run because no Windows device was available.
+That limitation does not weaken build, smoke, signing, request-binding, or
+final-hash evidence and must remain visible on the Release/download page.
 
 The legacy manual Windows publisher does not replace the cross-platform
 candidate/MAC5 path and cannot bypass its test-signing evidence gate.

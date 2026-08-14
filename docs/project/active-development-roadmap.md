@@ -3,7 +3,7 @@
 Status: active
 
 Date: 2026-08-09
-Current source baseline: `0.4.0-dev.38`
+Current source baseline: `0.4.0-dev.39`
 Active published identity: `0.4.0-dev.24` (authoritative candidate,
 owner-installed acceptance, MAC5 GO, protected public prerelease, and live
 development update manifest pass)
@@ -134,6 +134,24 @@ core UI/runtime smoke also pass as supporting evidence, but the local machine's
 Gatekeeper assessment is disabled and automation cannot replace human review.
 Human Windows/macOS installed acceptance, MAC5, publication, and live update
 gates remain `NO-GO` until their own evidence exists.
+
+CPREL1 advances the source to `0.4.0-dev.39` after the owner explicitly
+authorized one public conditional evaluation prerelease with Windows human
+installation and enabled-Gatekeeper macOS human launch truthfully recorded as
+not run. The already audited `dev.38` Draft remains immutable and unpublished;
+its binaries, body, request, hashes, and evidence are not reused. The new
+schema-v2 decision is `conditional` / `CONDITIONAL_GO`, actor-bound,
+public-prerelease-only, and allowlisted to exact `dev.39` with the canonical two
+limitations. Ordinary `GO` compatibility and every source, signing,
+notarization, checksum, privacy, exact-body, protected-publication, and update
+validation gate remain in force. PR #73 integrated at
+`579d6dc0d64e770aea14b2282e75ccde2076b345`; PR and exact-main four-leg
+stable/MSRV matrices, candidate run `31732445952`, independent downloaded-byte
+audit, actor-bound acceptance, protected publish run `31734766000`, and live
+update run `31734975029` passed. Release `370143482` is public with eight exact
+assets and a visible conditional warning. The two human observations remain
+`NOT RUN`; this is not ordinary MAC5, stable, production-ready, or public
+Windows-trust acceptance.
 
 Issue #28's Rust 1.88/Resolver 3 build contract integrated through PR #29 at
 `9e0b36b`. Exact PR-head run `31509554882` and exact-merge main run
