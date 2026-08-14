@@ -253,9 +253,21 @@ Verification on 2026-08-14: `cargo build -p rho-server --locked` and
 two new regressions); `cargo fmt --all -- --check` clean. No provider,
 credential, model-routing, schema, persistence, project, approval, frontend,
 or public-protocol behavior changed; no version or NEWS change (CLI
-diagnostics only, no user-visible application behavior). The Linux DeepSeek
-reachability report itself was checked separately: `api.deepseek.com/models`
-responds (401 with a dummy key) from the reporting machine with both curl and
-the app's exact reqwest client, and the desktop Agent paths were already
-file-based; if the report persists, the next step is the exact UI error text
-and Agent/aisdk startup logs.
+diagnostics only, no user-visible application behavior).
+
+## 2026-08-14 resolution of the Linux DeepSeek reachability report
+
+The reported "cannot reach the service" failure was reproduced with the
+app's exact R-side connection-test path and traced to an environment gap, not
+an application defect: the reporting R library had `aisdk` 1.5.0 but was
+missing the pinned `aisdk.providers` 0.1.0 (exact commit
+`5cf315e5eedad7d83b224c96595da346e1192a85`), which the active credential
+spec and README require for DeepSeek and the other registered providers.
+`rho_test_model_profile` then failed at the provider-admission gate with the
+actionable message "The selected provider requires aisdk.providers 0.1.0 or
+later..." and `error_class` `provider`, before any network call. The Rust
+model-discovery endpoint and the R-side call both reach
+`api.deepseek.com` (401 with a dummy key) once the package is present.
+Remediation: `remotes::install_github("YuLab-SMU/aisdk.providers@5cf315e5eedad7d83b224c96595da346e1192a85")`
+into the R user library (also installable from Rho's environment panel). No
+source change was required; no version or NEWS impact.
