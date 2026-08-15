@@ -21,7 +21,7 @@ Specification: `docs/plans/active-2026-08-15-tauri-native-updater-spec.md`
 
 | Gate | Required evidence | Current state |
 | --- | --- | --- |
-| UPDATER-1A source | reviewed updater runtime/config, docs, deterministic tests, and protected integration | author review and deterministic matrix passed; PR CI and protected integration pending |
+| UPDATER-1A source | reviewed updater runtime/config, docs, deterministic tests, and protected integration | author review, deterministic matrix, and PR CI passed; required review and protected integration pending |
 | Windows final bytes | final Authenticode NSIS installer, fresh Tauri `.sig` cryptographically verified against the configured public key, and bound native-updater evidence | not run |
 | macOS final bytes | independently accepted app archive, stapled app, final `.tar.gz`, fresh Tauri `.sig` cryptographically verified against the configured public key, and bound evidence | not run |
 | Candidate Draft | immutable exact asset set, reviewed release notes, aggregate evidence, and explicit acceptance decision | not run |
@@ -46,6 +46,10 @@ Specification: `docs/plans/active-2026-08-15-tauri-native-updater-spec.md`
 - Windows target compilation and native installer behavior are not claimed by
   this local macOS evidence; the protected Windows GNU CI and later exact
   candidate/installed-app gates remain required.
+- Upstream PR [#78](https://github.com/YuLab-SMU/Rho/pull/78) Rust
+  compatibility run `31871247195` passed on 2026-08-15 for macOS stable, macOS
+  Rust 1.88, Windows GNU stable, and Windows GNU Rust 1.88. It is source CI,
+  not a candidate, installed-app, or release acceptance result.
 
 ## Release Decision
 

@@ -3,9 +3,9 @@
 Date: 2026-08-15
 
 Status: active; `UPDATER-1A` authorized on 2026-08-15; source, signing, and
-publication-contract implementation plus deterministic verification and author
-review are complete. Independent PR review/CI and protected integration remain
-open. `UPDATER-1B` through `UPDATER-1D` remain gated by their exact candidate,
+publication-contract implementation plus deterministic verification, author
+review, and PR CI are complete. Independent PR review and protected integration
+remain open. `UPDATER-1B` through `UPDATER-1D` remain gated by their exact candidate,
 installed-app, and release evidence conditions.
 
 Authorization: after Issue #27 was audited and its explicit native-updater
