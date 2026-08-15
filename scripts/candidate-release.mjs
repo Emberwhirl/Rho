@@ -5,6 +5,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
+import {
+  NATIVE_UPDATER_PLATFORMS,
+  createNativeUpdaterEvidence,
+  validateNativeUpdaterReleaseAssets,
+} from "./tauri-native-updater.mjs";
+
 export const CANDIDATE_PLATFORMS = ["windows_x86_64", "macos_aarch64"];
 export const MAX_EVIDENCE_BYTES = 256 * 1024;
 export const REHEARSAL_REPOSITORY = "YuLab-SMU/Rho_for_mac";
@@ -20,6 +26,7 @@ const SIGNPATH_FREE_TRIAL_MODULE_SHA256 = "4a732624a7214dc8290dbf81ed2714d6b509b
 const UNSIGNED_CANDIDATE_COMPATIBILITY = new Set(["0.4.0-dev.27"]);
 const UNSIGNED_PUBLISHED_COMPATIBILITY = new Set(["0.4.0-dev.24"]);
 const CONDITIONAL_ACCEPTANCE_VERSIONS = new Set(["0.4.0-dev.39"]);
+const NATIVE_UPDATER_REQUIRED_VERSIONS = new Set(["0.4.0-dev.40"]);
 const CONDITIONAL_ACCEPTANCE_RISKS = [
   "macos_gatekeeper_human_launch_not_run",
   "windows_human_install_not_run",
@@ -461,6 +468,14 @@ function requiredCandidateAssetRecords(candidateEvidence) {
   return Object.values(candidateEvidence.platforms).flatMap((entry) => [entry.artifact, entry.checksum, entry.evidence]);
 }
 
+function nativeUpdaterRequired(version) {
+  return NATIVE_UPDATER_REQUIRED_VERSIONS.has(version);
+}
+
+function nativeUpdaterEvidenceName(version) {
+  return `rho-${version}-tauri-native-updater-evidence.json`;
+}
+
 function validGithubLogin(value) {
   return typeof value === "string"
     && value.length <= 39
@@ -600,12 +615,33 @@ export function createConditionalAcceptanceEvidence({
 }
 
 export function validatePublishRecord(record) {
+  const baseRecordKeys = [
+    "tag_name",
+    "draft",
+    "prerelease",
+    "target_commitish",
+    "publisher",
+    "assets",
+    "platform_evidence",
+    "candidate_evidence",
+    "candidate_evidence_asset",
+    "acceptance_evidence",
+  ];
+  const nativeRecordKeys = [
+    "native_updater_evidence",
+    "native_updater_evidence_asset",
+    "native_updater_signatures",
+  ];
+  const hasNativeUpdater = nativeRecordKeys.some((key) => Object.hasOwn(record || {}, key));
   assertExactKeys(
     record,
-    ["tag_name", "draft", "prerelease", "target_commitish", "publisher", "assets", "platform_evidence", "candidate_evidence", "candidate_evidence_asset", "acceptance_evidence"],
+    hasNativeUpdater ? [...baseRecordKeys, ...nativeRecordKeys] : baseRecordKeys,
     "publish record",
   );
   const candidate = validateAggregateEvidence(record.candidate_evidence);
+  if (nativeUpdaterRequired(candidate.version) !== hasNativeUpdater) {
+    fail(`Native updater evidence is ${nativeUpdaterRequired(candidate.version) ? "required" : "not authorized"} for ${candidate.version}`);
+  }
   if (!record.draft || !record.prerelease) fail("Only a draft prerelease may be published");
   if (record.tag_name !== candidate.release_tag || record.target_commitish !== candidate.commit) {
     fail("Draft release identity does not match candidate evidence");
@@ -640,6 +676,29 @@ export function validatePublishRecord(record) {
     record.candidate_evidence_asset.name,
     `rho-${candidate.version}-acceptance.json`,
   ]);
+  if (hasNativeUpdater) {
+    assertExactKeys(record.native_updater_signatures, NATIVE_UPDATER_PLATFORMS, "native updater signatures");
+    if (record.native_updater_evidence_asset?.name !== nativeUpdaterEvidenceName(candidate.version)) {
+      fail("Native updater evidence asset name is invalid");
+    }
+    const nativeEvidence = validateNativeUpdaterReleaseAssets({
+      evidence: record.native_updater_evidence,
+      evidenceAsset: record.native_updater_evidence_asset,
+      candidateEvidence: candidate,
+      assets: record.assets,
+      signatureContents: record.native_updater_signatures,
+      expected: {
+        version: candidate.version,
+        release_tag: candidate.release_tag,
+        commit: candidate.commit,
+      },
+    });
+    expectedNames.add(record.native_updater_evidence_asset.name);
+    for (const platform of NATIVE_UPDATER_PLATFORMS) {
+      expectedNames.add(nativeEvidence.platforms[platform].artifact.name);
+      expectedNames.add(nativeEvidence.platforms[platform].signature.name);
+    }
+  }
   const actualNames = record.assets.map((entry) => entry.name);
   if (actualNames.length !== expectedNames.size || new Set(actualNames).size !== actualNames.length) {
     fail("Draft release asset set is incomplete or duplicated");
@@ -874,6 +933,116 @@ export function selfTest() {
       acceptance_evidence: acceptance,
     };
     validatePublishRecord(record);
+
+    const updaterVersion = "0.4.0-dev.40";
+    const updaterTag = `v${updaterVersion}`;
+    const updaterRoot = path.join(root, "native-updater");
+    fs.mkdirSync(updaterRoot);
+    const updaterEvidencePaths = {};
+    const updaterPlatformEvidence = {};
+    for (const platform of CANDIDATE_PLATFORMS) {
+      const names = expectedPlatformNames(updaterVersion, platform);
+      const artifactPath = path.join(updaterRoot, names.artifactName);
+      fs.writeFileSync(artifactPath, `${platform} native updater candidate bytes`);
+      const platformSigning = platform === "windows_x86_64"
+        ? { ...signingEvidence, signed_sha256: sha256File(artifactPath) }
+        : undefined;
+      updaterEvidencePaths[platform] = path.join(updaterRoot, names.evidenceName);
+      createPlatformEvidence({
+        version: updaterVersion,
+        releaseTag: updaterTag,
+        commit,
+        platform,
+        artifactPath,
+        outputPath: updaterEvidencePaths[platform],
+        checks: platform === "windows_x86_64"
+          ? [...REQUIRED_CHECKS[platform], ...WINDOWS_SIGNING_CHECKS]
+          : [...REQUIRED_CHECKS[platform], "native_updater_archive"],
+        signingEvidence: platformSigning,
+      });
+      updaterPlatformEvidence[platform] = JSON.parse(fs.readFileSync(updaterEvidencePaths[platform], "utf8"));
+    }
+    const updaterAggregatePath = path.join(updaterRoot, `rho-${updaterVersion}-candidate-evidence.json`);
+    const updaterCandidate = createAggregateEvidence({
+      version: updaterVersion,
+      releaseTag: updaterTag,
+      commit,
+      directory: updaterRoot,
+      windowsEvidencePath: updaterEvidencePaths.windows_x86_64,
+      macosEvidencePath: updaterEvidencePaths.macos_aarch64,
+      outputPath: updaterAggregatePath,
+      requireWindowsSigning: true,
+    });
+    const updaterSignature = Buffer.from("untrusted comment: Rho test signature\nRURvby10ZXN0LXNpZ25hdHVyZQ==\n", "utf8").toString("base64");
+    const macosUpdaterArtifact = path.join(updaterRoot, `Rho_${updaterVersion}_aarch64.app.tar.gz`);
+    fs.writeFileSync(macosUpdaterArtifact, "notarized and stapled updater app archive");
+    for (const artifactPath of [
+      path.join(updaterRoot, `Rho_${updaterVersion}_x64-setup.exe`),
+      macosUpdaterArtifact,
+    ]) fs.writeFileSync(`${artifactPath}.sig`, updaterSignature);
+    const updaterEvidencePath = path.join(updaterRoot, nativeUpdaterEvidenceName(updaterVersion));
+    const updaterEvidence = createNativeUpdaterEvidence({
+      version: updaterVersion,
+      releaseTag: updaterTag,
+      commit,
+      directory: updaterRoot,
+      outputPath: updaterEvidencePath,
+    });
+    const updaterCandidateAsset = fileRecord(updaterAggregatePath);
+    const updaterEvidenceAsset = fileRecord(updaterEvidencePath);
+    const updaterAcceptance = {
+      schema_version: 1,
+      type: "rho_candidate_acceptance",
+      status: "passed",
+      decision: "GO",
+      version: updaterVersion,
+      release_tag: updaterTag,
+      commit,
+      candidate_evidence_sha256: updaterCandidateAsset.sha256,
+      platforms: updaterCandidate.platforms,
+    };
+    const updaterAssets = [...new Map([
+      ...requiredCandidateAssetRecords(updaterCandidate).map((entry) => ({ name: entry.name, size: entry.size_bytes, sha256: entry.sha256 })),
+      { name: updaterCandidateAsset.name, size: updaterCandidateAsset.size_bytes, sha256: updaterCandidateAsset.sha256 },
+      { name: updaterEvidenceAsset.name, size: updaterEvidenceAsset.size_bytes, sha256: updaterEvidenceAsset.sha256 },
+      { name: `rho-${updaterVersion}-acceptance.json`, size: 100, sha256: "e".repeat(64) },
+      ...NATIVE_UPDATER_PLATFORMS.flatMap((platform) => {
+        const native = updaterEvidence.platforms[platform];
+        return [native.artifact, native.signature].map((entry) => ({
+          name: entry.name,
+          size: entry.size_bytes,
+          sha256: entry.sha256,
+        }));
+      }),
+    ].map((asset) => [asset.name, asset])).values()];
+    const updaterRecord = {
+      tag_name: updaterTag,
+      draft: true,
+      prerelease: true,
+      target_commitish: commit,
+      publisher: "xiayh17",
+      assets: updaterAssets,
+      platform_evidence: updaterPlatformEvidence,
+      candidate_evidence: updaterCandidate,
+      candidate_evidence_asset: updaterCandidateAsset,
+      acceptance_evidence: updaterAcceptance,
+      native_updater_evidence: updaterEvidence,
+      native_updater_evidence_asset: updaterEvidenceAsset,
+      native_updater_signatures: Object.fromEntries(NATIVE_UPDATER_PLATFORMS.map((platform) => [platform, updaterSignature])),
+    };
+    validatePublishRecord(updaterRecord);
+    const updaterRecordWithoutEvidence = structuredClone(updaterRecord);
+    delete updaterRecordWithoutEvidence.native_updater_evidence;
+    delete updaterRecordWithoutEvidence.native_updater_evidence_asset;
+    delete updaterRecordWithoutEvidence.native_updater_signatures;
+    expectFailure(() => validatePublishRecord(updaterRecordWithoutEvidence), /Native updater evidence is required/);
+    expectFailure(
+      () => validatePublishRecord({
+        ...updaterRecord,
+        native_updater_signatures: { ...updaterRecord.native_updater_signatures, windows_x86_64: updaterSignature.replace(/.$/, "A") },
+      }),
+      /signature/,
+    );
     const conditionalAcceptance = {
       ...acceptance,
       schema_version: 2,

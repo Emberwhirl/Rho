@@ -17,6 +17,10 @@ function snapshot() {
     frontend: read("desktop/dist/app.js"),
     html: read("desktop/dist/index.html"),
     updateBackend: read("desktop/src-tauri/src/update.rs"),
+    desktopBackend: read("desktop/src-tauri/src/main.rs"),
+    tauriConfig: read("desktop/src-tauri/tauri.conf.json"),
+    windowsTauriConfig: read("desktop/src-tauri/tauri.windows.conf.json"),
+    macosTauriConfig: read("desktop/src-tauri/tauri.macos.conf.json"),
     updateDesign: read("docs/design/accepted-2026-07-25-about-and-update-check-design.md"),
     docsIndex: read("docs/README.md"),
     activeSpec: read("docs/plans/active-2026-08-11-signpath-application-readiness-spec.md"),
@@ -92,17 +96,34 @@ function validate(value) {
   assert.match(value.readme, /Uninstalling the application does not automatically delete project files/i);
 
   assert.match(value.html, /data-menu-command="check-updates"/);
+  assert.match(value.html, /id="updateInstall"[^>]*>Install and Restart/);
   assert.match(value.frontend, /"check-updates": \(\) => openUpdateDialog\(\)/);
   assert.match(value.frontend, /function openUpdateDialog\(\) \{\s*(?:void )?checkForUpdates\(\);\s*\}/);
   assert.match(value.frontend, /\$\("#updateRetry"\)\.addEventListener\("click", \(\) => checkForUpdates\(\)\)/);
+  assert.match(value.frontend, /function installNativeUpdate\(\)/);
+  assert.match(value.frontend, /invoke\("install_native_update", \{ expectedVersion \}\)/);
+  assert.match(value.frontend, /Browser preview cannot install updates/);
+  assert.match(value.frontend, /UPDATE_STALE/);
+  assert.doesNotMatch(value.frontend, /updateView/);
   assert.equal(occurrences(value.frontend, /invoke\("check_for_updates"\)/g), 1, "one manual frontend path must own update invocation");
   assert.doesNotMatch(value.frontend, /maybeCheckForUpdates/);
   assert.doesNotMatch(value.frontend, /checkForUpdates\(\{\s*background\s*:/);
   assert.doesNotMatch(value.frontend, /rho\.update\.(?:lastCheck|dismissed)/);
   assert.doesNotMatch(value.frontend, /async function checkForUpdates\([^)]*background/);
   assert.match(value.updateBackend, /pub const WEBSITE_URL: &str = "https:\/\/yulab-smu\.top\/Rho\/"/);
-  assert.match(value.updateBackend, /Duration::from_secs\(10\)/);
-  assert.match(value.updateBackend, /const MAX_MANIFEST_BYTES: u64 = 64 \* 1024/);
+  assert.match(value.updateBackend, /NATIVE_UPDATE_STABLE_ENDPOINT/);
+  assert.match(value.updateBackend, /NATIVE_UPDATE_DEVELOPMENT_ENDPOINT/);
+  assert.match(value.updateBackend, /native_updater_supported\(\)/);
+  assert.match(value.updateBackend, /normalized_native_update_notes/);
+  assert.match(value.desktopBackend, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
+  assert.match(value.desktopBackend, /async fn install_native_update\(/);
+  assert.match(value.desktopBackend, /app\s*\.updater_builder\(\)/);
+  assert.match(value.desktopBackend, /pending_native_update_matches/);
+  const tauriConfig = JSON.parse(value.tauriConfig);
+  assert.equal(tauriConfig.plugins.updater.endpoints[0], "https://yulab-smu.top/Rho/updates/tauri/stable.json");
+  assert.match(tauriConfig.plugins.updater.pubkey, /^[A-Za-z0-9+/=]+$/);
+  assert.equal(JSON.parse(value.windowsTauriConfig).bundle.createUpdaterArtifacts, true);
+  assert.equal(JSON.parse(value.macosTauriConfig).bundle.createUpdaterArtifacts, true);
 
   assert.match(value.updateDesign, /Update discovery is manual-only/i);
   assert.match(value.updateDesign, /Startup does not schedule or perform an update request/i);

@@ -6,7 +6,7 @@ const read = (file) => normalizeLineEndings(fs.readFileSync(file, "utf8"));
 const count = (text, pattern) => [...text.matchAll(pattern)].length;
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const expectedVersion = "0.4.0-dev.39";
+const expectedVersion = "0.4.0-dev.40";
 const expectedVersionPattern = escapeRegExp(expectedVersion);
 const cargo = read("Cargo.toml");
 const cargoVersion = cargo.match(/^version = "([^"]+)"/m)?.[1];
@@ -19,13 +19,13 @@ assert.equal(packageLock.packages[""].version, expectedVersion);
 assert.match(read("desktop/dist/index.html"), new RegExp(`styles\\.css\\?v=${expectedVersionPattern}`));
 assert.match(read("desktop/dist/index.html"), new RegExp(`app\\.js\\?v=${expectedVersionPattern}`));
 assert.ok(
-  count(read("desktop/dist/app.js"), new RegExp(expectedVersionPattern, "g")) >= 3,
+  count(read("desktop/dist/app.js"), new RegExp(expectedVersionPattern, "g")) >= 2,
   "Mock identity must be synchronized",
 );
 
 const localPackagePattern = /name = "rho-[^"]+"\r?\nversion = "([^"]+)"/g;
 assert.deepEqual(
-  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.39"'.matchAll(localPackagePattern)].map((match) => match[1]),
+  [...'name = "rho-fixture"\r\nversion = "0.4.0-dev.40"'.matchAll(localPackagePattern)].map((match) => match[1]),
   [expectedVersion],
   "Cargo.lock parsing must accept Windows CRLF checkouts",
 );
@@ -108,6 +108,11 @@ assert.equal(
   4,
   "Submission and mounted-finalizer app/Ark signatures must prove the exact entitlement set",
 );
+assert.equal(
+  count(build, /require_exact_library_validation_entitlement "Updater (?:Rho app executable|bundled Ark executable)"/g),
+  2,
+  "The extracted notarized updater app and Ark binaries must prove the exact entitlement set",
+);
 assert.match(build, /codesign -d --entitlements - --xml "\$binary_path"/);
 assert.match(build, /plutil -convert json -o "\$json_path" "\$plist_path"/);
 assert.match(build, /node scripts\/validate-macos-entitlements\.mjs "\$json_path"/);
@@ -123,20 +128,26 @@ const macFinalizeJob = build.match(/\n  macos-finalize:[\s\S]*?(?=\n  rehearsal-
 assert.ok(macSubmitJob && macWaitJob && macFinalizeJob, "Missing asynchronous macOS notarization jobs");
 assert.match(macSubmitJob, /runs-on: macos-26\n\s+timeout-minutes: 60/);
 assert.match(macSubmitJob, /xcrun notarytool submit "\$submitted_dmg"[^\n]+ --no-wait --output-format json/);
+assert.match(macSubmitJob, /xcrun notarytool submit "\$submitted_app_archive"[^\n]+ --no-wait --output-format json/);
 assert.doesNotMatch(macSubmitJob, /notarytool submit[^\n]+ --wait(?: |$)/);
-assert.equal(count(build, /xcrun notarytool submit/g), 1, "The exact final DMG must be submitted once");
+assert.equal(count(build, /xcrun notarytool submit/g), 2, "The final DMG and same-app archive must be submitted independently");
 assert.match(macSubmitJob, /macos-notary\.mjs submission/);
+assert.match(macSubmitJob, /--artifact "\$submitted_app_archive" --artifact-kind app_zip/);
+assert.match(macSubmitJob, /ditto -c -k --keepParent "\$app_path" "\$submitted_app_archive"/);
+assert.match(macSubmitJob, /unzip -Z1 "\$submitted_app_archive"/);
 assert.match(macSubmitJob, /rho-notary-submission-\$\{\{ needs\.identity\.outputs\.version \}\}-\$\{\{ github\.run_id \}\}/);
 const entitlementValidationIndex = macSubmitJob.indexOf('require_exact_library_validation_entitlement "Rho app executable"');
 const dmgSubmitIndex = macSubmitJob.indexOf('xcrun notarytool submit "$submitted_dmg"');
+const appArchiveSubmitIndex = macSubmitJob.indexOf('xcrun notarytool submit "$submitted_app_archive"');
 const cleanupIndex = macSubmitJob.indexOf("Remove temporary Apple credentials before artifact handoff");
-const submissionUploadIndex = macSubmitJob.indexOf("Upload immutable unstapled DMG and pending request");
+const submissionUploadIndex = macSubmitJob.indexOf("Upload immutable unstapled notarization inputs");
 assert.ok(
   entitlementValidationIndex >= 0
     && entitlementValidationIndex < dmgSubmitIndex
+    && dmgSubmitIndex < appArchiveSubmitIndex
     && dmgSubmitIndex < cleanupIndex
     && cleanupIndex < submissionUploadIndex,
-  "Entitlement validation, one submission, credential cleanup, and immutable handoff must stay ordered",
+  "Entitlement validation, both submissions, credential cleanup, and immutable handoff must stay ordered",
 );
 assert.match(macSubmitJob, /echo "RHO_SIGNING_KEYCHAIN="/);
 assert.match(macSubmitJob, /echo "APPLE_API_KEY_PATH="/);
@@ -146,6 +157,8 @@ assert.equal(count(macSubmitJob, /secrets\.APPLE_API_KEY\b/g), 2, "Cleanup must 
 assert.match(macWaitJob, /runs-on: ubuntu-latest/);
 assert.match(macWaitJob, /timeout-minutes: 350/);
 assert.match(macWaitJob, /macos-notary\.mjs wait/);
+assert.equal(count(macWaitJob, /macos-notary\.mjs wait/g), 2, "Each submitted macOS artifact must receive an independent acceptance record");
+assert.match(macWaitJob, /macos-app-archive-notary-pending/);
 assert.match(macWaitJob, /--poll-interval-ms 120000 --max-wait-ms 19800000/);
 assert.match(macWaitJob, /rho-notary-acceptance-\$\{\{ needs\.identity\.outputs\.version \}\}-\$\{\{ github\.run_id \}\}/);
 for (const secret of ["APPLE_API_ISSUER", "APPLE_API_KEY", "APPLE_API_PRIVATE_KEY"]) {
@@ -157,21 +170,35 @@ for (const secret of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "KEYCHA
 assert.doesNotMatch(macWaitJob, /notarytool|APPLE_API_KEY_PATH|contents: write/);
 
 assert.match(macFinalizeJob, /runs-on: macos-26\n\s+timeout-minutes: 60/);
-assert.doesNotMatch(macFinalizeJob, /secrets\.|notarytool submit/);
+for (const secret of ["APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD", "KEYCHAIN_PASSWORD", "APPLE_SIGNING_IDENTITY", "APPLE_TEAM_ID", "APPLE_API_ISSUER", "APPLE_API_KEY", "APPLE_API_PRIVATE_KEY"]) {
+  assert.doesNotMatch(macFinalizeJob, new RegExp(`secrets\\.${secret}\\b`), `Finalizer must not receive ${secret}`);
+}
+assert.match(macFinalizeJob, /Sign final notarized macOS updater archive[\s\S]*?if: \$\{\{ needs\.identity\.outputs\.build_mode == 'candidate' \}\}/);
+assert.match(macFinalizeJob, /secrets\.TAURI_SIGNING_PRIVATE_KEY\b/);
+assert.doesNotMatch(macFinalizeJob, /notarytool submit/);
 assert.match(macFinalizeJob, /Install exact Workspace smoke runtime dependency/);
 assert.match(macFinalizeJob, /read\.dcf\('r\/rho\.bridge\/DESCRIPTION'\)/);
 assert.match(macFinalizeJob, /identical\(non_base, 'jsonlite'\)/);
 assert.match(macFinalizeJob, /install\.packages\('jsonlite'\)/);
 assert.doesNotMatch(macFinalizeJob, /remotes::install_deps|rho\.agent/);
 assert.match(macFinalizeJob, /macos-notary\.mjs verify/);
+assert.equal(count(macFinalizeJob, /macos-notary\.mjs verify/g), 2, "Finalizer must bind both accepted notarization artifacts");
 assert.match(macFinalizeJob, /xcrun stapler staple "\$dmg_path"/);
 assert.match(macFinalizeJob, /hdiutil attach "\$dmg_path" -nobrowse -readonly -mountpoint "\$mount_point"/);
 assert.match(macFinalizeJob, /app_path="\$mount_point\/Rho\.app"/);
+assert.match(macFinalizeJob, /ditto -x -k "\$app_archive_path" "\$updater_extract"/);
+assert.match(macFinalizeJob, /xcrun stapler staple "\$updater_app_path"/);
+assert.match(macFinalizeJob, /tar -C "\$updater_extract" -czf "\$updater_tar" Rho\.app/);
+assert.match(macFinalizeJob, /tar -tzf "\$updater_tar"/);
+assert.match(macFinalizeJob, /native_updater_archive/);
+assert.match(macFinalizeJob, /signer sign "\$artifact"/);
 const finalVerifyIndex = macFinalizeJob.indexOf("macos-notary.mjs verify");
 const finalDependencyIndex = macFinalizeJob.indexOf("Install exact Workspace smoke runtime dependency");
 const dmgStapleIndex = macFinalizeJob.indexOf('xcrun stapler staple "$dmg_path"');
 const finalGatekeeperIndex = macFinalizeJob.indexOf("spctl --assess --type execute");
 const finalSmokeIndex = macFinalizeJob.indexOf('"$app_path/Contents/MacOS/rho-desktop" --smoke-test');
+const updaterStapleIndex = macFinalizeJob.indexOf('xcrun stapler staple "$updater_app_path"');
+const updaterArchiveIndex = macFinalizeJob.indexOf('tar -C "$updater_extract" -czf "$updater_tar" Rho.app');
 assert.ok(
   finalDependencyIndex >= 0
     && finalDependencyIndex < finalVerifyIndex
@@ -180,6 +207,7 @@ assert.ok(
     && finalGatekeeperIndex < finalSmokeIndex,
   "Immutable binding, staple, mounted Gatekeeper, and Workspace smoke must stay ordered",
 );
+assert.ok(finalSmokeIndex < updaterStapleIndex && updaterStapleIndex < updaterArchiveIndex, "The updater archive must be created only after its app is stapled and smoke-tested");
 const bridgeDescription = read("r/rho.bridge/DESCRIPTION");
 const imports = bridgeDescription.match(/Imports:\n((?:    .+\n?)+)/)?.[1]
   ?.split(",")
@@ -298,10 +326,11 @@ assert.match(pages, /artifacts\.macos_aarch64/);
 assert.match(pages, /Platform evidence content mismatch/);
 
 const update = read("desktop/src-tauri/src/update.rs");
-assert.match(update, /macos_aarch64: Option<UpdateArtifact>/);
-assert.match(update, /if let Some\(artifact\) = &manifest\.artifacts\.macos_aarch64/);
-assert.match(update, /UPDATE_PLATFORM_UNAVAILABLE/);
-assert.match(read("desktop/dist/app.js"), /This release does not include an installer for this Mac yet\./);
+assert.match(update, /NATIVE_UPDATE_DEVELOPMENT_ENDPOINT/);
+assert.match(update, /native_updater_supported_for\(os: &str, arch: &str\)/);
+assert.match(update, /\("macos", "aarch64"\)/);
+assert.match(update, /UPDATE_INVALID: native update notes/);
+assert.match(read("desktop/dist/app.js"), /Native updates are available only for Windows x64 and Apple Silicon Macs\./);
 const generator = read("scripts/generate-update-site.mjs");
 assert.match(generator, /validateAggregateEvidence/);
 assert.match(generator, /Download for macOS \(Apple Silicon\)/);

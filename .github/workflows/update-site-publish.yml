@@ -56,6 +56,9 @@ jobs:
               const evidence = JSON.parse(evidenceBytes.toString("utf8"));
               let platformEvidence;
               let acceptanceEvidence;
+              let nativeUpdaterEvidence;
+              let nativeUpdaterEvidenceAsset;
+              let nativeUpdaterSignatures;
               if (evidence.type === "rho_candidate_evidence") {
                 const acceptanceAsset = release.assets.find((asset) => asset.name === `rho-${version}-acceptance.json`);
                 if (!acceptanceAsset || acceptanceAsset.size <= 0 || acceptanceAsset.size > 256 * 1024) {
@@ -90,6 +93,56 @@ jobs:
                   }
                   platformEvidence[platform] = { size_bytes: bytes.length, sha256, content: JSON.parse(bytes.toString("utf8")) };
                 }
+                const nativeEvidenceName = `rho-${version}-tauri-native-updater-evidence.json`;
+                const nativeSignatureNames = {
+                  windows_x86_64: `Rho_${version}_x64-setup.exe.sig`,
+                  macos_aarch64: `Rho_${version}_aarch64.app.tar.gz.sig`,
+                };
+                const nativeEvidenceAssetCandidate = release.assets.find((asset) => asset.name === nativeEvidenceName);
+                const anyNativeAsset = release.assets.some((asset) => asset.name === nativeEvidenceName || Object.values(nativeSignatureNames).includes(asset.name));
+                if (anyNativeAsset && !nativeEvidenceAssetCandidate) {
+                  throw new Error(`Native updater asset set is incomplete for ${release.tag_name}`);
+                }
+                if (nativeEvidenceAssetCandidate) {
+                  if (nativeEvidenceAssetCandidate.size <= 0 || nativeEvidenceAssetCandidate.size > 256 * 1024) {
+                    throw new Error(`Native updater evidence exceeds its byte budget for ${release.tag_name}`);
+                  }
+                  const nativeEvidenceResponse = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    asset_id: nativeEvidenceAssetCandidate.id,
+                    headers: { accept: "application/octet-stream" },
+                  });
+                  const nativeEvidenceBytes = Buffer.from(nativeEvidenceResponse.data);
+                  const nativeEvidenceSha256 = crypto.createHash("sha256").update(nativeEvidenceBytes).digest("hex");
+                  if (nativeEvidenceBytes.length !== nativeEvidenceAssetCandidate.size) {
+                    throw new Error(`Native updater evidence size mismatch for ${release.tag_name}`);
+                  }
+                  nativeUpdaterEvidence = JSON.parse(nativeEvidenceBytes.toString("utf8"));
+                  nativeUpdaterEvidenceAsset = {
+                    name: nativeEvidenceAssetCandidate.name,
+                    size_bytes: nativeEvidenceBytes.length,
+                    sha256: nativeEvidenceSha256,
+                  };
+                  nativeUpdaterSignatures = {};
+                  for (const [platform, signatureName] of Object.entries(nativeSignatureNames)) {
+                    const signatureAsset = release.assets.find((asset) => asset.name === signatureName);
+                    if (!signatureAsset || signatureAsset.size <= 0 || signatureAsset.size > 16 * 1024) {
+                      throw new Error(`Native updater signature asset is missing or exceeds its byte budget for ${release.tag_name} ${platform}`);
+                    }
+                    const signatureResponse = await github.request("GET /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      asset_id: signatureAsset.id,
+                      headers: { accept: "application/octet-stream" },
+                    });
+                    const signatureBytes = Buffer.from(signatureResponse.data);
+                    if (signatureBytes.length !== signatureAsset.size) {
+                      throw new Error(`Native updater signature size mismatch for ${release.tag_name} ${platform}`);
+                    }
+                    nativeUpdaterSignatures[platform] = signatureBytes.toString("utf8");
+                  }
+                }
               }
               records.push({
                 tag_name: release.tag_name,
@@ -108,6 +161,9 @@ jobs:
                 evidence_sha256: evidenceSha256,
                 acceptance_evidence: acceptanceEvidence,
                 platform_evidence: platformEvidence,
+                native_updater_evidence: nativeUpdaterEvidence,
+                native_updater_evidence_asset: nativeUpdaterEvidenceAsset,
+                native_updater_signatures: nativeUpdaterSignatures,
               });
             }
             fs.mkdirSync("target", { recursive: true });
@@ -121,8 +177,10 @@ jobs:
           node scripts/generate-update-site.mjs --test true
           result="$(node scripts/generate-update-site.mjs --input target/releases-for-pages.json --output target/pages)"
           development_version="$(node -e 'const value=JSON.parse(process.argv[1]); if(!value.development) process.exit(1); process.stdout.write(value.development)' "$result")"
+          native_development_version="$(node -e 'const value=JSON.parse(process.argv[1]); process.stdout.write(value.native_development || "")' "$result")"
           development_has_macos="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("target/pages/updates/development.json", "utf8")); process.stdout.write(String(Boolean(value.artifacts.macos_aarch64)))')"
           echo "development_version=$development_version" >> "$GITHUB_OUTPUT"
+          echo "native_development_version=$native_development_version" >> "$GITHUB_OUTPUT"
           echo "development_has_macos=$development_has_macos" >> "$GITHUB_OUTPUT"
 
       - name: Publish to gh-pages
@@ -150,4 +208,23 @@ jobs:
             sleep 10
           done
           echo "The deployed development manifest did not reach $EXPECTED_DEVELOPMENT_VERSION." >&2
+          exit 1
+
+      - name: Verify deployed native updater manifest
+        if: ${{ steps.update_site.outputs.native_development_version != '' }}
+        shell: bash
+        env:
+          EXPECTED_NATIVE_DEVELOPMENT_VERSION: ${{ steps.update_site.outputs.native_development_version }}
+        run: |
+          set -euo pipefail
+          native_url="https://yulab-smu.top/Rho/updates/tauri/development.json"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error "$native_url?attempt=$attempt" -o native-development.json; then
+              if node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync("native-development.json","utf8")); const keys=Object.keys(value.platforms||{}).sort(); const valid=JSON.stringify(keys)===JSON.stringify(["darwin-aarch64","windows-x86_64"]) && keys.every((key)=>typeof value.platforms[key].url==="string" && typeof value.platforms[key].signature==="string" && value.platforms[key].signature.length>0); if(value.version!==process.env.EXPECTED_NATIVE_DEVELOPMENT_VERSION || !valid) process.exit(1)'; then
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "The deployed native development manifest did not reach $EXPECTED_NATIVE_DEVELOPMENT_VERSION." >&2
           exit 1

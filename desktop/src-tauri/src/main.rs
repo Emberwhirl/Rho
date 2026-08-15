@@ -55,12 +55,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State, path::BaseDirectory};
+use tauri_plugin_updater::UpdaterExt;
 #[cfg(test)]
 use tokio::sync::Notify;
 use tokio::sync::{Mutex, RwLock, oneshot};
 use uuid::Uuid;
 
-use update::{ReleaseChannel, SOURCE_URL, UpdateCheckResult, WEBSITE_URL};
+use update::{ReleaseChannel, SOURCE_URL, WEBSITE_URL};
 
 const BRIDGE_STATE: &str = include_str!("../../../r/rho.bridge/R/state.R");
 const BRIDGE_EXECUTE: &str = include_str!("../../../r/rho.bridge/R/execute.R");
@@ -155,6 +156,26 @@ struct AppInfo {
     website_url: &'static str,
     source_url: &'static str,
     runtime: AppRuntimeInfo,
+}
+
+#[derive(Serialize)]
+struct NativeUpdateCheckResult {
+    status: &'static str,
+    channel: ReleaseChannel,
+    installed_version: String,
+    available_version: Option<String>,
+    published_at: Option<String>,
+    summary: Option<String>,
+}
+
+struct NativePendingUpdate {
+    update: tauri_plugin_updater::Update,
+    channel: ReleaseChannel,
+}
+
+struct NativeUpdaterState {
+    operation_gate: Mutex<()>,
+    pending: Mutex<Option<NativePendingUpdate>>,
 }
 
 #[derive(Debug)]
@@ -834,12 +855,141 @@ async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
     })
 }
 
+fn native_updater_error(code: &str, error: impl std::fmt::Display) -> String {
+    write_startup_log(&format!(
+        "Native updater {code}: {}",
+        bounded_diagnostic(&error.to_string())
+    ));
+    format!("{code}: The signed update operation did not complete.")
+}
+
+fn pending_native_update_matches(expected_version: &str, available_version: &str) -> bool {
+    expected_version.len() <= 128
+        && available_version.len() <= 128
+        && semver::Version::parse(expected_version).is_ok()
+        && semver::Version::parse(available_version).is_ok()
+        && expected_version == available_version
+}
+
 #[tauri::command]
-async fn check_for_updates() -> Result<UpdateCheckResult, String> {
-    tauri::async_runtime::spawn_blocking(|| update::check_for_updates(env!("CARGO_PKG_VERSION")))
+async fn check_for_updates(
+    app: AppHandle,
+    updater_state: State<'_, NativeUpdaterState>,
+) -> Result<NativeUpdateCheckResult, String> {
+    let _operation = updater_state.operation_gate.lock().await;
+    *updater_state.pending.lock().await = None;
+
+    if !update::native_updater_supported() {
+        return Err(
+            "UPDATE_PLATFORM_UNAVAILABLE: native updates are not available for this platform."
+                .to_string(),
+        );
+    }
+
+    let installed_version = env!("CARGO_PKG_VERSION").to_string();
+    let parsed_installed = semver::Version::parse(&installed_version)
+        .map_err(|error| native_updater_error("UPDATE_INVALID", error))?;
+    let channel = ReleaseChannel::for_version(&parsed_installed);
+    let endpoint = reqwest::Url::parse(update::native_manifest_url(channel))
+        .map_err(|error| native_updater_error("UPDATE_INVALID", error))?;
+    let native_updater = app
+        .updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|error| native_updater_error("UPDATE_INVALID", error))?
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|error| native_updater_error("UPDATE_INVALID", error))?;
+    let available = native_updater
+        .check()
         .await
-        .map_err(display_error)?
-        .map_err(display_error)
+        .map_err(|error| native_updater_error("UPDATE_NETWORK", error))?;
+
+    let Some(update) = available else {
+        return Ok(NativeUpdateCheckResult {
+            status: "up_to_date",
+            channel,
+            installed_version,
+            available_version: None,
+            published_at: None,
+            summary: None,
+        });
+    };
+
+    update::validate_native_update_candidate_metadata(
+        &update.version,
+        &update.download_url,
+        &update.signature,
+    )
+    .map_err(|error| native_updater_error("UPDATE_INVALID", error))?;
+
+    let summary = update::normalized_native_update_notes(update.body.as_deref())
+        .map_err(|error| native_updater_error("UPDATE_INVALID", error))?;
+    let result = NativeUpdateCheckResult {
+        status: "update_available",
+        channel,
+        installed_version,
+        available_version: Some(update.version.clone()),
+        published_at: update.date.map(|value| value.to_string()),
+        summary: Some(summary),
+    };
+    *updater_state.pending.lock().await = Some(NativePendingUpdate { update, channel });
+    Ok(result)
+}
+
+#[tauri::command]
+async fn install_native_update(
+    expected_version: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    updater_state: State<'_, NativeUpdaterState>,
+) -> Result<(), String> {
+    let _operation = updater_state.operation_gate.lock().await;
+    let Some(pending) = updater_state.pending.lock().await.take() else {
+        return Err("UPDATE_STALE: Check for updates again before installing.".to_string());
+    };
+    if !pending_native_update_matches(&expected_version, &pending.update.version) {
+        *updater_state.pending.lock().await = Some(pending);
+        return Err("UPDATE_STALE: The selected update is no longer current. Check again before installing.".to_string());
+    }
+
+    let bytes = match update::download_and_verify_native_update(&pending.update).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            *updater_state.pending.lock().await = Some(pending);
+            return Err(native_updater_error("UPDATE_DOWNLOAD", error));
+        }
+    };
+
+    if state.shutdown_started.swap(true, Ordering::SeqCst) {
+        *updater_state.pending.lock().await = Some(pending);
+        return Err(
+            "UPDATE_STALE: Rho is already closing. Restart it, then check for updates again."
+                .to_string(),
+        );
+    }
+    if let Err(error) = shutdown_application(&state).await {
+        state.shutdown_started.store(false, Ordering::SeqCst);
+        *updater_state.pending.lock().await = Some(pending);
+        return Err(native_updater_error("UPDATE_SHUTDOWN", error));
+    }
+
+    write_startup_log(&format!(
+        "Native updater verified the download for {} channel; beginning controlled installer handoff.",
+        pending.channel.as_str()
+    ));
+    if let Err(error) = update::install_verified_native_update(&pending.update, &bytes) {
+        write_startup_log(&format!(
+            "Native updater install failed after verified download for {} channel: {}",
+            pending.channel.as_str(),
+            bounded_diagnostic(&error.to_string())
+        ));
+        app.request_restart();
+        return Err("UPDATE_INSTALL: The signed update could not be installed. Rho is restarting its existing version.".to_string());
+    }
+    Err(
+        "UPDATE_INSTALL: Native updater handoff unexpectedly returned without restarting Rho."
+            .to_string(),
+    )
 }
 
 #[tauri::command]
@@ -7272,12 +7422,13 @@ mod tests {
         ensure_supported_r_architecture, ensure_supported_r_version, existing_startup_file,
         find_executable_on_path, finish_render_job, has_png_signature, interrupt_all_agent_tasks,
         load_runtime_cache, locate_ark_from_candidates, locate_rscript,
-        lockfile_inventory_arguments, parse_r_runtime_probe, project_switch_blocker,
-        r_architecture_supported, reconcile_render_job, recover_incomplete_agent_file_mutations,
-        render_job_is_terminal, retry_run_arguments, run_is_retryable, runtime_file_signature,
-        safe_delete_project_file, save_runtime_cache, source_claim_snapshot,
-        switch_project_with_watcher_factory, text_sha256, undo_agent_file_edit_state,
-        validate_execute_source_range_shape, workspace_project_root_code, write_r_probe_script,
+        lockfile_inventory_arguments, parse_r_runtime_probe, pending_native_update_matches,
+        project_switch_blocker, r_architecture_supported, reconcile_render_job,
+        recover_incomplete_agent_file_mutations, render_job_is_terminal, retry_run_arguments,
+        run_is_retryable, runtime_file_signature, safe_delete_project_file, save_runtime_cache,
+        source_claim_snapshot, switch_project_with_watcher_factory, text_sha256,
+        undo_agent_file_edit_state, validate_execute_source_range_shape,
+        workspace_project_root_code, write_r_probe_script,
     };
     use crate::platform;
 
@@ -7338,6 +7489,28 @@ mod tests {
         );
         assert!(validate_execute_source_range_shape(&single_line).is_ok());
         assert!(validate_execute_source_range_shape(&execute_request("summary(qc)", None)).is_ok());
+    }
+
+    #[test]
+    fn native_updater_install_requires_the_exact_checked_semver() {
+        assert!(pending_native_update_matches(
+            "0.4.0-dev.40",
+            "0.4.0-dev.40"
+        ));
+        assert!(!pending_native_update_matches(
+            "0.4.0-dev.40",
+            "0.4.0-dev.41"
+        ));
+        assert!(!pending_native_update_matches("not-semver", "0.4.0-dev.40"));
+        assert!(!pending_native_update_matches("0.4.0-dev.40", "not-semver"));
+        assert!(!pending_native_update_matches(
+            &"0".repeat(129),
+            "0.4.0-dev.40"
+        ));
+        assert!(!pending_native_update_matches(
+            "0.4.0-dev.40",
+            &"0".repeat(129)
+        ));
     }
 
     #[test]
@@ -11112,6 +11285,7 @@ fn main() {
         }
     }
     let run_result = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -11155,11 +11329,16 @@ fn main() {
                 render_jobs: Arc::new(Mutex::new(HashMap::new())),
                 render_tasks: Arc::new(Mutex::new(HashMap::new())),
             });
+            app.manage(NativeUpdaterState {
+                operation_gate: Mutex::new(()),
+                pending: Mutex::new(None),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
             check_for_updates,
+            install_native_update,
             open_rho_website,
             show_rho_license,
             startup_status,

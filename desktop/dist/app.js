@@ -2173,7 +2173,7 @@ async function mockInvoke(command, args) {
   await new Promise((resolve) => setTimeout(resolve, command === "run_agent" ? 800 : 300));
   if (command === "app_info") {
     return {
-      version: "0.4.0-dev.39",
+      version: "0.4.0-dev.40",
       channel: "development",
       commit: "4090cf725c53ab657ba9dfc9743ec6159f27dcf9",
       platform: mockPlatformFixture.platform,
@@ -2191,13 +2191,13 @@ async function mockInvoke(command, args) {
     return {
       status: "up_to_date",
       channel: "development",
-      installed_version: "0.4.0-dev.39",
-      available_version: "0.4.0-dev.39",
-      published_at: "2026-07-22T14:45:23Z",
-      summary: "Rho is current for the development channel.",
-      release_page_url: "https://yulab-smu.top/Rho/",
+      installed_version: "0.4.0-dev.40",
+      available_version: null,
+      published_at: null,
+      summary: null,
     };
   }
+  if (command === "install_native_update") return { status: "browser_mock_no_install" };
   if (command === "open_rho_website") return null;
   if (command === "show_rho_license") return null;
   if (["startup_bootstrap", "startup_choose_rscript", "startup_status"].includes(command)) {
@@ -20193,8 +20193,11 @@ async function openAboutDialog() {
 
 function updateFailureMessage(error) {
   const message = String(error);
-  if (message.includes("UPDATE_PLATFORM_UNAVAILABLE")) return "This release does not include an installer for this Mac yet.";
-  if (message.includes("UPDATE_HTTP")) return "The update service returned an unexpected response.";
+  if (message.includes("UPDATE_PLATFORM_UNAVAILABLE")) return "Native updates are available only for Windows x64 and Apple Silicon Macs.";
+  if (message.includes("UPDATE_STALE")) return "The selected update changed. Check for updates again before installing.";
+  if (message.includes("UPDATE_DOWNLOAD")) return "Rho could not download and verify the signed update. Your current version is still running.";
+  if (message.includes("UPDATE_SHUTDOWN")) return "Rho could not prepare for the update. Your current version is still running.";
+  if (message.includes("UPDATE_INSTALL")) return "Rho could not install the signed update and is restarting its current version.";
   if (message.includes("UPDATE_INVALID")) return "The update service returned invalid release information.";
   return "Rho could not reach the update service. Check your connection or proxy and try again.";
 }
@@ -20203,31 +20206,36 @@ function renderUpdateResult(result) {
   state.product.updateResult = result;
   const available = result.status === "update_available";
   const current = result.status === "up_to_date";
+  const installedVersion = result.installed_version || state.product.appInfo?.version || "this build";
+  const availableVersion = result.available_version || installedVersion;
   const title = available ? `Rho ${result.available_version} is available` : current ? "Rho is up to date" : "This build is newer than the update feed";
   $("#updateStatusIcon").className = "update-status-icon";
   $("#updateStatusIcon").textContent = available ? "!" : "OK";
   $("#updateStatusTitle").textContent = title;
   $("#updateStatusMessage").textContent = available
-    ? result.summary
+    ? `${result.summary || "A signed Rho update is available."} Choose Install and Restart to download and verify it; Rho then closes active runtime work, installs the update, and restarts.`
     : current
-      ? `Rho ${result.installed_version} is current for the ${result.channel} channel.`
-      : `Rho ${result.installed_version} is newer than ${result.available_version}, the latest version in the ${result.channel} feed.`;
-  $("#updateVersions").textContent = `Installed ${result.installed_version} · Published ${result.available_version} · ${new Date(result.published_at).toLocaleDateString()}`;
+      ? `Rho ${installedVersion} is current for the ${result.channel} channel.`
+      : `Rho ${installedVersion} is newer than ${availableVersion}, the latest version in the ${result.channel} feed.`;
+  const published = result.published_at ? ` · Published ${new Date(result.published_at).toLocaleDateString()}` : "";
+  $("#updateVersions").textContent = available
+    ? `Installed ${installedVersion} · Available ${availableVersion}${published}`
+    : `Installed ${installedVersion} · ${result.channel} channel`;
   $("#updateVersions").classList.remove("hidden");
   $("#updateRetry").classList.add("hidden");
-  $("#updateView").classList.toggle("hidden", !available);
+  $("#updateInstall").classList.toggle("hidden", !available);
   $("#updateDone").disabled = false;
 }
 
-function renderUpdateFailure(error) {
+function renderUpdateFailure(error, { duringInstall = false } = {}) {
   state.product.updateResult = null;
   $("#updateStatusIcon").className = "update-status-icon error";
   $("#updateStatusIcon").textContent = "!";
-  $("#updateStatusTitle").textContent = "Could not check for updates";
+  $("#updateStatusTitle").textContent = duringInstall ? "Could not install the update" : "Could not check for updates";
   $("#updateStatusMessage").textContent = updateFailureMessage(error);
   $("#updateVersions").classList.add("hidden");
   $("#updateRetry").classList.remove("hidden");
-  $("#updateView").classList.add("hidden");
+  $("#updateInstall").classList.add("hidden");
   $("#updateDone").disabled = false;
 }
 
@@ -20241,7 +20249,7 @@ async function checkForUpdates() {
   $("#updateStatusMessage").textContent = "Contacting the Rho update service.";
   $("#updateVersions").classList.add("hidden");
   $("#updateRetry").classList.add("hidden");
-  $("#updateView").classList.add("hidden");
+  $("#updateInstall").classList.add("hidden");
   $("#updateDone").disabled = true;
   try {
     const result = await invoke("check_for_updates");
@@ -20255,6 +20263,32 @@ async function checkForUpdates() {
 
 function openUpdateDialog() {
   checkForUpdates();
+}
+
+async function installNativeUpdate() {
+  const result = state.product.updateResult;
+  const expectedVersion = String(result?.available_version || "");
+  if (!expectedVersion || state.product.updateBusy) return;
+  state.product.updateBusy = true;
+  $("#updateStatusIcon").className = "update-status-icon";
+  $("#updateStatusIcon").textContent = "...";
+  $("#updateStatusTitle").textContent = "Downloading and verifying update...";
+  $("#updateStatusMessage").textContent = "Rho will install the signed update only after verification succeeds.";
+  $("#updateRetry").classList.add("hidden");
+  $("#updateInstall").classList.add("hidden");
+  $("#updateDone").disabled = true;
+  try {
+    const response = await invoke("install_native_update", { expectedVersion });
+    if (!isDesktop || response?.status === "browser_mock_no_install") {
+      $("#updateStatusTitle").textContent = "Browser preview cannot install updates";
+      $("#updateStatusMessage").textContent = "Run the installed Rho application to download, verify, and install a signed update.";
+      $("#updateDone").disabled = false;
+    }
+  } catch (error) {
+    renderUpdateFailure(error, { duringInstall: true });
+  } finally {
+    state.product.updateBusy = false;
+  }
 }
 
 const panelDefaults = {
@@ -21134,11 +21168,7 @@ $("#aboutLicense").addEventListener("click", async () => {
   }
 });
 $("#updateRetry").addEventListener("click", () => checkForUpdates());
-$("#updateView").addEventListener("click", async () => {
-  const result = state.product.updateResult;
-  if (!result) return;
-  await invoke("open_rho_website", { url: result.release_page_url });
-});
+$("#updateInstall").addEventListener("click", () => installNativeUpdate());
 $("#agentLlmAddProvider").addEventListener("click", openAgentLlmProviderWizard);
 $$('[data-agent-llm-view]').forEach((tab) => {
   tab.addEventListener("click", () => switchAgentLlmView(tab.dataset.agentLlmView, { focus: true }));

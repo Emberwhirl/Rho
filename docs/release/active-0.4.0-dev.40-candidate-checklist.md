@@ -1,0 +1,54 @@
+# Rho 0.4.0-dev.40 Native Updater Candidate Checklist
+
+Status: active source contract; source implementation, deterministic
+verification, and author review completed on 2026-08-15. No candidate Draft,
+release, native manifest, or installed-app update acceptance exists yet.
+
+Owner: Rho release owner
+
+Specification: `docs/plans/active-2026-08-15-tauri-native-updater-spec.md`
+
+## Identity
+
+| Field | Required value |
+| --- | --- |
+| Application version | `0.4.0-dev.40` |
+| Release tag/name | `v0.4.0-dev.40` / `Rho 0.4.0-dev.40` |
+| Channel | development prerelease |
+| Source commit | unresolved until protected integration |
+
+## Required Evidence
+
+| Gate | Required evidence | Current state |
+| --- | --- | --- |
+| UPDATER-1A source | reviewed updater runtime/config, docs, deterministic tests, and protected integration | author review and deterministic matrix passed; PR CI and protected integration pending |
+| Windows final bytes | final Authenticode NSIS installer, fresh Tauri `.sig` cryptographically verified against the configured public key, and bound native-updater evidence | not run |
+| macOS final bytes | independently accepted app archive, stapled app, final `.tar.gz`, fresh Tauri `.sig` cryptographically verified against the configured public key, and bound evidence | not run |
+| Candidate Draft | immutable exact asset set, reviewed release notes, aggregate evidence, and explicit acceptance decision | not run |
+| Installed update | supported installed build checks, user-authorized install/restart, and truthful failure recovery on both platforms | not run |
+| Public native manifest | exact accepted published Release, post-deploy manifest validation, and explicit release decision | not run |
+
+## Pre-Integration Source Evidence
+
+- Passed on 2026-08-15: `cargo fmt --all -- --check`, `cargo test --workspace
+  --locked --no-fail-fast` (including 179 passed in `rho-desktop` and its one
+  pre-existing opt-in macOS Keychain test ignored), both `r/rho.bridge` and
+  `r/rho.agent` test suites, all 67
+  `scripts/test-*.mjs` checks, `node --check desktop/dist/app.js`, Rust 1.88
+  checks for `rho-desktop` and `rho-updater-verifier`, candidate/Pages/native
+  updater generator tests, YAML parsing, release-notes validation, and `git
+  diff --check`.
+- Author review checked manual-only authority, platform exclusion, endpoint and
+  redirect allowlists, bounded download and metadata validation, signature and
+  final-byte evidence binding, secret isolation, shutdown/restart recovery,
+  browser/mock truthfulness, and documentation ownership. It added check-time
+  rejection for malformed pending version, download URL, and signature text.
+- Windows target compilation and native installer behavior are not claimed by
+  this local macOS evidence; the protected Windows GNU CI and later exact
+  candidate/installed-app gates remain required.
+
+## Release Decision
+
+The only current decision is `NO_RELEASE_DECISION`. This source contract does
+not authorize a Draft publication, public Release, or native update endpoint.
+The prior `dev.39` conditional decision is historical and cannot be reused.

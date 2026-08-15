@@ -74,6 +74,7 @@ semantics.
 | `release/active-0.4.0-dev.38-candidate-checklist.md` | active immutable DEV38-SIGN1 NO-GO ledger; source/artifact/audit and automated macOS support evidence pass, required human acceptance did not | sole unpublished `0.4.0-dev.38` Draft identity and evidence snapshot | cannot authorize dev.39 or publication; preserve exact seven assets/body and NO-GO truth |
 | `release/historical-0.4.0-dev.39-candidate-checklist.md` | historical published conditional prerelease; exact source/candidate/audit, v2 acceptance, protected Release run `31734766000`, and live update run `31734975029` pass; two human observations remain `NOT RUN` | immutable `0.4.0-dev.39` asset/evidence binding, exact conditional limitations, publication, and update record | preserve release/tag/update evidence and limitation truth; it cannot satisfy a successor candidate or convert either human row into a pass |
 | `plans/active-2026-08-10-versioned-release-notes-spec.md` | active; RELEASE-NOTES-1 source implementation, complete affected automation, and contract review passed 2026-08-10; first new-candidate hosted acceptance open | reviewed per-tag Markdown as the sole body source for newly constructed Releases, exact-body publication stale guard, and one explicit `dev.27` compatibility bridge | preserve unchanged Draft `367934137`; the next unused candidate must carry and exercise its own reviewed file before hosted acceptance; no asset/evidence, updater, or signing scope |
+| `plans/active-2026-08-15-tauri-native-updater-spec.md` | active; `UPDATER-1A` authorized 2026-08-15 after cross-review | separately signed Tauri native updater for Windows x64 and macOS arm64: explicit-user install/restart, compiled public key, final-byte updater signatures, native manifest projection, and exact updater acceptance | preserve manual-only network admission, final-byte signing order, Linux exclusion, isolated secrets, and fresh `dev.40` candidate/checklist; stop before candidate construction, installed acceptance, or publication until their named gates pass |
 | `plans/accepted-2026-07-25-0.3x-scientific-workflow-handoff.md` | active implementation contract; WP1-WP4 code landed, automated review accepted with follow-up, milestone manual acceptance open | `0.3.x` environment, viewer, artifact, skill contracts and final acceptance | remaining representative-project and manual UI acceptance; affected evidence reruns after BH1 |
 | `release/active-0.2.0-release-hardening-spec.md` | engineering complete; release acceptance active | exact `0.2.0-dev.12` hardening and evidence contract | remaining candidate acceptance only |
 | `release/active-0.2-release-checklist.md` | active | sole `0.2.0-dev.12` GO/NO-GO checklist | P0 human evidence against the exact candidate |
@@ -724,6 +725,41 @@ exact source commit. The first canonical body line remains a bounded plain-text
 summary so the existing update-site projection does not gain a competing
 summary owner. Tauri updater/signing and Issue #26 Authenticode work remain
 separate.
+
+`active-2026-08-15-tauri-native-updater-spec.md` is the required separate
+contract for the native-updater work explicitly deferred by Issue #27 and the
+About/Update V1 design. It is not an amendment of Issue #27's candidate-site
+scope. The active package keeps V1 discovery as the manual-only channel/UI
+owner and uses distinct `/updates/tauri/{stable,development}.json` resources,
+so a Tauri-schema manifest cannot be misread as the existing schema-v1
+discovery manifest. It consumes the first bounded reviewed Release-body line
+from RELEASE-NOTES-1; it creates no second notes author.
+
+The cross-review resolved four implementation constraints that remain active
+acceptance gates:
+
+1. Windows final-byte order must remain `build -> SignPath Authenticode ->
+   final Tauri signature`; a pre-Authenticode updater signature is invalid.
+2. macOS must notarize/staple the application archive used by the native
+   updater, not merely the public DMG, before final Tauri signing. MAC4/MAC5
+   retain Developer ID, entitlement, notarization, and release acceptance
+   authority.
+3. Linux's active AppImage plan continues to reject automatic/native Linux
+   updates in this round. The shared plugin dependency must not create a Linux
+   endpoint, key exposure, or install path.
+4. The new private-key/password secrets may appear only in trusted candidate
+   jobs; Pages, public publication, source CI, fork rehearsal, and browser/mock
+   code receive neither. A fresh `dev.40` checklist must bind exact updater
+   assets, signatures, installed-update evidence, and GO/NO-GO separately from
+   `dev.39`'s historical conditional record.
+5. The plugin may parse a Rust-owned check result, but may not own an
+   unbounded download or destructive default install. Before shutdown, the
+   runtime must allowlist the final GitHub Release URL/redirect hosts, bound
+   bytes, and independently verify the configured public key. Windows exits
+   only after spawning the verified NSIS handoff; macOS stages and
+   code-signature-checks on the target volume, preserves the existing bundle,
+   and restores it if replacement or launch fails. Browser/mock mode may
+   demonstrate the state but must never claim installation.
 
 The active release checklist is the sole GO/NO-GO authority for the exact
 `0.2.0-dev.12` candidate. About/update V1 was implemented afterward and has its

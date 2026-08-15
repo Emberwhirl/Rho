@@ -10,6 +10,11 @@ import {
   validateAggregateEvidence,
   validatePublishedPlatformEvidence,
 } from "./candidate-release.mjs";
+import {
+  NATIVE_UPDATER_PLATFORMS,
+  tauriManifestFromEvidence,
+  validateNativeUpdaterEvidence,
+} from "./tauri-native-updater.mjs";
 
 const WEBSITE = "https://yulab-smu.top/Rho/";
 const REPOSITORY = "https://github.com/YuLab-SMU/Rho";
@@ -137,6 +142,45 @@ function validatedCandidateArtifacts(record, evidence, version) {
   };
 }
 
+function validatedNativeUpdater(record, candidateEvidence, version) {
+  if (record.native_updater_evidence == null) return null;
+  const nativeEvidence = record.native_updater_evidence;
+  const nativeEvidenceAsset = record.native_updater_evidence_asset;
+  if (!nativeEvidenceAsset || typeof nativeEvidenceAsset !== "object") {
+    throw new Error(`Native updater evidence asset is missing for ${version}`);
+  }
+  const evidenceName = `rho-${version}-tauri-native-updater-evidence.json`;
+  if (
+    nativeEvidenceAsset.name !== evidenceName
+    || !Number.isSafeInteger(nativeEvidenceAsset.size_bytes)
+    || nativeEvidenceAsset.size_bytes <= 0
+    || nativeEvidenceAsset.size_bytes > 256 * 1024
+    || !/^[0-9a-f]{64}$/.test(nativeEvidenceAsset.sha256)
+  ) throw new Error(`Native updater evidence asset is invalid for ${version}`);
+  releaseAsset(record, nativeEvidenceAsset.name, nativeEvidenceAsset.size_bytes, version);
+  validateNativeUpdaterEvidence(nativeEvidence, {
+    version,
+    release_tag: `v${version}`,
+    commit: record.target_commitish,
+    candidate_evidence: candidateEvidence,
+  });
+  if (!record.native_updater_signatures || typeof record.native_updater_signatures !== "object") {
+    throw new Error(`Native updater signatures are missing for ${version}`);
+  }
+  for (const platform of NATIVE_UPDATER_PLATFORMS) {
+    const platformEvidence = nativeEvidence.platforms[platform];
+    releaseAsset(record, platformEvidence.artifact.name, platformEvidence.artifact.size_bytes, version);
+    releaseAsset(record, platformEvidence.signature.name, platformEvidence.signature.size_bytes, version);
+    if (typeof record.native_updater_signatures[platform] !== "string") {
+      throw new Error(`Native updater signature contents are missing for ${version} ${platform}`);
+    }
+  }
+  return {
+    evidence: nativeEvidence,
+    signature_contents: record.native_updater_signatures,
+  };
+}
+
 function validatedRelease(record) {
   if (record.draft) throw new Error(`Draft release is not publishable: ${record.tag_name}`);
   if (!String(record.tag_name || "").startsWith("v")) throw new Error(`Release tag must start with v: ${record.tag_name}`);
@@ -152,8 +196,10 @@ function validatedRelease(record) {
   if (!evidence || evidence.status !== "passed") throw new Error(`Passed release evidence is missing for ${version}`);
   if (evidence.version !== version || evidence.release_tag !== `v${version}`) throw new Error(`Evidence identity mismatch for ${version}`);
   let validatedArtifacts;
+  let nativeUpdater = null;
   if (evidence.type === "rho_candidate_evidence") {
     validatedArtifacts = validatedCandidateArtifacts(record, evidence, version);
+    nativeUpdater = validatedNativeUpdater(record, evidence, version);
   } else if ((!evidence.type || evidence.type === "rho_0_2_release_evidence") && evidence.artifact) {
     validatedArtifacts = validatedLegacyArtifacts(record, evidence, version);
   } else {
@@ -168,11 +214,13 @@ function validatedRelease(record) {
     version,
     prerelease: parsed.pre.length > 0,
     published_at: record.published_at,
+    commit: record.target_commitish,
     summary,
     github_release_url: record.html_url,
     artifacts: validatedArtifacts.artifacts,
     windows_signing_profile: validatedArtifacts.windows_signing_profile,
     acceptance_decision: validatedArtifacts.acceptance_decision,
+    native_updater: nativeUpdater,
   };
 }
 
@@ -228,13 +276,54 @@ export function generate(records, outputDirectory) {
   const stable = releases.find((release) => !release.prerelease) || null;
   const development = releases[0] || null;
   if (!development) throw new Error("At least one validated release is required");
+  const nativeStable = releases.find((release) => !release.prerelease && release.native_updater) || null;
+  const nativeDevelopment = releases.find((release) => release.native_updater) || null;
   fs.mkdirSync(path.join(outputDirectory, "updates"), { recursive: true });
   fs.writeFileSync(path.join(outputDirectory, "index.html"), page(stable, development));
   fs.writeFileSync(path.join(outputDirectory, "updates", "development.json"), `${JSON.stringify(manifest(development, "development"), null, 2)}\n`);
   const stablePath = path.join(outputDirectory, "updates", "stable.json");
   if (stable) fs.writeFileSync(stablePath, `${JSON.stringify(manifest(stable, "stable"), null, 2)}\n`);
   else if (fs.existsSync(stablePath)) fs.unlinkSync(stablePath);
-  return { stable: stable?.version || null, development: development.version };
+  const nativeDirectory = path.join(outputDirectory, "updates", "tauri");
+  fs.mkdirSync(nativeDirectory, { recursive: true });
+  const nativeDevelopmentPath = path.join(nativeDirectory, "development.json");
+  if (nativeDevelopment) {
+    const nativeManifest = tauriManifestFromEvidence({
+      release: {
+        version: nativeDevelopment.version,
+        release_tag: `v${nativeDevelopment.version}`,
+        commit: nativeDevelopment.commit,
+        published_at: nativeDevelopment.published_at,
+        summary: nativeDevelopment.summary,
+      },
+      evidence: nativeDevelopment.native_updater.evidence,
+      signatureContents: nativeDevelopment.native_updater.signature_contents,
+      channel: "development",
+    });
+    fs.writeFileSync(nativeDevelopmentPath, `${JSON.stringify(nativeManifest, null, 2)}\n`);
+  } else if (fs.existsSync(nativeDevelopmentPath)) fs.unlinkSync(nativeDevelopmentPath);
+  const nativeStablePath = path.join(nativeDirectory, "stable.json");
+  if (nativeStable) {
+    const nativeManifest = tauriManifestFromEvidence({
+      release: {
+        version: nativeStable.version,
+        release_tag: `v${nativeStable.version}`,
+        commit: nativeStable.commit,
+        published_at: nativeStable.published_at,
+        summary: nativeStable.summary,
+      },
+      evidence: nativeStable.native_updater.evidence,
+      signatureContents: nativeStable.native_updater.signature_contents,
+      channel: "stable",
+    });
+    fs.writeFileSync(nativeStablePath, `${JSON.stringify(nativeManifest, null, 2)}\n`);
+  } else if (fs.existsSync(nativeStablePath)) fs.unlinkSync(nativeStablePath);
+  return {
+    stable: stable?.version || null,
+    development: development.version,
+    native_stable: nativeStable?.version || null,
+    native_development: nativeDevelopment?.version || null,
+  };
 }
 
 function fakeRecord(version, prerelease = true) {
@@ -338,6 +427,67 @@ function fakeCandidateRecord(version) {
   return record;
 }
 
+function withNativeUpdater(record) {
+  const version = record.evidence.version;
+  const signature = Buffer.from("untrusted comment: Rho updater test signature\nRURvby10ZXN0LXNpZ25hdHVyZQ==\n", "utf8").toString("base64");
+  const signatureRecord = (name) => ({
+    name,
+    size_bytes: Buffer.byteLength(signature),
+    sha256: crypto.createHash("sha256").update(signature).digest("hex"),
+  });
+  const platforms = {};
+  for (const platform of NATIVE_UPDATER_PLATFORMS) {
+    const candidatePlatform = record.evidence.platforms[platform];
+    const artifact = platform === "windows_x86_64"
+      ? candidatePlatform.artifact
+      : { name: `Rho_${version}_aarch64.app.tar.gz`, size_bytes: 111, sha256: "e".repeat(64) };
+    const signatureAsset = signatureRecord(`${artifact.name}.sig`);
+    if (!record.assets.some((entry) => entry.name === artifact.name)) {
+      record.assets.push({
+        name: artifact.name,
+        size: artifact.size_bytes,
+        browser_download_url: `${REPOSITORY}/releases/download/v${version}/${artifact.name}`,
+      });
+    }
+    record.assets.push({
+      name: signatureAsset.name,
+      size: signatureAsset.size_bytes,
+      browser_download_url: `${REPOSITORY}/releases/download/v${version}/${signatureAsset.name}`,
+    });
+    platforms[platform] = {
+      target: platform === "windows_x86_64" ? "windows-x86_64" : "darwin-aarch64",
+      artifact,
+      signature: signatureAsset,
+      platform_evidence: candidatePlatform.evidence,
+    };
+  }
+  const evidence = {
+    schema_version: 1,
+    type: "rho_tauri_native_updater_evidence",
+    status: "passed",
+    version,
+    release_tag: `v${version}`,
+    commit: record.target_commitish,
+    public_key_id: "173c902c085bfe5f",
+    platforms,
+  };
+  const evidenceBytes = Buffer.from(`${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+  const evidenceAsset = {
+    name: `rho-${version}-tauri-native-updater-evidence.json`,
+    size_bytes: evidenceBytes.length,
+    sha256: crypto.createHash("sha256").update(evidenceBytes).digest("hex"),
+  };
+  record.assets.push({
+    name: evidenceAsset.name,
+    size: evidenceAsset.size_bytes,
+    browser_download_url: `${REPOSITORY}/releases/download/v${version}/${evidenceAsset.name}`,
+  });
+  record.native_updater_evidence = evidence;
+  record.native_updater_evidence_asset = evidenceAsset;
+  record.native_updater_signatures = Object.fromEntries(NATIVE_UPDATER_PLATFORMS.map((platform) => [platform, signature]));
+  return record;
+}
+
 function expectFailure(action, pattern) {
   let error;
   try { action(); } catch (caught) { error = caught; }
@@ -373,6 +523,15 @@ function selfTest() {
     if (!candidatePage.includes("move <strong>Rho.app</strong> from <strong>Applications</strong> to the Trash")) throw new Error("generated page omitted macOS uninstall instructions");
     if (!candidatePage.includes("Windows trust status is shown per release")) throw new Error("generated page omitted per-release trust boundary");
     if (candidatePage.includes("Conditional prerelease:")) throw new Error("ordinary GO release inherited a conditional warning");
+    const nativeCandidate = withNativeUpdater(fakeCandidateRecord("0.4.0-dev.40"));
+    generate([nativeCandidate], temp);
+    const nativeManifest = JSON.parse(fs.readFileSync(path.join(temp, "updates", "tauri", "development.json"), "utf8"));
+    if (nativeManifest.version !== "0.4.0-dev.40" || !nativeManifest.platforms["windows-x86_64"] || !nativeManifest.platforms["darwin-aarch64"]) {
+      throw new Error("Native updater manifest omitted a supported platform");
+    }
+    const brokenNativeSignature = withNativeUpdater(fakeCandidateRecord("0.4.0-dev.40"));
+    brokenNativeSignature.native_updater_signatures.windows_x86_64 = "not a signature";
+    expectFailure(() => generate([brokenNativeSignature], temp), /base64/);
     const conditional = fakeCandidateRecord("0.4.0-dev.39");
     conditional.acceptance_evidence = {
       ...conditional.acceptance_evidence,
