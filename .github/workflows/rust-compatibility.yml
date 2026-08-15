@@ -248,6 +248,10 @@ jobs:
           node scripts/test-signpath-candidate-workflow.mjs --self-test
           node scripts/test-signpath-candidate-workflow.mjs
           node scripts/test-conditional-prerelease-policy.mjs
+          node --check desktop/dist/app.js
+          node scripts/test-macos-notary.mjs
+          node scripts/test-mac4-release-contract.mjs
+          node scripts/test-tauri-native-updater-contract.mjs
 
       - name: Verify locked workspace at selected Rust version
         run: |
