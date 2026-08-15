@@ -364,8 +364,8 @@ Recorded deviations (bounded interpretations, all reversible):
 - the LIN3 repack default compressor is zstd (2026-08-14), not the originally
   recorded gzip: zstd yields smaller AppImages for the same payload and is
   available in squashfs-tools >= 4.4 (the ubuntu-22.04 hosted lane) and the
-  modern AppImage runtime. The override `RHO_SQUASHFS_COMPRESSION` retains
-  gzip/xz/lzma/lzo/lz4, and the repack's own `--appimage-extract` verification
+  modern AppImage runtime. The override `RHO_SQUASHFS_COMPRESSION` supports
+  gzip/xz/lzma/lzo/zstd, and the repack's own `--appimage-extract` verification
   fails the build if the bundled runtime cannot read the chosen compressor.
   Measured on 2026-08-14 on the real payload (42 MB `rho-desktop` +
   22 MB Ark sidecar, 63 MB total): zstd default level 21.2 MB vs gzip
@@ -444,6 +444,13 @@ cd desktop/src-tauri && cargo fmt --all -- --check
 - the opt-in Linux Secret Service smoke and LIN5 manual acceptance on a
   desktop with an unlocked keyring remain unrun (no keyring daemon in this
   environment) and belong to LIN5.
+
+PR #77 review follow-up (2026-08-14): the documented
+`RHO_SQUASHFS_COMPRESSION` support list was corrected to match the implemented
+allowlist (`gzip`, `xz`, `lzma`, `lzo`, and `zstd`); no runtime behavior or
+release state changed. On the exact follow-up tree,
+`scripts/test-linux-apprun.sh`, `cargo fmt --all -- --check`, and
+`git diff --check` pass.
 
 LIN5 manual acceptance (clean machine with and without
 `libwebkit2gtk-4.1-0`) remains open and unauthorized.
