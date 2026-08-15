@@ -325,18 +325,6 @@ impl ProjectWatcherControl {
     }
 }
 
-pub fn replace_project_watcher(
-    watcher: &mut Option<ProjectWatcherControl>,
-    app: AppHandle,
-    root: PathBuf,
-) -> Result<()> {
-    if let Some(existing) = watcher.take() {
-        existing.stop();
-    }
-    *watcher = Some(start_project_watcher(app, root)?);
-    Ok(())
-}
-
 pub fn start_project_watcher(app: AppHandle, root: PathBuf) -> Result<ProjectWatcherControl> {
     let (event_tx, event_rx) = channel();
     let (stop_tx, stop_rx) = channel();

@@ -6387,6 +6387,10 @@ fn ark_candidate_paths(
             current_exe.parent().unwrap_or(current_exe).join("ark"),
             manifest_dir.join("binaries/ark-aarch64-apple-darwin"),
         ],
+        ("linux", "x86_64") => vec![
+            current_exe.parent().unwrap_or(current_exe).join("ark"),
+            manifest_dir.join("binaries/ark-x86_64-unknown-linux-gnu"),
+        ],
         _ => Vec::new(),
     }
 }
@@ -6441,6 +6445,18 @@ fn locate_rscript(selected: Option<&Path>) -> Result<PathBuf> {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    for candidate in [
+        PathBuf::from("/usr/lib/R/bin/Rscript"),
+        PathBuf::from("/usr/local/lib/R/bin/Rscript"),
+        PathBuf::from("/opt/conda/bin/Rscript"),
+        PathBuf::from("/opt/miniconda3/bin/Rscript"),
+    ] {
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+
     let search_path =
         platform::child_process_path(None).context("constructing the Rscript search PATH")?;
     let executable = if cfg!(windows) {
@@ -6473,7 +6489,11 @@ fn locate_rscript(selected: Option<&Path>) -> Result<PathBuf> {
     bail!("Rscript.exe was not found. Install R 4.4 or later, then restart Rho.");
     #[cfg(target_os = "macos")]
     bail!("Rscript was not found. Install arm64 R 4.4 or later, then restart Rho.");
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    bail!(
+        "Rscript was not found. Install R 4.4 or later (for example `sudo apt install r-base` on Debian/Ubuntu), then restart Rho."
+    );
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     bail!("Rscript was not found. Install R 4.4 or later, then restart Rho.")
 }
 
@@ -6886,6 +6906,8 @@ fn ensure_supported_r_version(version: &str) -> Result<()> {
 fn r_architecture_supported(target_os: &str, target_arch: &str, r_arch: &str) -> bool {
     if target_os == "macos" && target_arch == "aarch64" {
         matches!(r_arch.trim(), "aarch64" | "arm64")
+    } else if target_os == "linux" && target_arch == "x86_64" {
+        matches!(r_arch.trim(), "x86_64")
     } else {
         true
     }
@@ -6894,7 +6916,8 @@ fn r_architecture_supported(target_os: &str, target_arch: &str, r_arch: &str) ->
 fn ensure_supported_r_architecture(r_arch: &str) -> Result<()> {
     ensure!(
         r_architecture_supported(std::env::consts::OS, std::env::consts::ARCH, r_arch),
-        "R_ARCH_MISMATCH: Rho for Apple Silicon requires arm64 R; found `{}`",
+        "R_ARCH_MISMATCH: {}; found `{}`",
+        platform::r_architecture_requirement(),
         r_arch.trim()
     );
     Ok(())
@@ -7153,7 +7176,7 @@ fn classify_startup_error(detail: &str) -> StartupIssue {
                 "R_ARCH_MISMATCH",
                 "probing_base_r",
                 "This R architecture is not supported",
-                "Rho for Apple Silicon requires an arm64 R 4.4 or later installation.".to_string(),
+                platform::r_architecture_requirement_message().to_string(),
                 startup_recovery_actions(),
             )
         } else if detail.contains("Rscript was not found")
@@ -9985,10 +10008,23 @@ mod tests {
         assert!(r_architecture_supported("macos", "aarch64", "arm64"));
         assert!(!r_architecture_supported("macos", "aarch64", "x86_64"));
         assert!(r_architecture_supported("windows", "x86_64", "x86_64"));
+        assert!(r_architecture_supported("linux", "x86_64", "x86_64"));
+        assert!(!r_architecture_supported("linux", "x86_64", "aarch64"));
+        assert!(!r_architecture_supported("linux", "x86_64", "arm64"));
+        assert!(r_architecture_supported("linux", "aarch64", "aarch64"));
 
         if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
             assert!(ensure_supported_r_architecture("aarch64").is_ok());
             assert!(ensure_supported_r_architecture("x86_64").is_err());
+        }
+        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            assert!(ensure_supported_r_architecture("x86_64").is_ok());
+            assert!(ensure_supported_r_architecture("aarch64").is_err());
+            let detail = ensure_supported_r_architecture("aarch64")
+                .unwrap_err()
+                .to_string();
+            assert!(detail.contains("R_ARCH_MISMATCH"));
+            assert!(detail.contains("Rho for Linux x64 requires x86_64 R"));
         }
     }
 
@@ -10055,6 +10091,34 @@ mod tests {
     }
 
     #[test]
+    fn ark_lookup_prefers_installed_linux_sidecar_and_falls_back_to_development() {
+        let directory = TempDir::new().unwrap();
+        let manifest_dir = directory.path().join("desktop/src-tauri");
+        let resource_dir = directory.path().join("usr/share/rho");
+        let current_exe = directory.path().join("usr/bin/rho-desktop");
+        std::fs::create_dir_all(current_exe.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(manifest_dir.join("binaries")).unwrap();
+        let candidates = ark_candidate_paths(
+            "linux",
+            "x86_64",
+            &manifest_dir,
+            &resource_dir,
+            &current_exe,
+        );
+        let installed = current_exe.parent().unwrap().join("ark");
+        let development = manifest_dir.join("binaries/ark-x86_64-unknown-linux-gnu");
+        assert_eq!(candidates, vec![installed.clone(), development.clone()]);
+
+        std::fs::write(&development, b"development").unwrap();
+        assert_eq!(
+            locate_ark_from_candidates(candidates.clone()).unwrap(),
+            development
+        );
+        std::fs::write(&installed, b"installed").unwrap();
+        assert_eq!(locate_ark_from_candidates(candidates).unwrap(), installed);
+    }
+
+    #[test]
     fn ark_lookup_retains_windows_resources_and_rejects_unknown_targets() {
         let root = Path::new("C:/rho");
         let windows = ark_candidate_paths(
@@ -10088,21 +10152,29 @@ mod tests {
 
     #[test]
     fn parses_base_r_probe_without_requiring_user_startup_files() {
-        let probe = parse_r_runtime_probe(
+        // The probe parser validates the reported architecture against the
+        // current platform, so the fixture must use an arch the host accepts:
+        // Apple Silicon accepts aarch64; every other host accepts x86_64.
+        let arch = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            "aarch64"
+        } else {
+            "x86_64"
+        };
+        let probe = parse_r_runtime_probe(&format!(
             "__RHO_HOME__C:/Program Files/R/R-4.4.2\n\
              __RHO_BIN__C:/Program Files/R/R-4.4.2/bin/x64\n\
-             __RHO_ARCH__aarch64\n\
+             __RHO_ARCH__{arch}\n\
              __RHO_PATH_SEP__;\n\
              __RHO_VERSION__R version 4.4.2\n\
              __RHO_VERSION_NUMBER__4.4.2\n\
              __RHO_PROFILE_USER__C:/Users/test/Documents/.Rprofile\n\
              __RHO_ENVIRON_USER__C:/Users/test/Documents/.Renviron\n\
-             __RHO_LIBS__C:/Users/test/R/win-library/4.4;C:/Program Files/R/R-4.4.2/library\n",
-        )
+             __RHO_LIBS__C:/Users/test/R/win-library/4.4;C:/Program Files/R/R-4.4.2/library\n"
+        ))
         .unwrap();
         assert_eq!(probe.r_home, "C:/Program Files/R/R-4.4.2");
         assert!(probe.r_bin.ends_with("bin/x64"));
-        assert_eq!(probe.r_arch, "aarch64");
+        assert_eq!(probe.r_arch, arch);
         assert_eq!(probe.path_sep, ";");
         assert_eq!(probe.r_version, "R version 4.4.2");
         assert!(probe.r_libs.contains("win-library"));
@@ -10123,14 +10195,21 @@ mod tests {
             assert!(x86.to_string().contains("R_ARCH_MISMATCH"));
         }
 
-        let old = parse_r_runtime_probe(
+        // Same platform-valid arch as the parse test above: the version gate
+        // (not the architecture gate) must be what rejects this old R.
+        let arch = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            "aarch64"
+        } else {
+            "x86_64"
+        };
+        let old = parse_r_runtime_probe(&format!(
             "__RHO_HOME__/Library/Frameworks/R.framework/Resources\n\
              __RHO_BIN__/Library/Frameworks/R.framework/Resources/bin\n\
-             __RHO_ARCH__aarch64\n\
+             __RHO_ARCH__{arch}\n\
              __RHO_PATH_SEP__:\n\
              __RHO_VERSION__R version 4.3.3\n\
-             __RHO_VERSION_NUMBER__4.3.3\n",
-        )
+             __RHO_VERSION_NUMBER__4.3.3\n"
+        ))
         .unwrap_err();
         assert!(old.to_string().contains("requires R 4.4"));
     }

@@ -28,6 +28,7 @@ const MODEL_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_MODEL_DISCOVERY_BYTES: usize = 1024 * 1024;
 const MAX_DISCOVERED_MODELS: usize = 100;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(50);
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 const CREDENTIAL_SERVICE: &str = "Rho Agent LLM";
 const MAX_CREDENTIAL_BYTES: usize = 16 * 1024;
 
@@ -67,14 +68,16 @@ impl CredentialStore for SystemCredentialStore {
 const SYSTEM_CREDENTIAL_STORE_LABEL: &str = "Windows Credential Manager";
 #[cfg(target_os = "macos")]
 const SYSTEM_CREDENTIAL_STORE_LABEL: &str = "macOS Keychain";
+#[cfg(target_os = "linux")]
+const SYSTEM_CREDENTIAL_STORE_LABEL: &str = "Linux Secret Service";
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn system_credential_entry_for_service(service: &str, provider_id: &str) -> Result<keyring::Entry> {
     keyring::Entry::new(service, provider_id)
         .with_context(|| format!("opening {SYSTEM_CREDENTIAL_STORE_LABEL}"))
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn keyring_credential_get(service: &str, provider_id: &str) -> Result<Option<String>> {
     match system_credential_entry_for_service(service, provider_id)?.get_password() {
         Ok(value) => Ok(Some(value)),
@@ -85,14 +88,14 @@ fn keyring_credential_get(service: &str, provider_id: &str) -> Result<Option<Str
     }
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn keyring_credential_set(service: &str, provider_id: &str, credential: &str) -> Result<()> {
     system_credential_entry_for_service(service, provider_id)?
         .set_password(credential)
         .with_context(|| format!("saving the API key in {SYSTEM_CREDENTIAL_STORE_LABEL}"))
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn keyring_credential_delete(service: &str, provider_id: &str) -> Result<()> {
     match system_credential_entry_for_service(service, provider_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -102,32 +105,32 @@ fn keyring_credential_delete(service: &str, provider_id: &str) -> Result<()> {
     }
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn system_credential_get(provider_id: &str) -> Result<Option<String>> {
     keyring_credential_get(CREDENTIAL_SERVICE, provider_id)
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn system_credential_set(provider_id: &str, credential: &str) -> Result<()> {
     keyring_credential_set(CREDENTIAL_SERVICE, provider_id, credential)
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn system_credential_delete(provider_id: &str) -> Result<()> {
     keyring_credential_delete(CREDENTIAL_SERVICE, provider_id)
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn system_credential_get(_provider_id: &str) -> Result<Option<String>> {
     bail!("System credential storage is unavailable on this platform.")
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn system_credential_set(_provider_id: &str, _credential: &str) -> Result<()> {
     bail!("System credential storage is unavailable on this platform.")
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn system_credential_delete(_provider_id: &str) -> Result<()> {
     bail!("System credential storage is unavailable on this platform.")
 }
@@ -3121,6 +3124,53 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("mac3-disposable-replacement")
+        );
+        keyring_credential_delete(&service, &account).unwrap();
+        keyring_credential_delete(&service, &account).unwrap();
+        assert_eq!(keyring_credential_get(&service, &account).unwrap(), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    struct LinuxSecretServiceCleanup {
+        service: String,
+        account: String,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for LinuxSecretServiceCleanup {
+        fn drop(&mut self) {
+            if let Ok(entry) = keyring::Entry::new(&self.service, &self.account) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "opt-in LIN6 smoke touches a unique disposable Linux Secret Service entry"]
+    fn linux_secret_service_set_get_replace_delete_and_cleanup() {
+        let identifier = uuid::Uuid::new_v4().to_string();
+        let service = format!("Rho LIN6 Secret Service Test {identifier}");
+        let account = format!("provider-lin6-{identifier}");
+        let _cleanup = LinuxSecretServiceCleanup {
+            service: service.clone(),
+            account: account.clone(),
+        };
+
+        assert_eq!(keyring_credential_get(&service, &account).unwrap(), None);
+        keyring_credential_set(&service, &account, "lin6-disposable-first").unwrap();
+        assert_eq!(
+            keyring_credential_get(&service, &account)
+                .unwrap()
+                .as_deref(),
+            Some("lin6-disposable-first")
+        );
+        keyring_credential_set(&service, &account, "lin6-disposable-replacement").unwrap();
+        assert_eq!(
+            keyring_credential_get(&service, &account)
+                .unwrap()
+                .as_deref(),
+            Some("lin6-disposable-replacement")
         );
         keyring_credential_delete(&service, &account).unwrap();
         keyring_credential_delete(&service, &account).unwrap();
