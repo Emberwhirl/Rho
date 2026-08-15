@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Exact accepted draft tag
         required: true
-        default: v0.4.0-dev.39
+        default: v0.4.0-dev.40
 
 permissions:
   contents: read
@@ -115,6 +115,10 @@ jobs:
             }
             const candidateName = `rho-${version}-candidate-evidence.json`;
             const acceptanceName = `rho-${version}-acceptance.json`;
+            const nativeUpdaterEvidenceName = `rho-${version}-tauri-native-updater-evidence.json`;
+            const windowsUpdaterSignatureName = `Rho_${version}_x64-setup.exe.sig`;
+            const macosUpdaterArchiveName = `Rho_${version}_aarch64.app.tar.gz`;
+            const macosUpdaterSignatureName = `${macosUpdaterArchiveName}.sig`;
             const required = new Set([
               `Rho_${version}_x64-setup.exe`,
               `Rho_${version}_x64-setup.exe.sha256`,
@@ -124,13 +128,21 @@ jobs:
               `rho-${version}-macos-aarch64-evidence.json`,
               candidateName,
               acceptanceName,
+              windowsUpdaterSignatureName,
+              macosUpdaterArchiveName,
+              macosUpdaterSignatureName,
+              nativeUpdaterEvidenceName,
             ]);
             if (release.data.assets.length !== required.size || release.data.assets.some((asset) => !required.has(asset.name))) {
               throw new Error("Draft release does not contain the exact publish asset set.");
             }
-            for (const boundedName of [candidateName, acceptanceName]) {
+            for (const boundedName of [candidateName, acceptanceName, nativeUpdaterEvidenceName]) {
               const asset = release.data.assets.find((item) => item.name === boundedName);
               if (!asset || asset.size <= 0 || asset.size > 256 * 1024) throw new Error(`${boundedName} exceeds the evidence byte budget.`);
+            }
+            for (const signatureName of [windowsUpdaterSignatureName, macosUpdaterSignatureName]) {
+              const asset = release.data.assets.find((item) => item.name === signatureName);
+              if (!asset || asset.size <= 0 || asset.size > 16 * 1024) throw new Error(`${signatureName} exceeds the updater signature byte budget.`);
             }
             fs.mkdirSync("target/publish", { recursive: true });
             const downloadedAssets = [];
@@ -152,6 +164,8 @@ jobs:
             }
             const candidatePath = path.join("target", "publish", candidateName);
             const candidateBytes = fs.readFileSync(candidatePath);
+            const nativeUpdaterEvidencePath = path.join("target", "publish", nativeUpdaterEvidenceName);
+            const nativeUpdaterEvidenceBytes = fs.readFileSync(nativeUpdaterEvidencePath);
             const record = {
               tag_name: release.data.tag_name,
               draft: release.data.draft,
@@ -170,6 +184,16 @@ jobs:
                 sha256: crypto.createHash("sha256").update(candidateBytes).digest("hex"),
               },
               acceptance_evidence: JSON.parse(fs.readFileSync(path.join("target", "publish", acceptanceName), "utf8")),
+              native_updater_evidence: JSON.parse(nativeUpdaterEvidenceBytes.toString("utf8")),
+              native_updater_evidence_asset: {
+                name: nativeUpdaterEvidenceName,
+                size_bytes: nativeUpdaterEvidenceBytes.length,
+                sha256: crypto.createHash("sha256").update(nativeUpdaterEvidenceBytes).digest("hex"),
+              },
+              native_updater_signatures: {
+                windows_x86_64: fs.readFileSync(path.join("target", "publish", windowsUpdaterSignatureName), "utf8"),
+                macos_aarch64: fs.readFileSync(path.join("target", "publish", macosUpdaterSignatureName), "utf8"),
+              },
             };
             fs.writeFileSync("target/publish-record.json", `${JSON.stringify(record, null, 2)}\n`);
             fs.writeFileSync("target/publish-release-snapshot.json", `${JSON.stringify({

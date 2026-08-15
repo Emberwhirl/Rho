@@ -1,6 +1,6 @@
 # Rho Code Signing Policy
 
-Last updated: 2026-08-13
+Last updated: 2026-08-15
 
 Free code signing provided by [SignPath.io](https://about.signpath.io),
 certificate by [SignPath Foundation](https://signpath.org).
@@ -30,6 +30,29 @@ the project before that external approval is recorded.
 
 The exact status of a release is established by that release's evidence and
 checksums, not by this policy alone.
+
+## Native updater signature boundary
+
+The active Tauri native-updater contract adds a separate minisign-compatible
+signature over the final Windows NSIS installer and final notarized/stapled
+macOS application archive. It is independent of Windows Authenticode and
+Apple Developer ID/notarization: neither platform signature substitutes for
+the updater signature, and an updater signature does not make a Windows
+certificate publicly trusted.
+
+The updater public key is compiled into the desktop configuration. Its private
+key and password are held only in the two protected repository secrets used by
+the trusted candidate signing jobs. GitHub Pages, publish-only jobs, pull
+requests, forks, release assets, logs, and the WebView do not receive them.
+The signer runs only after all byte-changing platform transitions: after
+SignPath returns the final Windows installer, and after the macOS app archive
+has been notarized/stapled and reconstructed. Candidate evidence binds the
+final artifact and `.sig` hashes before a release manifest can name them.
+
+This source policy does not claim that any already-published release has a
+native updater. Such a claim requires the exact public Release assets,
+evidence, manifest, and installed-update acceptance described in the active
+native-updater contract.
 
 ## Free Trial test-signed prerelease boundary
 

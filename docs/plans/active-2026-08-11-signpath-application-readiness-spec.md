@@ -82,7 +82,10 @@ signature, candidate, tag, Release, or updater mutation.
    migration or deletion authority.
 3. Manual update behavior, endpoint/channel policy, bounds, timeout, URL
    allowlists, structured failure states, and user-initiated external browser
-   navigation remain unchanged.
+   navigation remain unchanged **within SP-READY1**. A later separately
+   activated signed-native-updater contract may extend the explicit-user
+   install action, but it cannot restore startup/background checks or weaken
+   this privacy boundary.
 4. `PRIVACY.md` is the public data/network contract. It must distinguish local
    project/application data from user-initiated remote operations, describe OS
    credential storage and custom Base URL risk, state retention/deletion
@@ -133,9 +136,12 @@ signature, candidate, tag, Release, or updater mutation.
   mutation. SP-READY1 cannot satisfy those gates.
 
 No schema, project identity, approval table, Provider format, credential
-format, R package contract, or public updater manifest changes. Cross-review
-found no unresolved state, persistence, approval, or mutation ownership
-collision after the manual-only amendment above.
+format, R package contract, or public updater manifest changes occur in
+SP-READY1. A separately activated native-updater package owns any future
+distinct Tauri manifest and final-byte signing pipeline; it must preserve this
+manual-only network policy. Cross-review found no unresolved state,
+persistence, approval, or mutation ownership collision after the manual-only
+amendment above.
 
 ## Public Privacy Contract
 

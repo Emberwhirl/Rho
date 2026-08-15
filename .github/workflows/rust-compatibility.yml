@@ -35,12 +35,15 @@ on:
       - ".github/workflows/update-site-publish.yml"
       - "scripts/candidate-release.mjs"
       - "scripts/generate-update-site.mjs"
+      - "scripts/macos-notary.mjs"
+      - "scripts/tauri-native-updater.mjs"
       - "scripts/test-rust-msrv-contract.mjs"
       - "scripts/test-installed-license-surface.mjs"
       - "scripts/test-signpath-readiness.mjs"
       - "scripts/test-signpath-free-trial-smoke.mjs"
       - "scripts/test-signpath-candidate-workflow.mjs"
       - "scripts/test-conditional-prerelease-policy.mjs"
+      - "scripts/test-tauri-native-updater-contract.mjs"
       - "scripts/windows-installed-focus-acceptance.mjs"
       - "scripts/test-windows-installed-focus-acceptance.mjs"
       - "docs/design/accepted-2026-07-25-about-and-update-check-design.md"
@@ -49,10 +52,13 @@ on:
       - "docs/plans/active-2026-08-12-signpath-free-trial-smoke-spec.md"
       - "docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md"
       - "docs/plans/implemented-2026-08-13-conditional-prerelease-policy-spec.md"
+      - "docs/plans/active-2026-08-15-tauri-native-updater-spec.md"
       - "docs/project/active-document-cross-review.md"
+      - "docs/project/active-development-roadmap.md"
       - "docs/release/active-0.4.0-dev.37-candidate-checklist.md"
       - "docs/release/active-0.4.0-dev.38-candidate-checklist.md"
       - "docs/release/historical-0.4.0-dev.39-candidate-checklist.md"
+      - "docs/release/active-0.4.0-dev.40-candidate-checklist.md"
   pull_request:
     branches: [main]
     paths:
@@ -87,12 +93,15 @@ on:
       - ".github/workflows/update-site-publish.yml"
       - "scripts/candidate-release.mjs"
       - "scripts/generate-update-site.mjs"
+      - "scripts/macos-notary.mjs"
+      - "scripts/tauri-native-updater.mjs"
       - "scripts/test-rust-msrv-contract.mjs"
       - "scripts/test-installed-license-surface.mjs"
       - "scripts/test-signpath-readiness.mjs"
       - "scripts/test-signpath-free-trial-smoke.mjs"
       - "scripts/test-signpath-candidate-workflow.mjs"
       - "scripts/test-conditional-prerelease-policy.mjs"
+      - "scripts/test-tauri-native-updater-contract.mjs"
       - "scripts/windows-installed-focus-acceptance.mjs"
       - "scripts/test-windows-installed-focus-acceptance.mjs"
       - "docs/design/accepted-2026-07-25-about-and-update-check-design.md"
@@ -101,10 +110,13 @@ on:
       - "docs/plans/active-2026-08-12-signpath-free-trial-smoke-spec.md"
       - "docs/plans/active-2026-08-13-dev38-test-signed-prerelease-spec.md"
       - "docs/plans/implemented-2026-08-13-conditional-prerelease-policy-spec.md"
+      - "docs/plans/active-2026-08-15-tauri-native-updater-spec.md"
       - "docs/project/active-document-cross-review.md"
+      - "docs/project/active-development-roadmap.md"
       - "docs/release/active-0.4.0-dev.37-candidate-checklist.md"
       - "docs/release/active-0.4.0-dev.38-candidate-checklist.md"
       - "docs/release/historical-0.4.0-dev.39-candidate-checklist.md"
+      - "docs/release/active-0.4.0-dev.40-candidate-checklist.md"
 
 permissions:
   contents: read
@@ -236,6 +248,10 @@ jobs:
           node scripts/test-signpath-candidate-workflow.mjs --self-test
           node scripts/test-signpath-candidate-workflow.mjs
           node scripts/test-conditional-prerelease-policy.mjs
+          node --check desktop/dist/app.js
+          node scripts/test-macos-notary.mjs
+          node scripts/test-mac4-release-contract.mjs
+          node scripts/test-tauri-native-updater-contract.mjs
 
       - name: Verify locked workspace at selected Rust version
         run: |

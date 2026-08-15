@@ -18,11 +18,11 @@ on:
       release_tag:
         description: Single-use prerelease tag
         required: true
-        default: v0.4.0-dev.39
+        default: v0.4.0-dev.40
       release_name:
         description: Draft release title
         required: true
-        default: Rho 0.4.0-dev.39
+        default: Rho 0.4.0-dev.40
 
 permissions:
   contents: read
@@ -164,8 +164,24 @@ jobs:
       - name: Build and smoke-test Windows installer
         shell: pwsh
         env:
+          CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
           CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
+          if ($env:CANDIDATE_MODE -eq "candidate") {
+            if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+              throw "Candidate native updater signing secrets are required."
+            }
+          } else {
+            $ephemeralKey = Join-Path $env:RUNNER_TEMP "rho-rehearsal-tauri-updater.key"
+            & npx -y "@tauri-apps/cli@2.11.4" signer generate --ci --write-keys "$ephemeralKey"
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $ephemeralKey -PathType Leaf)) {
+              throw "Could not create an ephemeral rehearsal updater key."
+            }
+            $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -LiteralPath $ephemeralKey -Raw
+            $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+          }
           ./scripts/build-windows-installer.ps1
           $binary = Join-Path $PWD "target\release\rho-desktop.exe"
           & $binary --smoke-test
@@ -173,6 +189,10 @@ jobs:
           $expected = "Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
           $installer = Get-ChildItem -LiteralPath "target\release\bundle\nsis" -Filter "*-setup.exe"
           if ($installer.Count -ne 1 -or $installer[0].Name -ne $expected) { throw "Expected exactly $expected." }
+          $bundlerSignature = Join-Path $installer[0].DirectoryName "$expected.sig"
+          if (-not (Test-Path -LiteralPath $bundlerSignature -PathType Leaf)) {
+            throw "Tauri did not create the required updater artifact signature."
+          }
           New-Item -ItemType Directory -Path "target\candidate" -Force | Out-Null
           Copy-Item -LiteralPath $installer[0].FullName -Destination (Join-Path "target\candidate" $expected)
 
@@ -451,6 +471,28 @@ jobs:
           & node @arguments
           if ($LASTEXITCODE -ne 0) { throw "Windows platform evidence validation failed." }
 
+      - name: Sign final Authenticode Windows updater artifact
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: pwsh
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY) -or [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw "Candidate native updater signing secrets are required."
+          }
+          $artifact = Join-Path $PWD "target\candidate\Rho_$($env:CANDIDATE_VERSION)_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) { throw "Final Authenticode installer is missing." }
+          & npx -y "@tauri-apps/cli@2.11.4" signer sign "$artifact"
+          if ($LASTEXITCODE -ne 0) { throw "Tauri updater signing failed for the final Windows installer." }
+          $signature = "$artifact.sig"
+          if (-not (Test-Path -LiteralPath $signature -PathType Leaf)) { throw "Final Windows updater signature is missing." }
+          $signatureLength = (Get-Item -LiteralPath $signature).Length
+          if ($signatureLength -le 0 -or $signatureLength -gt 16384) { throw "Final Windows updater signature is outside its byte budget." }
+          & cargo run --locked -p rho-updater-verifier -- --config "desktop/src-tauri/tauri.conf.json" --artifact "$artifact" --signature "$signature"
+          if ($LASTEXITCODE -ne 0) { throw "Final Windows updater signature does not verify against the configured public key." }
+
       - name: Upload immutable Windows candidate inputs
         uses: actions/upload-artifact@v4
         with:
@@ -461,6 +503,15 @@ jobs:
             target/candidate/rho-${{ needs.identity.outputs.version }}-windows-x86_64-evidence.json
           if-no-files-found: error
           overwrite: true
+          retention-days: 14
+
+      - name: Upload final Windows native updater signature
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-${{ needs.identity.outputs.version }}-windows-updater-${{ github.run_id }}
+          path: target/candidate/Rho_${{ needs.identity.outputs.version }}_x64-setup.exe.sig
+          if-no-files-found: error
           retention-days: 14
 
   macos-submit:
@@ -571,7 +622,7 @@ jobs:
           echo "RHO_SIGNING_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
           echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
 
-      - name: Build, sign and submit final DMG without waiting
+      - name: Build, sign and submit final DMG and app archive without waiting
         shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -582,6 +633,8 @@ jobs:
           CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
           CANDIDATE_TAG: ${{ needs.identity.outputs.release_tag }}
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.identity.outputs.build_mode == 'candidate' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
           set -euo pipefail
           test -n "$APPLE_SIGNING_IDENTITY"
@@ -589,11 +642,27 @@ jobs:
           test -n "$APPLE_API_ISSUER"
           test -n "$APPLE_API_KEY"
           test -f "$APPLE_API_KEY_PATH"
+          if [[ "$CANDIDATE_MODE" == "candidate" ]]; then
+            test -n "$TAURI_SIGNING_PRIVATE_KEY"
+            test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          else
+            ephemeral_key="$RUNNER_TEMP/rho-rehearsal-tauri-updater.key"
+            npx -y "@tauri-apps/cli@2.11.4" signer generate --ci --write-keys "$ephemeral_key"
+            test -s "$ephemeral_key"
+            export TAURI_SIGNING_PRIVATE_KEY="$(cat "$ephemeral_key")"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+          fi
           (cd desktop/src-tauri && env -u APPLE_API_ISSUER -u APPLE_API_KEY -u APPLE_API_KEY_PATH npx -y "@tauri-apps/cli@2.11.4" build --target aarch64-apple-darwin --bundles app,dmg)
           app_path="target/aarch64-apple-darwin/release/bundle/macos/Rho.app"
           built_dmg="target/aarch64-apple-darwin/release/bundle/dmg/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
           test -d "$app_path"
           test -f "$built_dmg"
+          updater_artifacts=()
+          while IFS= read -r artifact; do updater_artifacts+=("$artifact"); done < <(find target/aarch64-apple-darwin/release/bundle -type f -name '*.app.tar.gz' -print)
+          if [[ ${#updater_artifacts[@]} -ne 1 || ! -f "${updater_artifacts[0]}.sig" ]]; then
+            printf '%s\n' "Tauri did not create exactly one signed macOS updater artifact." >&2
+            exit 1
+          fi
           codesign --verify --deep --strict --verbose=4 "$app_path"
           verify_rho_license_resources() {
             local app_path="$1"
@@ -642,11 +711,20 @@ jobs:
           "$app_path/Contents/MacOS/rho-desktop" --smoke-test
           mkdir -p target/notary
           submitted_dmg="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          submitted_app_archive="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.app.zip"
           pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json"
+          app_pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-pending.json"
           cp "$built_dmg" "$submitted_dmg"
-          xcrun notarytool submit "$submitted_dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --no-wait --output-format json > "$RUNNER_TEMP/notary-submit.json"
-          node scripts/macos-notary.mjs submission --receipt "$RUNNER_TEMP/notary-submit.json" --dmg "$submitted_dmg" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output "$pending_record"
-          rm -f "$RUNNER_TEMP/notary-submit.json"
+          ditto -c -k --keepParent "$app_path" "$submitted_app_archive"
+          if ! unzip -Z1 "$submitted_app_archive" | awk '$0 == "Rho.app" || $0 ~ /^Rho\.app\// { seen = 1; next } { exit 1 } END { exit seen ? 0 : 1 }'; then
+            echo "The submitted app archive must contain only Rho.app at its root." >&2
+            exit 1
+          fi
+          xcrun notarytool submit "$submitted_dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --no-wait --output-format json > "$RUNNER_TEMP/notary-submit-dmg.json"
+          node scripts/macos-notary.mjs submission --receipt "$RUNNER_TEMP/notary-submit-dmg.json" --dmg "$submitted_dmg" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output "$pending_record"
+          xcrun notarytool submit "$submitted_app_archive" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --no-wait --output-format json > "$RUNNER_TEMP/notary-submit-app-archive.json"
+          node scripts/macos-notary.mjs submission --receipt "$RUNNER_TEMP/notary-submit-app-archive.json" --artifact "$submitted_app_archive" --artifact-kind app_zip --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --output "$app_pending_record"
+          rm -f "$RUNNER_TEMP/notary-submit-dmg.json" "$RUNNER_TEMP/notary-submit-app-archive.json"
 
       - name: Remove temporary Apple credentials before artifact handoff
         if: always()
@@ -656,7 +734,7 @@ jobs:
           keychain_path="$RUNNER_TEMP/rho-signing.keychain-db"
           api_key_path="${APPLE_API_KEY_PATH:-$RUNNER_TEMP/rho-notary-api-key.p8}"
           if [[ -e "$keychain_path" ]]; then security delete-keychain "$keychain_path"; fi
-          rm -f "$RUNNER_TEMP/rho-developer-id.p12" "$RUNNER_TEMP/notary-submit.json" "$api_key_path"
+          rm -f "$RUNNER_TEMP/rho-developer-id.p12" "$RUNNER_TEMP/notary-submit-dmg.json" "$RUNNER_TEMP/notary-submit-app-archive.json" "$api_key_path"
           {
             echo "RHO_SIGNING_KEYCHAIN="
             echo "APPLE_API_KEY_PATH="
@@ -665,13 +743,15 @@ jobs:
           test ! -e "$RUNNER_TEMP/rho-developer-id.p12"
           test ! -e "$api_key_path"
 
-      - name: Upload immutable unstapled DMG and pending request
+      - name: Upload immutable unstapled notarization inputs
         uses: actions/upload-artifact@v4
         with:
           name: rho-notary-submission-${{ needs.identity.outputs.version }}-${{ github.run_id }}
           path: |
             target/notary/Rho_${{ needs.identity.outputs.version }}_aarch64.dmg
+            target/notary/Rho_${{ needs.identity.outputs.version }}_aarch64.app.zip
             target/notary/rho-${{ needs.identity.outputs.version }}-macos-notary-pending.json
+            target/notary/rho-${{ needs.identity.outputs.version }}-macos-app-archive-notary-pending.json
           if-no-files-found: error
           retention-days: 14
 
@@ -694,13 +774,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Download immutable DMG submission record
+      - name: Download immutable notarization submission records
         uses: actions/download-artifact@v5
         with:
           name: rho-notary-submission-${{ needs.identity.outputs.version }}-${{ github.run_id }}
           path: target/notary
 
-      - name: Poll exact submission and retrieve bounded Apple log
+      - name: Poll exact notarization submissions and retrieve bounded Apple logs
         shell: bash
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -717,6 +797,7 @@ jobs:
           test -n "$APPLE_API_PRIVATE_KEY"
           mkdir -p target/notary-accepted
           node scripts/macos-notary.mjs wait --pending "target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json" --output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-notary-accepted.json" --log-output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-notary-log.json" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --poll-interval-ms 120000 --max-wait-ms 19800000
+          node scripts/macos-notary.mjs wait --pending "target/notary/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-pending.json" --output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-accepted.json" --log-output "target/notary-accepted/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-log.json" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID" --poll-interval-ms 120000 --max-wait-ms 19800000
 
       - name: Upload immutable acceptance and Apple log
         uses: actions/upload-artifact@v4
@@ -725,6 +806,8 @@ jobs:
           path: |
             target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-notary-accepted.json
             target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-notary-log.json
+            target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-app-archive-notary-accepted.json
+            target/notary-accepted/rho-${{ needs.identity.outputs.version }}-macos-app-archive-notary-log.json
           if-no-files-found: error
           retention-days: 14
 
@@ -759,6 +842,16 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install native Rust toolchain for updater signature verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install stable-aarch64-apple-darwin --no-self-update
+          export RUSTUP_TOOLCHAIN=stable-aarch64-apple-darwin
+          echo "RUSTUP_TOOLCHAIN=$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
+          rustc -vV | grep -F 'host: aarch64-apple-darwin'
+
       - name: Set up current stable R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -783,7 +876,7 @@ jobs:
           name: rho-notary-acceptance-${{ needs.identity.outputs.version }}-${{ github.run_id }}
           path: target/notary
 
-      - name: Verify, staple, mount and smoke exact accepted DMG
+      - name: Verify, staple, mount, archive and smoke exact accepted macOS artifacts
         shell: bash
         env:
           CANDIDATE_MODE: ${{ needs.identity.outputs.build_mode }}
@@ -793,10 +886,15 @@ jobs:
         run: |
           set -euo pipefail
           dmg_path="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          app_archive_path="target/notary/Rho_${CANDIDATE_VERSION}_aarch64.app.zip"
           pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-pending.json"
           accepted_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-accepted.json"
           log_record="target/notary/rho-${CANDIDATE_VERSION}-macos-notary-log.json"
+          app_pending_record="target/notary/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-pending.json"
+          app_accepted_record="target/notary/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-accepted.json"
+          app_log_record="target/notary/rho-${CANDIDATE_VERSION}-macos-app-archive-notary-log.json"
           node scripts/macos-notary.mjs verify --pending "$pending_record" --accepted "$accepted_record" --log "$log_record" --dmg "$dmg_path" --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID"
+          node scripts/macos-notary.mjs verify --pending "$app_pending_record" --accepted "$app_accepted_record" --log "$app_log_record" --artifact "$app_archive_path" --artifact-kind app_zip --repository "$GITHUB_REPOSITORY" --build-mode "$CANDIDATE_MODE" --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --run-id "$GITHUB_RUN_ID"
           xcrun stapler staple "$dmg_path"
           xcrun stapler validate "$dmg_path"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
@@ -863,8 +961,36 @@ jobs:
           mounted=false
           rmdir "$mount_point"
           trap - EXIT
+          updater_extract="$(mktemp -d "$RUNNER_TEMP/rho-updater-app.XXXXXX")"
+          cleanup_updater_extract() {
+            rm -rf "$updater_extract"
+          }
+          trap cleanup_updater_extract EXIT
+          ditto -x -k "$app_archive_path" "$updater_extract"
+          updater_app_path="$updater_extract/Rho.app"
+          test -d "$updater_app_path"
+          xcrun stapler staple "$updater_app_path"
+          xcrun stapler validate "$updater_app_path"
+          codesign --verify --deep --strict --verbose=4 "$updater_app_path"
+          verify_rho_license_resources "$updater_app_path"
+          require_exact_arm64 "Updater Rho app executable" "$updater_app_path/Contents/MacOS/rho-desktop"
+          updater_ark_path="$(find "$updater_app_path/Contents/MacOS" -maxdepth 1 -type f -name 'ark*' -print -quit)"
+          test -n "$updater_ark_path"
+          require_exact_arm64 "Updater bundled Ark executable" "$updater_ark_path"
+          require_exact_library_validation_entitlement "Updater Rho app executable" "$updater_app_path/Contents/MacOS/rho-desktop" "rho-updater-app-entitlements"
+          require_exact_library_validation_entitlement "Updater bundled Ark executable" "$updater_ark_path" "rho-updater-ark-entitlements"
+          spctl --assess --type execute --verbose=4 "$updater_app_path"
+          "$updater_app_path/Contents/MacOS/rho-desktop" --smoke-test
           mkdir -p target/candidate
           cp "$dmg_path" "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg"
+          updater_tar="target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.app.tar.gz"
+          tar -C "$updater_extract" -czf "$updater_tar" Rho.app
+          if ! tar -tzf "$updater_tar" | awk '$0 == "Rho.app" || $0 == "Rho.app/" || $0 ~ /^Rho\.app\// { seen = 1; next } { exit 1 } END { exit seen ? 0 : 1 }'; then
+            echo "The final native updater archive must contain only Rho.app at its root." >&2
+            exit 1
+          fi
+          rm -rf "$updater_extract"
+          trap - EXIT
 
       - name: Create final macOS platform evidence
         shell: bash
@@ -874,7 +1000,25 @@ jobs:
           CANDIDATE_COMMIT: ${{ needs.identity.outputs.commit }}
         run: |
           set -euo pipefail
-          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper,license_boundary
+          node scripts/candidate-release.mjs --mode platform --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --platform macos_aarch64 --artifact "target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.dmg" --output "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --checks release_metadata,rust_workspace,rho_bridge,rho_agent,frontend,workspace_smoke,arm64,codesign,entitlements,notarization,notary_binding,staple,gatekeeper,license_boundary,native_updater_archive
+
+      - name: Sign final notarized macOS updater archive
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ needs.identity.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          artifact="target/candidate/Rho_${CANDIDATE_VERSION}_aarch64.app.tar.gz"
+          test -s "$artifact"
+          npx -y "@tauri-apps/cli@2.11.4" signer sign "$artifact"
+          test -s "$artifact.sig"
+          test "$(wc -c < "$artifact.sig")" -le 16384
+          cargo run --locked -p rho-updater-verifier -- --config desktop/src-tauri/tauri.conf.json --artifact "$artifact" --signature "$artifact.sig"
 
       - name: Upload immutable final macOS candidate inputs
         uses: actions/upload-artifact@v4
@@ -886,6 +1030,17 @@ jobs:
             target/candidate/rho-${{ needs.identity.outputs.version }}-macos-aarch64-evidence.json
           if-no-files-found: error
           overwrite: true
+          retention-days: 14
+
+      - name: Upload final macOS native updater inputs
+        if: ${{ needs.identity.outputs.build_mode == 'candidate' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rho-${{ needs.identity.outputs.version }}-macos-updater-${{ github.run_id }}
+          path: |
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.app.tar.gz
+            target/candidate/Rho_${{ needs.identity.outputs.version }}_aarch64.app.tar.gz.sig
+          if-no-files-found: error
           retention-days: 14
 
   rehearsal-evidence:
@@ -968,6 +1123,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/candidate-release.mjs --mode aggregate --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --windows_evidence "target/candidate/rho-${CANDIDATE_VERSION}-windows-x86_64-evidence.json" --macos_evidence "target/candidate/rho-${CANDIDATE_VERSION}-macos-aarch64-evidence.json" --output "target/candidate/rho-${CANDIDATE_VERSION}-candidate-evidence.json" --require_windows_signing true
+          node scripts/tauri-native-updater.mjs --mode evidence --version "$CANDIDATE_VERSION" --tag "$CANDIDATE_TAG" --commit "$CANDIDATE_COMMIT" --directory target/candidate --output "target/candidate/rho-${CANDIDATE_VERSION}-tauri-native-updater-evidence.json"
 
       - name: Prepare reviewed release notes from the exact candidate commit
         shell: bash
@@ -1020,6 +1176,10 @@ jobs:
               `Rho_${version}_aarch64.dmg.sha256`,
               `rho-${version}-macos-aarch64-evidence.json`,
               `rho-${version}-candidate-evidence.json`,
+              `Rho_${version}_x64-setup.exe.sig`,
+              `Rho_${version}_aarch64.app.tar.gz`,
+              `Rho_${version}_aarch64.app.tar.gz.sig`,
+              `rho-${version}-tauri-native-updater-evidence.json`,
             ];
             const files = requiredNames.map((name) => {
               const filePath = path.join("target", "candidate", name);

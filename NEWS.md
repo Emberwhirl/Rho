@@ -4,6 +4,21 @@ This file records user-visible changes by release. It is intentionally
 separate from the architecture plan: the plan describes intended work, while
 this file records behavior included in a versioned build candidate.
 
+## 0.4.0-dev.40 - 2026-08-15
+
+### Updates
+
+- Help > Check for Updates now uses Tauri's native signed-updater boundary on
+  Windows x64 and macOS Apple Silicon. It is manual-only; a separately labelled
+  **Install and Restart** action is required before any update bytes download.
+- Candidate packaging now signs the final Authenticode Windows installer and a
+  final notarized/stapled macOS application archive after their byte-changing
+  platform steps. Evidence binds both signatures to the exact release assets.
+- The legacy V1 download-site manifest remains compatible and separate from
+  the native Tauri manifest. No public native-update manifest or candidate has
+  been declared available until its exact candidate and installed-app gates
+  pass.
+
 ## 0.4.0-dev.39 - 2026-08-13
 
 ### Distribution
